@@ -35,6 +35,15 @@ public class ReassignRequest {
     private String targetUserId;               // SINGLE mode
     private List<Assignment> assignments;      // MANUAL mode
 
+    /**
+     * When true the source counsellor's pool memberships are flipped to
+     * INACTIVE in the same transaction as the reassignment commit. Powers
+     * the reassign-first flow on the workbench — a manager confirms one
+     * action that both moves the leads and takes the person offline.
+     * Defaults to false (existing reassign-without-deactivation behaviour).
+     */
+    private Boolean markInactive;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

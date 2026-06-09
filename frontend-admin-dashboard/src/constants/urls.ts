@@ -260,6 +260,13 @@ export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/p
 export const GET_INSTITUTE_USERS = `${BASE_URL}/auth-service/v1/user-roles/users-of-status`;
 export const GET_USER_ROLES_COUNT = `${BASE_URL}/auth-service/v1/user-roles/user-roles-count`;
 export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
+// RBAC-scoped variant of the autosuggest used by lead-assign dialogs. When
+// the institute has configured a leads_team_id AND the caller is in that
+// subtree, the list is intersected with the caller's user-to-user
+// descendants — a manager can't accidentally assign a lead to someone
+// outside their reporting chain. Falls back to institute-wide autosuggest
+// when the gate doesn't apply (admin behaviour preserved).
+export const GET_ELIGIBLE_ASSIGNEES = `${BASE_URL}/admin-core-service/v1/audience/eligible-assignees`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
 export const GET_FACULTY_USER_ACCESS_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access-details`;

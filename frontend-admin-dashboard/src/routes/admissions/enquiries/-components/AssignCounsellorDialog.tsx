@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { linkCounsellorToEnquiry } from '../-services/link-counsellor';
-import { useUserAutosuggestDebounced, USER_ROLES } from '@/services/user-autosuggest';
+import { useEligibleAssigneesDebounced } from '@/services/user-autosuggest';
 import { X } from 'lucide-react';
 
 interface AssignCounsellorDialogProps {
@@ -37,10 +37,11 @@ export const AssignCounsellorDialog = ({
 
     const queryClient = useQueryClient();
 
-    // Fetch counsellors with debounced search
-    const { data: counsellors, isLoading: isLoadingCounsellors } = useUserAutosuggestDebounced(
+    // RBAC-scoped — see assign-counselor-to-lead-dialog for the rationale.
+    // Backend intersects with caller's user-to-user descendants when the
+    // leads team is configured and the caller is in it.
+    const { data: counsellors, isLoading: isLoadingCounsellors } = useEligibleAssigneesDebounced(
         searchQuery,
-        [USER_ROLES.ADMIN, USER_ROLES.COUNSELLOR],
         300
     );
 

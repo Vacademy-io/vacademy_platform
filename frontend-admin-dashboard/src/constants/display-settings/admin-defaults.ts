@@ -11,6 +11,11 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     'suborg-teams',
     'manage-institute-suborgs',
     'notification-hub',
+    // Workbench routes — gated until the institute has set up a leads team
+    // and counsellor rating strategy. Admins flip them on per-institute from
+    // Display Settings → CRM → Leads.
+    'counsellors',
+    'sales-dashboard',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the

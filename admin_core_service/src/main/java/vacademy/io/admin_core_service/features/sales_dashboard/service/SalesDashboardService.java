@@ -100,7 +100,9 @@ public class SalesDashboardService {
         // parameter order matches the args list: [instituteId, from?, to?,
         // users…, instituteId-for-lead_status].
         String dateClause = andDateRange("ulp.created_at", from, to);
-        String sql = "SELECT ls.status_key, ls.label, ls.color, ls.sort_order, " +
+        // lead_status uses display_order (not sort_order) and is_active boolean
+        // (not status). See LeadStatus entity.
+        String sql = "SELECT ls.status_key, ls.label, ls.color, ls.display_order, " +
                 "       COUNT(DISTINCT ulp.id) AS lead_count " +
                 "FROM lead_status ls " +
                 "LEFT JOIN audience_response ar ON ar.lead_status_id = ls.id " +
@@ -108,9 +110,9 @@ public class SalesDashboardService {
                 "    AND ulp.institute_id = ?" +
                 dateClause +
                 userClause +
-                "WHERE ls.institute_id = ? AND ls.status = 'ACTIVE' " +
-                "GROUP BY ls.status_key, ls.label, ls.color, ls.sort_order " +
-                "ORDER BY ls.sort_order";
+                "WHERE ls.institute_id = ? AND ls.is_active = true " +
+                "GROUP BY ls.status_key, ls.label, ls.color, ls.display_order " +
+                "ORDER BY ls.display_order";
 
         List<Object> args = new ArrayList<>();
         args.add(instituteId);                                 // ulp.institute_id in JOIN
@@ -125,7 +127,7 @@ public class SalesDashboardService {
                         .label(rs.getString("label"))
                         .color(rs.getString("color"))
                         .count(rs.getLong("lead_count"))
-                        .order(rs.getInt("sort_order"))
+                        .order(rs.getInt("display_order"))
                         .build(),
                 args.toArray());
     }
@@ -242,10 +244,21 @@ public class SalesDashboardService {
         // every ? as a bind variable and the prepared statement explodes.
         // We use the equivalent `->> 'key' IS NOT NULL` form instead, which
         // is just as cheap and contains no ambiguous ?.
+        // action_type stores the enum NAME (TimelineEventService writes
+        // actionType.name()) — so the value is 'COUNSELOR_ASSIGNED', not the
+        // human title 'Counselor reassigned'. Initial assigns vs. reassigns
+        // share the same enum; the metadata "reassigned_from" key is what
+        // distinguishes a reassign event, and it's already in the WHERE.
+        // type_id on USER_LEAD_PROFILE events is the lead's user_id, so we
+        // join through user_lead_profile to scope by institute and stop the
+        // widget from leaking other tenants' reassignment counts.
         return jdbc.query(
                 "SELECT DATE(te.created_at) AS day, COUNT(*) AS n " +
                 "FROM timeline_event te " +
-                "WHERE te.action_type = 'Counselor reassigned' " +
+                "JOIN user_lead_profile ulp ON ulp.user_id = te.type_id " +
+                "WHERE te.action_type = 'COUNSELOR_ASSIGNED' " +
+                "  AND te.type = 'USER_LEAD_PROFILE' " +
+                "  AND ulp.institute_id = ? " +
                 "  AND te.created_at >= ? AND te.created_at < ? " +
                 "  AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
                 "  AND (te.metadata_json::jsonb ->> 'trigger') IS NOT NULL " +
@@ -255,7 +268,7 @@ public class SalesDashboardService {
                         .date(rs.getDate("day").toLocalDate())
                         .primary(rs.getLong("n"))
                         .build(),
-                from, to);
+                instituteId, from, to);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -280,7 +293,10 @@ public class SalesDashboardService {
                 "WHERE lf.institute_id = ? " +
                 "  AND lf.is_closed = false " +
                 "  AND lf.status = 'PENDING' " +
-                "  AND lf.schedule_time BETWEEN NOW() AND NOW() + (? || ' hours')::interval " +
+                // (? || ' hours')::interval fails because JDBC binds the hours
+                // arg as int4, and Postgres' || requires text on both sides.
+                // int * interval is a native operator — no cast gymnastics.
+                "  AND lf.schedule_time BETWEEN NOW() AND NOW() + (? * INTERVAL '1 hour') " +
                 userClause +
                 "ORDER BY lf.schedule_time ASC " +
                 "LIMIT ?",
@@ -325,6 +341,10 @@ public class SalesDashboardService {
         String userClause = userScopeClause(users, "ulp.assigned_counselor_id");
         // First series: new leads per day.
         Map<LocalDate, long[]> byDay = new TreeMap<>();
+        // Arg order matches SQL: institute_id, from, to, then the IN-list
+        // users from userClause. The previous order [institute_id, users,
+        // from, to] caused bad-SQL-grammar because the dates were bound to
+        // the IN placeholders.
         jdbc.query("SELECT DATE(ulp.created_at) AS day, COUNT(*) AS n " +
                         "FROM user_lead_profile ulp " +
                         "WHERE ulp.institute_id = ? " +
@@ -336,15 +356,22 @@ public class SalesDashboardService {
                     long[] arr = byDay.computeIfAbsent(d, k -> new long[]{0, 0});
                     arr[0] = rs.getLong("n");
                 },
-                argsConcatTail(argsConcat(new Object[]{instituteId}, users), from, to));
+                argsConcat(new Object[]{instituteId, from, to}, users));
 
         // Second series: existing leads with activity per day (count of
-        // distinct user_lead_profile.id that had timeline_event in the window
-        // and were created before the window).
+        // distinct lead-user_ids that had timeline_event in the window and
+        // were created before the window).
+        //
+        // type_id for USER_LEAD_PROFILE events is user_lead_profile.user_id
+        // (see AudienceController + CounsellorReassignService callers), NOT
+        // .id, so the join is ulp.user_id = te.type_id and we filter to type
+        // = 'USER_LEAD_PROFILE' so we don't accidentally pick up unrelated
+        // entity types whose type_id may collide.
         jdbc.query("SELECT DATE(te.created_at) AS day, COUNT(DISTINCT te.type_id) AS n " +
                         "FROM timeline_event te " +
-                        "JOIN user_lead_profile ulp ON ulp.id = te.type_id " +
-                        "WHERE ulp.institute_id = ? " +
+                        "JOIN user_lead_profile ulp ON ulp.user_id = te.type_id " +
+                        "WHERE te.type = 'USER_LEAD_PROFILE' " +
+                        "  AND ulp.institute_id = ? " +
                         "  AND te.created_at >= ? AND te.created_at < ? " +
                         "  AND ulp.created_at < ? " +
                         userClause +
@@ -354,7 +381,7 @@ public class SalesDashboardService {
                     long[] arr = byDay.computeIfAbsent(d, k -> new long[]{0, 0});
                     arr[1] = rs.getLong("n");
                 },
-                argsConcatTail(argsConcat(new Object[]{instituteId}, users), from, to, from));
+                argsConcat(new Object[]{instituteId, from, to, from}, users));
 
         List<TimeSeriesPointDTO> out = new ArrayList<>(byDay.size());
         for (Map.Entry<LocalDate, long[]> e : byDay.entrySet()) {

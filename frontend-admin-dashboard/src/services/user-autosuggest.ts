@@ -1,4 +1,4 @@
-import { GET_USER_AUTOSUGGEST } from '@/constants/urls';
+import { GET_ELIGIBLE_ASSIGNEES, GET_USER_AUTOSUGGEST } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useQuery } from '@tanstack/react-query';
@@ -99,6 +99,53 @@ export function useUserAutosuggestDebounced(
     }, [query, debounceMs]);
 
     return useUserAutosuggest(debouncedQuery, roles, options);
+}
+
+/**
+ * RBAC-scoped counterpart of {@link fetchAutosuggestUsers} for the
+ * lead-assignment dialogs. When the institute has a leads_team_id and the
+ * caller is in that subtree the backend intersects the result with the
+ * caller's user-to-user descendants — so a manager can't assign a lead to
+ * someone outside their reporting chain. Outside the gate the server
+ * falls back to institute-wide autosuggest, so it's safe to use anywhere
+ * that previously called {@link fetchAutosuggestUsers}.
+ *
+ * Roles are intentionally NOT plumbed here — the backend picks the right
+ * candidate set (in-scope users + role filter) so we don't second-guess
+ * it from the client.
+ */
+export async function fetchEligibleAssignees(query: string): Promise<UserDTO[]> {
+    const instituteId = getCurrentInstituteId();
+    const { data } = await authenticatedAxiosInstance<UserDTO[]>({
+        method: 'GET',
+        url: GET_ELIGIBLE_ASSIGNEES,
+        params: { instituteId, query },
+    });
+    return data;
+}
+
+/**
+ * Debounced React Query hook that wraps {@link fetchEligibleAssignees}.
+ * Drop-in replacement for {@link useUserAutosuggestDebounced} on lead /
+ * enquiry assign pickers.
+ */
+export function useEligibleAssigneesDebounced(query: string, debounceMs: number = 300) {
+    const [debounced, setDebounced] = useState(query);
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebounced(query), debounceMs);
+        return () => clearTimeout(t);
+    }, [query, debounceMs]);
+
+    return useQuery({
+        // Always-enabled so the dropdown shows the caller's scope on first
+        // open (empty query); backend returns the descendant list directly
+        // when no query is provided.
+        queryKey: ['eligible-assignees', debounced],
+        queryFn: () => fetchEligibleAssignees(debounced),
+        staleTime: 30000,
+        gcTime: 60000,
+    });
 }
 
 // Common role constants for convenience

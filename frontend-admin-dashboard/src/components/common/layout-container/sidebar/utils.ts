@@ -394,6 +394,16 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/audience-manager/follow-ups',
                 subItemId: 'follow-ups',
             },
+            {
+                subItem: 'Counsellors',
+                subItemLink: '/counsellors',
+                subItemId: 'counsellors',
+            },
+            {
+                subItem: 'Sales Dashboard',
+                subItemLink: '/sales-dashboard',
+                subItemId: 'sales-dashboard',
+            },
         ],
     },
     {

@@ -5,17 +5,19 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
     MagnifyingGlass,
     User,
-    X,
     UsersThree,
     ChatCircleText,
     ArrowsClockwise,
     Crown,
     ChartLineUp,
+    SquaresFour,
+    List as ListIcon,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
@@ -30,10 +32,10 @@ import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/type
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import {
+    fetchCounsellorLeads,
     fetchMyTeam,
     fetchTeamCounsellors,
     setCounsellorStatus,
-    type StatusChangeResponse,
     type WorkbenchCounsellor,
     type WorkbenchLead,
 } from './-services/counsellor-workbench-services';
@@ -44,6 +46,9 @@ export const Route = createLazyFileRoute('/counsellors/')({
 
 type DetailTab = 'leads' | 'activity' | 'performance';
 type StatusFilter = 'all' | 'active' | 'inactive';
+type ViewMode = 'cards' | 'list';
+
+const VIEW_MODE_KEY = 'counsellors-view-mode';
 
 function isCounsellorsPageEnabled(): boolean {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -51,7 +56,12 @@ function isCounsellorsPageEnabled(): boolean {
     const isAdmin = viewerRoles.includes('ADMIN');
     const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
     const ds = getDisplaySettingsFromCache(roleKey);
-    return ds?.workbench?.counsellorsPageVisible === true;
+    // Toggled from Display Settings → CRM → Leads sub-tabs, same place as
+    // Lead List / Recent Leads / Follow-ups. Off by default per
+    // SUB_ITEMS_HIDDEN_BY_DEFAULT in admin-defaults.
+    const leadsTab = ds?.sidebar?.find((t) => t.id === 'leads');
+    const sub = leadsTab?.subTabs?.find((s) => s.id === 'counsellors');
+    return sub?.visible === true;
 }
 
 function RouteComponent() {
@@ -78,12 +88,28 @@ function WorkbenchPage() {
     // UI state.
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [viewMode, setViewMode] = useState<ViewMode>(() => {
+        if (typeof window === 'undefined') return 'cards';
+        return localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'cards';
+    });
+    function changeViewMode(next: ViewMode) {
+        setViewMode(next);
+        localStorage.setItem(VIEW_MODE_KEY, next);
+    }
     const [openCounsellorId, setOpenCounsellorId] = useState<string | null>(null);
     const [detailTab, setDetailTab] = useState<DetailTab>('leads');
     const [reassignOpen, setReassignOpen] = useState(false);
     const [reassignLeads, setReassignLeads] = useState<WorkbenchLead[]>([]);
     const [reassignFromUserId, setReassignFromUserId] = useState<string | null>(null);
     const [reassignFromName, setReassignFromName] = useState<string | null>(null);
+    // True when the reassign dialog is opened from the "Mark inactive"
+    // action — submit then atomically reassigns AND flips pool memberships
+    // INACTIVE in one backend transaction. Cancelling leaves the counsellor
+    // ACTIVE (no partial state).
+    const [reassignMarkInactive, setReassignMarkInactive] = useState(false);
+    // Holds the user_id of the counsellor we're currently fetching open
+    // leads for, so the "Mark inactive" button can show a spinner.
+    const [pendingMarkInactiveId, setPendingMarkInactiveId] = useState<string | null>(null);
 
     const teamQuery = useQuery({
         queryKey: ['workbench-my-team', instituteId],
@@ -125,21 +151,14 @@ function WorkbenchPage() {
         [counsellors, openCounsellorId]
     );
 
-    // Toggle status with a confirm + open-leads handoff for INACTIVE.
-    const statusMutation = useMutation({
-        mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
-            setCounsellorStatus(userId, instituteId!, isActive ? 'ACTIVE' : 'INACTIVE'),
-        onSuccess: (resp: StatusChangeResponse, vars) => {
+    // ACTIVE direction: legacy direct flip — no leads to move, no dialog
+    // needed. (For INACTIVE we go through the reassign-first flow below.)
+    const setActiveMutation = useMutation({
+        mutationFn: (userId: string) =>
+            setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['workbench-counsellors', instituteId] });
-            if (!vars.isActive && resp.open_leads?.length) {
-                const counsellor = counsellors.find((c) => c.user_id === vars.userId);
-                setReassignFromUserId(vars.userId);
-                setReassignFromName(counsellor?.full_name ?? vars.userId);
-                setReassignLeads(resp.open_leads);
-                setReassignOpen(true);
-            } else {
-                toast.success(vars.isActive ? 'Marked active' : 'Marked inactive');
-            }
+            toast.success('Marked active');
         },
         onError: (e) => {
             const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
@@ -147,16 +166,56 @@ function WorkbenchPage() {
         },
     });
 
+    /**
+     * Reassign-first INACTIVE flow:
+     * 1. Pre-fetch the counsellor's open leads (read-only, no state change).
+     * 2. Open the reassign dialog with markInactive=true.
+     * 3. Manager picks a target (or RR / MANUAL) and confirms — backend
+     *    atomically reassigns AND flips pool memberships INACTIVE in one
+     *    transaction. Cancelling leaves the counsellor ACTIVE.
+     */
+    async function startMarkInactive(userId: string, displayName: string) {
+        if (!instituteId) return;
+        setPendingMarkInactiveId(userId);
+        try {
+            const leads = await fetchCounsellorLeads(instituteId, userId, 'OPEN', 0, 500);
+            setReassignFromUserId(userId);
+            setReassignFromName(displayName);
+            setReassignLeads(leads ?? []);
+            setReassignMarkInactive(true);
+            setReassignOpen(true);
+        } catch (e) {
+            const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
+            toast.error(msg ?? 'Could not load open leads');
+        } finally {
+            setPendingMarkInactiveId(null);
+        }
+    }
+
+    function handleStatusToggle(userId: string, displayName: string, currentlyActive: boolean) {
+        if (currentlyActive) {
+            void startMarkInactive(userId, displayName);
+        } else {
+            setActiveMutation.mutate(userId);
+        }
+    }
+
     function handleLeadReassign(lead: WorkbenchLead) {
         setReassignFromUserId(lead.assigned_counselor_id);
         setReassignFromName(lead.assigned_counselor_name);
         setReassignLeads([lead]);
+        setReassignMarkInactive(false);
         setReassignOpen(true);
     }
 
     function handleReassignComplete() {
         queryClient.invalidateQueries({ queryKey: ['workbench-counsellors', instituteId] });
         queryClient.invalidateQueries({ queryKey: ['workbench-leads', instituteId] });
+    }
+
+    function handleReassignDialogOpenChange(next: boolean) {
+        setReassignOpen(next);
+        if (!next) setReassignMarkInactive(false);
     }
 
     if (!instituteId) return null;
@@ -239,6 +298,40 @@ function WorkbenchPage() {
                         </button>
                     ))}
                 </div>
+                <div
+                    className="ml-auto flex overflow-hidden rounded-md border border-neutral-300"
+                    role="group"
+                    aria-label="View mode"
+                >
+                    <button
+                        type="button"
+                        onClick={() => changeViewMode('cards')}
+                        title="Card view"
+                        aria-pressed={viewMode === 'cards'}
+                        className={cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 text-caption font-medium',
+                            viewMode === 'cards'
+                                ? 'bg-primary-500 text-white'
+                                : 'bg-white text-neutral-700 hover:bg-neutral-50'
+                        )}
+                    >
+                        <SquaresFour size={14} /> Cards
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => changeViewMode('list')}
+                        title="List view"
+                        aria-pressed={viewMode === 'list'}
+                        className={cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 text-caption font-medium',
+                            viewMode === 'list'
+                                ? 'bg-primary-500 text-white'
+                                : 'bg-white text-neutral-700 hover:bg-neutral-50'
+                        )}
+                    >
+                        <ListIcon size={14} /> List
+                    </button>
+                </div>
             </div>
 
             {/* ── Counsellor cards grid ──────────────────────────── */}
@@ -252,6 +345,26 @@ function WorkbenchPage() {
                         ? 'No counsellors in this team yet. Add them under Manage Institute → Teams → Org Chart.'
                         : 'No one matches your filters.'}
                 </div>
+            ) : viewMode === 'list' ? (
+                <CounsellorTable
+                    counsellors={filtered}
+                    instituteId={instituteId}
+                    statusPendingId={
+                        pendingMarkInactiveId ??
+                        (setActiveMutation.isPending
+                            ? setActiveMutation.variables ?? null
+                            : null)
+                    }
+                    onOpen={(uid) => {
+                        setOpenCounsellorId(uid);
+                        setDetailTab('leads');
+                    }}
+                    onToggleStatus={(uid, isActive) => {
+                        const c = counsellors.find((x) => x.user_id === uid);
+                        // isActive here is the NEXT state requested.
+                        handleStatusToggle(uid, c?.full_name ?? uid, !isActive);
+                    }}
+                />
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {filtered.map((c) => (
@@ -264,40 +377,38 @@ function WorkbenchPage() {
                                 setDetailTab('leads');
                             }}
                             onToggleStatus={() =>
-                                statusMutation.mutate({
-                                    userId: c.user_id,
-                                    isActive: !c.is_active,
-                                })
+                                handleStatusToggle(c.user_id, c.full_name ?? c.user_id, c.is_active)
                             }
                             statusLoading={
-                                statusMutation.isPending &&
-                                statusMutation.variables?.userId === c.user_id
+                                pendingMarkInactiveId === c.user_id ||
+                                (setActiveMutation.isPending &&
+                                    setActiveMutation.variables === c.user_id)
                             }
                         />
                     ))}
                 </div>
             )}
 
-            {/* ── Detail slide-over panel ────────────────────────── */}
-            {openCounsellor && (
-                <DetailDrawer
-                    counsellor={openCounsellor}
-                    onClose={() => setOpenCounsellorId(null)}
-                    tab={detailTab}
-                    onTabChange={setDetailTab}
-                    instituteId={instituteId}
-                    onReassign={handleLeadReassign}
-                />
-            )}
+            {/* ── Detail slide-over panel (Radix Sheet, portaled) ── */}
+            <DetailDrawer
+                open={!!openCounsellor}
+                onOpenChange={(o) => !o && setOpenCounsellorId(null)}
+                counsellor={openCounsellor}
+                tab={detailTab}
+                onTabChange={setDetailTab}
+                instituteId={instituteId}
+                onReassign={handleLeadReassign}
+            />
 
             <ReassignDialog
                 open={reassignOpen}
-                onOpenChange={setReassignOpen}
+                onOpenChange={handleReassignDialogOpenChange}
                 instituteId={instituteId}
                 fromUserId={reassignFromUserId}
                 fromUserName={reassignFromName}
                 openLeads={reassignLeads}
                 candidates={counsellorsQuery.data ?? []}
+                markInactive={reassignMarkInactive}
                 onComplete={handleReassignComplete}
             />
         </LayoutContainer>
@@ -420,13 +531,12 @@ function CounsellorCard({
                     type="button"
                     onClick={(e) => {
                         e.stopPropagation();
-                        if (
-                            window.confirm(
-                                counsellor.is_active
-                                    ? `Mark ${name} inactive? Their open leads can be reassigned.`
-                                    : `Mark ${name} active again?`
-                            )
-                        ) {
+                        // INACTIVE direction goes through the reassign dialog,
+                        // which is the explicit confirmation. ACTIVE direction
+                        // is a direct flip, so keep the confirm prompt there.
+                        if (counsellor.is_active) {
+                            onToggleStatus();
+                        } else if (window.confirm(`Mark ${name} active again?`)) {
                             onToggleStatus();
                         }
                     }}
@@ -449,49 +559,169 @@ function CounsellorCard({
     );
 }
 
+// ─── List view ────────────────────────────────────────────────
+
+function CounsellorTable({
+    counsellors,
+    instituteId,
+    statusPendingId,
+    onOpen,
+    onToggleStatus,
+}: {
+    counsellors: WorkbenchCounsellor[];
+    instituteId: string;
+    statusPendingId: string | null;
+    onOpen: (userId: string) => void;
+    onToggleStatus: (userId: string, isActive: boolean) => void;
+}) {
+    return (
+        <div className="overflow-auto rounded-md border border-neutral-200 bg-white">
+            <table className="w-full text-body">
+                <thead className="border-b border-neutral-200 bg-neutral-50 text-caption uppercase tracking-wide text-neutral-500">
+                    <tr>
+                        <th className="px-3 py-2.5 text-left">Counsellor</th>
+                        <th className="px-3 py-2.5 text-left">Team</th>
+                        <th className="px-3 py-2.5 text-right">Rating</th>
+                        <th className="px-3 py-2.5 text-right">Open leads</th>
+                        <th className="px-3 py-2.5 text-left">Status</th>
+                        <th className="px-3 py-2.5 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {counsellors.map((c) => {
+                        const name = c.full_name || 'Unnamed';
+                        const pending = statusPendingId === c.user_id;
+                        return (
+                            <tr
+                                key={c.user_id}
+                                className={cn(
+                                    'cursor-pointer border-t border-neutral-100 hover:bg-neutral-50',
+                                    !c.is_active && 'opacity-75'
+                                )}
+                                onClick={() => onOpen(c.user_id)}
+                            >
+                                <td className="px-3 py-2.5">
+                                    <div className="flex items-center gap-2.5">
+                                        <Avatar name={name} />
+                                        <div className="min-w-0 leading-tight">
+                                            <div className="truncate text-body font-medium text-neutral-900">
+                                                {name}
+                                            </div>
+                                            <div className="truncate text-caption text-neutral-500">
+                                                {c.email ?? c.role_label ?? '—'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2.5 text-neutral-700">
+                                    {c.team_name ?? '—'}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                    <span className="inline-flex">
+                                        <CounsellorRatingBadge
+                                            instituteId={instituteId}
+                                            userId={c.user_id}
+                                            size="sm"
+                                        />
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-body font-semibold text-neutral-900">
+                                    {c.open_leads_count}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                    <span
+                                        className={cn(
+                                            'inline-flex items-center gap-1.5 text-caption font-medium',
+                                            c.is_active ? 'text-success-700' : 'text-neutral-500'
+                                        )}
+                                    >
+                                        <span
+                                            className={cn(
+                                                'size-1.5 rounded-full',
+                                                c.is_active ? 'bg-success-500' : 'bg-neutral-400'
+                                            )}
+                                        />
+                                        {c.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            // INACTIVE goes through the
+                                            // reassign dialog (its own
+                                            // confirmation); ACTIVE keeps the
+                                            // direct confirm prompt.
+                                            if (c.is_active) {
+                                                onToggleStatus(c.user_id, !c.is_active);
+                                            } else if (
+                                                window.confirm(`Mark ${name} active again?`)
+                                            ) {
+                                                onToggleStatus(c.user_id, !c.is_active);
+                                            }
+                                        }}
+                                        disabled={pending}
+                                        className={cn(
+                                            'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
+                                            c.is_active
+                                                ? 'text-danger-600 hover:bg-danger-50'
+                                                : 'text-success-700 hover:bg-success-50'
+                                        )}
+                                    >
+                                        {pending
+                                            ? '…'
+                                            : c.is_active
+                                            ? 'Mark inactive'
+                                            : 'Mark active'}
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
 // ─── Detail drawer ────────────────────────────────────────────
 
 function DetailDrawer({
+    open,
+    onOpenChange,
     counsellor,
-    onClose,
     tab,
     onTabChange,
     instituteId,
     onReassign,
 }: {
-    counsellor: WorkbenchCounsellor;
-    onClose: () => void;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    counsellor: WorkbenchCounsellor | null;
     tab: DetailTab;
     onTabChange: (t: DetailTab) => void;
     instituteId: string;
     onReassign: (lead: WorkbenchLead) => void;
 }) {
-    // Close on Escape.
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [onClose]);
-
+    // Sheet handles focus trap, Escape, overlay click — we just supply the
+    // content. `counsellor` can be null briefly during the close animation
+    // (state cleared as the sheet starts to fade out); the early-return
+    // keeps the closing frame clean.
+    if (!counsellor) return null;
     const name = counsellor.full_name || 'Unnamed';
     return (
-        <div
-            className="fixed inset-0 z-40 flex justify-end bg-neutral-900/40"
-            onClick={onClose}
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${name} details`}
-        >
-            <div
-                className="flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
+        <Sheet open={open} onOpenChange={onOpenChange}>
+            <SheetContent
+                side="right"
+                className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl"
             >
-                <div className="flex items-center gap-3 border-b border-neutral-200 px-4 py-3">
+                <div className="flex items-center gap-3 border-b border-neutral-200 px-5 py-4">
                     <Avatar name={name} large />
                     <div className="min-w-0 flex-1 leading-tight">
-                        <div className="truncate text-h3 font-medium text-neutral-900">{name}</div>
+                        <div className="truncate text-h3 font-medium text-neutral-900">
+                            {name}
+                        </div>
                         <div className="truncate text-caption text-neutral-500">
                             {counsellor.email ?? counsellor.role_label ?? '—'}
                         </div>
@@ -501,14 +731,7 @@ function DetailDrawer({
                         userId={counsellor.user_id}
                         size="lg"
                     />
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="rounded p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                        aria-label="Close"
-                    >
-                        <X size={18} />
-                    </button>
+                    {/* SheetContent renders its own close button (X) at top-right. */}
                 </div>
 
                 <Tabs
@@ -556,8 +779,8 @@ function DetailDrawer({
                         )}
                     </div>
                 </Tabs>
-            </div>
-        </div>
+            </SheetContent>
+        </Sheet>
     );
 }
 

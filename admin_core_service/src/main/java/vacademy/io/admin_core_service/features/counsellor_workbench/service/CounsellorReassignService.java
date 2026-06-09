@@ -8,6 +8,8 @@ import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
+import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolMemberRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.ReassignRequest;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.ReassignResultDTO;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
@@ -46,6 +48,7 @@ public class CounsellorReassignService {
     private final TimelineEventService timelineEventService;
     private final CounsellorScopeService scopeService;
     private final AuthService authService;
+    private final CounselorPoolMemberRepository counselorPoolMemberRepository;
 
     @Transactional
     public ReassignResultDTO reassign(ReassignRequest req, CustomUserDetails actor) {
@@ -64,15 +67,27 @@ public class CounsellorReassignService {
         require(req.getFromUserId(), "from_user_id is required");
         require(req.getMode(), "mode is required");
 
+        // Canonical "open" predicate (NULL or != CONVERTED) — the older
+        // `conversion_status = 'LEAD'` filter silently skipped the bulk of
+        // real data where the column is NULL until a status change happens.
         List<UserLeadProfile> openLeads = profileRepo
-                .findByInstituteIdAndConversionStatus(req.getInstituteId(), "LEAD",
-                        org.springframework.data.domain.Pageable.unpaged()).getContent().stream()
-                .filter(p -> req.getFromUserId().equals(p.getAssignedCounselorId()))
-                .collect(Collectors.toList());
+                .findOpenByInstituteAndCounsellor(req.getInstituteId(), req.getFromUserId());
+
+        boolean shouldMarkInactive = Boolean.TRUE.equals(req.getMarkInactive());
 
         if (openLeads.isEmpty()) {
+            // Nothing to move. Still honour mark_inactive so the "reassign-
+            // first" UI flow degrades cleanly when the counsellor had no
+            // open leads at all — a manager confirming the dialog still gets
+            // the deactivation they asked for.
+            boolean flipped = !dryRun && shouldMarkInactive
+                    && flipPoolMembersInactive(req.getInstituteId(), req.getFromUserId());
             return ReassignResultDTO.builder()
-                    .dryRun(dryRun).totalLeads(0).assignments(Collections.emptyList()).build();
+                    .dryRun(dryRun)
+                    .totalLeads(0)
+                    .assignments(Collections.emptyList())
+                    .markedInactive(flipped)
+                    .build();
         }
 
         List<Plan> plan = switch (req.getMode().toUpperCase(Locale.ROOT)) {
@@ -128,11 +143,39 @@ public class CounsellorReassignService {
             }
         }
 
+        // Reassign-first flow: only after the routing loop completes do we
+        // flip the source counsellor's pool memberships INACTIVE. Same
+        // transaction as the assignments, so a failure rolls both back.
+        boolean flipped = !dryRun && shouldMarkInactive
+                && flipPoolMembersInactive(req.getInstituteId(), req.getFromUserId());
+
         return ReassignResultDTO.builder()
                 .dryRun(dryRun)
                 .totalLeads(results.size())
                 .assignments(results)
+                .markedInactive(flipped)
                 .build();
+    }
+
+    /**
+     * Flip every {@code counselor_pool_member} row for this counsellor in the
+     * given institute to INACTIVE. Returns true if at least one row was
+     * touched — feeds back to the response so the UI can render the right
+     * success toast.
+     */
+    private boolean flipPoolMembersInactive(String instituteId, String fromUserId) {
+        List<CounselorPoolMember> rows = counselorPoolMemberRepository
+                .findByInstituteAndCounselor(instituteId, fromUserId);
+        if (rows.isEmpty()) return false;
+        int changed = 0;
+        for (CounselorPoolMember row : rows) {
+            if (!"INACTIVE".equalsIgnoreCase(row.getStatus())) {
+                row.setStatus("INACTIVE");
+                changed++;
+            }
+        }
+        if (changed > 0) counselorPoolMemberRepository.saveAll(rows);
+        return changed > 0;
     }
 
     private List<Plan> planSingle(List<UserLeadProfile> leads, ReassignRequest req) {

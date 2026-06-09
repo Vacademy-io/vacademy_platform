@@ -4,7 +4,11 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -22,8 +26,12 @@ public class InstitutePaymentGatewayMapping {
     private String paymentGatewaySpecificData;
 
     private String status;
-    private String createdAt;
-    private String updatedAt;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
 
     // Add getters/setters or use Lombok annotations like @Data if applicable
 }

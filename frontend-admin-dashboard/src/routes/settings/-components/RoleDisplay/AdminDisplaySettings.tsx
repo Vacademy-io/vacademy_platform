@@ -44,6 +44,7 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import SlideDownloadCard from './SlideDownloadCard';
 import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
@@ -2171,6 +2172,8 @@ export default function AdminDisplaySettings() {
             </Card>
 
             <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
+
+            <SlideDownloadCard roleKey="ADMIN" roleLabel="admins" />
             </section>
             </SettingsSectionsLayout>
 

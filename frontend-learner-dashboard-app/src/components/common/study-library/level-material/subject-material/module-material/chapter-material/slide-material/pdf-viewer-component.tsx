@@ -19,6 +19,8 @@ import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 
 export interface PdfViewerComponentRef {
   jumpToPage: (pageIndex: number) => void;
@@ -37,7 +39,12 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
 }, ref) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<string | undefined>(undefined);
-  
+
+  // Whether this user's role is allowed to download the PDF (admin-configured
+  // per role; defaults to today's behavior — the toolbar Download stays hidden).
+  const { canDownload } = useSlideDownloadPermission();
+  const allowDownload = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF);
+
   // Platform check
   const isIOS = Capacitor.getPlatform() === 'ios';
 
@@ -52,11 +59,17 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
 
   const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
     ...slot,
-    Download: () => <></>,
-    DownloadMenuItem: () => <></>,
     Open: () => <></>,
     Print: () => <></>,
     SwitchSelectionModeMenuItem: () => <></>,
+    // Download is shown only when the institute allows this role to download
+    // PDFs; otherwise the toolbar Download + menu entry are hidden.
+    ...(allowDownload
+      ? {}
+      : {
+          Download: () => <></>,
+          DownloadMenuItem: () => <></>,
+        }),
   });
   
   const renderToolbar = (

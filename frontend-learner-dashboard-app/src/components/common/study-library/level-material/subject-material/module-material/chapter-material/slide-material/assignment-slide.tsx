@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import { toast } from "sonner";
@@ -362,6 +364,10 @@ const AttachmentPreview = ({
   const [loading, setLoading] = useState(!directUrl);
   const [error, setError] = useState(false);
 
+  // Whether this user's role is allowed to download assignment files.
+  const { canDownload } = useSlideDownloadPermission();
+  const allowDownload = canDownload(SlideDownloadTypeKey.ASSIGNMENT);
+
   useEffect(() => {
     if (directUrl) {
       setUrl(directUrl);
@@ -487,16 +493,18 @@ const AttachmentPreview = ({
           <ArrowSquareOut className="mr-1.5 size-4" />
           Open
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!url}
-          onClick={triggerDownload}
-          className="h-9"
-        >
-          <DownloadSimple className="mr-1.5 size-4" />
-          Download
-        </Button>
+        {allowDownload && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!url}
+            onClick={triggerDownload}
+            className="h-9"
+          >
+            <DownloadSimple className="mr-1.5 size-4" />
+            Download
+          </Button>
+        )}
       </div>
     </div>
   );

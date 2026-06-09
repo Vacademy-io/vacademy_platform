@@ -244,10 +244,21 @@ public class SalesDashboardService {
         // every ? as a bind variable and the prepared statement explodes.
         // We use the equivalent `->> 'key' IS NOT NULL` form instead, which
         // is just as cheap and contains no ambiguous ?.
+        // action_type stores the enum NAME (TimelineEventService writes
+        // actionType.name()) — so the value is 'COUNSELOR_ASSIGNED', not the
+        // human title 'Counselor reassigned'. Initial assigns vs. reassigns
+        // share the same enum; the metadata "reassigned_from" key is what
+        // distinguishes a reassign event, and it's already in the WHERE.
+        // type_id on USER_LEAD_PROFILE events is the lead's user_id, so we
+        // join through user_lead_profile to scope by institute and stop the
+        // widget from leaking other tenants' reassignment counts.
         return jdbc.query(
                 "SELECT DATE(te.created_at) AS day, COUNT(*) AS n " +
                 "FROM timeline_event te " +
-                "WHERE te.action_type = 'Counselor reassigned' " +
+                "JOIN user_lead_profile ulp ON ulp.user_id = te.type_id " +
+                "WHERE te.action_type = 'COUNSELOR_ASSIGNED' " +
+                "  AND te.type = 'USER_LEAD_PROFILE' " +
+                "  AND ulp.institute_id = ? " +
                 "  AND te.created_at >= ? AND te.created_at < ? " +
                 "  AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
                 "  AND (te.metadata_json::jsonb ->> 'trigger') IS NOT NULL " +
@@ -257,7 +268,7 @@ public class SalesDashboardService {
                         .date(rs.getDate("day").toLocalDate())
                         .primary(rs.getLong("n"))
                         .build(),
-                from, to);
+                instituteId, from, to);
     }
 
     // ────────────────────────────────────────────────────────────────

@@ -30,15 +30,37 @@ export const Route = createLazyFileRoute('/sales-dashboard/')({
     component: RouteComponent,
 });
 
-type PresetKey = '7d' | '30d' | '90d';
+type PresetKey = '7d' | '30d' | '90d' | 'custom';
 
 // Typed by the exact literal union so `noUncheckedIndexedAccess` doesn't
-// treat the lookup as possibly undefined.
-const PRESETS: Record<PresetKey, () => { from: number; to: number }> = {
+// treat the lookup as possibly undefined. 'custom' isn't here — its window
+// comes from the user-entered date inputs, not a preset formula.
+const PRESETS: Record<Exclude<PresetKey, 'custom'>, () => { from: number; to: number }> = {
     '7d': () => ({ from: Date.now() - 7 * 86_400_000, to: Date.now() }),
     '30d': () => ({ from: Date.now() - 30 * 86_400_000, to: Date.now() }),
     '90d': () => ({ from: Date.now() - 90 * 86_400_000, to: Date.now() }),
 };
+
+const PRESET_LABEL: Record<PresetKey, string> = {
+    '7d': '7d',
+    '30d': '30d',
+    '90d': '90d',
+    custom: 'Custom',
+};
+
+// Parse a yyyy-mm-dd value from <input type="date"> into a UTC-midnight
+// timestamp. Returns null for blanks so callers can fall back to a preset.
+function parseDateInput(value: string, endOfDay: boolean): number | null {
+    if (!value) return null;
+    const parts = value.split('-');
+    if (parts.length !== 3) return null;
+    const [y, m, d] = parts.map((p) => Number(p));
+    if (!y || !m || !d) return null;
+    // End-date is end-of-day so the [from, to) window includes the picked day.
+    return endOfDay
+        ? Date.UTC(y, m - 1, d, 23, 59, 59, 999)
+        : Date.UTC(y, m - 1, d, 0, 0, 0, 0);
+}
 
 /**
  * Read the display-settings gate. Pure-helper, called before any hooks fire
@@ -52,7 +74,12 @@ function isSalesDashboardEnabled(): boolean {
     const isAdmin = viewerRoles.includes('ADMIN');
     const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
     const ds = getDisplaySettingsFromCache(roleKey);
-    return ds?.workbench?.salesDashboardVisible === true;
+    // Toggled from Display Settings → CRM → Leads sub-tabs (same place as
+    // Lead List / Recent Leads / Follow-ups). Off by default per
+    // SUB_ITEMS_HIDDEN_BY_DEFAULT in admin-defaults.
+    const leadsTab = ds?.sidebar?.find((t) => t.id === 'leads');
+    const sub = leadsTab?.subTabs?.find((s) => s.id === 'sales-dashboard');
+    return sub?.visible === true;
 }
 
 function RouteComponent() {
@@ -74,7 +101,24 @@ function SalesDashboardPage() {
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId();
     const [preset, setPreset] = useState<PresetKey>('30d');
-    const range = PRESETS[preset]();
+    const [customStart, setCustomStart] = useState<string>('');
+    const [customEnd, setCustomEnd] = useState<string>('');
+
+    // Resolved window. Custom mode falls back to the 30d preset until BOTH
+    // inputs are filled — partial entry shouldn't blank every widget out.
+    const range = (() => {
+        if (preset === 'custom') {
+            const from = parseDateInput(customStart, false);
+            const to = parseDateInput(customEnd, true);
+            if (from != null && to != null && from < to) return { from, to };
+            return PRESETS['30d']();
+        }
+        return PRESETS[preset]();
+    })();
+    const customReady =
+        preset === 'custom' && !!parseDateInput(customStart, false) &&
+        !!parseDateInput(customEnd, true);
+
     const teamId: string | undefined = undefined; // RBAC adds a team picker in a follow-up
 
     useEffect(() => {
@@ -87,28 +131,55 @@ function SalesDashboardPage() {
         <LayoutContainer>
             <div className="space-y-4">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                         <h2 className="text-h2 font-medium text-neutral-900">Sales</h2>
                         <p className="text-caption text-neutral-500">
                             Pipeline, followups, campaigns, and counsellor performance at a glance.
                         </p>
                     </div>
-                    <div className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white p-1">
-                        {(['7d', '30d', '90d'] as const).map((p) => (
-                            <button
-                                key={p}
-                                type="button"
-                                onClick={() => setPreset(p)}
-                                className={`rounded px-2 py-1 text-caption ${
-                                    preset === p
-                                        ? 'bg-primary-500 text-white'
-                                        : 'text-neutral-600 hover:bg-neutral-50'
-                                }`}
-                            >
-                                {p}
-                            </button>
-                        ))}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-1">
+                            {(['7d', '30d', '90d', 'custom'] as const).map((p) => (
+                                <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => setPreset(p)}
+                                    className={`rounded px-2.5 py-1 text-caption ${
+                                        preset === p
+                                            ? 'bg-primary-500 text-white'
+                                            : 'text-neutral-600 hover:bg-neutral-50'
+                                    }`}
+                                >
+                                    {PRESET_LABEL[p]}
+                                </button>
+                            ))}
+                        </div>
+                        {preset === 'custom' && (
+                            <div className="flex flex-wrap items-center gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1">
+                                <input
+                                    type="date"
+                                    value={customStart}
+                                    onChange={(e) => setCustomStart(e.target.value)}
+                                    className="rounded border border-neutral-200 px-2 py-1 text-caption text-neutral-700"
+                                    aria-label="Start date"
+                                />
+                                <span className="text-caption text-neutral-400">to</span>
+                                <input
+                                    type="date"
+                                    value={customEnd}
+                                    min={customStart || undefined}
+                                    onChange={(e) => setCustomEnd(e.target.value)}
+                                    className="rounded border border-neutral-200 px-2 py-1 text-caption text-neutral-700"
+                                    aria-label="End date"
+                                />
+                                {!customReady && (
+                                    <span className="text-caption text-warning-700">
+                                        Pick both dates
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 

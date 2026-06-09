@@ -18,10 +18,13 @@ interface Props {
 export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }: Props) {
     // Per-counsellor endpoint — /me/leads only returns the caller's leads,
     // which makes the CSO / manager drawer look empty for everyone else.
+    // Status undefined = show everything currently assigned to them; the
+    // count chip on the parent card uses the canonical "open" filter
+    // separately, so the two surfaces serve different intents.
     const { data: leads, isLoading } = useQuery({
         queryKey: ['workbench-leads', instituteId, counsellorUserId],
         enabled: !!instituteId && !!counsellorUserId,
-        queryFn: () => fetchCounsellorLeads(instituteId, counsellorUserId, 'LEAD', 0, 50),
+        queryFn: () => fetchCounsellorLeads(instituteId, counsellorUserId, undefined, 0, 50),
     });
 
     if (isLoading) {

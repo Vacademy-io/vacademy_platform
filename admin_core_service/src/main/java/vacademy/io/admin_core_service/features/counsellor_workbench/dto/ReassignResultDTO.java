@@ -23,6 +23,13 @@ public class ReassignResultDTO {
     private Integer totalLeads;
     private List<AssignmentResult> assignments;
 
+    /**
+     * Echoes back whether the source counsellor was flipped INACTIVE as part
+     * of this transaction. The frontend uses it to render the right success
+     * toast (and to know which queries to invalidate).
+     */
+    private Boolean markedInactive;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

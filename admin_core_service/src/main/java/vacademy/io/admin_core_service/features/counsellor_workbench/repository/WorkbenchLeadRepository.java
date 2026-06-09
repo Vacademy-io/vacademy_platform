@@ -122,7 +122,81 @@ public class WorkbenchLeadRepository {
     }
 
     public long countOpenLeadsForCounsellor(String instituteId, String counsellorUserId) {
-        return countLeadsForCounsellors(instituteId, Collections.singletonList(counsellorUserId), "LEAD");
+        // "Open" = anything not converted. user_lead_profile.conversion_status
+        // is NULL for the bulk of leads (only flipped when something happens),
+        // so the earlier `= 'LEAD'` filter matched almost nothing and the
+        // card count + reassign-on-inactive flow silently saw zero leads.
+        // Mirrors the canonical predicate used in AudienceResponseRepository.
+        Long n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_lead_profile ulp " +
+                        "WHERE ulp.institute_id = ? " +
+                        "  AND ulp.assigned_counselor_id = ? " +
+                        "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')",
+                Long.class, instituteId, counsellorUserId);
+        return n != null ? n : 0L;
+    }
+
+    /**
+     * Open leads for a single counsellor — paginated. Same "open" predicate
+     * as {@link #countOpenLeadsForCounsellor}. Used by the reassign-on-
+     * inactive flow so the workbench can pre-populate the dialog.
+     */
+    public List<WorkbenchLeadDTO> findOpenLeadsForCounsellor(String instituteId,
+                                                             String counsellorUserId,
+                                                             int offset,
+                                                             int limit) {
+        final String sql =
+            "SELECT ulp.id AS lead_id, " +
+            "       ulp.user_id AS user_id, " +
+            "       u.full_name AS lead_name, " +
+            "       u.email AS lead_email, " +
+            "       u.mobile_number AS lead_phone, " +
+            "       ulp.conversion_status AS conversion_status, " +
+            "       ls.label AS lead_status_label, " +
+            "       ulp.lead_tier AS lead_tier, " +
+            "       ulp.best_score AS best_score, " +
+            "       ulp.assigned_counselor_id AS assigned_counselor_id, " +
+            "       ulp.assigned_counselor_name AS assigned_counselor_name, " +
+            "       ta.assigned_at AS assigned_at, " +
+            "       ulp.last_activity_at AS last_activity_at, " +
+            "       NULL::text AS campaign_name, " +
+            "       NULL::text AS source_type " +
+            "FROM user_lead_profile ulp " +
+            "LEFT JOIN users u ON u.id = ulp.user_id " +
+            "LEFT JOIN lead_status ls ON ls.id = (" +
+            "    SELECT ar2.lead_status_id FROM audience_response ar2 " +
+            "    WHERE ar2.user_id = ulp.user_id AND ar2.lead_status_id IS NOT NULL " +
+            "    ORDER BY ar2.created_at DESC LIMIT 1) " +
+            "LEFT JOIN LATERAL ( " +
+            "    SELECT MAX(te.created_at) AS assigned_at " +
+            "    FROM timeline_event te " +
+            "    WHERE te.type_id = ulp.id " +
+            "      AND te.action_type IN ('Counselor assigned', 'Counselor reassigned') " +
+            ") ta ON true " +
+            "WHERE ulp.institute_id = ? " +
+            "  AND ulp.assigned_counselor_id = ? " +
+            "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED') " +
+            "ORDER BY ta.assigned_at DESC NULLS LAST " +
+            "OFFSET ? LIMIT ?";
+
+        return jdbc.query(sql, (rs, rowNum) -> WorkbenchLeadDTO.builder()
+                .leadId(rs.getString("lead_id"))
+                .userId(rs.getString("user_id"))
+                .leadName(rs.getString("lead_name"))
+                .leadEmail(rs.getString("lead_email"))
+                .leadPhone(rs.getString("lead_phone"))
+                .conversionStatus(rs.getString("conversion_status"))
+                .leadStatusLabel(rs.getString("lead_status_label"))
+                .leadTier(rs.getString("lead_tier"))
+                .bestScore((Integer) rs.getObject("best_score"))
+                .assignedCounselorId(rs.getString("assigned_counselor_id"))
+                .assignedCounselorName(rs.getString("assigned_counselor_name"))
+                .assignedAt(rs.getTimestamp("assigned_at"))
+                .lastActivityAt(rs.getTimestamp("last_activity_at"))
+                .campaignName(rs.getString("campaign_name"))
+                .sourceType(rs.getString("source_type"))
+                .build(),
+                instituteId, counsellorUserId, offset, limit);
     }
 
     private Object[] buildArgs(String instituteId,

@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
-import { useUserAutosuggestDebounced, USER_ROLES } from '@/services/user-autosuggest';
+import { useEligibleAssigneesDebounced } from '@/services/user-autosuggest';
 import { X } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ASSIGN_COUNSELOR_TO_LEAD } from '@/constants/urls';
@@ -59,11 +59,11 @@ export const AssignCounselorToLeadDialog = ({
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? '';
 
-    const { data: counselors, isLoading } = useUserAutosuggestDebounced(
-        searchQuery,
-        [USER_ROLES.ADMIN, USER_ROLES.COUNSELLOR, USER_ROLES.TEACHER],
-        300
-    );
+    // RBAC-scoped: the backend intersects with the caller's user-to-user
+    // descendants when the institute has configured a leads team and the
+    // caller is in it. Outside that gate it falls back to institute-wide,
+    // so this is a safe drop-in replacement for the old role-based hook.
+    const { data: counselors, isLoading } = useEligibleAssigneesDebounced(searchQuery, 300);
 
     const mutation = useMutation({
         mutationFn: () =>

@@ -2144,65 +2144,10 @@ export default function AdminDisplaySettings() {
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Counsellor workbench</CardTitle>
-                    <CardDescription>
-                        Routes for the lead-counsellor flows. Off by default while these
-                        features are being rolled out per institute.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
-                        <div>
-                            <div className="text-body font-medium text-neutral-900">
-                                Enable Counsellors page (/counsellors)
-                            </div>
-                            <div className="text-caption text-neutral-500">
-                                Counsellor-facing workbench: own + team leads, mark active /
-                                inactive, reassign (single / round-robin / manual preview),
-                                activity feed.
-                            </div>
-                        </div>
-                        <Switch
-                            checked={settings.workbench?.counsellorsPageVisible === true}
-                            onCheckedChange={(checked) =>
-                                updateSettings((prev) => ({
-                                    ...prev,
-                                    workbench: {
-                                        ...(prev.workbench ?? {}),
-                                        counsellorsPageVisible: checked,
-                                    },
-                                }))
-                            }
-                        />
-                    </div>
-                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
-                        <div>
-                            <div className="text-body font-medium text-neutral-900">
-                                Enable Sales Dashboard (/sales-dashboard)
-                            </div>
-                            <div className="text-caption text-neutral-500">
-                                KPI band, conversion funnel, counsellor leaderboard,
-                                upcoming/missed followups, new-vs-existing leads, campaign
-                                cards, insights.
-                            </div>
-                        </div>
-                        <Switch
-                            checked={settings.workbench?.salesDashboardVisible === true}
-                            onCheckedChange={(checked) =>
-                                updateSettings((prev) => ({
-                                    ...prev,
-                                    workbench: {
-                                        ...(prev.workbench ?? {}),
-                                        salesDashboardVisible: checked,
-                                    },
-                                }))
-                            }
-                        />
-                    </div>
-                </CardContent>
-            </Card>
+            {/* The workbench routes (/counsellors and /sales-dashboard) now live
+                as sub-tabs under the Leads tab in the sidebar tree above —
+                toggled from there alongside Lead List / Recent Leads /
+                Follow-ups. Off by default per SUB_ITEMS_HIDDEN_BY_DEFAULT. */}
 
             <Card>
                 <CardHeader>

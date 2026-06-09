@@ -29,6 +29,21 @@ public interface UserLeadProfileRepository extends JpaRepository<UserLeadProfile
     Page<UserLeadProfile> findByInstituteIdAndConversionStatus(
             String instituteId, String conversionStatus, Pageable pageable);
 
+    /**
+     * Open profiles for a specific counsellor. "Open" = conversion_status is
+     * NULL or anything other than 'CONVERTED' — same canonical predicate
+     * used by AudienceResponseRepository and WorkbenchLeadRepository. Used
+     * by the reassign flow so it doesn't silently skip leads whose
+     * conversion_status is NULL (which is the bulk of real data).
+     */
+    @Query("SELECT p FROM UserLeadProfile p " +
+           "WHERE p.instituteId = :instituteId " +
+           "  AND p.assignedCounselorId = :counsellorUserId " +
+           "  AND (p.conversionStatus IS NULL OR p.conversionStatus <> 'CONVERTED')")
+    List<UserLeadProfile> findOpenByInstituteAndCounsellor(
+            @Param("instituteId") String instituteId,
+            @Param("counsellorUserId") String counsellorUserId);
+
     /** Count profiles per tier for a given institute. */
     @Query("SELECT p.leadTier, COUNT(p) FROM UserLeadProfile p WHERE p.instituteId = :instituteId GROUP BY p.leadTier")
     List<Object[]> countByTierForInstitute(@Param("instituteId") String instituteId);

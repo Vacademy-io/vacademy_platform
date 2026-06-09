@@ -22,6 +22,13 @@ interface Props {
     openLeads: WorkbenchLead[];
     /** All counsellors in the team subtree — for the SINGLE picker and the MANUAL overrides. */
     candidates: WorkbenchCounsellor[];
+    /**
+     * When true the dialog confirms a reassign-AND-mark-inactive in one step:
+     * the backend flips the source counsellor's pool memberships INACTIVE
+     * inside the same transaction as the assignment commit. Cancelling the
+     * dialog leaves the counsellor untouched (no inactive flip happens).
+     */
+    markInactive?: boolean;
     onComplete?: () => void;
 }
 
@@ -42,6 +49,7 @@ export function ReassignDialog({
     fromUserName,
     openLeads,
     candidates,
+    markInactive = false,
     onComplete,
 }: Props) {
     const [mode, setMode] = useState<ReassignMode>('SINGLE');
@@ -87,23 +95,37 @@ export function ReassignDialog({
         if (!fromUserId) return;
         setSubmitting(true);
         try {
-            if (mode === 'SINGLE') {
+            let result;
+            // Reassign-first edge case: marking inactive with no open leads —
+            // backend short-circuits before evaluating mode-specific args, so
+            // we send a no-op SINGLE request without a target. The flip still
+            // happens server-side.
+            if (markInactive && openLeads.length === 0) {
+                result = await commitReassign({
+                    institute_id: instituteId,
+                    from_user_id: fromUserId,
+                    mode: 'SINGLE',
+                    mark_inactive: true,
+                });
+            } else if (mode === 'SINGLE') {
                 if (!target) {
                     toast.error('Pick a counsellor to receive the leads');
                     setSubmitting(false);
                     return;
                 }
-                await commitReassign({
+                result = await commitReassign({
                     institute_id: instituteId,
                     from_user_id: fromUserId,
                     mode: 'SINGLE',
                     target_user_id: target,
+                    mark_inactive: markInactive,
                 });
             } else if (mode === 'ROUND_ROBIN') {
-                await commitReassign({
+                result = await commitReassign({
                     institute_id: instituteId,
                     from_user_id: fromUserId,
                     mode: 'ROUND_ROBIN',
+                    mark_inactive: markInactive,
                 });
             } else {
                 if (!preview) {
@@ -111,7 +133,7 @@ export function ReassignDialog({
                     setSubmitting(false);
                     return;
                 }
-                await commitReassign({
+                result = await commitReassign({
                     institute_id: instituteId,
                     from_user_id: fromUserId,
                     mode: 'MANUAL',
@@ -119,9 +141,22 @@ export function ReassignDialog({
                         lead_id,
                         to_user_id,
                     })),
+                    mark_inactive: markInactive,
                 });
             }
-            toast.success(`Reassigned ${openLeads.length} lead${openLeads.length === 1 ? '' : 's'}`);
+            // Toast varies by whether the counsellor was also taken offline,
+            // so the manager gets a single clear confirmation of what
+            // actually happened in the same transaction.
+            const n = openLeads.length;
+            if (markInactive && result.marked_inactive) {
+                toast.success(
+                    n > 0
+                        ? `Reassigned ${n} lead${n === 1 ? '' : 's'} and marked inactive`
+                        : 'Marked inactive'
+                );
+            } else {
+                toast.success(`Reassigned ${n} lead${n === 1 ? '' : 's'}`);
+            }
             onComplete?.();
             onOpenChange(false);
         } catch (e) {
@@ -137,18 +172,31 @@ export function ReassignDialog({
             <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>
-                        Reassign {openLeads.length} lead{openLeads.length === 1 ? '' : 's'}
-                        {fromUserName ? ` from ${fromUserName}` : ''}
+                        {markInactive
+                            ? `Mark ${fromUserName ?? 'counsellor'} inactive`
+                            : `Reassign ${openLeads.length} lead${openLeads.length === 1 ? '' : 's'}${fromUserName ? ` from ${fromUserName}` : ''}`}
                     </DialogTitle>
+                    {markInactive && (
+                        <p className="mt-1 text-caption text-neutral-500">
+                            {openLeads.length === 0
+                                ? `${fromUserName ?? 'They'} have no open leads — confirming will just take them offline.`
+                                : `Reassign their ${openLeads.length} open lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
+                        </p>
+                    )}
                 </DialogHeader>
 
                 <div className="space-y-3">
-                    <ModeChoice mode={mode} onChange={(m) => {
-                        setMode(m);
-                        if (m === 'MANUAL') loadPreview('ROUND_ROBIN');
-                    }} />
+                    {/* Skip the mode picker entirely when there's nothing to
+                        move — the dialog is then just a confirmation for the
+                        atomic inactive flip. */}
+                    {!(markInactive && openLeads.length === 0) && (
+                        <ModeChoice mode={mode} onChange={(m) => {
+                            setMode(m);
+                            if (m === 'MANUAL') loadPreview('ROUND_ROBIN');
+                        }} />
+                    )}
 
-                    {mode === 'SINGLE' && (
+                    {!(markInactive && openLeads.length === 0) && mode === 'SINGLE' && (
                         <div>
                             <label className="mb-1 block text-caption font-medium text-neutral-700">
                                 Move all to
@@ -193,7 +241,15 @@ export function ReassignDialog({
                         Cancel
                     </MyButton>
                     <MyButton buttonType="primary" onClick={submit} disable={submitting}>
-                        {submitting ? 'Reassigning…' : 'Confirm reassign'}
+                        {submitting
+                            ? markInactive
+                                ? 'Working…'
+                                : 'Reassigning…'
+                            : markInactive
+                            ? openLeads.length === 0
+                                ? 'Confirm mark inactive'
+                                : 'Reassign and mark inactive'
+                            : 'Confirm reassign'}
                     </MyButton>
                 </DialogFooter>
             </DialogContent>

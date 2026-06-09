@@ -76,6 +76,11 @@ export interface ReassignPayload {
     mode: ReassignMode;
     target_user_id?: string;
     assignments?: ReassignAssignment[];
+    // When true the source counsellor's pool memberships are flipped
+    // INACTIVE in the same backend transaction as the reassignment commit.
+    // Powers the reassign-first UI: confirming the dialog atomically moves
+    // the leads AND takes the counsellor offline.
+    mark_inactive?: boolean;
 }
 
 export interface ReassignResult {
@@ -88,6 +93,7 @@ export interface ReassignResult {
         to_user_id: string;
         to_user_name: string | null;
     }>;
+    marked_inactive?: boolean;
 }
 
 export interface StatusChangeResponse {

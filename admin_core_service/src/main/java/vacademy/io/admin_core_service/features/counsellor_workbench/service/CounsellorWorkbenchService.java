@@ -204,8 +204,11 @@ public class CounsellorWorkbenchService {
 
         List<WorkbenchLeadDTO> openLeads = Collections.emptyList();
         if ("INACTIVE".equalsIgnoreCase(status)) {
-            openLeads = leadRepo.findLeadsForCounsellors(
-                    instituteId, Collections.singletonList(userId), "LEAD", 0, 200);
+            // Canonical "open" filter (NULL or != CONVERTED). The old
+            // hard-coded conversion_status = 'LEAD' didn't match the bulk of
+            // real data where the column is NULL until the first status
+            // change, so the reassign dialog never opened.
+            openLeads = leadRepo.findOpenLeadsForCounsellor(instituteId, userId, 0, 200);
         }
         return StatusChangeResponseDTO.builder()
                 .userId(userId)

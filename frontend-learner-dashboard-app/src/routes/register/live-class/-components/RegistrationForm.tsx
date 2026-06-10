@@ -133,8 +133,10 @@ export default function RegistrationForm({
                                 disableCountryGuess={false}
                                 preferredCountries={preferredCountries}
                                 inputProps={{
-                                  maxLength: 15,
-                                  minLength: 11,
+                                  // Cap input at the E.164 max (+ and up to 15
+                                  // digits). Country-aware length/format is
+                                  // enforced by the zod schema, not here.
+                                  maxLength: 16,
                                 }}
                               />
                             </FormControl>

@@ -979,21 +979,37 @@ export default function ScheduleStep2() {
                                                 <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
                                                     <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
                                                         {field.isDefault ? (
-                                                            <div className="w-full text-neutral-600">
-                                                                {field.label}
+                                                            <div className="flex w-full items-center gap-1 text-neutral-600">
+                                                                <span>{field.label}</span>
+                                                                {watch(
+                                                                    `fields.${index}.required`
+                                                                ) && (
+                                                                    <span className="text-danger-600">
+                                                                        *
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         ) : (
-                                                            <Controller
-                                                                control={control}
-                                                                name={`fields.${index}.label`}
-                                                                render={({ field }) => (
-                                                                    <input
-                                                                        {...field}
-                                                                        className="w-full border-none bg-transparent outline-none"
-                                                                        placeholder="Enter label"
-                                                                    />
+                                                            <div className="flex w-full items-center gap-1">
+                                                                <Controller
+                                                                    control={control}
+                                                                    name={`fields.${index}.label`}
+                                                                    render={({ field }) => (
+                                                                        <input
+                                                                            {...field}
+                                                                            className="flex-1 border-none bg-transparent outline-none"
+                                                                            placeholder="Enter label"
+                                                                        />
+                                                                    )}
+                                                                />
+                                                                {watch(
+                                                                    `fields.${index}.required`
+                                                                ) && (
+                                                                    <span className="text-danger-600">
+                                                                        *
+                                                                    </span>
                                                                 )}
-                                                            />
+                                                            </div>
                                                         )}
                                                         {!field.isDefault && (
                                                             <div

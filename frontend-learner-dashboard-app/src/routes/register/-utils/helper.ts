@@ -5,6 +5,37 @@ import {
 } from "@/types/assessment-open-registration";
 import { UserDetailsOpenTest } from "@/types/open-test";
 import { z } from "zod";
+import {
+  getFieldRenderType,
+  FieldRenderType,
+} from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import { isBlankPhone, isValidPhoneValue } from "@/lib/phone-validation";
+
+/**
+ * Builds the zod schema for a custom field's `value`. Phone fields get
+ * country-aware validation (the same `getFieldRenderType` detection the renderer
+ * uses, so validation and UI stay in lockstep); everything else keeps the
+ * generic required / optional string rule.
+ */
+const buildValueSchema = (
+  field: AssessmentCustomFieldOpenRegistration
+): z.ZodTypeAny => {
+  const requiredMsg = `${field.field_name} is required`;
+  const isPhone =
+    getFieldRenderType(field.field_key, field.field_type) ===
+    FieldRenderType.PHONE;
+
+  if (isPhone) {
+    const invalidMsg = `Enter a valid ${field.field_name.toLowerCase()} for the selected country`;
+    return field.is_mandatory
+      ? z.string().min(1, requiredMsg).refine(isValidPhoneValue, invalidMsg)
+      : z
+          .string()
+          .refine((v) => isBlankPhone(v) || isValidPhoneValue(v), invalidMsg);
+  }
+
+  return field.is_mandatory ? z.string().min(1, requiredMsg) : z.string();
+};
 
 const parseBackendDate = (raw: string): number => {
   // Backend may send timestamps with or without an explicit timezone.
@@ -61,10 +92,7 @@ export const getDynamicSchema = (
         schema[field.field_key] = z.object({
           id: z.string().optional(),
           name: z.string(),
-          value:
-            field.is_mandatory
-              ? z.string().min(1, `${field.field_name} is required`)
-              : z.string(),
+          value: buildValueSchema(field),
           is_mandatory: z.boolean(),
           type: z.string(),
           comma_separated_options: z.array(z.string()).optional(),
@@ -73,9 +101,7 @@ export const getDynamicSchema = (
         schema[field.field_key] = z.object({
           id: z.string().optional(),
           name: z.string(),
-          value: field.is_mandatory
-            ? z.string().min(1, `${field.field_name} is required`)
-            : z.string(),
+          value: buildValueSchema(field),
           is_mandatory: z.boolean(),
           type: z.string(),
         });

@@ -5,6 +5,7 @@ import { MyButton } from "@/components/design-system/button";
 import { SpinnerGap, User, Envelope, Phone, CaretRight, CheckCircle } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { isValidPhoneValue } from "@/lib/phone-validation";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { getAccessToken, isTokenExpired } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
@@ -241,10 +242,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         return emailRegex.test(email);
     };
 
-    const validatePhone = (phone: string): boolean => {
-        const cleaned = phone.replace(/[\s-]/g, "");
-        return cleaned.length >= 10;
-    };
+    // Country-aware validity for the number the user typed (dial code embedded).
+    const validatePhone = (phone: string): boolean => isValidPhoneValue(phone);
 
     const handleSendPhoneOTP = async () => {
         if (!phone.trim() || !validatePhone(phone)) {

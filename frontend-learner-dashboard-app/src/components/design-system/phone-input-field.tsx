@@ -14,6 +14,7 @@ import type { Control } from "react-hook-form";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
+import { phoneValidateRule } from "@/lib/phone-validation";
 
 interface PhoneInputFieldProps {
   label: string;
@@ -26,6 +27,12 @@ interface PhoneInputFieldProps {
   required?: boolean;
   value?: string;
   onChange?: (value: string) => void;
+  /**
+   * Country-aware validation is on by default. It only takes effect on forms
+   * that do NOT use a zodResolver (RHF ignores field rules when a resolver is
+   * set — those forms validate via their schema instead). Pass `false` to opt out.
+   */
+  validate?: boolean;
 }
 
 const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
@@ -38,6 +45,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   required = false,
   value,
   onChange,
+  validate = true,
 }) => {
   // Read institute-configured preferred countries from domain routing cache.
   // First entry becomes the default selected country; the full list is used
@@ -55,6 +63,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
     <FormField
       control={control as Control}
       name={name}
+      rules={validate ? { validate: phoneValidateRule({ required, label }) } : undefined}
       render={({ field }) => (
         <FormItem className="!w-full">
           <FormLabel>

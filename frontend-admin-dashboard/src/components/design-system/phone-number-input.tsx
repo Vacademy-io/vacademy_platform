@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/bootstrap.css';
 import { getPreferredPhoneCountries } from '@/services/domain-routing';
+import { validatePhoneField } from '@/lib/phone-validation';
 
 interface PhoneNumberInputProps {
     name: string;
@@ -13,7 +14,14 @@ interface PhoneNumberInputProps {
     className?: string;
     country?: string;
     disabled?: boolean;
+    /** External error message. When provided, it overrides the built-in validation message. */
     error?: string;
+    /**
+     * Country-aware validation is on by default; the message shows once the field
+     * is blurred. Pass `false` to opt out. Note this only surfaces the error — the
+     * parent's submit handler should also call `validatePhoneField` to block submit.
+     */
+    validate?: boolean;
 }
 
 /**
@@ -35,7 +43,9 @@ export default function PhoneNumberInput({
     country,
     disabled = false,
     error,
+    validate = true,
 }: PhoneNumberInputProps) {
+    const [touched, setTouched] = useState(false);
     const { effectiveCountry, preferredCountries } = useMemo(() => {
         const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
         return {
@@ -43,6 +53,11 @@ export default function PhoneNumberInput({
             preferredCountries,
         };
     }, [country]);
+
+    // External error wins; otherwise surface the country-aware message once blurred.
+    const displayError =
+        error ??
+        (validate && touched ? validatePhoneField(value, { required, label }) : undefined);
 
     return (
         <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -58,11 +73,12 @@ export default function PhoneNumberInput({
                 placeholder={placeholder}
                 value={value}
                 onChange={(phone) => onChange(name, phone)}
-                inputClass="!w-full !h-[38px] !text-sm"
+                onBlur={() => setTouched(true)}
+                inputClass="!w-full !h-10 !text-sm"
                 disabled={disabled}
                 inputProps={{ name }}
             />
-            {error && <span className="text-xs text-red-500">{error}</span>}
+            {displayError && <span className="text-xs text-red-500">{displayError}</span>}
         </div>
     );
 }

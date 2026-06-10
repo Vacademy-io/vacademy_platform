@@ -32,9 +32,10 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
+import { phoneSchema as phoneValidationSchema } from "@/lib/phone-validation";
 
 const phoneSchema = z.object({
-    phone: z.string().min(10, { message: "Invalid phone number" }),
+    phone: phoneValidationSchema({ required: true, label: "Phone number" }),
 });
 
 const otpSchema = z.object({

@@ -39,6 +39,7 @@ import {
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import PhoneInput from 'react-phone-input-2';
+import { validatePhoneField } from '@/lib/phone-validation';
 import 'react-phone-input-2/lib/bootstrap.css';
 import { getCachedPreferredCountries } from '@/services/domain-routing';
 
@@ -506,6 +507,11 @@ export function AddUserToSubOrgSection({
         }
         if (!email.trim()) {
             toast.error('Email is required');
+            return;
+        }
+        const mobileError = validatePhoneField(mobileNumber, { label: 'Mobile number' });
+        if (mobileError) {
+            toast.error(mobileError);
             return;
         }
         if (adminPsList.length === 0) {

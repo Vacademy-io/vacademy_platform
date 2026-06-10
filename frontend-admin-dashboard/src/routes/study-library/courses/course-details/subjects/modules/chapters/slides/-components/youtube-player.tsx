@@ -517,7 +517,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
                 />
                 {contentProtected && (
                     <div
-                        className="absolute inset-0 z-10 cursor-pointer"
+                        className="pointer-events-auto absolute inset-0 z-50 cursor-pointer"
                         onContextMenu={(e) => e.preventDefault()}
                         onClick={togglePlayPause}
                         aria-hidden

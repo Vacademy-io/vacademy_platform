@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -91,10 +92,19 @@ public class SubOrgFinanceService {
                 ? buildAdminPayment(rootAdminRow, userMap)
                 : null;
 
-        List<SubOrgFinanceDetailDTO.LearnerRow> learners = new ArrayList<>(learnerRows.size());
-        BigDecimal learnerOutstanding = BigDecimal.ZERO;
+        // Group the learner SSIGM rows by user so a learner enrolled in multiple package
+        // sessions shows once with ALL their courses (and combined dues) instead of one
+        // row per enrollment. Insertion order is preserved for a stable roster.
+        Map<String, List<Object[]>> learnerRowsByUser = new LinkedHashMap<>();
         for (Object[] row : learnerRows) {
-            SubOrgFinanceDetailDTO.LearnerRow learnerRow = buildLearnerRow(row, userMap);
+            String userId = (String) row[1];
+            learnerRowsByUser.computeIfAbsent(userId, k -> new ArrayList<>()).add(row);
+        }
+
+        List<SubOrgFinanceDetailDTO.LearnerRow> learners = new ArrayList<>(learnerRowsByUser.size());
+        BigDecimal learnerOutstanding = BigDecimal.ZERO;
+        for (List<Object[]> userRows : learnerRowsByUser.values()) {
+            SubOrgFinanceDetailDTO.LearnerRow learnerRow = buildLearnerRow(userRows, userMap);
             learners.add(learnerRow);
             if (learnerRow.getOutstandingAmount() != null) {
                 learnerOutstanding = learnerOutstanding.add(learnerRow.getOutstandingAmount());
@@ -269,35 +279,64 @@ public class SubOrgFinanceService {
         return builder.build();
     }
 
-    private SubOrgFinanceDetailDTO.LearnerRow buildLearnerRow(Object[] row, Map<String, UserDTO> userMap) {
-        String userId = (String) row[1];
-        String packageSessionId = (String) row[2];
-        String userPlanId = (String) row[3];
-        Date enrolledDate = row[5] instanceof Date d ? d : null;
+    /**
+     * Builds one learner row from ALL of a user's active sub-org mappings (a learner can be
+     * enrolled in several package sessions). Collects every distinct package session and
+     * combines dues across the learner's distinct user plans.
+     */
+    private SubOrgFinanceDetailDTO.LearnerRow buildLearnerRow(List<Object[]> rows, Map<String, UserDTO> userMap) {
+        Object[] first = rows.get(0);
+        String userId = (String) first[1];
         UserDTO user = userMap.get(userId);
-        String fullName = user != null ? user.getFullName() : (String) row[6];
+        String fullName = user != null ? user.getFullName() : (String) first[6];
 
-        SubOrgFinanceDetailDTO.LearnerRow.LearnerRowBuilder builder =
-                SubOrgFinanceDetailDTO.LearnerRow.builder()
-                        .userId(userId)
-                        .fullName(fullName)
-                        .packageSessionId(packageSessionId)
-                        .userPlanId(userPlanId)
-                        .enrolledDate(enrolledDate)
-                        .outstandingAmount(BigDecimal.ZERO)
-                        .pendingInstallmentsCount(0);
-
-        if (StringUtils.hasText(userPlanId)) {
-            List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(userPlanId);
-            if (!sfps.isEmpty()) {
-                BigDecimal outstanding = sumOutstanding(sfps);
-                int pending = countPending(sfps);
-                builder.outstandingAmount(outstanding).pendingInstallmentsCount(pending);
-                SubOrgFinanceDetailDTO.Installment next = nextDue(sfps);
-                if (next != null) builder.nextDue(next);
+        // Distinct package sessions + earliest enrolled date across all mappings.
+        List<String> packageSessionIds = new ArrayList<>();
+        Date enrolledDate = null;
+        for (Object[] row : rows) {
+            String psId = (String) row[2];
+            if (StringUtils.hasText(psId) && !packageSessionIds.contains(psId)) {
+                packageSessionIds.add(psId);
+            }
+            Date d = row[5] instanceof Date dd ? dd : null;
+            if (d != null && (enrolledDate == null || d.before(enrolledDate))) {
+                enrolledDate = d;
             }
         }
-        return builder.build();
+
+        // Combined dues across the learner's distinct user plans (FREE scoped learners have
+        // no SFP rows, so this is usually zero — but a CPO-enrolled learner will have them).
+        BigDecimal outstanding = BigDecimal.ZERO;
+        int pending = 0;
+        SubOrgFinanceDetailDTO.Installment nextDue = null;
+        List<String> seenPlans = new ArrayList<>();
+        for (Object[] row : rows) {
+            String userPlanId = (String) row[3];
+            if (!StringUtils.hasText(userPlanId) || seenPlans.contains(userPlanId)) continue;
+            seenPlans.add(userPlanId);
+            List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+            if (sfps.isEmpty()) continue;
+            outstanding = outstanding.add(sumOutstanding(sfps));
+            pending += countPending(sfps);
+            SubOrgFinanceDetailDTO.Installment candidate = nextDue(sfps);
+            if (candidate != null && candidate.getDueDate() != null
+                    && (nextDue == null || nextDue.getDueDate() == null
+                        || candidate.getDueDate().before(nextDue.getDueDate()))) {
+                nextDue = candidate;
+            }
+        }
+
+        return SubOrgFinanceDetailDTO.LearnerRow.builder()
+                .userId(userId)
+                .fullName(fullName)
+                .packageSessionId(packageSessionIds.isEmpty() ? null : packageSessionIds.get(0))
+                .packageSessionIds(packageSessionIds)
+                .userPlanId((String) first[3])
+                .enrolledDate(enrolledDate)
+                .outstandingAmount(outstanding)
+                .pendingInstallmentsCount(pending)
+                .nextDue(nextDue)
+                .build();
     }
 
     private void attachLedger(SubOrgFinanceDetailDTO.AdminPayment.AdminPaymentBuilder builder,

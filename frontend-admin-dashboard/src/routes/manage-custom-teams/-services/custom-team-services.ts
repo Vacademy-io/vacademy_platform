@@ -622,6 +622,8 @@ export interface SubOrgLearnerRow {
     user_id: string;
     full_name?: string;
     package_session_id?: string;
+    /** Every package session this learner is enrolled into under the sub-org. */
+    package_session_ids?: string[];
     user_plan_id?: string;
     enrolled_date?: string;
     outstanding_amount?: number;

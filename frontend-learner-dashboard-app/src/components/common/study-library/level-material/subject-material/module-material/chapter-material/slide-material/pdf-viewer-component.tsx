@@ -43,7 +43,7 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   // Whether this user's role is allowed to download / print the PDF
   // (admin-configured per role; defaults to today's behavior — Download and
   // Print stay hidden for learners).
-  const { canDownload, canPrintPdf } = useSlideDownloadPermission();
+  const { canDownload, canPrintPdf, isResolved } = useSlideDownloadPermission();
   const allowDownload = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF);
   // Print inherits the download permission unless explicitly configured.
   const allowPrint = canPrintPdf();
@@ -150,14 +150,23 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
           position: "relative",
         }}
       >
-        <Viewer
-          fileUrl={pdfUrl}
-          onDocumentLoad={handleDocumentLoad}
-          onPageChange={handlePageChange}
-          plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
-          defaultScale={SpecialZoomLevel.PageWidth}
-          initialPage={initialPage}
-        />
+        {/* Wait for the download/print permission to resolve before mounting the
+            viewer — its toolbar is built once and won't rebuild, so mounting
+            early would bake in the default and ignore an admin "enable". */}
+        {isResolved ? (
+          <Viewer
+            fileUrl={pdfUrl}
+            onDocumentLoad={handleDocumentLoad}
+            onPageChange={handlePageChange}
+            plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
+            defaultScale={SpecialZoomLevel.PageWidth}
+            initialPage={initialPage}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-sm text-neutral-400">
+            Loading…
+          </div>
+        )}
       </div>
     </Worker>
   );

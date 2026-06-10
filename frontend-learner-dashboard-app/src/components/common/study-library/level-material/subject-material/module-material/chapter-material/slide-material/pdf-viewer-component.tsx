@@ -43,9 +43,10 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   // Whether this user's role is allowed to download / print the PDF
   // (admin-configured per role; defaults to today's behavior — Download and
   // Print stay hidden for learners).
-  const { canDownload } = useSlideDownloadPermission();
+  const { canDownload, canPrintPdf } = useSlideDownloadPermission();
   const allowDownload = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF);
-  const allowPrint = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF_PRINT);
+  // Print inherits the download permission unless explicitly configured.
+  const allowPrint = canPrintPdf();
 
   // Platform check
   const isIOS = Capacitor.getPlatform() === 'ios';

@@ -113,3 +113,23 @@ export const canDownloadSlideType = (
     (role) => roleMap?.[role] ?? defaultDownloadFor(role, typeKey)
   );
 };
+
+/**
+ * Resolve PDF *print* permission. If print is not explicitly configured for the
+ * user's role, it INHERITS the PDF *download* permission ("can't download ⇒
+ * can't print" by default). Once print is explicitly configured, it takes over.
+ */
+export const canPrintPdfSlide = (
+  data: SlideDownloadPermissionData | null | undefined,
+  roleNames: string[] | null | undefined
+): boolean => {
+  const roles = (roleNames ?? []).map(normalizeRoleKey).filter(Boolean);
+  const printMap = data?.slideTypes?.["DOCUMENT_PDF_PRINT"]?.roles;
+  const hasExplicitPrint =
+    !!printMap && roles.some((role) => typeof printMap[role] === "boolean");
+  return canDownloadSlideType(
+    data,
+    hasExplicitPrint ? "DOCUMENT_PDF_PRINT" : "DOCUMENT_PDF",
+    roleNames
+  );
+};

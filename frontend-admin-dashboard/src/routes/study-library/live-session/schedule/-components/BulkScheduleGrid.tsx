@@ -1716,21 +1716,37 @@ export function BulkScheduleGrid() {
                                     <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
                                         <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
                                             {regField.isDefault ? (
-                                                <div className="w-full text-neutral-600">
-                                                    {regField.label}
+                                                <div className="flex w-full items-center gap-1 text-neutral-600">
+                                                    <span>{regField.label}</span>
+                                                    {form.watch(
+                                                        `fields.${index}.required`
+                                                    ) && (
+                                                        <span className="text-danger-600">
+                                                            *
+                                                        </span>
+                                                    )}
                                                 </div>
                                             ) : (
-                                                <Controller
-                                                    control={form.control}
-                                                    name={`fields.${index}.label`}
-                                                    render={({ field: f }) => (
-                                                        <input
-                                                            {...f}
-                                                            className="w-full border-none bg-transparent outline-none"
-                                                            placeholder="Enter label"
-                                                        />
+                                                <div className="flex w-full items-center gap-1">
+                                                    <Controller
+                                                        control={form.control}
+                                                        name={`fields.${index}.label`}
+                                                        render={({ field: f }) => (
+                                                            <input
+                                                                {...f}
+                                                                className="flex-1 border-none bg-transparent outline-none"
+                                                                placeholder="Enter label"
+                                                            />
+                                                        )}
+                                                    />
+                                                    {form.watch(
+                                                        `fields.${index}.required`
+                                                    ) && (
+                                                        <span className="text-danger-600">
+                                                            *
+                                                        </span>
                                                     )}
-                                                />
+                                                </div>
                                             )}
                                             {!regField.isDefault && (
                                                 <div

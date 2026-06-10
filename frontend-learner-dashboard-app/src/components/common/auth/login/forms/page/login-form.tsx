@@ -27,6 +27,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { usePublicDoubtConfig } from "@/services/public-doubt-config";
+import { GuestQueryDialog } from "@/components/common/queries/GuestQueryDialog";
 import { AuthPageBranding } from "@/components/common/institute-branding";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
@@ -101,6 +103,13 @@ export function LoginForm({
   });
   const { setInstituteId } = useInstituteFeatureStore();
   const domainRouting = useDomainRouting();
+
+  // Logged-out query intake ("Need help?"): gated per-institute via the open doubt-config
+  // endpoint, using the institute already resolved by domain routing. Fetch failure → hidden.
+  const { guestQueriesEnabled, guestQueryTypes } = usePublicDoubtConfig(
+    domainRouting.instituteId,
+  );
+  const [guestDialogOpen, setGuestDialogOpen] = useState(false);
 
   // Pre-login theme and font from Preferences if present (external-first branding)
   useEffectTheme(() => {
@@ -1196,7 +1205,29 @@ export function LoginForm({
                 Privacy Policy
               </motion.button>
             </p>
+
+            {guestQueriesEnabled && domainRouting.instituteId && (
+              <p className="mt-3">
+                Having trouble?{" "}
+                <button
+                  type="button"
+                  onClick={() => setGuestDialogOpen(true)}
+                  className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
+                >
+                  Need help?
+                </button>
+              </p>
+            )}
           </motion.div>
+
+          {guestQueriesEnabled && domainRouting.instituteId && (
+            <GuestQueryDialog
+              open={guestDialogOpen}
+              onOpenChange={setGuestDialogOpen}
+              instituteId={domainRouting.instituteId}
+              queryTypes={guestQueryTypes}
+            />
+          )}
         </div>
       </div>
     </div>

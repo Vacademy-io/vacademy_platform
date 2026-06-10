@@ -47,6 +47,8 @@ interface LearnerQueryPrefs {
     enabled: boolean;
     show_topbar_icon: boolean;
     show_dashboard_card: boolean;
+    /** Logged-out visitors can raise queries from the login page; replies go to their email. */
+    allow_guest: boolean;
 }
 
 interface NotificationChannelPrefs {
@@ -80,6 +82,7 @@ const DEFAULT_LEARNER_QUERY: LearnerQueryPrefs = {
     enabled: false,
     show_topbar_icon: false,
     show_dashboard_card: false,
+    allow_guest: false,
 };
 
 // Always-present academic type — cannot be removed (historical rows keep type='DOUBT').
@@ -986,6 +989,27 @@ function LearnerQueryCard({
                                 </Label>
                                 <p className="mt-0.5 text-xs text-neutral-600">
                                     A help card on the learner home screen.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-start gap-3">
+                            <Switch
+                                id="learner-query-guest"
+                                checked={prefs.allow_guest}
+                                onCheckedChange={(v) => onChange({ allow_guest: v })}
+                            />
+                            <div>
+                                <Label
+                                    htmlFor="learner-query-guest"
+                                    className="cursor-pointer text-sm font-medium text-neutral-800"
+                                >
+                                    Allow logged-out visitors to raise queries
+                                </Label>
+                                <p className="mt-0.5 text-xs text-neutral-600">
+                                    Adds a “Need help?” button to the learner login page. Visitors
+                                    leave their name and email — staff replies are emailed to that
+                                    address.
                                 </p>
                             </div>
                         </div>

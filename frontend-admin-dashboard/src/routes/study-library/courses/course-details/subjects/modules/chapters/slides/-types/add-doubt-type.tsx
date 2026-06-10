@@ -15,6 +15,9 @@ export interface DoubtType {
     type?: string;
     /** Owning institute — required for GENERAL queries (no batch). */
     institute_id?: string;
+    /** Guest contact (logged-out queries — user_id is null/empty for these). */
+    guest_name?: string;
+    guest_email?: string;
     raised_time: string; // ISO 8601 timestamp
     resolved_time: string | null; // ISO 8601 timestamp
     content_position: string; // Format: HH:MM:SS

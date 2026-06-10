@@ -22,5 +22,8 @@ export const useGetUserBasicDetails = (
     return useQuery({
         queryKey: ['getUserBasicDetails', userIds],
         queryFn: () => getUserBasicDetails(userIds),
+        // Don't POST an empty (or all-falsy) id list — nothing to resolve, and Spring Data's
+        // findAllById forbids null elements (guest doubts have null user_id).
+        enabled: userIds.length > 0,
     });
 };

@@ -46,6 +46,16 @@ public class Doubts {
     @Column(name = "institute_id")
     private String instituteId;
 
+    /**
+     * Contact for logged-out ("guest") queries — set only when user_id is null. Reply/resolved
+     * notifications are emailed directly to guest_email (guests have no auth_service account).
+     */
+    @Column(name = "guest_name")
+    private String guestName;
+
+    @Column(name = "guest_email")
+    private String guestEmail;
+
     @Column(name = "raised_time")
     private Date raisedTime;
 

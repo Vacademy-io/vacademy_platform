@@ -41,17 +41,11 @@ const getInitials = (name?: string) => {
     if (!cleaned) return '?';
     const parts = cleaned.split(/\s+/);
     const first = parts[0]?.[0] ?? '';
-    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+    const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
     return (first + last).toUpperCase();
 };
 
-const SectionHeading = ({
-    icon,
-    title,
-}: {
-    icon: React.ReactNode;
-    title: string;
-}) => (
+const SectionHeading = ({ icon, title }: { icon: React.ReactNode; title: string }) => (
     <div className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
         <span className="flex size-7 items-center justify-center rounded-md bg-primary-50 text-primary-600">
             {icon}
@@ -79,7 +73,11 @@ export const DoubtDetailsDialog = ({ doubt, refetch }: { doubt: Doubt; refetch: 
         (batch) => batch.id == doubt.batch_id
     );
     const { userDetailsRecord } = useDoubtTable();
-    const learnerName = userDetailsRecord[doubt.user_id]?.name ?? 'Anonymous';
+    // Logged-out (guest) queries have no user_id — show the contact the guest left instead.
+    const isGuest = !doubt.user_id && !!doubt.guest_name;
+    const learnerName = isGuest
+        ? doubt.guest_name!
+        : userDetailsRecord[doubt.user_id]?.name ?? 'Anonymous';
     const batchName = batch
         ? convertCapitalToTitleCase(batch.level.level_name) +
           ' ' +
@@ -106,7 +104,7 @@ export const DoubtDetailsDialog = ({ doubt, refetch }: { doubt: Doubt; refetch: 
             onOpenChange={setIsDialogOpen}
             dialogWidth="w-[95vw] sm:min-w-[640px] sm:w-auto"
         >
-            <div className="flex flex-col gap-5 p-5 animate-in fade-in duration-200">
+            <div className="flex flex-col gap-5 p-5 duration-200 animate-in fade-in">
                 <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.5fr_1fr]">
                     <div className="flex flex-col gap-5">
                         <section className="flex flex-col gap-2">
@@ -199,11 +197,16 @@ export const DoubtDetailsDialog = ({ doubt, refetch }: { doubt: Doubt; refetch: 
                                     </AvatarFallback>
                                 </Avatar>
                                 <div className="flex min-w-0 flex-col">
-                                    <span className="truncate text-sm font-semibold text-neutral-800">
+                                    <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-neutral-800">
                                         {learnerName}
+                                        {isGuest && (
+                                            <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
+                                                Guest
+                                            </span>
+                                        )}
                                     </span>
                                     <span className="truncate text-xs text-neutral-500">
-                                        {batchName || '—'}
+                                        {isGuest ? doubt.guest_email || '—' : batchName || '—'}
                                     </span>
                                 </div>
                             </div>

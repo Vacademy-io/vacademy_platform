@@ -77,7 +77,11 @@ export const useDoubtTableColumns = () => {
             accessorKey: 'learner',
             header: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
             cell: ({ row }) => {
-                const name = userDetailsRecord[row.original.user_id]?.name ?? 'Unknown';
+                // Logged-out (guest) queries have no user_id — show the contact the guest left.
+                const isGuest = !row.original.user_id && !!row.original.guest_name;
+                const name = isGuest
+                    ? row.original.guest_name!
+                    : userDetailsRecord[row.original.user_id]?.name ?? 'Unknown';
                 return (
                     <div className="flex items-center gap-2">
                         <Avatar className="size-8">
@@ -85,9 +89,21 @@ export const useDoubtTableColumns = () => {
                                 {getInitials(name)}
                             </AvatarFallback>
                         </Avatar>
-                        <span className="truncate text-sm font-medium text-neutral-800">
-                            {name}
-                        </span>
+                        <div className="flex min-w-0 flex-col">
+                            <span className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
+                                {name}
+                                {isGuest && (
+                                    <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
+                                        Guest
+                                    </span>
+                                )}
+                            </span>
+                            {isGuest && row.original.guest_email && (
+                                <span className="truncate text-caption text-neutral-500">
+                                    {row.original.guest_email}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 );
             },

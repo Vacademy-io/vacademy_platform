@@ -184,6 +184,8 @@ public class DoubtService {
                     .sourceId(doubt.getSourceId())
                     .type(doubt.getType())
                     .instituteId(doubt.getInstituteId())
+                    .guestName(doubt.getGuestName())
+                    .guestEmail(doubt.getGuestEmail())
                     .subjectId(subjectId)
                     .sourceName(sourceName)
                     .batchId(doubt.getPackageSessionId())

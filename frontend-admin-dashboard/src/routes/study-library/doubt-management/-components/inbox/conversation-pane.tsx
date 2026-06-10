@@ -31,7 +31,9 @@ export const ConversationPane = ({
     const isTeacher = isUserTeacher();
     const userId = getUserId();
     const { instituteDetails } = useInstituteDetailsStore();
-    const name = learnerName ?? 'Anonymous';
+    // Logged-out (guest) queries have no user_id — show the contact the guest left.
+    const isGuest = !doubt.user_id && !!doubt.guest_name;
+    const name = isGuest ? doubt.guest_name! : learnerName ?? 'Anonymous';
 
     const batch = instituteDetails?.batches_for_sessions?.find((b) => b.id === doubt.batch_id);
     const batchName = batch
@@ -44,8 +46,7 @@ export const ConversationPane = ({
     const isAssignedUser =
         !!userId &&
         !!doubt.all_doubt_assignee?.some((a) => a.source === 'USER' && a.source_id === userId);
-    const isPendingAssignee =
-        !!userId && !!doubt.doubt_assignee_request_user_ids?.includes(userId);
+    const isPendingAssignee = !!userId && !!doubt.doubt_assignee_request_user_ids?.includes(userId);
     const canReply = isAdmin || isTeacher || isAssignedUser || isPendingAssignee;
 
     return (
@@ -66,10 +67,23 @@ export const ConversationPane = ({
                     </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-neutral-800">{name}</div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-neutral-800">
+                            {name}
+                        </span>
+                        {isGuest && (
+                            <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
+                                Guest
+                            </span>
+                        )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
                         <CategoryCell doubt={doubt} />
-                        {batchName && <span className="truncate">{batchName}</span>}
+                        {isGuest && doubt.guest_email ? (
+                            <span className="truncate">{doubt.guest_email}</span>
+                        ) : (
+                            batchName && <span className="truncate">{batchName}</span>
+                        )}
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -88,7 +102,7 @@ export const ConversationPane = ({
             )}
 
             {/* Conversation thread */}
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
                 <div className="rounded-lg border border-primary-100 bg-primary-50/40 p-3">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-neutral-700">

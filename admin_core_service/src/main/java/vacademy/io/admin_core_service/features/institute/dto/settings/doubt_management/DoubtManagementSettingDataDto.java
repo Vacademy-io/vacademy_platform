@@ -73,6 +73,11 @@ public class DoubtManagementSettingDataDto {
         private Boolean showTopbarIcon;
         /** Show the "Need help? Raise a query" card on the learner dashboard. */
         private Boolean showDashboardCard;
+        /**
+         * Allow logged-out visitors to raise queries from the login page (default false). Guests
+         * leave name + email; staff replies are emailed to that address.
+         */
+        private Boolean allowGuest;
     }
 
     @Data

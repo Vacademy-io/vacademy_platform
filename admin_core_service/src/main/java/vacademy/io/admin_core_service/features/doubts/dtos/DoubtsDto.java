@@ -25,6 +25,9 @@ public class DoubtsDto {
     private String type;
     /** Owning institute. Required for GENERAL queries (no batch); optional for SLIDE doubts. */
     private String instituteId;
+    /** Guest contact (logged-out queries only — user_id is null for these). */
+    private String guestName;
+    private String guestEmail;
     private String subjectId;
     private String batchId;
     private String chapterId;

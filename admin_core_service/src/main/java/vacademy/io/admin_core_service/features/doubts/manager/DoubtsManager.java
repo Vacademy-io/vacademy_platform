@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
+import vacademy.io.admin_core_service.features.doubts.dtos.OpenDoubtConfigResponse;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceEnum;
@@ -84,6 +85,123 @@ public class DoubtsManager {
         return ResponseEntity.ok(createNewDoubt(request));
     }
 
+    /** Basic shape check; deliverability is not verified — the reply email just bounces if fake. */
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+            java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    private static final int GUEST_TEXT_MAX_CHARS = 5000;
+    private static final int GUEST_CONTACT_MAX_CHARS = 255;
+
+    /**
+     * Public (unauthenticated) view of the query-intake config for the login page. Never throws —
+     * any failure reads as "disabled" so the public endpoint can't 5xx.
+     */
+    public OpenDoubtConfigResponse getOpenDoubtConfig(String instituteId) {
+        try {
+            DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+            if (setting == null || setting.getLearnerQuery() == null
+                    || !Boolean.TRUE.equals(setting.getLearnerQuery().getEnabled())) {
+                return OpenDoubtConfigResponse.disabled();
+            }
+            List<OpenDoubtConfigResponse.QueryTypeOption> types = learnerSelectableTypes(setting).stream()
+                    .map(t -> new OpenDoubtConfigResponse.QueryTypeOption(t.getKey(), t.getLabel()))
+                    .toList();
+            return OpenDoubtConfigResponse.builder()
+                    .learnerQuery(new OpenDoubtConfigResponse.LearnerQueryFlags(
+                            true, Boolean.TRUE.equals(setting.getLearnerQuery().getAllowGuest())))
+                    .queryTypes(types)
+                    .build();
+        } catch (Exception e) {
+            log.warn("Open doubt config lookup failed for institute {}: {}", instituteId, e.getMessage());
+            return OpenDoubtConfigResponse.disabled();
+        }
+    }
+
+    /**
+     * Logged-out guest query creation (open endpoint). Server-side gate: the institute's
+     * allow-guest toggle must be ON regardless of what the client claims; contact + content are
+     * validated and the doubt is forced to a batchless GENERAL shape with no user id.
+     */
+    public String createGuestDoubt(DoubtsDto request) {
+        if (request == null || !StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("instituteId is required");
+        }
+        DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(request.getInstituteId());
+        boolean guestAllowed = setting != null && setting.getLearnerQuery() != null
+                && Boolean.TRUE.equals(setting.getLearnerQuery().getEnabled())
+                && Boolean.TRUE.equals(setting.getLearnerQuery().getAllowGuest());
+        if (!guestAllowed) {
+            throw new VacademyException("Guest queries are not enabled for this institute");
+        }
+        if (!StringUtils.hasText(request.getGuestName())
+                || request.getGuestName().trim().length() > GUEST_CONTACT_MAX_CHARS) {
+            throw new VacademyException("Name is required");
+        }
+        if (!StringUtils.hasText(request.getGuestEmail())
+                || request.getGuestEmail().trim().length() > GUEST_CONTACT_MAX_CHARS
+                || !EMAIL_PATTERN.matcher(request.getGuestEmail().trim()).matches()) {
+            throw new VacademyException("A valid email is required");
+        }
+        if (!StringUtils.hasText(request.getHtmlText())) {
+            throw new VacademyException("Query text is required");
+        }
+        if (request.getHtmlText().length() > GUEST_TEXT_MAX_CHARS) {
+            throw new VacademyException("Query text is too long");
+        }
+        // Match case-insensitively but persist the CONFIGURED key so the admin inbox type filter
+        // (exact d.type IN :types) still matches; uppercasing the raw client echo would diverge.
+        String requestedType = StringUtils.hasText(request.getType()) ? request.getType().trim() : DEFAULT_TYPE;
+        String canonicalKey = learnerSelectableTypes(setting).stream()
+                .filter(t -> requestedType.equalsIgnoreCase(t.getKey()))
+                .map(DoubtManagementSettingDataDto.QueryTypeConfig::getKey)
+                .findFirst()
+                .orElse(null);
+        if (canonicalKey == null) {
+            throw new VacademyException("Unknown query type");
+        }
+
+        DoubtsDto sanitized = DoubtsDto.builder()
+                .source(DoubtsSourceEnum.GENERAL.name())
+                .type(canonicalKey)
+                .instituteId(request.getInstituteId())
+                .guestName(request.getGuestName().trim())
+                .guestEmail(request.getGuestEmail().trim())
+                .htmlText(request.getHtmlText())
+                .build();
+        return createNewDoubt(sanitized);
+    }
+
+    /**
+     * GENERAL queries (the "?" dialog + the unauthenticated guest endpoint) carry PLAIN TEXT from a
+     * textarea — but it lands in the {@code html_text} column that the admin renders with
+     * dangerouslySetInnerHTML. HTML-escape it so a guest can't inject {@code <img onerror=…>}/script
+     * that would execute in an admin's session (stored XSS). Newlines become {@code <br>} so the
+     * escaped text still reads naturally. SLIDE doubts keep their rich editor HTML untouched.
+     */
+    private String sanitizeDoubtHtml(String source, String htmlText) {
+        if (htmlText == null) return null;
+        if (!DoubtsSourceEnum.GENERAL.name().equals(source)) return htmlText;
+        return org.springframework.web.util.HtmlUtils.htmlEscape(htmlText).replace("\n", "<br>");
+    }
+
+    /** Enabled + learner-selectable types; falls back to the built-in DOUBT when none configured. */
+    private List<DoubtManagementSettingDataDto.QueryTypeConfig> learnerSelectableTypes(
+            DoubtManagementSettingDataDto setting) {
+        List<DoubtManagementSettingDataDto.QueryTypeConfig> configured =
+                setting == null || setting.getQueryTypes() == null ? List.of() : setting.getQueryTypes();
+        List<DoubtManagementSettingDataDto.QueryTypeConfig> selectable = configured.stream()
+                .filter(t -> t != null && StringUtils.hasText(t.getKey()))
+                .filter(t -> !Boolean.FALSE.equals(t.getEnabled()))
+                .filter(t -> !Boolean.FALSE.equals(t.getLearnerSelectable()))
+                .toList();
+        if (!selectable.isEmpty()) return selectable;
+        DoubtManagementSettingDataDto.QueryTypeConfig doubtDefault =
+                new DoubtManagementSettingDataDto.QueryTypeConfig();
+        doubtDefault.setKey(DEFAULT_TYPE);
+        doubtDefault.setLabel("Doubt");
+        return List.of(doubtDefault);
+    }
+
     private String createNewDoubt(DoubtsDto request) {
         boolean isReply = StringUtils.hasText(request.getParentId());
 
@@ -92,10 +210,12 @@ public class DoubtsManager {
         String type;
         String instituteId;
         String packageSessionId;
+        Doubts parentDoubt = null;
         if (isReply) {
             // A reply belongs to its parent's thread — inherit tenancy/type/batch from the parent so
             // the row is consistent regardless of what the client echoed back.
-            Doubts parent = doubtService.getDoubtById(request.getParentId()).orElse(null);
+            parentDoubt = doubtService.getDoubtById(request.getParentId()).orElse(null);
+            Doubts parent = parentDoubt;
             type = (parent != null && StringUtils.hasText(parent.getType())) ? parent.getType() : DEFAULT_TYPE;
             instituteId = parent != null ? parent.getInstituteId() : request.getInstituteId();
             packageSessionId = parent != null ? parent.getPackageSessionId() : request.getBatchId();
@@ -130,7 +250,9 @@ public class DoubtsManager {
                 .sourceId(request.getSourceId())
                 .type(type)
                 .instituteId(instituteId)
-                .htmlText(request.getHtmlText())
+                .guestName(request.getGuestName())
+                .guestEmail(request.getGuestEmail())
+                .htmlText(sanitizeDoubtHtml(request.getSource(), request.getHtmlText()))
                 .parentLevel(request.getParentLevel() == null ? 0 : request.getParentLevel())
                 .raisedTime(new Date())
                 .parentId(request.getParentId())
@@ -172,6 +294,12 @@ public class DoubtsManager {
         // failures are swallowed inside the service and must not affect the doubt creation response.
         if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
             doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
+        }
+
+        // A staff reply on a GUEST doubt (no user account) is emailed to the guest's address —
+        // that email is the guest's only way to receive the answer. Service swallows failures.
+        if (isReply && parentDoubt != null && instituteId != null) {
+            doubtNotificationService.notifyGuestReply(parentDoubt, savedDoubt.getHtmlText(), instituteId);
         }
 
         // Fire the DOUBT_RAISED workflow trigger so admin/team-notification
@@ -374,6 +502,20 @@ public class DoubtsManager {
         }
     }
 
+    /**
+     * Institute for notification dispatch on an existing doubt. Prefers the stored institute_id
+     * (always set for new doubts, and the ONLY source for GENERAL/guest doubts which have no
+     * batch) and falls back to the batch lookup for legacy rows that predate the column.
+     */
+    private String resolveNotificationInstituteId(Doubts doubt) {
+        if (doubt == null) return null;
+        if (StringUtils.hasText(doubt.getInstituteId())) return doubt.getInstituteId();
+        if (!StringUtils.hasText(doubt.getPackageSessionId())) return null;
+        return facultyMappingRepository
+                .findInstituteIdByPackageSessionId(doubt.getPackageSessionId())
+                .orElse(null);
+    }
+
     private DoubtManagementSettingDataDto loadDoubtManagementSettingByInstitute(String instituteId) {
         if (instituteId == null || instituteId.isEmpty()) return null;
         try {
@@ -470,9 +612,7 @@ public class DoubtsManager {
         // defence-in-depth.
         if (resolvedDoubtForNotification != null) {
             try {
-                String instituteId = facultyMappingRepository
-                        .findInstituteIdByPackageSessionId(resolvedDoubtForNotification.getPackageSessionId())
-                        .orElse(null);
+                String instituteId = resolveNotificationInstituteId(resolvedDoubtForNotification);
                 if (instituteId != null) {
                     doubtNotificationService.notifyDoubtResolved(resolvedDoubtForNotification, instituteId);
                 }
@@ -485,9 +625,7 @@ public class DoubtsManager {
             // perspective this is the same "please look at this doubt" signal. The channel prefs
             // (push_enabled / email_enabled / email_template_id) under on_doubt_raised apply.
             try {
-                String instituteId = facultyMappingRepository
-                        .findInstituteIdByPackageSessionId(assignedDoubtForNotification.getPackageSessionId())
-                        .orElse(null);
+                String instituteId = resolveNotificationInstituteId(assignedDoubtForNotification);
                 if (instituteId != null) {
                     doubtNotificationService.notifyDoubtRaised(
                             assignedDoubtForNotification, newlyAssignedUserIds, instituteId);

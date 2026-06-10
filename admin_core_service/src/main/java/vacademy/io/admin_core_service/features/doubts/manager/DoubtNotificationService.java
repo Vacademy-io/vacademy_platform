@@ -152,8 +152,14 @@ public class DoubtNotificationService {
     }
 
     public void notifyDoubtResolved(Doubts doubt, String instituteId) {
-        if (doubt == null || doubt.getUserId() == null || doubt.getUserId().isEmpty()) return;
+        if (doubt == null) return;
         if (instituteId == null || instituteId.isEmpty()) return;
+        if (doubt.getUserId() == null || doubt.getUserId().isEmpty()) {
+            // Guest doubt (no auth user). Push/bell are impossible; email the raw guest address
+            // with the same resolved template instead.
+            notifyGuestResolved(doubt, instituteId);
+            return;
+        }
 
         DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
         if (prefs == null) return;
@@ -184,6 +190,65 @@ public class DoubtNotificationService {
         if (systemAlertOn) {
             dispatchSystemAlert(instituteId, recipient, PUSH_TITLE_RESOLVED, pushBody,
                     /* createdBy = doubt system */ null, ctx, "ADMIN");
+        }
+    }
+
+    /** Resolved notification for a guest (logged-out) doubt — email only, to the raw address. */
+    private void notifyGuestResolved(Doubts doubt, String instituteId) {
+        if (doubt.getGuestEmail() == null || doubt.getGuestEmail().isBlank()) return;
+        DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
+        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+
+        InstituteContext ctx = loadInstituteContext(instituteId);
+        String templateId = resolveTemplateId(prefs.getEmailTemplateId(), instituteId,
+                DoubtNotificationTemplateDefaults.RESOLVED_TEMPLATE_NAME);
+        if (templateId == null) return;
+        sendGuestEmail(doubt, templateId, /*replyHtml*/ null, instituteId, ctx);
+    }
+
+    /**
+     * Emails a staff reply to the guest who raised the doubt (guests can't log in to read the
+     * thread, so the email IS the delivery channel). Uses the V332-seeded
+     * "Doubt Reply - Guest Notification" default template (institute-overridable by name, same
+     * three-layer resolution as the other doubt emails). Failures are logged and dropped.
+     */
+    public void notifyGuestReply(Doubts parentDoubt, String replyHtml, String instituteId) {
+        if (parentDoubt == null || instituteId == null || instituteId.isEmpty()) return;
+        if (parentDoubt.getUserId() != null && !parentDoubt.getUserId().isEmpty()) return; // not a guest
+        if (parentDoubt.getGuestEmail() == null || parentDoubt.getGuestEmail().isBlank()) return;
+
+        // Reuse the resolved-event channel prefs as the gate — a per-event guest-reply pref isn't
+        // worth a settings schema bump; institutes silencing learner emails silence these too.
+        DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
+        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+
+        InstituteContext ctx = loadInstituteContext(instituteId);
+        String templateId = resolveTemplateId(null, instituteId,
+                DoubtNotificationTemplateDefaults.GUEST_REPLY_TEMPLATE_NAME);
+        if (templateId == null) return;
+        sendGuestEmail(parentDoubt, templateId, replyHtml, instituteId, ctx);
+    }
+
+    /** Renders the template with guest-aware placeholders and sends to the raw guest address. */
+    private void sendGuestEmail(Doubts doubt, String templateId, String replyHtml,
+                                String instituteId, InstituteContext ctx) {
+        Optional<Template> templateOpt = templateRepository.findById(templateId);
+        if (templateOpt.isEmpty()) {
+            log.warn("Guest email template {} disappeared between resolution and load; skipping", templateId);
+            return;
+        }
+        Template template = templateOpt.get();
+        Map<String, String> placeholders =
+                buildPlaceholders(doubt, doubt.getGuestName(), ctx, Audience.LEARNER);
+        placeholders.put("reply_text", replyHtml == null ? "" : replyHtml);
+        String subject = applyPlaceholders(template.getSubject(), placeholders);
+        String body = applyPlaceholders(template.getContent(), placeholders);
+        try {
+            notificationService.sendHtmlEmailViaUnified(
+                    doubt.getGuestEmail(), subject, body, instituteId,
+                    ctx.fromEmail, ctx.fromName, EMAIL_TYPE);
+        } catch (Exception e) {
+            log.warn("Failed to send guest doubt email to {}: {}", doubt.getGuestEmail(), e.getMessage());
         }
     }
 

@@ -53,7 +53,7 @@ export const StatCard = ({
                 "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
                 "[.ui-vibrant_&]:border-slate-200 dark:[.ui-vibrant_&]:border-slate-700",
                 // Play Mode Styles
-                "[.ui-play_&]:border-0 [.ui-play_&]:hover:-translate-y-1",
+                "[.ui-play_&]:border-0 [.ui-play_&]:hover:-translate-y-1 [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
                 className
             )}
             tabIndex={0}
@@ -66,11 +66,11 @@ export const StatCard = ({
                 }
             }}
         >
-            {/* Play mode: flex layout with SVG side panel */}
+            {/* Play mode: compact layout, content left + illustration right rail at all breakpoints */}
             {isPlay && illustration ? (
-                <div className="flex flex-row md:flex-col h-full">
-                    {/* Content: left on mobile, bottom on desktop */}
-                    <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between relative z-10 order-1 md:order-2">
+                <div className="flex flex-row h-full">
+                    {/* Content: left */}
+                    <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between relative z-10">
                         <div className="flex items-center justify-between mb-3">
                             <div className={cn(
                                 "p-2 rounded-md transition-colors",
@@ -78,20 +78,20 @@ export const StatCard = ({
                             )}>
                                 <Icon size={20} weight="fill" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <CaretRight size={16} className="text-white/60 group-hover:text-white" />
+                            <CaretRight size={16} className="text-white/90 group-hover:text-white" />
                         </div>
                         <div className="space-y-1">
-                            <div className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                            <div className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                                 {(count ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs font-bold text-white/80 uppercase tracking-wide">
+                            <div className="text-caption font-bold text-white/90 uppercase tracking-wide">
                                 {title}
                             </div>
                         </div>
                     </div>
-                    {/* SVG: right on mobile, top on desktop */}
-                    <div className="order-2 md:order-1 w-28 md:w-full flex items-center justify-center bg-white/10 p-2 md:px-4 md:pt-4 md:pb-2 flex-shrink-0">
-                        {React.createElement(illustration, { className: "h-24 md:h-20 w-auto text-white" })}
+                    {/* Illustration: right rail */}
+                    <div className="w-24 sm:w-28 flex items-center justify-center bg-white/10 p-2 flex-shrink-0">
+                        {React.createElement(illustration, { className: "h-20 w-auto text-white" })}
                     </div>
                 </div>
             ) : (

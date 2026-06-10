@@ -98,10 +98,10 @@ class RAGService:
         Returns number of chunks created.
         """
         chunks = self.embedding_service.chunk_text(content_text)
+        embeddings = await self.embedding_service.embed_batch(chunks, institute_id)
         count = 0
 
-        for i, chunk in enumerate(chunks):
-            embedding = await self.embedding_service.embed_text(chunk, institute_id)
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
             if not embedding:
                 continue
 

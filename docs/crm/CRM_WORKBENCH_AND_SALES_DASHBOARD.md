@@ -146,7 +146,7 @@ Endpoint base: `/admin-core-service/v1/counsellor-workbench`. Code at [`features
 - [`CounsellorScopeService`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/service/CounsellorScopeService.java) — RBAC + team-graph resolver (talks to auth-service via `OrganizationTeamAuthClient`).
 - [`CounsellorReassignService`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/service/CounsellorReassignService.java) — see §7.
 - [`CounsellorActivityFeedService`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/service/CounsellorActivityFeedService.java) — see §8.
-- [`LeadWorkbenchSettingService`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/service/LeadWorkbenchSettingService.java) — per-institute config (LEAD_SETTING.data.workbench) for `leads_team_id` + rating strategy. Per-counsellor scores live in the `counsellor_rating` table (V327).
+- [`LeadWorkbenchSettingService`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/service/LeadWorkbenchSettingService.java) — per-institute config (LEAD_SETTING.data.workbench) for `leads_team_id` + rating strategy. Per-counsellor scores live in the `counsellor_rating` table (V328).
 
 ### 5.3 Repositories (JdbcTemplate, raw SQL)
 
@@ -355,7 +355,7 @@ score = clamp(0..100, starting_rating + w_conversion*conversion_score
 - **Synchronous trigger** after any lead transition to a success status (debounced 5 min via Caffeine).
 - **Admin force-refresh** via `POST /v1/counsellor-rating/recompute`.
 
-### 9.5 Storage (V327, 2026-06-10)
+### 9.5 Storage (V328, 2026-06-10)
 
 Per-counsellor scores moved out of LEAD_SETTING JSON (which raced on concurrent recomputes and lost `manual_override` edits) into the `counsellor_rating` table.
 
@@ -503,7 +503,7 @@ General-purpose audit log across all entity types.
 | **`counselor_pool_member`** | Per (pool, audience, counsellor) cell. Columns: `pool_id`, `audience_id`, `counselor_user_id`, **`status`** (`ACTIVE`/`INACTIVE`), `display_order`, `monthly_target`, `backup_counselor_user_id`. The workbench "Mark inactive" flips `status` on ALL rows for `(institute, counsellor)`. |
 | `counselor_pool_shift` / `counselor_pool_shift_member` | Time-based shift schedule |
 
-#### `counsellor_rating` (V327)
+#### `counsellor_rating` (V328)
 
 Already covered in §9.5.
 
@@ -642,7 +642,7 @@ These are real and should be tracked:
 | V270 | `V270__Add_schedule_pattern_to_counselor_pool.sql` | `PER_DAY` vs `SAME_HOURS_ALL_DAYS` |
 | V272 | `V272__Add_first_response_at_to_user_lead_profile.sql` | ⚠️ dormant column (§11.6 #4) |
 | V273 | `V273__Create_lead_followup_table.sql` | `lead_followup` |
-| V327 | `V327__Create_counsellor_rating_table.sql` | Per-counsellor scores (2026-06-10) |
+| V328 | `V328__Create_counsellor_rating_table.sql` | Per-counsellor scores (2026-06-10) |
 
 ---
 
@@ -663,7 +663,7 @@ These are real and should be tracked:
 | **assigned_at** | DERIVED `MAX(timeline_event.created_at)` for `COUNSELOR_ASSIGNED` events on this lead. There is no column. |
 | **mark_inactive** | Reassign-first flow: route leads first then flip counsellor's `counselor_pool_member.status` to INACTIVE, in one transaction. |
 | **Workbench config** | `institute.setting.LEAD_SETTING.data.workbench` JSON — `leads_team_id` + rating strategy. |
-| **Strategy CONFIG vs counsellor SCORE** | Config (weights, window) stays in JSON. Scores moved to `counsellor_rating` table in V327. |
+| **Strategy CONFIG vs counsellor SCORE** | Config (weights, window) stays in JSON. Scores moved to `counsellor_rating` table in V328. |
 
 ---
 

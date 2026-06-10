@@ -10,9 +10,13 @@ import { GET_VIDEO_URLS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { SplitScreenSlide } from './split-screen-slide';
+import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
     const { videoSeekTime, clearVideoSeekTime } = useMediaNavigationStore();
+    // Per-role enforcement: keep native video download off unless this role is allowed.
+    const { canDownload } = useSlideDownloadAccess();
+    const allowVideoDownload = canDownload('VIDEO');
     const videoSourceType = activeItem.video_slide?.source_type || (activeItem as any).source_type;
     const videoStatus = activeItem.status;
     // const videoTitle = activeItem.video_slide?.title || 'Video';
@@ -380,7 +384,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                         ref={videoRef}
                         className="w-full"
                         controls
-                        controlsList="nodownload"
+                        controlsList={allowVideoDownload ? undefined : 'nodownload'}
                         onError={handleVideoError}
                         playsInline
                         preload="metadata"

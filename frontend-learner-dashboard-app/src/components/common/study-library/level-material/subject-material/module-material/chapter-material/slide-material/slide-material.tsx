@@ -25,6 +25,7 @@ import { SplitScreenVideoSlide } from "./split-screen-video-slide";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import QuizViewer from "./quiz-viewer";
 import { Slide, AIVideoData } from "@/hooks/study-library/use-slides";
+import { SlideProtectionGuard } from "./SlideProtectionGuard";
 import { AIVideoPlayer } from "@/components/ai-video-player";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { ConcentrationSettings } from "@/types/student-display-settings";
@@ -1001,6 +1002,7 @@ export const SlideMaterial = () => {
 
   return (
     <div className="flex h-full w-full flex-col bg-white" ref={selectionRef}>
+      <SlideProtectionGuard />
       {/* Compact Header */}
       <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-100 bg-white px-3 py-1.5 sm:px-4">
         <h3 className="text-xs sm:text-sm font-medium text-neutral-700 leading-tight truncate min-w-0 flex-1">

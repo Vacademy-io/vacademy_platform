@@ -115,6 +115,14 @@ public class AudienceService {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    /** Resolves leads_team_id and (when present) gates the CRM-Leads RBAC narrowing. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.counsellor_workbench.service.LeadWorkbenchSettingService workbenchSettingService;
+
+    /** Resolves caller + user-to-user descendants in the leads team. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
@@ -1724,6 +1732,62 @@ public class AudienceService {
      * access will land in a later phase.</li>
      * </ul>
      */
+    /**
+     * Resolve the people a caller may assign a lead to.
+     *
+     * <p>Mirrors the visibility rule used by {@link #getLeads}: when the
+     * institute has configured a {@code leads_team_id} AND the caller is in
+     * that subtree, the candidate list is intersected with the caller's
+     * descendants ({@code self + reports + reports' reports}). For admins
+     * (no leads-team mapping) the picker stays institute-wide.
+     *
+     * <p>Implementation: the institute-wide pool comes from auth_service's
+     * autosuggest endpoint (full_name / email / mobile prefix match). When
+     * scoping applies we filter that pool in-process — autosuggest is
+     * capped at 10 results, so the intersection is cheap.
+     */
+    public List<vacademy.io.common.auth.dto.UserDTO> eligibleAssignees(String instituteId,
+                                                                       String query,
+                                                                       CustomUserDetails caller) {
+        // Empty query → autosuggest would return empty (it requires a query).
+        // We still want to show some candidates so the picker isn't blank on
+        // first open — pull the caller's RBAC scope directly when in-team.
+        boolean rbac = caller != null && caller.getUserId() != null
+                && workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
+                && counsellorScopeService.isCallerInLeadsSubtree(instituteId, caller.getUserId());
+
+        if (rbac) {
+            List<String> userIds = counsellorScopeService
+                    .descendantUserIdsForCaller(instituteId, caller.getUserId());
+            if (userIds.isEmpty()) return List.of();
+            // Pull full user records for the scope (name / email / mobile).
+            List<vacademy.io.common.auth.dto.UserDTO> scopeUsers =
+                    authService.getUsersFromAuthServiceByUserIds(userIds);
+            if (query == null || query.isBlank()) {
+                return scopeUsers.stream().limit(10).toList();
+            }
+            final String q = query.toLowerCase();
+            return scopeUsers.stream()
+                    .filter(u -> matchesAutosuggest(u, q))
+                    .limit(10)
+                    .toList();
+        }
+
+        // No RBAC gate → existing admin behaviour (institute-wide autosuggest).
+        if (query == null || query.isBlank()) return List.of();
+        return authService.autosuggestUsers(instituteId, query);
+    }
+
+    private static boolean matchesAutosuggest(vacademy.io.common.auth.dto.UserDTO u, String qLower) {
+        if (u == null) return false;
+        String name = u.getFullName();
+        String email = u.getEmail();
+        String mobile = u.getMobileNumber();
+        return (name != null && name.toLowerCase().contains(qLower))
+                || (email != null && email.toLowerCase().contains(qLower))
+                || (mobile != null && mobile.toLowerCase().contains(qLower));
+    }
+
     @Transactional(readOnly = true)
     public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(
@@ -1742,9 +1806,42 @@ public class AudienceService {
         EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
                 user, filterDTO.getInstituteId());
 
-        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null) {
-            // Force-scope: ignore whatever assignedCounselorId the request body
-            // sent — counselors only see leads they're linked to.
+        // RBAC narrowing for the CRM Leads tab. When the institute has
+        // configured a leads_team_id AND the caller is in that subtree, we
+        // restrict the visible leads to the caller's user-to-user
+        // descendants (themselves + everyone reporting up to them through
+        // parent_user_id). A team head sees their whole downstream; a
+        // mid-level manager sees their reports; a leaf member sees only
+        // their own leads. Computed as a CSV that the native query plugs
+        // into a `STRING_TO_ARRAY(...) = ANY` predicate alongside the
+        // single-id filter — so a manager can still drill into a specific
+        // report by sending assignedCounselorId.
+        String assignedCounselorIdsCsv = null;
+        boolean rbacApplied = false;
+        if (user != null && user.getUserId() != null
+                && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            String instituteId = filterDTO.getInstituteId();
+            if (workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
+                    && counsellorScopeService.isCallerInLeadsSubtree(instituteId, user.getUserId())) {
+                List<String> scope = counsellorScopeService
+                        .descendantUserIdsForCaller(instituteId, user.getUserId());
+                if (!scope.isEmpty()) {
+                    assignedCounselorIdsCsv = String.join(",", scope);
+                    rbacApplied = true;
+                }
+            }
+        }
+
+        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null
+                && !rbacApplied) {
+            // Force-scope: ignore whatever assignedCounselorId the request
+            // body sent — counselors with no leads-team mapping only see
+            // leads they're directly linked to.
+            //
+            // When RBAC applied above, we let the broader subtree filter
+            // win (a manager in the leads team should see their reports'
+            // leads, not just their own).
             filterDTO.setAssignedCounselorId(user.getUserId());
         }
 
@@ -1817,6 +1914,7 @@ public class AudienceService {
                     searchUserIdsCsv,
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
+                    assignedCounselorIdsCsv,
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -1844,6 +1942,7 @@ public class AudienceService {
                 filterDTO.getMaxLeadScore(),
                 filterDTO.getLeadTier(),
                 filterDTO.getAssignedCounselorId(),
+                assignedCounselorIdsCsv,
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldFiltersJson,

@@ -113,12 +113,7 @@ export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telepho
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
-export const TELEPHONY_CALLS_BY_USER = (
-    userId: string,
-    instituteId: string,
-    page = 0,
-    size = 20
-) =>
+export const TELEPHONY_CALLS_BY_USER = (userId: string, instituteId: string, page = 0, size = 20) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls?userId=${encodeURIComponent(userId)}&instituteId=${encodeURIComponent(instituteId)}&page=${page}&size=${size}`;
 export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/recording?instituteId=${encodeURIComponent(instituteId)}`;
@@ -265,6 +260,13 @@ export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/p
 export const GET_INSTITUTE_USERS = `${BASE_URL}/auth-service/v1/user-roles/users-of-status`;
 export const GET_USER_ROLES_COUNT = `${BASE_URL}/auth-service/v1/user-roles/user-roles-count`;
 export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
+// RBAC-scoped variant of the autosuggest used by lead-assign dialogs. When
+// the institute has configured a leads_team_id AND the caller is in that
+// subtree, the list is intersected with the caller's user-to-user
+// descendants — a manager can't accidentally assign a lead to someone
+// outside their reporting chain. Falls back to institute-wide autosuggest
+// when the gate doesn't apply (admin behaviour preserved).
+export const GET_ELIGIBLE_ASSIGNEES = `${BASE_URL}/admin-core-service/v1/audience/eligible-assignees`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
 export const GET_FACULTY_USER_ACCESS_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access-details`;
@@ -277,6 +279,7 @@ export const UPDATE_INVITE_URL = `${BASE_URL}/admin-core-service/v1/enroll-invit
 export const GET_QUESTION_PAPER_FILTERED_DATA = `${BASE_URL}/assessment-service/question-paper/view/v1/get-with-filters`;
 export const MARK_QUESTION_PAPER_STATUS = `${BASE_URL}/assessment-service/question-paper/manage/v1/mark-status`;
 export const GET_QUESTION_PAPER_BY_ID = `${BASE_URL}/assessment-service/question-paper/view/v1/get-by-id`;
+export const GET_QUESTION_TAGS = `${BASE_URL}/assessment-service/question-paper/view/v1/question-tags`;
 export const ADD_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/add`;
 export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/edit`;
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;
@@ -557,6 +560,8 @@ export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-s
 // export const GET_SESSION_BY_SESSION_ID = `http://localhost:8072/admin-core-service/get-sessions/by-session-id`;
 export const GET_SESSION_BY_SESSION_ID = `${BASE_URL}/admin-core-service/get-sessions/by-session-id`;
 export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${BASE_URL}/admin-core-service/live-session-report/by-session-id`;
+export const LIVE_SESSION_FEEDBACK_SEARCH = `${BASE_URL}/admin-core-service/live-session-report/feedback/search`;
+export const LIVE_SESSION_FEEDBACK_SUBJECTS = `${BASE_URL}/admin-core-service/live-session-report/feedback/subjects`;
 export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
 export const CREATE_PROVIDER_MEETINGS_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create-for-session`;
@@ -877,6 +882,20 @@ export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
 export const INSTITUTE_PAYMENT_GATEWAY_BY_ID = (instituteId: string, mappingId: string) =>
     `${BASE_URL}/admin-core-service/v1/institute/payment-gateways/${mappingId}?instituteId=${instituteId}`;
 
+// Institute Mobile App (Android + iOS) self-service registration
+// The config resource — GET to read it (fill the form), PUT to save it (no build).
+export const INSTITUTE_MOBILE_APP = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app?instituteId=${instituteId}`;
+// POST only — starts ONE build run ("Register app" / "Build update").
+export const INSTITUTE_MOBILE_APP_BUILD = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/build?instituteId=${instituteId}`;
+// GET only — list of past build runs (status card + polling). Note: plural "builds".
+export const INSTITUTE_MOBILE_APP_BUILDS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/builds?instituteId=${instituteId}`;
+// POST only — on-demand "Refresh status": pulls current state from the app stores.
+export const INSTITUTE_MOBILE_APP_REFRESH = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/refresh-status?instituteId=${instituteId}`;
+
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
 
@@ -959,19 +978,198 @@ export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
 export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;
 
 // =============================================================================
-// Organization Teams — hierarchical team graph on top of institute-teams.
-// admin_core_service proxies to /auth-service/internal/organization-team/* —
-// team data lives in auth_service alongside users/roles (V12 migration).
+// Organization teams (hybrid: flat teams + user-to-user reporting inside).
+// V12 migration created the tables; V13 added parent_user_id on the
+// mapping table. Same person can be in multiple teams with different
+// managers in each.
+//
+// Points at auth_service directly — org-team data lives there and the
+// admin_core proxy added no orchestration, just hops + bugs (510, PATCH).
+// HMAC-internal endpoints stay at /auth-service/internal/organization-team
+// for service-to-service scope queries.
 // =============================================================================
-export const ORG_TEAM_BASE = `${BASE_URL}/admin-core-service/v1/organization-team`;
+export const ORG_TEAM_BASE = `${BASE_URL}/auth-service/v1/organization-team`;
 export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
-export const ORG_TEAM_CHART = (instituteId: string) =>
-    `${ORG_TEAM_BASE}/chart?instituteId=${instituteId}`;
-export const ORG_TEAM_CHART_WITH_MEMBERS = (instituteId: string) =>
-    `${ORG_TEAM_BASE}/chart-with-members?instituteId=${instituteId}`;
-export const ORG_TEAM_ANCESTORS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/ancestors`;
-export const ORG_TEAM_DESCENDANTS = (teamId: string, flat: boolean = true) =>
-    `${ORG_TEAM_BASE}/${teamId}/descendants?flat=${flat}`;
+export const ORG_TEAM_LIST = (instituteId: string) =>
+    `${ORG_TEAM_BASE}?instituteId=${instituteId}`;
+export const ORG_TEAM_CHART = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/chart`;
 export const ORG_TEAM_MEMBERS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/members`;
 export const ORG_TEAM_MEMBER_BY_ID = (teamId: string, mappingId: string) =>
     `${ORG_TEAM_BASE}/${teamId}/members/${mappingId}`;
+export const ORG_TEAM_USER_MEMBERSHIPS = (userId: string) =>
+    `${ORG_TEAM_BASE}/members/by-user/${userId}`;
+
+// =============================================================================
+// Counsellor workbench. Powers the /counsellors route and its config in
+// Settings → Leads → Workbench. Backed by the workbench section of
+// LEAD_SETTING JSON (leads_team_id + rating strategy + per-counsellor
+// cached scores). No dedicated tables — works against stage/prod.
+// =============================================================================
+export const COUNSELLOR_WORKBENCH_BASE = `${BASE_URL}/admin-core-service/v1/counsellor-workbench`;
+export const COUNSELLOR_WORKBENCH_CONFIG = (instituteId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/config?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_CONFIG_UPDATE = `${COUNSELLOR_WORKBENCH_BASE}/config`;
+export const COUNSELLOR_WORKBENCH_MY_TEAM = (instituteId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/me/team?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_MY_LEADS = (
+    instituteId: string,
+    status?: string,
+    page: number = 0,
+    size: number = 20
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/me/leads?instituteId=${instituteId}` +
+    (status ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
+export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (
+    instituteId: string,
+    teamId: string,
+    search?: string,
+    status?: 'active' | 'inactive' | 'all',
+    page: number = 0,
+    size: number = 20
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}` +
+    (search ? `&search=${encodeURIComponent(search)}` : '') +
+    (status && status !== 'all' ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
+export const COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS = (
+    instituteId: string,
+    userId: string,
+    status?: string,
+    page: number = 0,
+    size: number = 50
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/leads?instituteId=${instituteId}` +
+    (status ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
+export const COUNSELLOR_WORKBENCH_SET_STATUS = (userId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/status`;
+export const COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/reassign/preview`;
+export const COUNSELLOR_WORKBENCH_REASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/reassign`;
+export const COUNSELLOR_WORKBENCH_ACTIVITY = (
+    userId: string,
+    instituteId: string,
+    fromMillis?: number,
+    toMillis?: number,
+    limit: number = 50
+) => {
+    const params = new URLSearchParams({ instituteId, limit: String(limit) });
+    if (fromMillis != null) params.set('from', String(fromMillis));
+    if (toMillis != null) params.set('to', String(toMillis));
+    return `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/activity?${params.toString()}`;
+};
+
+// =============================================================================
+// Counsellor rating. Strategy config lives at /counsellor-workbench/config;
+// this block is for the per-counsellor score reads + the manual-override
+// write. Per-counsellor scores are cached inside the same LEAD_SETTING
+// JSON, so no extra tables are involved.
+// =============================================================================
+export const COUNSELLOR_RATING_BASE = `${BASE_URL}/admin-core-service/v1/counsellor-rating`;
+export const COUNSELLOR_RATING_ONE = (instituteId: string, counsellorUserId: string) =>
+    `${COUNSELLOR_RATING_BASE}?instituteId=${instituteId}&counsellor_user_id=${counsellorUserId}`;
+export const COUNSELLOR_RATING_BATCH = `${COUNSELLOR_RATING_BASE}/batch`;
+export const COUNSELLOR_RATING_LEADERBOARD = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 10
+) =>
+    `${COUNSELLOR_RATING_BASE}/leaderboard?instituteId=${instituteId}&limit=${limit}` +
+    (teamId ? `&team_id=${teamId}` : '');
+export const COUNSELLOR_RATING_MANUAL = (counsellorUserId: string) =>
+    `${COUNSELLOR_RATING_BASE}/${counsellorUserId}/manual`;
+export const COUNSELLOR_RATING_RECOMPUTE = (instituteId: string, counsellorUserId?: string) => {
+    const params = new URLSearchParams({ instituteId });
+    if (counsellorUserId) params.set('counsellor_user_id', counsellorUserId);
+    return `${COUNSELLOR_RATING_BASE}/recompute?${params.toString()}`;
+};
+
+// =============================================================================
+// Sales dashboard widgets.
+// =============================================================================
+export const SALES_DASHBOARD_BASE = `${BASE_URL}/admin-core-service/v1/sales-dashboard`;
+const buildSdQS = (instituteId: string, params: Record<string, string | number | undefined> = {}) => {
+    const qs = new URLSearchParams({ instituteId });
+    Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    return qs.toString();
+};
+export const SALES_DASHBOARD_KPI = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/kpi?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_FUNNEL = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/conversion-funnel?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_REASSIGNMENTS = (
+    instituteId: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/reassignments?${buildSdQS(instituteId, { from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_UPCOMING_FOLLOWUPS = (
+    instituteId: string,
+    teamId?: string,
+    hoursAhead: number = 48,
+    limit: number = 20
+) =>
+    `${SALES_DASHBOARD_BASE}/upcoming-followups?${buildSdQS(instituteId, { team_id: teamId, hours_ahead: hoursAhead, limit })}`;
+export const SALES_DASHBOARD_MISSED_FOLLOWUPS = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 20
+) =>
+    `${SALES_DASHBOARD_BASE}/missed-followups?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
+export const SALES_DASHBOARD_NEW_VS_EXISTING = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/new-vs-existing?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_CAMPAIGN_CARDS = (
+    instituteId: string,
+    period: 'DAY' | 'WEEK' | 'MONTH' = 'WEEK'
+) => `${SALES_DASHBOARD_BASE}/campaign-cards?${buildSdQS(instituteId, { period })}`;
+export const SALES_DASHBOARD_CONVERSION_BY_SOURCE = (
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/conversion-by-source?${buildSdQS(instituteId, {
+        team_id: teamId,
+        counsellor_user_id: counsellorUserId,
+        from: fromMillis,
+        to: toMillis,
+    })}`;
+export const SALES_DASHBOARD_CALLS_PER_DAY = (
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/calls-per-day?${buildSdQS(instituteId, {
+        team_id: teamId,
+        counsellor_user_id: counsellorUserId,
+        from: fromMillis,
+        to: toMillis,
+    })}`;
+export const SALES_DASHBOARD_LEADERBOARD = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 10
+) =>
+    `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
+export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
+    `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;

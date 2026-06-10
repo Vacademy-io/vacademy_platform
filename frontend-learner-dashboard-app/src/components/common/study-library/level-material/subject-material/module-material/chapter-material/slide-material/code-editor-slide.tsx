@@ -33,6 +33,8 @@ import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { usePDFSync } from "@/hooks/study-library/usePdfSync";
 import { Preferences } from "@capacitor/preferences";
+import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 import { executeCode } from "./code-slide-utils.";
 import { getEpochTimeInMillis, getISTTime } from "./utils";
 import {
@@ -91,6 +93,10 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
   published_data,
   documentId,
 }) => {
+  // Whether this user's role is allowed to download the code (admin-configured).
+  const { canDownload } = useSlideDownloadPermission();
+  const allowCodeDownload = canDownload(SlideDownloadTypeKey.DOCUMENT_CODE);
+
   const [editorState, setEditorState] = useState<EditorState>({
     currentLanguage: "python",
     theme: "dark",
@@ -1001,15 +1007,17 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                     Copy Code
                   </DropdownMenuItem>
 
-                  <DropdownMenuItem
-                    onClick={() => {
-                      downloadCode();
-                      handleUserActivity();
-                    }}
-                  >
-                    <DownloadSimple className="mr-2 size-4" />
-                    Download Code
-                  </DropdownMenuItem>
+                  {allowCodeDownload && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        downloadCode();
+                        handleUserActivity();
+                      }}
+                    >
+                      <DownloadSimple className="mr-2 size-4" />
+                      Download Code
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

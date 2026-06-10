@@ -32,6 +32,26 @@ public class AudienceController {
     @Autowired
     private TimelineEventService timelineEventService;
 
+    /**
+     * Returns the candidate counsellors a caller is allowed to assign a lead
+     * to. When the institute has configured a leads_team_id AND the caller
+     * is in that subtree, the picker is narrowed to the caller's user-to-user
+     * descendants (themselves + reports + reports' reports). Outside that
+     * gate the picker is institute-wide (admin behaviour).
+     *
+     * Used by the "Assign counsellor" dialogs on Recent Leads / per-campaign
+     * leads / Enquiries. Replaces direct calls to /auth-service/v1/user/
+     * autosuggest-users for those flows so a manager can't accidentally
+     * assign a lead to someone outside their reporting chain.
+     */
+    @GetMapping("/eligible-assignees")
+    public ResponseEntity<List<vacademy.io.common.auth.dto.UserDTO>> eligibleAssignees(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "query", required = false) String query,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.eligibleAssignees(instituteId, query, user));
+    }
+
     @PostMapping("/campaign")
     public ResponseEntity<String> createCampaign(
             @RequestBody AudienceDTO audienceDTO,

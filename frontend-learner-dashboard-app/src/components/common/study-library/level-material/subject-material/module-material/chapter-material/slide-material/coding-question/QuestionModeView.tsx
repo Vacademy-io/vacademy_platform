@@ -625,9 +625,10 @@ export function QuestionModeView({ question, slideId }: Props) {
         </div>
       </div>
 
-      {/* Two-column top: problem + editor */}
+      {/* Two-column top on tablet/desktop; stacks vertically on mobile so the
+          editor isn't squeezed off-screen behind the problem panel. */}
       <div
-        className="flex min-h-0 flex-1"
+        className="flex min-h-0 flex-1 flex-col md:flex-row"
         style={{ height: `calc(100% - ${bottomHeight + 36}px)` }}
       >
         {/* Problem */}
@@ -635,7 +636,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             *deterrent* (paste-into-LLM). Not a security control — anyone
             can read the DOM. Code editor stays selectable. */}
         <div
-          className="w-2/5 min-w-reg-280 select-none overflow-auto border-r bg-white p-4"
+          className="w-full select-none overflow-auto border-b bg-white p-4 md:w-2/5 md:min-w-reg-280 md:border-b-0 md:border-r"
           style={{
             WebkitUserSelect: "none",
             MozUserSelect: "none",
@@ -667,8 +668,10 @@ export function QuestionModeView({ question, slideId }: Props) {
           </div>
         </div>
 
-        {/* Editor */}
-        <div className="min-h-0 flex-1">
+        {/* Editor — fixed height on mobile (the container collapses to auto
+            height there, so flex-grow can't size the editor); fills the pane
+            on tablet/desktop. */}
+        <div className="h-80 w-full md:h-auto md:min-h-0 md:flex-1">
           <Editor
             height="100%"
             language={def.monacoLang}

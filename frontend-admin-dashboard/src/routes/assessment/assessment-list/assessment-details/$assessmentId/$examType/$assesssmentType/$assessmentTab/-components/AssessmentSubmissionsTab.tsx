@@ -19,12 +19,11 @@ import { getInstituteId } from '@/constants/helper';
 import {
     getAdminParticipants,
     handleGetAssessmentTotalMarksData,
-    handleGetSubmissionsExportCSV,
-    handleGetSubmissionsExportPDF,
+    handleExportResultCSV,
 } from '../-services/assessment-details-services';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
-import { ArrowCounterClockwise } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, Export } from '@phosphor-icons/react';
 import { AssessmentDetailsSearchComponent } from './SearchComponent';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -41,13 +40,13 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
 import { AssessmentGlobalLevelReleaseResultAssessment } from './assessment-global-level-revaluate/assessment-global-level-release-result-assessment';
-import ExportDialogPDFCSV from '@/components/common/export-dialog-pdf-csv';
 import Papa from 'papaparse';
 import { useRef } from 'react';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { OpenStudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/open-student-side-view';
 import { useNavigate } from '@tanstack/react-router';
 import { getAssessmentSettingsFromCache } from '@/services/assessment-settings';
+import { cn } from '@/lib/utils';
 
 export interface SelectedSubmissionsFilterInterface {
     name: string;
@@ -694,91 +693,40 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         }
     };
 
-    const getStudentSubmissionsDataPDF = useMutation({
-        mutationFn: ({
-            instituteId,
-            assessmentId,
-            selectedFilter,
-        }: {
-            instituteId: string | undefined;
-            assessmentId: string;
-            selectedFilter: SelectedSubmissionsFilterInterface;
-        }) => handleGetSubmissionsExportPDF(instituteId, assessmentId, selectedFilter),
-        onSuccess: async (response) => {
-            const date = new Date();
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute(
-                'download',
-                `pdf_student_submissions_list_${date.toLocaleString()}.pdf`
+    const [isExportingCSV, setIsExportingCSV] = useState(false);
+
+    const handleExportCSV = async () => {
+        setIsExportingCSV(true);
+        try {
+            const data = await handleExportResultCSV(
+                initData?.id,
+                assessmentId,
+                assesssmentType
             );
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Student submissions list data for PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const getStudentSubmissionsDataCSV = useMutation({
-        mutationFn: ({
-            instituteId,
-            assessmentId,
-            selectedFilter,
-        }: {
-            instituteId: string | undefined;
-            assessmentId: string;
-            selectedFilter: SelectedSubmissionsFilterInterface;
-        }) => handleGetSubmissionsExportCSV(instituteId, assessmentId, selectedFilter),
-        onSuccess: (data) => {
-            const date = new Date();
-            const parsedData = Papa.parse(data, {
-                download: false,
-                header: true,
-                skipEmptyLines: true,
-            }).data;
-
-            const csv = Papa.unparse(parsedData);
-
+            if (!data) {
+                toast.error('No data returned. Please try again.');
+                return;
+            }
+            const parsed = Papa.parse(data, { header: true, skipEmptyLines: true }).data;
+            const csv = Papa.unparse(parsed);
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
-
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute(
                 'download',
-                `csv_student_submissions_list_${date.toLocaleString()}.csv`
+                `results_${assessmentId}_${new Date().toLocaleDateString()}.csv`
             );
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-
-            // Clean up the created URL object
             URL.revokeObjectURL(url);
-            toast.success('Student submissions list data for CSV exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getStudentSubmissionsDataPDF.mutate({
-            instituteId: initData?.id,
-            assessmentId,
-            selectedFilter,
-        });
-    };
-    const handleExportCSV = () => {
-        getStudentSubmissionsDataCSV.mutate({
-            instituteId: initData?.id,
-            assessmentId,
-            selectedFilter,
-        });
+            toast.success('Results exported successfully.');
+        } catch {
+            toast.error('Failed to export CSV. Please try again.');
+        } finally {
+            setIsExportingCSV(false);
+        }
     };
 
     useEffect(() => {
@@ -901,7 +849,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 Attempted
                             </span>
                             <Badge
-                                className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                                className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
                                 variant="outline"
                             >
                                 {attemptedCount}
@@ -924,7 +872,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     Ongoing
                                 </span>
                                 <Badge
-                                    className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                                    className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
                                     variant="outline"
                                 >
                                     {ongoingCount}
@@ -945,7 +893,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 Pending
                             </span>
                             <Badge
-                                className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                                className="rounded-full bg-primary-500 p-0 px-2 text-xs text-white"
                                 variant="outline"
                             >
                                 {pendingCount}
@@ -953,16 +901,17 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </TabsTrigger>
                     </TabsList>
                     <div className="mr-4 mt-4 flex items-center gap-2">
-                        <ExportDialogPDFCSV
-                            handleExportPDF={handleExportPDF}
-                            handleExportCSV={handleExportCSV}
-                            isPDFLoading={
-                                getStudentSubmissionsDataPDF.status === 'pending' ? true : false
-                            }
-                            isCSVLoading={
-                                getStudentSubmissionsDataCSV.status === 'pending' ? true : false
-                            }
-                        />
+                        <MyButton
+                            type="button"
+                            scale="small"
+                            buttonType="secondary"
+                            className="font-medium"
+                            onClick={handleExportCSV}
+                            disable={isExportingCSV}
+                        >
+                            <Export size={16} />
+                            {isExportingCSV ? 'Exporting…' : 'Export'}
+                        </MyButton>
                         {isOfflineEntryEnabled && (
                             <MyButton
                                 type="button"
@@ -990,55 +939,74 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                         </MyButton>
                     </div>
                 </div>
-                <div className="flex items-center justify-between">
-                    {assesssmentType === 'PUBLIC' && (
-                        <Tabs
-                            value={selectedParticipantsTab}
-                            onValueChange={handleParticipantsTab}
-                            className={`ml-4 flex justify-start rounded-lg bg-white p-0 pr-4 shadow-none`}
-                        >
-                            <TabsList className="flex h-auto flex-wrap justify-start border border-gray-500 !bg-transparent p-0">
-                                <TabsTrigger
-                                    value="internal"
-                                    className={`flex gap-1.5 rounded-l-lg rounded-r-none p-2 px-4 ${
+                {/* Unified toolbar row: participant toggles + sub-tabs on the left, filters + actions on the right */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 bg-white px-4 py-3">
+                    {/* LEFT CLUSTER — participant type + (when internal) batch/individual sub-tabs */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {assesssmentType === 'PUBLIC' && (
+                            <div className="flex items-center overflow-hidden rounded-lg border border-neutral-200">
+                                <button
+                                    type="button"
+                                    onClick={() => handleParticipantsTab('internal')}
+                                    className={cn(
+                                        'px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                         selectedParticipantsTab === 'internal'
-                                            ? '!bg-primary-100'
-                                            : 'bg-transparent'
-                                    }`}
+                                            ? 'bg-primary-50 text-primary-600'
+                                            : 'bg-white text-neutral-600 hover:bg-neutral-50'
+                                    )}
                                 >
-                                    <span
-                                        className={`${
-                                            selectedParticipantsTab === 'internal'
-                                                ? 'text-teal-800 dark:text-teal-400'
-                                                : ''
-                                        }`}
-                                    >
-                                        Internal Participants
-                                    </span>
-                                </TabsTrigger>
-                                <Separator orientation="vertical" className="h-full bg-gray-500" />
-                                <TabsTrigger
-                                    value="external"
-                                    className={`flex gap-1.5 rounded-l-none rounded-r-lg p-2 px-4 ${
+                                    Internal
+                                </button>
+                                <div className="h-5 w-px bg-neutral-200" />
+                                <button
+                                    type="button"
+                                    onClick={() => handleParticipantsTab('external')}
+                                    className={cn(
+                                        'px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                         selectedParticipantsTab === 'external'
-                                            ? '!bg-primary-100'
-                                            : 'bg-transparent'
-                                    }`}
+                                            ? 'bg-primary-50 text-primary-600'
+                                            : 'bg-white text-neutral-600 hover:bg-neutral-50'
+                                    )}
                                 >
-                                    <span
-                                        className={`${
-                                            selectedParticipantsTab === 'external'
-                                                ? 'text-teal-800 dark:text-teal-400'
-                                                : ''
-                                        }`}
-                                    >
-                                        External Participants
-                                    </span>
-                                </TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                    )}
-                    <div className="flex items-center gap-6">
+                                    External
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Batch / Individual sub-tabs — only when viewing internal participants */}
+                        {selectedParticipantsTab === 'internal' && (
+                            <div className="flex items-center overflow-hidden rounded-lg border border-neutral-200">
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchSeletectionTab('batch')}
+                                    className={cn(
+                                        'px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                        batchSelectionTab === 'batch'
+                                            ? 'bg-primary-50 text-primary-600'
+                                            : 'bg-white text-neutral-600 hover:bg-neutral-50'
+                                    )}
+                                >
+                                    Batch Selection
+                                </button>
+                                <div className="h-5 w-px bg-neutral-200" />
+                                <button
+                                    type="button"
+                                    onClick={() => handleBatchSeletectionTab('individual')}
+                                    className={cn(
+                                        'px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                        batchSelectionTab === 'individual'
+                                            ? 'bg-primary-50 text-primary-600'
+                                            : 'bg-white text-neutral-600 hover:bg-neutral-50'
+                                    )}
+                                >
+                                    Individual Selection
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* RIGHT CLUSTER — search, filters, and (when Attempted) revaluate + release */}
+                    <div className="flex flex-wrap items-center gap-2">
                         <AssessmentDetailsSearchComponent
                             onSearch={handleSearch}
                             searchText={searchText}
@@ -1056,60 +1024,16 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             handleSubmitFilters={handleRefreshLeaderboard}
                             handleResetFilters={handleResetFilters}
                         />
-                    </div>
-                </div>
-                {selectedParticipantsTab === 'internal' && (
-                    <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <Tabs
-                                value={batchSelectionTab}
-                                onValueChange={handleBatchSeletectionTab}
-                                className="flex w-fit flex-col gap-4"
-                            >
-                                <TabsList className="mb-2 ml-4 mt-4 inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
-                                    <TabsTrigger
-                                        value="batch"
-                                        className={`flex gap-1.5 rounded-none px-8 py-2 !shadow-none ${
-                                            batchSelectionTab === 'batch'
-                                                ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                                : 'border-none bg-transparent'
-                                        }`}
-                                    >
-                                        <span
-                                            className={`${
-                                                batchSelectionTab === 'batch' ? 'text-primary-500' : ''
-                                            }`}
-                                        >
-                                            Batch Selection
-                                        </span>
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                        value="individual"
-                                        className={`flex gap-1.5 rounded-none px-8 py-2 !shadow-none ${
-                                            batchSelectionTab === 'individual'
-                                                ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
-                                                : 'border-none bg-transparent'
-                                        }`}
-                                    >
-                                        <span
-                                            className={`${
-                                                batchSelectionTab === 'individual'
-                                                    ? 'text-primary-500'
-                                                    : ''
-                                            }`}
-                                        >
-                                            Individual Selection
-                                        </span>
-                                    </TabsTrigger>
-                                </TabsList>
-                            </Tabs>
-                            {selectedTab === 'Attempted' && (
-                                <div className="mr-4 flex items-center gap-3">
+
+                        {/* Revaluate + Release Result — visible for all participant types when Attempted */}
+                        {selectedTab === 'Attempted' && (
+                            <>
+                                <div className="h-5 w-px bg-neutral-200" />
                                 <Dialog>
-                                    <DialogTrigger>
+                                    <DialogTrigger asChild>
                                         <MyButton
                                             type="button"
-                                            scale="large"
+                                            scale="small"
                                             buttonType="secondary"
                                             className="font-medium"
                                         >
@@ -1127,15 +1051,14 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     </DialogContent>
                                 </Dialog>
                                 <AssessmentGlobalLevelReleaseResultAssessment />
-                                </div>
-                            )}
-                        </div>
+                            </>
+                        )}
                     </div>
-                )}
-                <div className="flex max-h-[72vh] flex-col gap-6 overflow-y-auto p-4">
+                </div>
+                <div className="flex max-h-screen flex-col gap-6 overflow-y-auto p-4">
                     <TabsContent value={selectedTab} ref={tableRef}>
                         <SidebarProvider
-                            style={{ ['--sidebar-width' as string]: '565px' }}
+                            style={{ ['--sidebar-width' as string]: '565px' } /* dynamic CSS custom property, cannot use Tailwind token */}
                             defaultOpen={false}
                             open={isSidebarOpen}
                             onOpenChange={setIsSidebarOpen}

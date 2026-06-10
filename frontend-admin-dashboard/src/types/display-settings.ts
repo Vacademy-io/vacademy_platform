@@ -283,6 +283,16 @@ export interface TeamManagementSettings {
     orgChartTabVisible?: boolean;
 }
 
+// Opt-in flags for the counsellor workbench + sales dashboard routes. Both
+// default to FALSE so the features stay hidden until an admin explicitly
+// enables them. The routes themselves check these flags and render a
+// "feature not enabled" message when off, so even a direct URL hit doesn't
+// expose them to users whose institute hasn't opted in.
+export interface WorkbenchVisibilitySettings {
+    counsellorsPageVisible?: boolean;
+    salesDashboardVisible?: boolean;
+}
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -402,6 +412,11 @@ export interface DisplaySettingsData {
     //      the Invite User dialog. Self-role is always treated as visible by
     //      consumers to prevent lockout.
     teamManagement?: TeamManagementSettings;
+
+    // Opt-in gates for the counsellor workbench (/counsellors) and the
+    // sales dashboard (/sales-dashboard). Both default to false. See
+    // WorkbenchVisibilitySettings for details.
+    workbench?: WorkbenchVisibilitySettings;
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{

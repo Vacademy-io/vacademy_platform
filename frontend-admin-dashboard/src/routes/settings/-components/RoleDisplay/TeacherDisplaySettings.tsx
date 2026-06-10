@@ -33,6 +33,8 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import SlideDownloadCard from './SlideDownloadCard';
+import SlideContentProtectionCard from './SlideContentProtectionCard';
 import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
@@ -2115,6 +2117,10 @@ export default function TeacherDisplaySettings() {
             </Card>
 
             <AudienceAccessCard roleName="TEACHER" roleLabel="Teacher" />
+
+            <SlideDownloadCard roleKey="TEACHER" roleLabel="teachers" />
+
+            <SlideContentProtectionCard roleKey="TEACHER" roleLabel="teachers" />
             </section>
             </SettingsSectionsLayout>
 

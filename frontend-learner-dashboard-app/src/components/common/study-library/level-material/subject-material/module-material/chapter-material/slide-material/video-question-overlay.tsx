@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { X, Clock, CheckCircle, XCircle } from "@phosphor-icons/react";
+import { X, Clock, CheckCircle, XCircle, CircleNotch } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
@@ -440,10 +440,14 @@ const VideoQuestionOverlay = ({
                 questionName: question.text_data.content,
             });
 
-            // Wait for 5 seconds before showing the response
+            // Brief pause before revealing the result, then clear the loading
+            // state. Keeping isSubmitting true until here means the button stays
+            // in its "Submitting..." state continuously instead of flickering
+            // back to an enabled "Submit Answer" while the result is pending.
             setTimeout(() => {
                 setResponse(evaluation);
-            }, 5000);
+                setIsSubmitting(false);
+            }, 800);
         } catch (error) {
             console.error("Error submitting answer:", error);
             setResponse({
@@ -451,7 +455,6 @@ const VideoQuestionOverlay = ({
                 explanation:
                     "There was an error processing your answer. Please try again.",
             });
-        } finally {
             setIsSubmitting(false);
         }
     };
@@ -786,7 +789,7 @@ const VideoQuestionOverlay = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-10 p-4">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-70 p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-screen-90 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
                 {/* Header */}
                 <div className="flex-shrink-0 bg-white border-b border-gray-100 rounded-t-xl">
@@ -929,9 +932,14 @@ const VideoQuestionOverlay = ({
                                 disable={isSubmitDisabled()}
                                 className="min-w-reg-150 shadow-lg"
                             >
-                                {isSubmitting
-                                    ? "Submitting..."
-                                    : "Submit Answer"}
+                                {isSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <CircleNotch className="size-4 animate-spin" weight="bold" />
+                                        Submitting...
+                                    </span>
+                                ) : (
+                                    "Submit Answer"
+                                )}
                             </MyButton>
                         )}
                     </div>

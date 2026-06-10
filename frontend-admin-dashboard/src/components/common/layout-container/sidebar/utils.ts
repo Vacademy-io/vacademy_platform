@@ -394,6 +394,16 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/audience-manager/follow-ups',
                 subItemId: 'follow-ups',
             },
+            {
+                subItem: 'Counsellors',
+                subItemLink: '/counsellors',
+                subItemId: 'counsellors',
+            },
+            {
+                subItem: 'Sales Dashboard',
+                subItemLink: '/sales-dashboard',
+                subItemId: 'sales-dashboard',
+            },
         ],
     },
     {
@@ -462,6 +472,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Attendance`,
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',
+            },
+            {
+                subItem: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Feedback`,
+                subItemLink: '/study-library/live-session/feedback',
+                subItemId: 'live-session-feedback',
             },
         ],
     },

@@ -17,6 +17,8 @@ import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime"
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
 import { ConcentrationSettings } from "@/types/student-display-settings";
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
+import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 
 import {
     ArrowsOut,
@@ -61,6 +63,10 @@ interface CustomVideoPlayerProps {
 const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [], concentrationSettings }, ref) => {
         const { activeItem } = useContentStore();
+        // Whether this user's role is allowed to download the video. Defaults to
+        // false (today's behavior — native download is suppressed).
+        const { canDownload } = useSlideDownloadPermission();
+        const allowVideoDownload = canDownload(SlideDownloadTypeKey.VIDEO);
         // Select only the addActivity function to avoid re-renders due to trackingData updates
         const addActivity = useTrackingStore((state) => state.addActivity);
         const activityId = useRef(uuidv4());
@@ -105,6 +111,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         // Question state
         const [currentQuestion, setCurrentQuestion] = useState<any>(null);
         const [showQuestion, setShowQuestion] = useState(false);
+        // High-water mark (ms) of the furthest position already scanned for
+        // questions, so faster playback or a forward jump can't skip one.
+        const lastQuestionCheckTimeRef = useRef(0);
         const [answeredQuestions, setAnsweredQuestions] = useState<
             Record<
                 string,
@@ -260,6 +269,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         // Reset answered questions when video changes
         useEffect(() => {
             setAnsweredQuestions({});
+            lastQuestionCheckTimeRef.current = 0;
         }, [videoUrl]);
 
         // Save answered question to storage
@@ -292,20 +302,37 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         const checkForQuestions = useCallback(() => {
             if (!questions || questions.length === 0 || !videoRef.current)
                 return;
+            if (showQuestion) return;
 
             const currentTimeMs = videoRef.current.currentTime * 1000;
+            const prevTimeMs = lastQuestionCheckTimeRef.current;
 
-            // Find a question that should be shown at the current time
-            const questionToShow = questions.find((q) => {
-                // Skip already answered questions
-                if (answeredQuestions[q.id]?.answered) return false;
+            // Advance the high-water mark; on a backward seek the crossing window
+            // is empty so nothing fires until playback passes it again.
+            lastQuestionCheckTimeRef.current = currentTimeMs;
+            if (currentTimeMs <= prevTimeMs) return;
 
-                // Check if we're within 500ms of the question time
-                const questionTime = q.question_time_in_millis;
-                return Math.abs(currentTimeMs - questionTime) < 500;
-            });
+            // Fire for any unanswered question crossed since the last check
+            // (prevTimeMs, currentTimeMs], earliest first. Range-based detection
+            // means fast playback or a forward jump can't skip over a question.
+            const questionToShow = questions
+                .filter((q) => {
+                    if (answeredQuestions[q.id]?.answered) return false;
+                    const questionTime = q.question_time_in_millis;
+                    return (
+                        questionTime > prevTimeMs && questionTime <= currentTimeMs
+                    );
+                })
+                .sort(
+                    (a, b) =>
+                        a.question_time_in_millis - b.question_time_in_millis
+                )[0];
 
-            if (questionToShow && !showQuestion) {
+            if (questionToShow) {
+                // Re-arm from this question's time so further questions skipped by
+                // the same jump surface one-by-one on resume.
+                lastQuestionCheckTimeRef.current =
+                    questionToShow.question_time_in_millis;
                 // Pause the video
                 videoRef.current.pause();
                 setIsPlayed(false);
@@ -1915,7 +1942,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             onPause={handleVideoPause}
                             playsInline
                             preload="auto"
-                            controlsList="nodownload"
+                            controlsList={allowVideoDownload ? undefined : "nodownload"}
                             crossOrigin="anonymous"
                         >
                             <source src={actualVideoUrl} type="video/mp4" />

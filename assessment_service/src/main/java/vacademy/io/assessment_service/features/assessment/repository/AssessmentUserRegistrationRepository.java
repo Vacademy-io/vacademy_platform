@@ -505,4 +505,34 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                                Pageable pageable);
 
     boolean existsByInstituteIdAndAssessmentIdAndUserId(String instituteId, String assessmentId, String userId);
+
+    // Fetch ALL completed attempts for an assessment across every registration
+    // source (batch, open registration, admin pre-registration).  Used by the
+    // result CSV export so the admin gets one unified file regardless of how
+    // each learner enrolled.
+    @Query(value = """
+            SELECT aur.id            AS registrationId,
+                   sa.id             AS attemptId,
+                   aur.participant_name AS studentName,
+                   aur.user_email    AS userEmail,
+                   sa.start_time     AS attemptDate,
+                   sa.submit_time    AS endTime,
+                   sa.total_time_in_seconds AS duration,
+                   sa.result_marks   AS score,
+                   aur.user_id       AS userId,
+                   aur.source_id     AS batchId,
+                   sa.report_release_status     AS reportReleaseResultStatus,
+                   sa.report_last_release_date  AS lastReportReleaseDate,
+                   sa.result_status             AS evaluationStatus
+            FROM assessment_user_registration aur
+            JOIN student_attempt sa ON sa.registration_id = aur.id
+            WHERE aur.assessment_id = :assessmentId
+              AND aur.institute_id  = :instituteId
+              AND aur.status NOT IN ('DELETED')
+              AND sa.status         = 'ENDED'
+            ORDER BY sa.result_marks DESC NULLS LAST
+            """, nativeQuery = true)
+    List<ParticipantsDetailsDto> findAllEndedParticipantsForResultExport(
+            @Param("assessmentId") String assessmentId,
+            @Param("instituteId") String instituteId);
 }

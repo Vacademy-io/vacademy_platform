@@ -308,6 +308,36 @@ export const handleGetSubmissionsExportCSV = async (
     return response?.data;
 };
 
+// Export ALL participants (batch + open registration) as a result CSV.
+// Sends registration_source: '' so the backend returns every submission
+// regardless of how the learner enrolled. Backend is expected to return
+// columns: Name, Email, Marks Obtained, Total Marks, Percentage, Rank,
+// Duration, Attempt Date.
+export const handleExportResultCSV = async (
+    instituteId: string | undefined,
+    assessmentId: string,
+    assessmentType: string
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GET_EXPORT_CSV_URL_SUBMISSIONS_LIST,
+        params: {
+            instituteId,
+            assessmentId,
+        },
+        data: {
+            name: '',
+            assessment_type: assessmentType,
+            attempt_type: ['ENDED'],
+            registration_source: '', // empty = all sources (batch + open)
+            batches: [],
+            status: ['ACTIVE'],
+            sort_columns: {},
+        },
+    });
+    return response?.data;
+};
+
 export const handleGetOverviewData = ({
     assessmentId,
     instituteId,

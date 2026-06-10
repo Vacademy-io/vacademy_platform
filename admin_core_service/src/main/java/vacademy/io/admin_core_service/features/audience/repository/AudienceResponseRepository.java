@@ -111,6 +111,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
+                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
+                              -- caller + everyone reporting up to them through parent_user_id
+                              -- chains in the leads-team subtree.
+                              -- Unassigned leads (no counsellor on either linked_users or
+                              -- user_lead_profile) stay visible to everyone — the "pool" of
+                              -- leads anyone in scope can pick up.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
@@ -249,6 +259,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
+                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
+                              -- caller + everyone reporting up to them through parent_user_id
+                              -- chains in the leads-team subtree.
+                              -- Unassigned leads (no counsellor on either linked_users or
+                              -- user_lead_profile) stay visible to everyone — the "pool" of
+                              -- leads anyone in scope can pick up.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
@@ -355,6 +375,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("maxLeadScore") Integer maxLeadScore,
                         @Param("leadTier") String leadTier,
                         @Param("assignedCounselorId") String assignedCounselorId,
+                        @Param("assignedCounselorIdsCsv") String assignedCounselorIdsCsv,
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldFiltersJson") String customFieldFiltersJson,
@@ -418,6 +439,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
+                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
+                              -- caller + everyone reporting up to them through parent_user_id
+                              -- chains inside the leads-team subtree. ANDed with the single-id
+                              -- narrow above so a manager can still drill into one report.
+                              -- Unassigned leads (no counsellor on either linked_users or
+                              -- user_lead_profile) stay visible to everyone — anyone in
+                              -- scope can pick them up.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
@@ -526,6 +558,17 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
+                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
+                              -- caller + everyone reporting up to them through parent_user_id
+                              -- chains inside the leads-team subtree. ANDed with the single-id
+                              -- narrow above so a manager can still drill into one report.
+                              -- Unassigned leads (no counsellor on either linked_users or
+                              -- user_lead_profile) stay visible to everyone — anyone in
+                              -- scope can pick them up.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
@@ -611,6 +654,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("searchUserIdsCsv") String searchUserIdsCsv,
                         @Param("leadTier") String leadTier,
                         @Param("assignedCounselorId") String assignedCounselorId,
+                        @Param("assignedCounselorIdsCsv") String assignedCounselorIdsCsv,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("slaFilter") String slaFilter,

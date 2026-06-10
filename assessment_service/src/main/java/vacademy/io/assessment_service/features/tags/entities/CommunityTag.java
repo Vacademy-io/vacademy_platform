@@ -19,8 +19,11 @@ public class CommunityTag {
     @Column(name = "tag_id")
     private String tagId;
 
-    @Column(name = "tag_name", unique = true, nullable = false)
+    @Column(name = "tag_name", nullable = false)
     private String tagName;
+
+    @Column(name = "institute_id")
+    private String instituteId;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

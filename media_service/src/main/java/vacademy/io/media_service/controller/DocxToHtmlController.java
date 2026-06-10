@@ -226,6 +226,45 @@ public class DocxToHtmlController {
         }
     }
 
+    // Regular question marker: "(1.)" or "1.)" — leading parenthesis optional.
+    private static final Pattern REGULAR_QUESTION_PATTERN = Pattern.compile("^\\s*\\(?\\d+\\.\\)\\s?.*");
+    // Option marker: "(a.)", "(A.)", "(a)" or "(A)" — single letter, dot optional, any case.
+    private static final Pattern OPTION_LINE_PATTERN = Pattern.compile("^\\s*\\([a-zA-Z]\\.?\\)\\s?.*");
+    // Tag marker: "Tag:" or "Tags:" (case-insensitive).
+    private static final Pattern TAG_LINE_PATTERN = Pattern.compile("(?i)^\\s*tags?:.*");
+
+    private boolean isRegularQuestionLine(String text) {
+        return REGULAR_QUESTION_PATTERN.matcher(text).matches();
+    }
+
+    private boolean isOptionLine(String text) {
+        return OPTION_LINE_PATTERN.matcher(text).matches();
+    }
+
+    private boolean isTagLine(String text) {
+        return TAG_LINE_PATTERN.matcher(text).matches();
+    }
+
+    // Parse a "Tag:/Tags: a, b, c" line into the question's subjectTags (deduped, case-sensitive values).
+    private void addQuestionTags(QuestionDTO question, String lineText) {
+        String content = lineText.replaceFirst("(?i)^\\s*tags?:\\s*", "").trim();
+        for (String tag : content.split(",")) {
+            String trimmed = tag.trim();
+            if (!trimmed.isEmpty() && !question.getSubjectTags().contains(trimmed)) {
+                question.getSubjectTags().add(trimmed);
+            }
+        }
+    }
+
+    // Consume consecutive tag lines after position i; tags can appear before options or after the explanation.
+    private int consumeTagLines(Elements paragraphs, int i, QuestionDTO question) {
+        while (i + 1 < paragraphs.size() && isTagLine(paragraphs.get(i + 1).text().trim())) {
+            i++;
+            addQuestionTags(question, paragraphs.get(i).text().trim());
+        }
+        return i;
+    }
+
     public List<QuestionDTO> extractQuestions(String htmlContent, String questionIdentifier, String optionIdentifier,
             String answerIdentifier, String explanationIdentifier) {
 
@@ -234,7 +273,7 @@ public class DocxToHtmlController {
 
         List<QuestionDTO> questions = new ArrayList<>();
 
-        String questionUpdateRegex = "\\(\\d+\\.\\)";
+        String questionUpdateRegex = "\\(?\\d+\\.\\)"; // strips "(1.)" or "1.)"
         String comprehensionQuestionUpdateRegex = "\\(C\\d+\\.\\)";
         String subQuestionUpdateRegex = "\\(\\d+\\sC\\d+\\.\\)";
 
@@ -243,7 +282,7 @@ public class DocxToHtmlController {
         String subQuestionRegexWithSpace = "^\\s*\\(\\d+\\sC\\d+\\.\\)\\s?.*"; // (1 C1.)
         String subQuestionRegex = "^\\s*\\(\\d+C\\d+\\.\\)\\s?.*"; // (1C1.)
         String optionRegex = "^\\s*\\([a-zA-Z]\\.\\)\\s?.*";
-        String optionUpdateRegex = "\\([a-zA-Z]\\.\\)";
+        String optionUpdateRegex = "\\([a-zA-Z]\\.?\\)"; // strips "(a.)" or "(A)"
         String ansRegex = "Ans:";
         String explanationRegex = "Exp:";
 
@@ -292,6 +331,7 @@ public class DocxToHtmlController {
                 }
                 // Handle multi-line questions
                 while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("(a.)")
+                        && !isTagLine(paragraphs.get(i + 1).text().trim())
                         && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
                     i++;
                     Element multiLineParagraph = paragraphs.get(i);
@@ -326,6 +366,9 @@ public class DocxToHtmlController {
                     continue; // Moves to the next iteration of the 'for' loop
                 }
 
+                // Tags may sit right after the stem, before options.
+                i = consumeTagLines(paragraphs, i, question);
+
                 // Extract options
                 while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("Ans:")
                         && !paragraphs.get(i + 1).text().startsWith("Exp:")
@@ -339,6 +382,8 @@ public class DocxToHtmlController {
                                 .add(new OptionDTO(String.valueOf(question.getOptions().size()),
                                         new AssessmentRichTextDataDTO(null, "HTML",
                                                 cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
+                    } else if (isTagLine(optionParagraph.text().trim())) {
+                        addQuestionTags(question, optionParagraph.text().trim());
                     }
                 }
 
@@ -396,6 +441,9 @@ public class DocxToHtmlController {
                     }
                 }
 
+                // Tags may also sit between the answer and the explanation.
+                i = consumeTagLines(paragraphs, i, question);
+
                 // Extract explanation
                 if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Exp:")) {
                     i++;
@@ -403,8 +451,10 @@ public class DocxToHtmlController {
                     String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
                     question.setExplanationText(
                             new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(filteredText, explanationRegex)));
-                    while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(")
-                            && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
+                    while (i + 1 < paragraphs.size()
+                            && !isTagLine(paragraphs.get(i + 1).text().trim())
+                            && !(paragraphs.get(i + 1).text().startsWith("(")
+                                    && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
                         i++;
                         String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "")
                                 .trim();
@@ -412,68 +462,50 @@ public class DocxToHtmlController {
                         question.appendExplanationHtml(cleanHtmlTags(filteredInternalText, explanationRegex));
                     }
                 }
+
+                // Tags at the end, after the explanation.
+                i = consumeTagLines(paragraphs, i, question);
             }
 
-            // Detect questions using "startsWith" for "(number.)" format
-            if (text.matches(questionRegex)) {
+            // Detect questions: "(1.)" or "1.)" (leading parenthesis optional)
+            if (isRegularQuestionLine(text)) {
 
                 int questionNumber = extractQuestionNumber(text);
                 question = new QuestionDTO(String.valueOf(questionNumber));
-                // Regex pattern to match
                 question.setSectionId("1");
                 question.setText(new AssessmentRichTextDataDTO(null, "HTML",
                         cleanHtmlTags(paragraph.html(), questionUpdateRegex)));
                 question.setAccessLevel("PRIVATE");
                 question.setQuestionResponseType(QuestionResponseType.OPTION.name());
-                // Handle multi-line questions
-                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("(a.)")
-                        && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
-                    i++;
-                    Element multiLineParagraph = paragraphs.get(i);
-                    String multiLineText = multiLineParagraph.text().trim();
 
-                    // Check for unexpected start patterns in multi-line questions
-                    if (multiLineText.matches(questionRegex)) {
-                        question.getErrors().add("Unexpected new question comes" + multiLineText);
-                        isValidQuestion = false;
-                        break;
-                    } else if (multiLineText.startsWith("(b.)") || multiLineText.startsWith("(c.)")
-                            || multiLineText.startsWith("(d.)")) {
-                        question.getErrors().add("Unexpected new question comes" + multiLineText);
-                        isValidQuestion = false;
-                        break;
-                    } else if (multiLineText.startsWith("Ans:")) {
-                        question.getErrors().add("Unexpected answer format in multi-line question:" + multiLineText);
-                        isValidQuestion = false;
-                        break;
-                    } else if (multiLineText.startsWith("Exp:")) {
-                        question.getErrors()
-                                .add("Unexpected explanation format in multi-line question:" + multiLineText);
-                        isValidQuestion = false;
+                // Multi-line question stem: append until any known marker (option/tag/answer/explanation/next question).
+                while (i + 1 < paragraphs.size()) {
+                    String nextText = paragraphs.get(i + 1).text().trim();
+                    if (isOptionLine(nextText) || isTagLine(nextText) || nextText.startsWith("Ans:")
+                            || nextText.startsWith("Exp:") || isRegularQuestionLine(nextText)) {
                         break;
                     }
-
-                    question.appendQuestionHtml(cleanHtmlTags(multiLineParagraph.outerHtml(), questionUpdateRegex));
-                }
-
-                if (!isValidQuestion) {
-                    // Skip storing the invalid question and move to the next iteration
-                    continue; // Moves to the next iteration of the 'for' loop
-                }
-
-                // Extract options
-                while (i + 1 < paragraphs.size() && !paragraphs.get(i + 1).text().startsWith("Ans:")
-                        && !paragraphs.get(i + 1).text().startsWith("Exp:")
-                        && !paragraphs.get(i + 1).text().matches("^\\(\\d+\\.\\)\\s?.*")) {
                     i++;
-                    Element optionParagraph = paragraphs.get(i);
+                    question.appendQuestionHtml(cleanHtmlTags(paragraphs.get(i).outerHtml(), questionUpdateRegex));
+                }
 
-                    if (optionParagraph.text().startsWith("(a.)") || optionParagraph.text().startsWith("(b.)")
-                            || optionParagraph.text().startsWith("(c.)") || optionParagraph.text().startsWith("(d.)")) {
+                // Tags may sit right after the stem, before options (e.g. "Tag: Graph Theory").
+                i = consumeTagLines(paragraphs, i, question);
+
+                // Extract options (accepts "(a.)" and "(A)" styles); capture any stray tag line too.
+                while (i + 1 < paragraphs.size()) {
+                    String nextText = paragraphs.get(i + 1).text().trim();
+                    if (nextText.startsWith("Ans:") || nextText.startsWith("Exp:") || isRegularQuestionLine(nextText)) {
+                        break;
+                    }
+                    i++;
+                    if (isOptionLine(nextText)) {
                         question.getOptions()
                                 .add(new OptionDTO(String.valueOf(question.getOptions().size()),
                                         new AssessmentRichTextDataDTO(null, "HTML",
-                                                cleanHtmlTags(optionParagraph.html(), optionUpdateRegex))));
+                                                cleanHtmlTags(paragraphs.get(i).html(), optionUpdateRegex))));
+                    } else if (isTagLine(nextText)) {
+                        addQuestionTags(question, nextText);
                     }
                 }
 
@@ -491,9 +523,10 @@ public class DocxToHtmlController {
                                 && !paragraphs.get(i + 1).text().matches("Exp:")
                                 && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace)
                                 && !paragraphs.get(i + 1).text().matches(subQuestionRegex)
-                                && !paragraphs.get(i + 1).text().matches(questionRegex)
+                                && !isRegularQuestionLine(paragraphs.get(i + 1).text().trim())
                                 && !paragraphs.get(i + 1).text().matches(explanationRegex)
                                 && !paragraphs.get(i + 1).text().matches(comprehensionQuestionRegex)
+                                && !isTagLine(paragraphs.get(i + 1).text().trim())
                                 && !paragraphs.get(i + 1).text().startsWith("(a.)")
                                 && !paragraphs.get(i + 1).text().startsWith("Exp:")
                                 && !paragraphs.get(i + 1).text().startsWith("Ans:")) {
@@ -540,15 +573,23 @@ public class DocxToHtmlController {
                     }
                 }
 
+                // Tags may also sit between the answer and the explanation.
+                i = consumeTagLines(paragraphs, i, question);
+
                 // Extract explanation
                 if (i + 1 < paragraphs.size() && paragraphs.get(i + 1).text().startsWith("Exp:")) {
                     i++;
 
-                    String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "").trim();
+                    String filteredText = paragraphs.get(i).html().replaceAll(explanationRegex, "")
+                            .replaceFirst("^(?:\\s|&nbsp;|\\u00A0)*", "").trim();
                     question.setExplanationText(
                             new AssessmentRichTextDataDTO(null, "HTML", cleanHtmlTags(filteredText, explanationRegex)));
-                    while (i + 1 < paragraphs.size() && !(paragraphs.get(i + 1).text().startsWith("(")
-                            && Character.isDigit(paragraphs.get(i + 1).text().charAt(1)))) {
+                    while (i + 1 < paragraphs.size()
+                            && !isTagLine(paragraphs.get(i + 1).text().trim())
+                            && !isRegularQuestionLine(paragraphs.get(i + 1).text().trim())
+                            && !paragraphs.get(i + 1).text().matches(comprehensionQuestionRegex)
+                            && !paragraphs.get(i + 1).text().matches(subQuestionRegex)
+                            && !paragraphs.get(i + 1).text().matches(subQuestionRegexWithSpace)) {
                         i++;
                         String filteredInternalText = paragraphs.get(i).outerHtml().replaceAll(explanationRegex, "")
                                 .trim();
@@ -556,6 +597,9 @@ public class DocxToHtmlController {
                         question.appendExplanationHtml(cleanHtmlTags(filteredInternalText, explanationRegex));
                     }
                 }
+
+                // Tags at the end, after the explanation.
+                i = consumeTagLines(paragraphs, i, question);
             }
 
             if (question != null)

@@ -38,6 +38,7 @@ public class QuestionDTO {
     private String optionsJson;
     private List<String> aiTags = new ArrayList<>();
     private List<String> aiTopicsIds = new ArrayList<>();
+    private List<String> subjectTags = new ArrayList<>();
     private String aiDifficultyLevel = "MEDIUM";
     private String problemType;
     private Map<String, Object> parsedEvaluationObject;

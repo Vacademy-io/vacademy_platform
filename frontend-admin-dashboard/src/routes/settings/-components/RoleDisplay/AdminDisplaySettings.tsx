@@ -44,6 +44,8 @@ import {
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
+import SlideDownloadCard from './SlideDownloadCard';
+import SlideContentProtectionCard from './SlideContentProtectionCard';
 import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
@@ -2144,6 +2146,11 @@ export default function AdminDisplaySettings() {
                 </CardContent>
             </Card>
 
+            {/* The workbench routes (/counsellors and /sales-dashboard) now live
+                as sub-tabs under the Leads tab in the sidebar tree above —
+                toggled from there alongside Lead List / Recent Leads /
+                Follow-ups. Off by default per SUB_ITEMS_HIDDEN_BY_DEFAULT. */}
+
             <Card>
                 <CardHeader>
                     <CardTitle>Post-login Redirect</CardTitle>
@@ -2166,6 +2173,10 @@ export default function AdminDisplaySettings() {
             </Card>
 
             <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
+
+            <SlideDownloadCard roleKey="ADMIN" roleLabel="admins" />
+
+            <SlideContentProtectionCard roleKey="ADMIN" roleLabel="admins" />
             </section>
             </SettingsSectionsLayout>
 

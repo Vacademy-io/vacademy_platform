@@ -20,7 +20,7 @@ import {
   CalendarCheck,
   Clock,
   MapPin,
-  Video,
+  VideoCamera,
   Timer,
   CheckCircle,
   XCircle,

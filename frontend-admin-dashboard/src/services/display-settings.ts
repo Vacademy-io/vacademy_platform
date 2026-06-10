@@ -566,15 +566,33 @@ function mergeDisplayWithDefaults(
             true,
     };
 
-    // Team-tab role visibility. Preserve any explicitly-set keys; consumers
-    // treat missing keys as visible (true). No defaults are materialized here
-    // because the role list is dynamic (custom roles), so we can't know all
-    // valid keys at merge time.
+    // Team-tab role visibility + Org Chart tab visibility. Preserve any
+    // explicitly-set keys; consumers treat missing visibleRoles keys as
+    // visible (true). orgChartTabVisible defaults to undefined → treated as
+    // false at read sites (the tab is opt-in per institute). incoming wins
+    // over defaults when present, so a saved value survives this merge.
     merged.teamManagement = {
         visibleRoles: {
             ...(defaults.teamManagement?.visibleRoles || {}),
             ...(incoming?.teamManagement?.visibleRoles || {}),
         },
+        orgChartTabVisible:
+            incoming?.teamManagement?.orgChartTabVisible
+            ?? defaults.teamManagement?.orgChartTabVisible,
+    };
+
+    // Workbench gates (counsellors page, sales dashboard). Same pattern as
+    // orgChartTabVisible — both default to undefined (read as false) so the
+    // features stay hidden until an admin opts in. We materialize the
+    // object even when both flags are absent so consumers can safely chain
+    // settings.workbench?.counsellorsPageVisible without an extra guard.
+    merged.workbench = {
+        counsellorsPageVisible:
+            incoming?.workbench?.counsellorsPageVisible
+            ?? defaults.workbench?.counsellorsPageVisible,
+        salesDashboardVisible:
+            incoming?.workbench?.salesDashboardVisible
+            ?? defaults.workbench?.salesDashboardVisible,
     };
 
     // Sidebar Categories

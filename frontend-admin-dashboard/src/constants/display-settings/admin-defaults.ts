@@ -11,12 +11,17 @@ const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
     'suborg-teams',
     'manage-institute-suborgs',
     'notification-hub',
+    // Workbench routes — gated until the institute has set up a leads team
+    // and counsellor rating strategy. Admins flip them on per-institute from
+    // Display Settings → CRM → Leads.
+    'counsellors',
+    'sales-dashboard',
 ]);
 
 // Tabs that ship hidden until an institute admin opts them in via the
 // Display Settings UI. Distinct from admissions/fee-management which are
 // shipped hidden for historical sub-org reasons.
-const OPT_IN_TAB_IDS = new Set<string>(['admin-activity-logs']);
+const OPT_IN_TAB_IDS = new Set<string>(['admin-activity-logs', 'ai-copilot-tab']);
 
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({

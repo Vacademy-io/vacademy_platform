@@ -19,6 +19,7 @@ import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-stud
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
 import { Route as SignupIndexRouteImport } from "./routes/signup/index"
 import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
+import { Route as SalesDashboardIndexRouteImport } from "./routes/sales-dashboard/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
@@ -37,6 +38,7 @@ import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
 import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
+import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index"
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
@@ -137,6 +139,7 @@ import { Route as VimEditVideoIdIndexRouteImport } from "./routes/vim/edit/$vide
 import { Route as VideoApiStudioEditVideoIdIndexRouteImport } from "./routes/video-api-studio/edit/$videoId/index"
 import { Route as StudyLibraryVoltAddIndexRouteImport } from "./routes/study-library/volt/add/index"
 import { Route as StudyLibraryLiveSessionScheduleIndexRouteImport } from "./routes/study-library/live-session/schedule/index"
+import { Route as StudyLibraryLiveSessionFeedbackIndexRouteImport } from "./routes/study-library/live-session/feedback/index"
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from "./routes/study-library/courses/course-details/index"
 import { Route as StudyLibraryAiCopilotCourseOutlineIndexRouteImport } from "./routes/study-library/ai-copilot/course-outline/index"
 import { Route as PlanningPlanningCreateIndexRouteImport } from "./routes/planning/planning/create/index"
@@ -252,6 +255,13 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/settings/index.lazy").then((d) => d.Route),
+)
+const SalesDashboardIndexRoute = SalesDashboardIndexRouteImport.update({
+  id: "/sales-dashboard/",
+  path: "/sales-dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/sales-dashboard/index.lazy").then((d) => d.Route),
 )
 const PlanningIndexRoute = PlanningIndexRouteImport.update({
   id: "/planning/",
@@ -374,6 +384,13 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/dashboard/index.lazy").then((d) => d.Route),
+)
+const CounsellorsIndexRoute = CounsellorsIndexRouteImport.update({
+  id: "/counsellors/",
+  path: "/counsellors/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/counsellors/index.lazy").then((d) => d.Route),
 )
 const ConnectorCenterDetailsIndexRoute =
   ConnectorCenterDetailsIndexRouteImport.update({
@@ -1159,6 +1176,12 @@ const StudyLibraryLiveSessionScheduleIndexRoute =
     path: "/study-library/live-session/schedule/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const StudyLibraryLiveSessionFeedbackIndexRoute =
+  StudyLibraryLiveSessionFeedbackIndexRouteImport.update({
+    id: "/study-library/live-session/feedback/",
+    path: "/study-library/live-session/feedback/",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryCoursesCourseDetailsIndexRoute =
   StudyLibraryCoursesCourseDetailsIndexRouteImport.update({
     id: "/study-library/courses/course-details/",
@@ -1560,6 +1583,7 @@ export interface FileRoutesByFullPath {
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
@@ -1578,6 +1602,7 @@ export interface FileRoutesByFullPath {
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/planning/": typeof PlanningIndexRoute
+  "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
@@ -1688,6 +1713,7 @@ export interface FileRoutesByFullPath {
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback/": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -1735,6 +1761,7 @@ export interface FileRoutesByTo {
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors": typeof CounsellorsIndexRoute
   "/dashboard": typeof DashboardIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
@@ -1753,6 +1780,7 @@ export interface FileRoutesByTo {
   "/membership-expiry": typeof MembershipExpiryIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
   "/planning": typeof PlanningIndexRoute
+  "/sales-dashboard": typeof SalesDashboardIndexRoute
   "/settings": typeof SettingsIndexRoute
   "/signup": typeof SignupIndexRoute
   "/study-library": typeof StudyLibraryIndexRoute
@@ -1863,6 +1891,7 @@ export interface FileRoutesByTo {
   "/planning/planning/create": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -1912,6 +1941,7 @@ export interface FileRoutesById {
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
@@ -1930,6 +1960,7 @@ export interface FileRoutesById {
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/planning/": typeof PlanningIndexRoute
+  "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
@@ -2040,6 +2071,7 @@ export interface FileRoutesById {
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback/": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -2090,6 +2122,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
+    | "/counsellors/"
     | "/dashboard/"
     | "/evaluation/"
     | "/evaluator-ai/"
@@ -2108,6 +2141,7 @@ export interface FileRouteTypes {
     | "/membership-expiry/"
     | "/membership-stats/"
     | "/planning/"
+    | "/sales-dashboard/"
     | "/settings/"
     | "/signup/"
     | "/study-library/"
@@ -2218,6 +2252,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
     | "/study-library/courses/course-details/"
+    | "/study-library/live-session/feedback/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
@@ -2265,6 +2300,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics"
     | "/community"
     | "/connector-center-details"
+    | "/counsellors"
     | "/dashboard"
     | "/evaluation"
     | "/evaluator-ai"
@@ -2283,6 +2319,7 @@ export interface FileRouteTypes {
     | "/membership-expiry"
     | "/membership-stats"
     | "/planning"
+    | "/sales-dashboard"
     | "/settings"
     | "/signup"
     | "/study-library"
@@ -2393,6 +2430,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create"
     | "/study-library/ai-copilot/course-outline"
     | "/study-library/courses/course-details"
+    | "/study-library/live-session/feedback"
     | "/study-library/live-session/schedule"
     | "/study-library/volt/add"
     | "/video-api-studio/edit/$videoId"
@@ -2441,6 +2479,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
+    | "/counsellors/"
     | "/dashboard/"
     | "/evaluation/"
     | "/evaluator-ai/"
@@ -2459,6 +2498,7 @@ export interface FileRouteTypes {
     | "/membership-expiry/"
     | "/membership-stats/"
     | "/planning/"
+    | "/sales-dashboard/"
     | "/settings/"
     | "/signup/"
     | "/study-library/"
@@ -2569,6 +2609,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
     | "/study-library/courses/course-details/"
+    | "/study-library/live-session/feedback/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
@@ -2618,6 +2659,7 @@ export interface RootRouteChildren {
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
+  CounsellorsIndexRoute: typeof CounsellorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
@@ -2635,6 +2677,7 @@ export interface RootRouteChildren {
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
+  SalesDashboardIndexRoute: typeof SalesDashboardIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
@@ -2745,6 +2788,7 @@ export interface RootRouteChildren {
   PlanningPlanningCreateIndexRoute: typeof PlanningPlanningCreateIndexRoute
   StudyLibraryAiCopilotCourseOutlineIndexRoute: typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  StudyLibraryLiveSessionFeedbackIndexRoute: typeof StudyLibraryLiveSessionFeedbackIndexRoute
   StudyLibraryLiveSessionScheduleIndexRoute: typeof StudyLibraryLiveSessionScheduleIndexRoute
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
   VideoApiStudioEditVideoIdIndexRoute: typeof VideoApiStudioEditVideoIdIndexRoute
@@ -2858,6 +2902,13 @@ declare module "@tanstack/react-router" {
       path: "/settings"
       fullPath: "/settings/"
       preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/sales-dashboard/": {
+      id: "/sales-dashboard/"
+      path: "/sales-dashboard"
+      fullPath: "/sales-dashboard/"
+      preLoaderRoute: typeof SalesDashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/planning/": {
@@ -2984,6 +3035,13 @@ declare module "@tanstack/react-router" {
       path: "/dashboard"
       fullPath: "/dashboard/"
       preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/counsellors/": {
+      id: "/counsellors/"
+      path: "/counsellors"
+      fullPath: "/counsellors/"
+      preLoaderRoute: typeof CounsellorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/connector-center-details/": {
@@ -3686,6 +3744,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionScheduleIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/study-library/live-session/feedback/": {
+      id: "/study-library/live-session/feedback/"
+      path: "/study-library/live-session/feedback"
+      fullPath: "/study-library/live-session/feedback/"
+      preLoaderRoute: typeof StudyLibraryLiveSessionFeedbackIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/courses/course-details/": {
       id: "/study-library/courses/course-details/"
       path: "/study-library/courses/course-details"
@@ -4028,6 +4093,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,
+  CounsellorsIndexRoute: CounsellorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
@@ -4045,6 +4111,7 @@ const rootRouteChildren: RootRouteChildren = {
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
+  SalesDashboardIndexRoute: SalesDashboardIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
@@ -4183,6 +4250,8 @@ const rootRouteChildren: RootRouteChildren = {
     StudyLibraryAiCopilotCourseOutlineIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:
     StudyLibraryCoursesCourseDetailsIndexRoute,
+  StudyLibraryLiveSessionFeedbackIndexRoute:
+    StudyLibraryLiveSessionFeedbackIndexRoute,
   StudyLibraryLiveSessionScheduleIndexRoute:
     StudyLibraryLiveSessionScheduleIndexRoute,
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,

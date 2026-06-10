@@ -120,7 +120,7 @@ Score **storage** is the `counsellor_rating` table (**V328** — one row per cou
 ## 7. ⚠️ Known config gaps
 
 1. **Rating-strategy fields don't persist via the workbench config endpoint.** `PUT /v1/counsellor-workbench/config` calls only `setLeadsTeam(instituteId, leadsTeamId)` ([controller line 42–44](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/counsellor_workbench/controller/)); `LeadWorkbenchSettingService.upsertRatingStrategy` exists but is not wired to any endpoint. The rating settings page can read config and trigger recomputes, but strategy edits via this path are silently dropped. (Workbench doc §11.6 #3.)
-2. **Scoring weights are decorative.** The Config tab saves `scoringWeights` / `recencyDecayDays` into `LEAD_SETTING`, but `LeadScoringService` uses hardcoded `DEFAULT_*_WEIGHT` constants (25/30/25/20) and a fixed 30-day decay — the comment says "can be overridden per institute via settingJson" but no code reads it ([LeadScoringService.java:45-49](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadScoringService.java#L45)).
+2. ~~**Scoring weights are decorative.**~~ **Fixed 2026-06-10:** `LeadScoringService` now reads per-institute `scoringWeights` + `recencyDecayDays` via [`LeadScoringSettingService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadScoringSettingService.java) (5-min Caffeine cache; invalid configs — negative weights or sum ≠ 100 — fall back to the 25/30/25/20 defaults with a warn). A weight change takes effect within 5 minutes on the *next* score calculation per lead; use the per-campaign "Recalculate scores" action to apply it immediately.
 3. **`monthly_target` on pool members** is settable in the UI but never read at runtime ([assignment doc §2](LEAD_ASSIGNMENT_AND_COUNSELOR_POOLS.md)).
 
 ---
@@ -142,7 +142,7 @@ Defined in [`constants/display-settings/admin-defaults.ts`](../../frontend-admin
 | Setting | Where edited | Where stored | Consumed by |
 |---|---|---|---|
 | CRM on/off (`enabled`) | Lead Settings → Config | LEAD_SETTING JSON | every lead UI surface |
-| Scoring weights / decay | Lead Settings → Config | LEAD_SETTING JSON | ⚠️ nothing (gap #2) |
+| Scoring weights / decay | Lead Settings → Config | LEAD_SETTING JSON | `LeadScoringService` (via `LeadScoringSettingService`, 5-min cache) |
 | Score-column visibility | Lead Settings → Config | LEAD_SETTING JSON | LeadTable / contacts / students tables |
 | Pipeline statuses | Lead Statuses manager | `lead_status` table | status chips, funnel, workflows |
 | TAT / follow-up SLA | Lead SLA settings | `lead_sla_config` + 2 tables | `LeadAutomationScheduler`, SLA filters/badges |

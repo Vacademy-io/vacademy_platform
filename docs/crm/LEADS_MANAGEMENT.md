@@ -76,12 +76,14 @@ Stored on `audience_response.dedupe_key`, scoped per `audience_id`. A duplicate 
 
 ### 3.1 Formula
 
-| Factor | Weight | How it's computed |
+| Factor | Default weight | How it's computed |
 |---|---|---|
 | Source quality | 25 | Lookup by `source_type`: GOOGLE_ADS=90, LINKEDIN_ADS=85, WALK_IN=85, FACEBOOK_ADS=80, INSTAGRAM_ADS=75, WEBSITE=70, MANUAL=40 |
 | Profile completeness | 30 | Filled fields ÷ expected fields (enquiry + custom fields), scaled 0–100 |
-| Recency | 25 | Linear decay from 100 (today) to 0 over 30 days |
+| Recency | 25 | Linear decay from 100 (today) to 0 over the configured decay window (default 30 days) |
 | Engagement | 20 | Timeline-event count (notes/calls/logins), capped at 100 |
+
+Weights and the recency decay window are per-institute config (`LEAD_SETTING.data.scoringWeights` + `recencyDecayDays`, edited in Settings → Lead Settings → Config), read through [`LeadScoringSettingService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadScoringSettingService.java) with a 5-minute cache. Invalid configs (negative weight, sum ≠ 100, decay outside 1–365) fall back to the defaults above.
 
 ```
 baseScore = (src×25 + comp×30 + rec×25 + eng×20) / 100
@@ -92,8 +94,6 @@ rawScore  = min(100, baseScore + initial_score)
 - Factor breakdown is persisted in `lead_score.scoring_factors_json` (each factor's score, weight, contribution) — this is what the score-detail popover renders.
 - **Manual override**: `PUT /v1/audience/lead/{responseId}/score/manual` sets `is_manual_override = true`, which makes `calculateAndSaveScore` a no-op for that lead from then on (V268/V271).
 - Percentile rank (`lead_score.percentile_rank`) is batch-recomputed every 15 minutes per campaign.
-
-> ⚠️ **Configured weights are not actually used.** The Settings UI edits `LEAD_SETTING.data.scoringWeights` (and `recencyDecayDays`), but `LeadScoringService` only reads its hardcoded `DEFAULT_*_WEIGHT` constants ([lines 45–49](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadScoringService.java#L45-L49) — the comment says "can be overridden per institute" but no code does). Changing weights in Settings today changes nothing. Track this with the other config gaps in [LEADS_SETTINGS.md §7](LEADS_SETTINGS.md).
 
 ### 3.2 Tiers
 

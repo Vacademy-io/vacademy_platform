@@ -112,7 +112,10 @@ const Students = ({
             return (response.data?.content || [])
                 .filter((inv: { tag?: string | null }) => {
                     const tag = (inv.tag ?? '').trim().toUpperCase();
-                    return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+                    // Hide only the bare SUB_ORG admin/scoped invites; the SUBORG_LEARNER
+                    // invite must be selectable so admins can filter enrolled learners by
+                    // it (which also drives the backend's invite-name column population).
+                    return tag !== 'SUB_ORG';
                 })
                 .map((inv: { id: string; name: string }) => ({
                     id: inv.id,

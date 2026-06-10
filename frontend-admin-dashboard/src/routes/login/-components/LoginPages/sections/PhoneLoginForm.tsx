@@ -205,8 +205,9 @@ export function PhoneLoginForm({
     });
 
     const onPhoneSubmit = (data: PhoneFormValues) => {
-        // Clean numeric phone for DB query
-        const cleanedPhone = data.phone.replace(/\D/g, "");
+        // Clean numeric phone for DB query (phone is validated as required by the
+        // form schema, but the type is optional — guard so the build type-checks).
+        const cleanedPhone = (data.phone ?? "").replace(/\D/g, "");
         setPhoneDial(cleanedPhone);
         const instituteId = domainRouting.instituteId || "";
         sendOtpMutation.mutate({ phone: cleanedPhone, instituteId });

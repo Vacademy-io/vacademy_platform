@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Phone, ArrowsClockwise, ArrowSquareOut } from '@phosphor-icons/react';
+import { Phone, ArrowsClockwise, ArrowSquareOut, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyPagination } from '@/components/design-system/pagination';
 import { fetchCounsellorLeads, type WorkbenchLead } from '../-services/counsellor-workbench-services';
+import { LeadTransferChain } from './LeadTransferChain';
 
 interface Props {
     instituteId: string;
@@ -23,7 +24,23 @@ export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }
     // Reset to first page whenever the drawer switches to a different
     // counsellor — otherwise opening person B inherits person A's page index.
     const [page, setPage] = useState(0);
-    useEffect(() => setPage(0), [counsellorUserId]);
+    // Expanded-row state keyed by lead_id so multiple rows can be open at
+    // once. Resets on counsellor switch so person B doesn't inherit person
+    // A's expansions.
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+    useEffect(() => {
+        setPage(0);
+        setExpanded(new Set());
+    }, [counsellorUserId]);
+
+    function toggleExpanded(leadId: string) {
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            if (next.has(leadId)) next.delete(leadId);
+            else next.add(leadId);
+            return next;
+        });
+    }
 
     // Per-counsellor endpoint — /me/leads only returns the caller's leads,
     // which makes the CSO / manager drawer look empty for everyone else.
@@ -59,6 +76,7 @@ export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }
                 <table className="w-full text-body">
                     <thead className="bg-neutral-50 text-caption uppercase tracking-wide text-neutral-500">
                         <tr>
+                            <th className="w-8 px-2 py-2" aria-label="Expand row" />
                             <th className="px-3 py-2 text-left">Lead</th>
                             <th className="px-3 py-2 text-left">Status</th>
                             <th className="px-3 py-2 text-left">Score</th>
@@ -68,53 +86,81 @@ export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }
                         </tr>
                     </thead>
                     <tbody>
-                        {leads.map((l) => (
-                            <tr key={l.lead_id} className="border-t border-neutral-100">
-                                <td className="px-3 py-2.5">
-                                    <div className="text-body font-medium text-neutral-900">
-                                        {l.lead_name ?? l.user_id.slice(0, 8)}
-                                    </div>
-                                    <div className="text-caption text-neutral-500">{l.lead_email}</div>
-                                </td>
-                                <td className="px-3 py-2.5 text-neutral-700">
-                                    {l.lead_status_label ?? l.conversion_status}
-                                </td>
-                                <td className="px-3 py-2.5">
-                                    <span className="rounded bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700">
-                                        {l.best_score ?? 0}
-                                    </span>
-                                </td>
-                                <td className="px-3 py-2.5 text-neutral-700">{l.campaign_name ?? '—'}</td>
-                                <td className="px-3 py-2.5 text-caption text-neutral-500">
-                                    {l.assigned_at ? new Date(l.assigned_at).toLocaleDateString() : '—'}
-                                </td>
-                                <td className="px-3 py-2.5">
-                                    <div className="flex justify-end gap-1">
-                                        <button
-                                            type="button"
-                                            className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
-                                            aria-label="Open lead"
-                                        >
-                                            <ArrowSquareOut size={16} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded p-1 text-success-600 hover:bg-success-50"
-                                            aria-label="Call"
-                                        >
-                                            <Phone size={16} />
-                                        </button>
-                                        <MyButton
-                                            buttonType="secondary"
-                                            scale="small"
-                                            onClick={() => onReassign(l)}
-                                        >
-                                            <ArrowsClockwise size={14} className="mr-1" /> Reassign
-                                        </MyButton>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
+                        {leads.map((l) => {
+                            const isOpen = expanded.has(l.lead_id);
+                            return (
+                                <Fragment key={l.lead_id}>
+                                    <tr className="border-t border-neutral-100">
+                                        <td className="px-2 py-2.5 align-top">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleExpanded(l.lead_id)}
+                                                className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                                                aria-expanded={isOpen}
+                                                aria-label={isOpen ? 'Hide transfer history' : 'Show transfer history'}
+                                                title="Transfer history"
+                                            >
+                                                {isOpen ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                                            </button>
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <div className="text-body font-medium text-neutral-900">
+                                                {l.lead_name ?? l.user_id.slice(0, 8)}
+                                            </div>
+                                            <div className="text-caption text-neutral-500">{l.lead_email}</div>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-neutral-700">
+                                            {l.lead_status_label ?? l.conversion_status}
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <span className="rounded bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700">
+                                                {l.best_score ?? 0}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-neutral-700">{l.campaign_name ?? '—'}</td>
+                                        <td className="px-3 py-2.5 text-caption text-neutral-500">
+                                            {l.assigned_at ? new Date(l.assigned_at).toLocaleDateString() : '—'}
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <div className="flex justify-end gap-1">
+                                                <button
+                                                    type="button"
+                                                    className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                                                    aria-label="Open lead"
+                                                >
+                                                    <ArrowSquareOut size={16} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="rounded p-1 text-success-600 hover:bg-success-50"
+                                                    aria-label="Call"
+                                                >
+                                                    <Phone size={16} />
+                                                </button>
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() => onReassign(l)}
+                                                >
+                                                    <ArrowsClockwise size={14} className="mr-1" /> Reassign
+                                                </MyButton>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {isOpen && (
+                                        <tr className="border-t border-neutral-100 bg-neutral-50/50">
+                                            <td />
+                                            <td colSpan={6} className="px-2 py-2">
+                                                <LeadTransferChain
+                                                    instituteId={instituteId}
+                                                    leadUserId={l.user_id}
+                                                />
+                                            </td>
+                                        </tr>
+                                    )}
+                                </Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

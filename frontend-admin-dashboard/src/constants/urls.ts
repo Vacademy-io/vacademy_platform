@@ -1059,6 +1059,14 @@ export const COUNSELLOR_WORKBENCH_ACTIVITY = (
     return `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/activity?${params.toString()}`;
 };
 
+/**
+ * Per-lead transfer chain. The path variable is the lead's USER_ID (same as
+ * WorkbenchLead.user_id), not the user_lead_profile.id — that's the id the
+ * timeline_event rows use as type_id.
+ */
+export const COUNSELLOR_WORKBENCH_LEAD_TRANSFERS = (instituteId: string, leadUserId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/leads/${leadUserId}/transfers?instituteId=${instituteId}`;
+
 // =============================================================================
 // Counsellor rating. Strategy config lives at /counsellor-workbench/config;
 // this block is for the per-counsellor score reads + the manual-override

@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Phone, ArrowsClockwise, ArrowSquareOut } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
+import { MyPagination } from '@/components/design-system/pagination';
 import { fetchCounsellorLeads, type WorkbenchLead } from '../-services/counsellor-workbench-services';
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
     onReassign: (lead: WorkbenchLead) => void;
 }
 
+const PAGE_SIZE = 20;
+
 /**
  * Tab body — list of leads currently assigned to the selected counsellor.
  * Reuses the workbench /me/leads endpoint with a filter on user when viewing
@@ -16,21 +20,32 @@ interface Props {
  * /me/leads return the same data.
  */
 export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }: Props) {
+    // Reset to first page whenever the drawer switches to a different
+    // counsellor — otherwise opening person B inherits person A's page index.
+    const [page, setPage] = useState(0);
+    useEffect(() => setPage(0), [counsellorUserId]);
+
     // Per-counsellor endpoint — /me/leads only returns the caller's leads,
     // which makes the CSO / manager drawer look empty for everyone else.
     // Status undefined = show everything currently assigned to them; the
     // count chip on the parent card uses the canonical "open" filter
     // separately, so the two surfaces serve different intents.
-    const { data: leads, isLoading } = useQuery({
-        queryKey: ['workbench-leads', instituteId, counsellorUserId],
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: ['workbench-leads', instituteId, counsellorUserId, page],
         enabled: !!instituteId && !!counsellorUserId,
-        queryFn: () => fetchCounsellorLeads(instituteId, counsellorUserId, undefined, 0, 50),
+        queryFn: () =>
+            fetchCounsellorLeads(instituteId, counsellorUserId, undefined, page, PAGE_SIZE),
+        placeholderData: (prev) => prev,
     });
+
+    const leads = data?.content ?? [];
+    const totalElements = data?.totalElements ?? 0;
+    const totalPages = Math.max(1, data?.totalPages ?? 1);
 
     if (isLoading) {
         return <div className="p-4 text-subtitle text-neutral-500">Loading leads…</div>;
     }
-    if (!leads || leads.length === 0) {
+    if (leads.length === 0 && page === 0) {
         return (
             <div className="rounded border border-dashed border-neutral-300 p-6 text-center text-subtitle text-neutral-500">
                 No open leads.
@@ -39,68 +54,84 @@ export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }
     }
 
     return (
-        <div className="overflow-auto rounded border border-neutral-200">
-            <table className="w-full text-body">
-                <thead className="bg-neutral-50 text-caption uppercase tracking-wide text-neutral-500">
-                    <tr>
-                        <th className="px-3 py-2 text-left">Lead</th>
-                        <th className="px-3 py-2 text-left">Status</th>
-                        <th className="px-3 py-2 text-left">Score</th>
-                        <th className="px-3 py-2 text-left">Campaign</th>
-                        <th className="px-3 py-2 text-left">Assigned</th>
-                        <th className="px-3 py-2 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {leads.map((l) => (
-                        <tr key={l.lead_id} className="border-t border-neutral-100">
-                            <td className="px-3 py-2.5">
-                                <div className="text-body font-medium text-neutral-900">
-                                    {l.lead_name ?? l.user_id.slice(0, 8)}
-                                </div>
-                                <div className="text-caption text-neutral-500">{l.lead_email}</div>
-                            </td>
-                            <td className="px-3 py-2.5 text-neutral-700">
-                                {l.lead_status_label ?? l.conversion_status}
-                            </td>
-                            <td className="px-3 py-2.5">
-                                <span className="rounded bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700">
-                                    {l.best_score ?? 0}
-                                </span>
-                            </td>
-                            <td className="px-3 py-2.5 text-neutral-700">{l.campaign_name ?? '—'}</td>
-                            <td className="px-3 py-2.5 text-caption text-neutral-500">
-                                {l.assigned_at ? new Date(l.assigned_at).toLocaleDateString() : '—'}
-                            </td>
-                            <td className="px-3 py-2.5">
-                                <div className="flex justify-end gap-1">
-                                    <button
-                                        type="button"
-                                        className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
-                                        aria-label="Open lead"
-                                    >
-                                        <ArrowSquareOut size={16} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="rounded p-1 text-success-600 hover:bg-success-50"
-                                        aria-label="Call"
-                                    >
-                                        <Phone size={16} />
-                                    </button>
-                                    <MyButton
-                                        buttonType="secondary"
-                                        scale="small"
-                                        onClick={() => onReassign(l)}
-                                    >
-                                        <ArrowsClockwise size={14} className="mr-1" /> Reassign
-                                    </MyButton>
-                                </div>
-                            </td>
+        <div className="space-y-3">
+            <div className="overflow-auto rounded border border-neutral-200">
+                <table className="w-full text-body">
+                    <thead className="bg-neutral-50 text-caption uppercase tracking-wide text-neutral-500">
+                        <tr>
+                            <th className="px-3 py-2 text-left">Lead</th>
+                            <th className="px-3 py-2 text-left">Status</th>
+                            <th className="px-3 py-2 text-left">Score</th>
+                            <th className="px-3 py-2 text-left">Campaign</th>
+                            <th className="px-3 py-2 text-left">Assigned</th>
+                            <th className="px-3 py-2 text-right">Actions</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {leads.map((l) => (
+                            <tr key={l.lead_id} className="border-t border-neutral-100">
+                                <td className="px-3 py-2.5">
+                                    <div className="text-body font-medium text-neutral-900">
+                                        {l.lead_name ?? l.user_id.slice(0, 8)}
+                                    </div>
+                                    <div className="text-caption text-neutral-500">{l.lead_email}</div>
+                                </td>
+                                <td className="px-3 py-2.5 text-neutral-700">
+                                    {l.lead_status_label ?? l.conversion_status}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                    <span className="rounded bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700">
+                                        {l.best_score ?? 0}
+                                    </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-neutral-700">{l.campaign_name ?? '—'}</td>
+                                <td className="px-3 py-2.5 text-caption text-neutral-500">
+                                    {l.assigned_at ? new Date(l.assigned_at).toLocaleDateString() : '—'}
+                                </td>
+                                <td className="px-3 py-2.5">
+                                    <div className="flex justify-end gap-1">
+                                        <button
+                                            type="button"
+                                            className="rounded p-1 text-neutral-500 hover:bg-neutral-100"
+                                            aria-label="Open lead"
+                                        >
+                                            <ArrowSquareOut size={16} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded p-1 text-success-600 hover:bg-success-50"
+                                            aria-label="Call"
+                                        >
+                                            <Phone size={16} />
+                                        </button>
+                                        <MyButton
+                                            buttonType="secondary"
+                                            scale="small"
+                                            onClick={() => onReassign(l)}
+                                        >
+                                            <ArrowsClockwise size={14} className="mr-1" /> Reassign
+                                        </MyButton>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {totalElements > PAGE_SIZE && (
+                <div className="flex items-center justify-between">
+                    <span className="text-caption text-neutral-500">
+                        Showing {page * PAGE_SIZE + 1}–
+                        {Math.min((page + 1) * PAGE_SIZE, totalElements)} of {totalElements}
+                        {isFetching ? ' · loading…' : ''}
+                    </span>
+                    <MyPagination
+                        currentPage={page + 1}
+                        totalPages={totalPages}
+                        onPageChange={(p) => setPage(p - 1)}
+                    />
+                </div>
+            )}
         </div>
     );
 }

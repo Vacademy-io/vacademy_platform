@@ -32,6 +32,25 @@ public interface CounselorPoolMemberRepository extends JpaRepository<CounselorPo
     List<CounselorPoolMember> findByInstituteAndCounselor(@Param("instituteId") String instituteId,
                                                           @Param("counselorUserId") String counselorUserId);
 
+    /**
+     * Batched "is anyone here active?" probe — one query for N counsellors
+     * instead of N round-trips. Returns the DISTINCT counsellor ids that have
+     * at least one ACTIVE row in any pool for the institute. The workbench's
+     * `is_active` rollup uses this (anyMatch semantics): a counsellor is
+     * "active in the workbench" if they have ANY active membership, even when
+     * paused on some audiences. NOT a substitute for
+     * `listActiveMembershipsForCounselor` — that one's allMatch-per-pool by
+     * design (used by the "mark inactive" UI to surface only pools where the
+     * counsellor is still fully operational).
+     */
+    @Query("SELECT DISTINCT m.counselorUserId FROM CounselorPoolMember m " +
+           "  JOIN CounselorPool p ON p.id = m.poolId " +
+           " WHERE p.instituteId = :instituteId " +
+           "   AND m.counselorUserId IN :counselorUserIds " +
+           "   AND m.status = 'ACTIVE'")
+    List<String> findCounselorsWithAnyActiveMembership(@Param("instituteId") String instituteId,
+                                                       @Param("counselorUserIds") java.util.Collection<String> counselorUserIds);
+
     /** Flip all of a counselor's rows in a pool to a given status, optionally setting a backup. */
     @Modifying
     @Query("UPDATE CounselorPoolMember m " +

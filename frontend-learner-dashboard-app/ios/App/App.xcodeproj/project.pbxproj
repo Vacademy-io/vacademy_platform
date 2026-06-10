@@ -57,7 +57,7 @@
 		0EB0C0F22F73B79D003DA394 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0EB0C0F32F73B79D003DA394 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
-		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
+		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		1AAA00022F25A00000000002 /* EnarkGoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */; };
@@ -80,7 +80,7 @@
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		92CF6E9FD15192700D5BAD2F /* Pods_Edzumo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */; };
 		9D98847954ECC674F23A1336 /* Pods_Chanakaya_IAS_Academy.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B827FA512E3A9337994B1F7D /* Pods_Chanakaya_IAS_Academy.framework */; };
-		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
+		9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
@@ -103,6 +103,7 @@
 		0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC-HORIZON-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/SSDC-HORIZON-Info.plist"; sourceTree = "<absolute>"; };
 		0E5CB2442F0ABC0800089DAC /* Five Sep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Five Sep.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ithinkersByFiveSep-Info.plist"; sourceTree = "<group>"; };
+		0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
@@ -179,7 +180,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */,
+				9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */,
 				9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -213,6 +214,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0E4D7B3E2FCC62810085C077 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		27E2DDA53C4D2A4D1A88CE4A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -246,6 +255,7 @@
 				1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */,
 				0E0D4AF92FC2BDC300E29BEC /* Uplift Teacher Training copy-Info.plist */,
 				0E0D4B0F2FC2CB0100E29BEC /* Chanakaya IAS Academy copy-Info.plist */,
+				0E4D7B3E2FCC62810085C077 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1025,14 +1035,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Chanakaya IAS Academy";
+				INFOPLIST_KEY_CFBundleDisplayName = SADBHAVANA;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1049,14 +1059,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Chanakaya IAS Academy";
+				INFOPLIST_KEY_CFBundleDisplayName = SADBHAVANA;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1254,7 +1264,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
@@ -1278,7 +1288,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";

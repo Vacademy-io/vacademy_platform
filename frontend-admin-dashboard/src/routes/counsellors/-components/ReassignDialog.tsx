@@ -167,9 +167,15 @@ export function ReassignDialog({
         }
     }
 
+    const openLeadsById = useMemo(() => {
+        const m = new Map<string, WorkbenchLead>();
+        openLeads.forEach((l) => m.set(l.lead_id, l));
+        return m;
+    }, [openLeads]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-4xl">
                 <DialogHeader>
                     <DialogTitle>
                         {markInactive
@@ -231,6 +237,7 @@ export function ReassignDialog({
                             overrides={perRowOverrides}
                             setOverrides={setPerRowOverrides}
                             candidates={targets}
+                            openLeadsById={openLeadsById}
                             onReshufflePreview={() => loadPreview('ROUND_ROBIN')}
                         />
                     )}
@@ -296,6 +303,7 @@ function ManualPreviewTable({
     overrides,
     setOverrides,
     candidates,
+    openLeadsById,
     onReshufflePreview,
 }: {
     instituteId: string;
@@ -303,6 +311,7 @@ function ManualPreviewTable({
     overrides: Record<string, string>;
     setOverrides: (next: Record<string, string>) => void;
     candidates: WorkbenchCounsellor[];
+    openLeadsById: Map<string, WorkbenchLead>;
     onReshufflePreview: () => void;
 }) {
     if (!preview) {
@@ -333,10 +342,22 @@ function ManualPreviewTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {preview.assignments.map((a) => (
+                    {preview.assignments.map((a) => {
+                        const full = openLeadsById.get(a.lead_id);
+                        const name = full?.lead_name ?? a.lead_name ?? '—';
+                        const email = full?.lead_email;
+                        const phone = full?.lead_phone;
+                        return (
                         <tr key={a.lead_id} className="border-t border-neutral-100">
                             <td className="px-3 py-2.5 text-neutral-900">
-                                {a.lead_name ?? a.lead_id.slice(0, 8)}
+                                <div className="font-medium">{name}</div>
+                                {(email || phone) && (
+                                    <div className="text-caption text-neutral-500">
+                                        {email}
+                                        {email && phone ? ' · ' : ''}
+                                        {phone}
+                                    </div>
+                                )}
                             </td>
                             <td className="px-3 py-2.5">
                                 <div className="flex items-center gap-2">
@@ -364,7 +385,8 @@ function ManualPreviewTable({
                                 </div>
                             </td>
                         </tr>
-                    ))}
+                        );
+                    })}
                 </tbody>
             </table>
         </div>

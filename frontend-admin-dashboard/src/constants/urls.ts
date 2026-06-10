@@ -1020,8 +1020,18 @@ export const COUNSELLOR_WORKBENCH_MY_LEADS = (
     `${COUNSELLOR_WORKBENCH_BASE}/me/leads?instituteId=${instituteId}` +
     (status ? `&status=${status}` : '') +
     `&page=${page}&size=${size}`;
-export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (instituteId: string, teamId: string) =>
-    `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (
+    instituteId: string,
+    teamId: string,
+    search?: string,
+    status?: 'active' | 'inactive' | 'all',
+    page: number = 0,
+    size: number = 20
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}` +
+    (search ? `&search=${encodeURIComponent(search)}` : '') +
+    (status && status !== 'all' ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
 export const COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS = (
     instituteId: string,
     userId: string,

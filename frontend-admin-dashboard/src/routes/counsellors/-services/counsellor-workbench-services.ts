@@ -141,13 +141,24 @@ export async function fetchMyTeam(instituteId: string) {
     return res.data;
 }
 
+// Mirrors org.springframework.data.domain.Page wire shape. Only the fields
+// the UI actually consumes are typed — Spring emits a few more (`first`,
+// `last`, `sort`, `pageable`, `numberOfElements`, `empty`) that we ignore.
+export interface PaginatedResponse<T> {
+    content: T[];
+    totalElements: number;
+    totalPages: number;
+    size: number;
+    number: number;
+}
+
 export async function fetchMyLeads(
     instituteId: string,
     status?: string,
     page: number = 0,
     size: number = 20
 ) {
-    const res = await authenticatedAxiosInstance.get<WorkbenchLead[]>(
+    const res = await authenticatedAxiosInstance.get<PaginatedResponse<WorkbenchLead>>(
         COUNSELLOR_WORKBENCH_MY_LEADS(instituteId, status, page, size)
     );
     return res.data;
@@ -165,15 +176,26 @@ export async function fetchCounsellorLeads(
     page: number = 0,
     size: number = 50
 ) {
-    const res = await authenticatedAxiosInstance.get<WorkbenchLead[]>(
+    const res = await authenticatedAxiosInstance.get<PaginatedResponse<WorkbenchLead>>(
         COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS(instituteId, counsellorUserId, status, page, size)
     );
     return res.data;
 }
 
-export async function fetchTeamCounsellors(instituteId: string, teamId: string) {
-    const res = await authenticatedAxiosInstance.get<WorkbenchCounsellor[]>(
-        COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS(instituteId, teamId)
+export async function fetchTeamCounsellors(
+    instituteId: string,
+    teamId: string,
+    opts?: { search?: string; status?: 'active' | 'inactive' | 'all'; page?: number; size?: number }
+) {
+    const res = await authenticatedAxiosInstance.get<PaginatedResponse<WorkbenchCounsellor>>(
+        COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS(
+            instituteId,
+            teamId,
+            opts?.search,
+            opts?.status,
+            opts?.page,
+            opts?.size
+        )
     );
     return res.data;
 }

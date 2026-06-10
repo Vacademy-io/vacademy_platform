@@ -23,8 +23,16 @@ import {
     UsersThree,
     ChatTeardrop,
     Record,
+    DotsSixVertical,
+    TrashSimple,
 } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
+import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
+import { MyDialog } from '@/components/design-system/dialog';
+import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components/common/custom-fields/AddCustomFieldDialog';
+import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
+import { getInstituteId as getInstId } from '@/constants/helper';
 import { WAITING_ROOM_OPTIONS, WAITING_ROOM_TYPE_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle } from '@phosphor-icons/react';
@@ -91,7 +99,7 @@ import { MyRadioButton } from '@/components/design-system/radio';
 import { MyButton } from '@/components/design-system/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LockKey, BellRinging, UsersThree as UsersThreeIcon } from '@phosphor-icons/react';
-import { AccessType } from '../../-constants/enums';
+import { AccessType, InputType } from '../../-constants/enums';
 import SelectField from '@/components/design-system/select-field';
 import { z } from 'zod';
 
@@ -368,6 +376,89 @@ export function BulkScheduleGrid() {
         [studyLibraryData]
     );
     const accessType = form.watch('accessType');
+
+    // Public registration form — shared across every bulk-created session.
+    // Mirrors single-class step 2: the same builder UI + the same seed from the
+    // institute's default fields. Bulk has no edit mode, so only the "fresh"
+    // seeding path applies.
+    const {
+        fields: regFields,
+        move: moveRegField,
+        append: appendRegField,
+        remove: removeRegField,
+    } = useFieldArray({
+        control: form.control,
+        name: 'fields',
+    });
+    const [regPreviewOpen, setRegPreviewOpen] = useState(false);
+
+    useEffect(() => {
+        if (accessType !== AccessType.PUBLIC) {
+            form.setValue('fields', []);
+            return;
+        }
+        const SEEDED = ['full name', 'email', 'phone number', 'mobile number'];
+        let cancelled = false;
+        const loadFields = async () => {
+            const instId = getInstId();
+            if (!instId) return;
+            const defaults = await fetchInstituteDefaultFields(instId);
+            if (cancelled || !defaults || defaults.length === 0) return;
+            const allFields = defaults.map((entry) => {
+                const cf = entry.custom_field;
+                const nameLC = cf.fieldName.toLowerCase();
+                const rawType = (cf.fieldType || 'text').toLowerCase();
+                const resolvedType = (rawType === 'textfield' ? 'text' : rawType) as InputType;
+                const hasOptions =
+                    resolvedType === InputType.DROPDOWN || resolvedType === InputType.RADIO;
+                return {
+                    label: cf.fieldName,
+                    required: cf.isMandatory || SEEDED.includes(nameLC),
+                    isDefault: SEEDED.includes(nameLC),
+                    type: resolvedType,
+                    ...(hasOptions && cf.config
+                        ? (() => {
+                              try {
+                                  const parsed = JSON.parse(cf.config);
+                                  if (Array.isArray(parsed)) {
+                                      return {
+                                          options: parsed.map((o: { value?: string; label?: string; name?: string }) => ({
+                                              label: o.value || o.label || '',
+                                              name: o.value || o.name || '',
+                                          })),
+                                      };
+                                  }
+                                  if (Array.isArray(parsed?.options)) {
+                                      return {
+                                          options: parsed.options.map((o: { value?: string; label?: string; name?: string }) => ({
+                                              label: o.value || o.label || '',
+                                              name: o.value || o.name || '',
+                                          })),
+                                      };
+                                  }
+                                  if (parsed.coommaSepartedOptions) {
+                                      return {
+                                          options: parsed.coommaSepartedOptions
+                                              .split(',')
+                                              .map((v: string) => ({ label: v.trim(), name: v.trim() })),
+                                      };
+                                  }
+                              } catch {
+                                  /* ignore malformed config */
+                              }
+                              return {};
+                          })()
+                        : {}),
+                };
+            });
+            form.setValue('fields', allFields);
+        };
+        loadFields();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [accessType]);
 
     const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
     const [musicFile, setMusicFile] = useState<File | null>(null);
@@ -709,7 +800,9 @@ export function BulkScheduleGrid() {
                         onLive: data.notifySettings.onLive,
                         onAttendance: data.notifySettings.onAttendance,
                     },
-                    fields: [],
+                    // Public sessions carry the shared registration form; private
+                    // sessions have no public form, so send an empty list.
+                    fields: data.accessType === AccessType.PUBLIC ? (data.fields ?? []) : [],
                 } as unknown as Parameters<typeof transformFormToDTOStep2>[0];
 
                 // Pass an empty session_id; backend's BulkLiveSessionService
@@ -1605,6 +1698,121 @@ export function BulkScheduleGrid() {
                 />
             </SectionCard>
 
+            {accessType === AccessType.PUBLIC && (
+                <SectionCard
+                    icon={<Article size={18} />}
+                    title="Registration Form"
+                    description="Fields shown to learners on the public registration form, shared across every session created above. Drag to reorder."
+                >
+                    <div className="flex flex-col gap-3">
+                        <Sortable
+                            value={regFields}
+                            onMove={({ activeIndex, overIndex }) =>
+                                moveRegField(activeIndex, overIndex)
+                            }
+                        >
+                            {regFields.map((regField, index) => (
+                                <SortableItem key={regField.id} value={regField.id} asChild>
+                                    <div className="flex flex-col gap-3 rounded p-3 sm:flex-row sm:items-center sm:gap-6">
+                                        <div className="flex w-full items-center justify-between rounded-md border bg-neutral-50 p-2 shadow sm:w-3/4">
+                                            {regField.isDefault ? (
+                                                <div className="w-full text-neutral-600">
+                                                    {regField.label}
+                                                </div>
+                                            ) : (
+                                                <Controller
+                                                    control={form.control}
+                                                    name={`fields.${index}.label`}
+                                                    render={({ field: f }) => (
+                                                        <input
+                                                            {...f}
+                                                            className="w-full border-none bg-transparent outline-none"
+                                                            placeholder="Enter label"
+                                                        />
+                                                    )}
+                                                />
+                                            )}
+                                            {!regField.isDefault && (
+                                                <div
+                                                    className="mr-2 cursor-pointer rounded border-2 p-1 text-danger-400"
+                                                    onClick={() => removeRegField(index)}
+                                                >
+                                                    <TrashSimple />
+                                                </div>
+                                            )}
+                                            <SortableDragHandle className="cursor-grab border-none shadow-none">
+                                                <DotsSixVertical />
+                                            </SortableDragHandle>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <Controller
+                                                control={form.control}
+                                                name={`fields.${index}.required`}
+                                                render={({ field: f }) => (
+                                                    <label className="flex items-center gap-2">
+                                                        <span className="text-sm">Required</span>
+                                                        <Switch
+                                                            checked={f.value}
+                                                            onCheckedChange={f.onChange}
+                                                        />
+                                                    </label>
+                                                )}
+                                            />
+                                        </div>
+                                    </div>
+                                </SortableItem>
+                            ))}
+                        </Sortable>
+
+                        <div className="flex flex-col gap-4 p-3 sm:flex-row">
+                            <SharedAddCustomFieldDialog
+                                trigger={
+                                    <MyButton
+                                        buttonType="secondary"
+                                        type="button"
+                                        className="w-full sm:w-auto"
+                                    >
+                                        <Plus /> Add Custom Field
+                                    </MyButton>
+                                }
+                                onAddField={(type, name, _oldKey, options) => {
+                                    const normalized = (type || 'text').toLowerCase();
+                                    const resolvedType =
+                                        normalized === 'textfield'
+                                            ? InputType.TEXT
+                                            : (normalized as InputType);
+                                    const hasOptions =
+                                        (resolvedType === InputType.DROPDOWN ||
+                                            resolvedType === InputType.RADIO) &&
+                                        !!options;
+                                    appendRegField({
+                                        label: name,
+                                        isDefault: false,
+                                        required: true,
+                                        type: resolvedType,
+                                        options: hasOptions
+                                            ? options!.map((opt) => ({
+                                                  name: opt.value,
+                                                  label: opt.value,
+                                              }))
+                                            : [],
+                                    });
+                                }}
+                                existingFieldNames={regFields.map((f) => f.label)}
+                            />
+                            <MyButton
+                                buttonType="secondary"
+                                type="button"
+                                onClick={() => setRegPreviewOpen(true)}
+                                className="w-full sm:w-auto"
+                            >
+                                Preview Registration Form
+                            </MyButton>
+                        </div>
+                    </div>
+                </SectionCard>
+            )}
+
             <SectionCard
                 icon={<BellRinging size={18} />}
                 title="Notifications"
@@ -1843,6 +2051,45 @@ export function BulkScheduleGrid() {
                 courses={courses ?? []}
                 sessionList={sessionList}
             />
+
+            <MyDialog
+                heading="Preview Registration Form"
+                onOpenChange={setRegPreviewOpen}
+                open={regPreviewOpen}
+            >
+                {regFields?.map((regField, idx) => (
+                    <div className="flex flex-col items-start gap-4" key={idx}>
+                        <div className="flex w-full flex-col gap-1.5">
+                            <h1 className="text-sm">
+                                {regField.label}
+                                {regField.required && (
+                                    <span className="text-danger-600">*</span>
+                                )}
+                            </h1>
+                            <CustomFieldRenderer
+                                type={regField.type}
+                                name={regField.label}
+                                value=""
+                                disabled={true}
+                                options={regField.options?.map((o) => o.name ?? o.label)}
+                                required={regField.required}
+                            />
+                        </div>
+                    </div>
+                ))}
+                <div className="mb-6 flex justify-center">
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="primary"
+                        className="mt-4 w-fit"
+                        disable
+                    >
+                        Register Now
+                    </MyButton>
+                </div>
+            </MyDialog>
+
             <Dialog
                 open={!!resultDialog?.open}
                 onOpenChange={(o) => setResultDialog((s) => (s ? { ...s, open: o } : null))}

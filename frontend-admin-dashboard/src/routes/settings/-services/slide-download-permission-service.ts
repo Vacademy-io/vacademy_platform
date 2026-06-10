@@ -24,6 +24,12 @@ export const getSlideDownloadPermission = async (): Promise<SlideDownloadPermiss
             method: 'GET',
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: SLIDE_DOWNLOAD_PERMISSION_SETTING_KEY },
+            // The shared axios instance has no timeout. PDFViewer now blocks
+            // rendering until this resolves (isResolved gate), so a hung request
+            // (server accepts the socket but never replies) would leave the PDF
+            // stuck on "Loading…" forever. Bound it: on timeout axios rejects,
+            // the catch below returns the default-allow shape, and the PDF renders.
+            timeout: 8000,
         });
         const stored = response.data?.data ?? null;
         if (!stored || typeof stored !== 'object') {

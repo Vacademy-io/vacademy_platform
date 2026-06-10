@@ -170,3 +170,25 @@ export const canRoleDownloadInAdmin = (
     if (!roleMap) return true;
     return canonicalRoles.every((role) => roleMap[role] !== false);
 };
+
+/**
+ * Resolve PDF *print* permission in the admin app. If print is not explicitly
+ * configured for the user's role, it INHERITS the PDF *download* permission
+ * ("can't download ⇒ can't print" by default). This also covers institutes that
+ * saved a download restriction before the separate Print toggle existed. Once an
+ * admin explicitly toggles Print for the role, that value takes over.
+ */
+export const canRolePrintPdfInAdmin = (
+    data: SlideDownloadPermissionData | null | undefined,
+    roleNames: string[] | null | undefined
+): boolean => {
+    const roles = (roleNames ?? []).map(normalizeRoleKey).filter(Boolean);
+    const printMap = data?.slideTypes?.['DOCUMENT_PDF_PRINT']?.roles;
+    const hasExplicitPrint =
+        !!printMap && roles.some((role) => typeof printMap[role] === 'boolean');
+    return canRoleDownloadInAdmin(
+        data,
+        hasExplicitPrint ? 'DOCUMENT_PDF_PRINT' : 'DOCUMENT_PDF',
+        roleNames
+    );
+};

@@ -26,13 +26,20 @@ export function SlideProtectionGuard() {
     if (!protectionEnabled) return;
     const blockContextMenu = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
-      const key = e.key;
-      const isF12 = key === "F12";
-      const isViewSource = (e.ctrlKey || e.metaKey) && (key === "u" || key === "U");
+      // Match on e.code (layout-independent physical key), not e.key: on macOS
+      // holding Option/Alt mangles e.key (Cmd+Option+I does NOT report "i").
+      const code = e.code;
+      const cmdOrCtrl = e.ctrlKey || e.metaKey;
+      const isF12 = e.key === "F12" || code === "F12";
+      // View source: Ctrl+U (Win/Linux) or Cmd+Option+U (mac).
+      const isViewSource = cmdOrCtrl && code === "KeyU";
+      // DevTools / inspector / console:
+      //   Win/Linux/Chrome -> Ctrl+Shift+I/J/C
+      //   macOS            -> Cmd+Option(Alt)+I/J/C
       const isDevTools =
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        ["i", "I", "j", "J", "c", "C"].includes(key);
+        cmdOrCtrl &&
+        (e.shiftKey || e.altKey) &&
+        ["KeyI", "KeyJ", "KeyC"].includes(code);
       if (isF12 || isViewSource || isDevTools) {
         e.preventDefault();
         e.stopPropagation();

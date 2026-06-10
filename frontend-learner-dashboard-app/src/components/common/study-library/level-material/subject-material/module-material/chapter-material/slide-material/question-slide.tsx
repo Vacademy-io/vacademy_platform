@@ -6,7 +6,7 @@ import { MyInput } from "@/components/design-system/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 // import { MyButton } from "@/components/design-system/button";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_QUESTION_SLIDE_ANSWERS } from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
@@ -14,6 +14,7 @@ import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "@tanstack/react-router";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 
 interface Option {
     id: string;
@@ -68,6 +69,7 @@ interface QuestionResponseMap {
 
 const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     const router = useRouter();
+    const queryClient = useQueryClient();
     const { chapterId, moduleId, subjectId } = router.state.location.search;
     // const { activeItem } = useContentStore();
     const [selectedOptionsMap, setSelectedOptionsMap] = useState<
@@ -439,6 +441,12 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
             // Call the onSubmit function passed from parent
             await onSubmit(slideId, submissionValue);
+
+            // Reconcile progress UI (chapter/module/course %) after the
+            // async completion cascade lands. chapterId is from the route.
+            if (chapterId) {
+                void refreshProgressAfterSubmit(queryClient, chapterId);
+            }
 
             // Reset inputs after submission
             if (questionType === "MCQS" || questionType === "TRUE_FALSE") {

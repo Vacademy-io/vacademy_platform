@@ -115,7 +115,20 @@ export function LeadsTeamPicker() {
             </div>
 
             {savedTeamId && instituteId && (
-                <TeamMembersList instituteId={instituteId} teamId={savedTeamId} />
+                <TeamMembersList
+                    instituteId={instituteId}
+                    teamId={savedTeamId}
+                    // STRATEGY_BASED is the new-institute default — when the
+                    // config hasn't loaded yet we err on the side of showing
+                    // the "Initial" label, matching how the rating engine
+                    // will actually use the input.
+                    strategyType={
+                        (configQuery.data?.strategy_type as
+                            | 'STATIC'
+                            | 'STRATEGY_BASED'
+                            | undefined) ?? 'STRATEGY_BASED'
+                    }
+                />
             )}
         </section>
     );
@@ -129,7 +142,15 @@ export function LeadsTeamPicker() {
  * press Enter) to save, undo via the X icon if you change your mind before
  * blurring.
  */
-function TeamMembersList({ instituteId, teamId }: { instituteId: string; teamId: string }) {
+function TeamMembersList({
+    instituteId,
+    teamId,
+    strategyType,
+}: {
+    instituteId: string;
+    teamId: string;
+    strategyType: 'STATIC' | 'STRATEGY_BASED';
+}) {
     const counsellorsQuery = useQuery({
         queryKey: ['workbench-counsellors-team-picker', instituteId, teamId],
         enabled: !!instituteId && !!teamId,
@@ -140,18 +161,45 @@ function TeamMembersList({ instituteId, teamId }: { instituteId: string; teamId:
     });
 
     const counsellors = counsellorsQuery.data?.content ?? [];
+    const isAutomatic = strategyType === 'STRATEGY_BASED';
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                     <h3 className="text-h4 font-medium text-neutral-900">
-                        Counsellors in this team
+                        Per-counsellor score
                     </h3>
                     <p className="text-caption text-neutral-500">
-                        Set a static rating (0–100) per person. Used when the rating
-                        strategy below is set to <span className="font-medium">Static</span>.
-                        Kept as a remembered fallback when on Strategy-based.
+                        Set a score (0–100) for each person. The same input
+                        powers both rating strategies:
+                    </p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5 text-caption text-neutral-500">
+                        <li>
+                            <span className="font-medium text-neutral-700">
+                                Automatic strategy:
+                            </span>{' '}
+                            this is the counsellor&apos;s{' '}
+                            <span className="font-medium">starting score</span>{' '}
+                            — used until they build up enough leads to earn a
+                            computed score, then auto-compute takes over.
+                        </li>
+                        <li>
+                            <span className="font-medium text-neutral-700">
+                                Manual strategy:
+                            </span>{' '}
+                            this is the counsellor&apos;s{' '}
+                            <span className="font-medium">static score</span> —
+                            no auto-compute, this value IS the score.
+                        </li>
+                    </ul>
+                    <p className="mt-1 text-caption italic text-neutral-500">
+                        Current strategy:{' '}
+                        <span className="font-medium text-neutral-700">
+                            {isAutomatic ? 'Automatic' : 'Manual'}
+                        </span>
+                        . The input label below reflects how the score will be
+                        used.
                     </p>
                 </div>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-700">
@@ -173,7 +221,12 @@ function TeamMembersList({ instituteId, teamId }: { instituteId: string; teamId:
             ) : (
                 <ul className="divide-y divide-neutral-100 rounded-md border border-neutral-200">
                     {counsellors.map((c) => (
-                        <MemberRow key={c.user_id} instituteId={instituteId} counsellor={c} />
+                        <MemberRow
+                            key={c.user_id}
+                            instituteId={instituteId}
+                            counsellor={c}
+                            isAutomatic={isAutomatic}
+                        />
                     ))}
                 </ul>
             )}
@@ -184,9 +237,11 @@ function TeamMembersList({ instituteId, teamId }: { instituteId: string; teamId:
 function MemberRow({
     instituteId,
     counsellor,
+    isAutomatic,
 }: {
     instituteId: string;
     counsellor: WorkbenchCounsellor;
+    isAutomatic: boolean;
 }) {
     const queryClient = useQueryClient();
     const initialScore = counsellor.rating != null ? String(counsellor.rating) : '';
@@ -205,11 +260,20 @@ function MemberRow({
         },
         onSuccess: () => {
             toast.success(`Saved ${counsellor.full_name ?? 'rating'}`);
+            // Settings-side list, workbench-page list, and the per-user
+            // rating cache (badges) all need to re-fetch so the new score
+            // shows everywhere immediately.
+            queryClient.invalidateQueries({
+                queryKey: ['workbench-counsellors-team-picker', instituteId],
+            });
             queryClient.invalidateQueries({
                 queryKey: ['workbench-counsellors', instituteId],
             });
             queryClient.invalidateQueries({
                 queryKey: ['counsellor-rating', instituteId, counsellor.user_id],
+            });
+            queryClient.invalidateQueries({
+                queryKey: ['counsellor-rating-batch', instituteId],
             });
         },
         onError: (e) => {
@@ -258,7 +322,16 @@ function MemberRow({
                 {score != null ? score.toFixed(0) : '—'}
             </div>
             <div className="flex items-center gap-2">
-                <label className="text-caption text-neutral-500">Static</label>
+                <label
+                    className="text-caption text-neutral-500"
+                    title={
+                        isAutomatic
+                            ? 'Used as the starting score until this counsellor has enough leads for an automatic score.'
+                            : 'Static rating — wins over any computation.'
+                    }
+                >
+                    {isAutomatic ? 'Initial' : 'Static'}
+                </label>
                 <input
                     type="number"
                     min={0}

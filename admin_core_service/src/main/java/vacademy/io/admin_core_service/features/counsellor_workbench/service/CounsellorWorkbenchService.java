@@ -165,12 +165,14 @@ public class CounsellorWorkbenchService {
         List<String> userIds = orgTeamClient.usersInTeams(new ArrayList<>(teamNameById.keySet()));
         if (userIds.isEmpty()) return Page.empty(pageable);
 
-        // RBAC: intersect with the caller's descendants so a manager doesn't
-        // see peers / siblings outside their reporting line. Root admins have
-        // no team mappings (so the descendant set would collapse to {self}
-        // and wipe the whole list); they get the unfiltered view, same as
-        // the caller=null admin path.
-        if (caller != null && !caller.isRootUser()) {
+        // RBAC: every caller (including root admins) sees only themselves +
+        // their downstream in the team hierarchy. A root admin who isn't
+        // mapped into the leads team subtree sees only themselves; if they
+        // need the whole team view, they should be added to the team's
+        // root mapping via Manage Institute → Teams. The caller=null path
+        // (scheduled jobs, admin-internal flows) still gets the unfiltered
+        // view.
+        if (caller != null) {
             Set<String> allowed = new HashSet<>(
                     scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
             userIds = userIds.stream().filter(allowed::contains).toList();

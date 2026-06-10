@@ -14,6 +14,7 @@ import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@
 import { getPublicUrl } from "@/services/upload_file";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
+import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -1047,6 +1048,14 @@ const AssignmentSlide = ({
     onSuccess: () => {
       toast.success("Assignment submitted successfully!");
       queryClient.invalidateQueries({ queryKey: ['ASSIGNMENT_GRADING_RESULTS'] });
+      // Reconcile progress UI (chapter/module/course %) after the async
+      // completion cascade lands. chapterId comes from the slide route URL,
+      // same source the submit uses for slideId.
+      const chapterId =
+        new URLSearchParams(window.location.search).get("chapterId") || "";
+      if (chapterId) {
+        void refreshProgressAfterSubmit(queryClient, chapterId);
+      }
     },
     onError: (error: unknown) => {
       // Backend returns ErrorInfo { message } via GlobalExceptionHandler when

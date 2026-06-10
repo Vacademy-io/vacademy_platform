@@ -6,25 +6,22 @@ import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import { normalizeRoleKey } from '@/constants/slide-download-permission';
 
 const SETTING_KEY = 'SLIDE_CONTENT_PROTECTION_SETTING';
-const DEV_BYPASS_STORAGE_KEY = 'slideAccessDevBypass';
 
 interface ContentProtectionData {
     roles?: Record<string, boolean>;
     enabled?: boolean; // legacy institute-wide
 }
 
-/** Tolerant `?access=dev` bypass (works even with a stray extra "?"). */
+/**
+ * URL-only `?access=dev` bypass (tolerant of a stray extra "?"). NOT sticky:
+ * protection switches back on the instant the param is gone from the URL.
+ */
 function isDevBypass(): boolean {
     try {
-        const hasAccessDev = window.location.href.split(/[?&#]/).some((token) => {
+        return window.location.href.split(/[?&#]/).some((token) => {
             const [key, value] = token.split('=');
             return key === 'access' && value === 'dev';
         });
-        if (hasAccessDev) {
-            sessionStorage.setItem(DEV_BYPASS_STORAGE_KEY, '1');
-            return true;
-        }
-        return sessionStorage.getItem(DEV_BYPASS_STORAGE_KEY) === '1';
     } catch {
         return false;
     }

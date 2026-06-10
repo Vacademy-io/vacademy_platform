@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/bootstrap.css';
+import { isValidPhoneValue } from '@/lib/phone-validation';
 import { MyButton } from '@/components/design-system/button';
 import { Plus, Trash, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { NewUserRow, CustomFieldValue } from '../../../-types/bulk-assign-types';
@@ -284,9 +285,12 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
 
     const validate = (row: EditableRow) => {
         if (!row.full_name.trim()) return false;
+        const phone = row.mobile_number?.trim();
         if (phoneRequired) {
-            return !!row.mobile_number?.trim();
+            return isValidPhoneValue(phone);
         }
+        // Optional phone: when provided it must be a valid number for its country.
+        if (phone && !isValidPhoneValue(phone)) return false;
         return !!row.email.trim();
     };
 
@@ -399,7 +403,10 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
                                         update(idx, 'mobile_number', value)
                                     }
                                     inputClass={`!w-full h-7 ${
-                                        submitted && phoneRequired && !row.mobile_number?.trim()
+                                        submitted &&
+                                        ((phoneRequired && !isValidPhoneValue(row.mobile_number)) ||
+                                            (!!row.mobile_number?.trim() &&
+                                                !isValidPhoneValue(row.mobile_number)))
                                             ? '!border-danger-400'
                                             : ''
                                     }`}

@@ -1,4 +1,5 @@
 import { z, ZodTypeAny, ZodObject, ZodString } from "zod";
+import { phoneSchema } from "@/lib/phone-validation";
 import { CustomField } from "./type";
 
 export const generateZodSchema = (
@@ -10,6 +11,15 @@ export const generateZodSchema = (
   const shape: Record<string, ZodTypeAny> = {};
 
   for (const field of customFields) {
+    // Phone field gets country-aware validation instead of plain text rules.
+    if (field.fieldKey === "mobile_number") {
+      shape[field.fieldKey] = phoneSchema({
+        required: field.mandatory,
+        label: field.fieldName,
+      });
+      continue;
+    }
+
     let schema: ZodTypeAny;
 
     switch (field.fieldType.toLowerCase()) {

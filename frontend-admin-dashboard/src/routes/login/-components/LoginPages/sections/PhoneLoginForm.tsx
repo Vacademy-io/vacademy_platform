@@ -26,9 +26,10 @@ import { handleLoginFlow, navigateFromLoginFlow } from '@/lib/auth/loginFlowHand
 import { trackEvent } from '@/lib/amplitude';
 import { getCachedInstituteBranding, getPreferredPhoneCountries } from '@/services/domain-routing';
 import { REQUEST_WHATSAPP_OTP, VERIFY_WHATSAPP_OTP_LOGIN } from "@/constants/urls";
+import { phoneSchema as phoneValidationSchema } from "@/lib/phone-validation";
 
 const phoneSchema = z.object({
-    phone: z.string().min(10, { message: "Invalid phone number" }),
+    phone: phoneValidationSchema({ required: true, label: 'WhatsApp number' }),
 });
 
 const otpSchema = z.object({

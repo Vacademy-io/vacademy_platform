@@ -19,7 +19,8 @@ import {
 import { ArrowLeft, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { MAX_LENGTH, isValidEmail, isValidPhone, isNonEmpty } from '@/utils/form-validation';
+import { MAX_LENGTH, isValidEmail, isNonEmpty } from '@/utils/form-validation';
+import { isValidPhoneValue } from '@/lib/phone-validation';
 import PhoneNumberInput from '@/components/design-system/phone-number-input';
 import { handleFetchEnquiriesList } from '../../enquiries/-services/get-enquiries-list';
 import {
@@ -148,8 +149,8 @@ function NewEnquiryForm() {
             toast.error('Parent mobile is required');
             return;
         }
-        if (!isValidPhone(formData.parentMobile)) {
-            toast.error('Please enter a valid phone number');
+        if (!isValidPhoneValue(formData.parentMobile)) {
+            toast.error('Please enter a valid phone number for the selected country');
             return;
         }
         if (!formData.parentRelationWithChild) {

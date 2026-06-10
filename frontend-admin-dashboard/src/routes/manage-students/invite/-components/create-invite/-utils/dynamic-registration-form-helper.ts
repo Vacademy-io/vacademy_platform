@@ -1,4 +1,5 @@
 import z from 'zod';
+import { isBlankPhone, isValidPhoneValue } from '@/lib/phone-validation';
 
 export interface AssessmentCustomFieldOpenRegistration {
     id: string;
@@ -12,6 +13,22 @@ export interface AssessmentCustomFieldOpenRegistration {
     created_at: string;
     updated_at: string;
 }
+
+/**
+ * Builds the zod schema for a non-dropdown custom field's `value`. Phone fields
+ * (`field_type === 'phone'`, the same type the renderer maps to PhoneNumberInput)
+ * get country-aware validation; everything else keeps the generic string rule.
+ */
+const buildValueSchema = (field: AssessmentCustomFieldOpenRegistration): z.ZodTypeAny => {
+    const requiredMsg = `${field.field_name} is required`;
+    if (field.field_type === 'phone') {
+        const invalidMsg = `Enter a valid ${field.field_name.toLowerCase()} for the selected country`;
+        return field.is_mandatory
+            ? z.string().min(1, requiredMsg).refine(isValidPhoneValue, invalidMsg)
+            : z.string().refine((v) => isBlankPhone(v) || isValidPhoneValue(v), invalidMsg);
+    }
+    return field.is_mandatory ? z.string().min(1, requiredMsg) : z.string();
+};
 
 export const getDynamicSchema = (formFields: AssessmentCustomFieldOpenRegistration[]) => {
     const dynamicSchema = z.object(
@@ -38,9 +55,7 @@ export const getDynamicSchema = (formFields: AssessmentCustomFieldOpenRegistrati
                 schema[field.field_key] = z.object({
                     id: z.string().optional(),
                     name: z.string(),
-                    value: field.is_mandatory
-                        ? z.string().min(1, `${field.field_name} is required`)
-                        : z.string(),
+                    value: buildValueSchema(field),
                     is_mandatory: z.boolean(),
                     type: z.string(),
                 });

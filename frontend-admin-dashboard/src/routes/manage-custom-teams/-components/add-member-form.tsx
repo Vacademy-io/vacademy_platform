@@ -14,6 +14,7 @@ import { Form } from '@/components/ui/form';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { phoneSchema } from '@/lib/phone-validation';
 import {
     grantUserAccess,
     inviteUser,
@@ -44,7 +45,7 @@ import { useDebounce } from 'use-debounce';
 const memberSchema = z.object({
     fullName: z.string().min(1, 'Full Name is required'),
     email: z.string().email('Invalid email address'),
-    mobileNumber: z.string().min(10, 'Phone must be at least 10 digits'),
+    mobileNumber: phoneSchema({ required: true, label: 'Phone number' }),
     roleId: z.string().optional(),
     hasFacultyAssigned: z.boolean().default(false),
     linkageType: z.enum(['DIRECT', 'INHERITED', 'PARTNERSHIP']).optional(),

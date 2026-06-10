@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { phoneSchema } from '@/lib/phone-validation';
 
 // Step One Schema - Profile Picture
 export const stepOneSchema = z.object({
@@ -11,7 +12,7 @@ export const stepTwoSchema = z.object({
     // Core mandatory fields (always required)
     full_name: z.string().min(1, 'Full name is required'),
     email: z.string().email('Invalid email format').optional().or(z.literal('')),
-    mobile_number: z.string().min(1, 'Mobile number is required'),
+    mobile_number: phoneSchema({ required: true, label: 'Mobile number' }),
 
     // Optional system fields (based on cache visibility)
     gender: z.string().optional(),
@@ -26,9 +27,9 @@ export const stepTwoSchema = z.object({
     fathers_name: z.string().optional(),
     mothers_name: z.string().optional(),
     parents_email: z.string().email('Invalid email format').optional().or(z.literal('')),
-    parents_mobile_number: z.string().optional(),
+    parents_mobile_number: phoneSchema({ label: "Parent's mobile number" }),
     parents_to_mother_email: z.string().email('Invalid email format').optional().or(z.literal('')),
-    parents_to_mother_mobile_number: z.string().optional(),
+    parents_to_mother_mobile_number: phoneSchema({ label: "Mother's mobile number" }),
 
     // Custom fields will be added dynamically
     custom_fields: z.record(z.string(), z.string()).optional(),

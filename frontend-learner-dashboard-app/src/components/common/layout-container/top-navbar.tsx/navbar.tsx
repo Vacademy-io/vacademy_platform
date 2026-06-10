@@ -24,6 +24,10 @@ import { getInstituteLogoQuery } from "@/services/institute-logo";
 import { useIsIOS } from "@/hooks/useIsIOS";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { Question } from "@phosphor-icons/react";
+import { useQueryDialogStore } from "@/stores/useQueryDialogStore";
+import { useDoubtManagementSetting } from "@/services/doubt-management-settings";
+import { QueryDialog } from "@/components/common/queries/QueryDialog";
 
 interface UserRole {
   id: string;
@@ -50,6 +54,8 @@ export function Navbar() {
     getInstituteLogoQuery(instituteDetails?.institute_logo_file_id ?? null),
   );
   const isIOS = useIsIOS();
+  const { showTopbarIcon } = useDoubtManagementSetting();
+  const openQueryDialog = useQueryDialogStore((s) => s.open);
 
   const hasTeacherAndStudentRole = useMemo(() => {
     const roles: UserRole[] | undefined = userRoleDetails?.roles;
@@ -468,6 +474,23 @@ export function Navbar() {
             </TooltipContent>
           </Tooltip>
         )}
+        {showTopbarIcon && (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <button
+                aria-label="Raise a query"
+                onClick={openQueryDialog}
+                className="group flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+              >
+                <Question className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="bg-primary-400 text-white" side="bottom">
+              Raise a query
+            </TooltipContent>
+          </Tooltip>
+        )}
+
         <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
 
         {/* Menu Button (always visible) */}
@@ -480,6 +503,9 @@ export function Navbar() {
           <List className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
         </button>
       </div>
+
+      {/* Global query dialog — opened from this icon and the dashboard card */}
+      <QueryDialog />
     </div>
   );
 }

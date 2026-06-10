@@ -21,6 +21,10 @@ public class DoubtsDto {
     private String userId;
     private String source;
     private String sourceId;
+    /** Configurable query type key (DOUBT, TECHNICAL, PAYMENT, ...). Defaults to DOUBT when absent. */
+    private String type;
+    /** Owning institute. Required for GENERAL queries (no batch); optional for SLIDE doubts. */
+    private String instituteId;
     private String subjectId;
     private String batchId;
     private String chapterId;

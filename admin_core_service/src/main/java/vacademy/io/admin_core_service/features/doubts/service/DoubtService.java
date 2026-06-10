@@ -70,11 +70,14 @@ public class DoubtService {
                                                List<String> status,
                                                List<String> batchIds,
                                                Pageable pageable) {
-        return getAllDoubtsWithFilter(contentTypes, contentPositions, sources, sourceIds, startDate, endDate,
-                userIds, status, batchIds, null, pageable);
+        return getAllDoubtsWithFilter(contentTypes, contentPositions, sources, sourceIds, null, startDate, endDate,
+                userIds, status, batchIds, null, null, pageable);
     }
 
     /**
+     * @param types        configurable query type keys (DOUBT, TECHNICAL, PAYMENT, ...) to filter by.
+     * @param instituteId  scopes admin (unscoped) callers to one institute. Required for the admin
+     *                     path now that batch is optional — GENERAL queries have no batch.
      * @param viewerUserId when non-null, restricts results to doubts visible to that viewer via
      *                     direct doubt_assignee rows or FSPSSM (batch-level or subject-level).
      *                     Pass {@code null} for admin/root callers — no visibility filter is applied.
@@ -83,40 +86,48 @@ public class DoubtService {
                                                List<String> contentPositions,
                                                List<String> sources,
                                                List<String> sourceIds,
+                                               List<String> types,
                                                Date startDate,
                                                Date endDate,
                                                List<String> userIds,
                                                List<String> status,
                                                List<String> batchIds,
+                                               String instituteId,
                                                String viewerUserId,
                                                Pageable pageable) {
         List<String> filteredContentTypes = Optional.ofNullable(contentTypes).orElse(Collections.emptyList());
         List<String> filteredContentPositions = Optional.ofNullable(contentPositions).orElse(Collections.emptyList());
         List<String> filteredSources = Optional.ofNullable(sources).orElse(Collections.emptyList());
         List<String> filteredSourceIds = Optional.ofNullable(sourceIds).orElse(Collections.emptyList());
+        List<String> filteredTypes = Optional.ofNullable(types).orElse(Collections.emptyList());
         List<String> filteredUserIds = Optional.ofNullable(userIds).orElse(Collections.emptyList());
         List<String> filteredStatus = Optional.ofNullable(status).orElse(Collections.emptyList());
         List<String> filteredBatchIds = (batchIds == null ? Collections.emptyList() : batchIds);
         boolean hasBatchIds = !filteredBatchIds.isEmpty();
+        // Postgres can't parse `IN ()`; pass a non-matching placeholder when no batch filter is set
+        // (the hasBatchIds guard short-circuits it anyway).
+        List<String> batchIdsForQuery = hasBatchIds ? filteredBatchIds : List.of("");
+        String scopeInstituteId = (instituteId != null && !instituteId.isBlank()) ? instituteId : null;
 
-        // Admin callers (no viewer scope) MUST pass at least one batch — otherwise the admin UI
-        // would return every doubt in the entire institute via a single broad query.
+        // Admin callers (no viewer scope) must scope by institute now that batch is optional —
+        // otherwise the inbox would return every doubt across all institutes. A batch filter (when
+        // supplied) narrows further; GENERAL queries are reachable with institute-only scope.
         if (viewerUserId == null) {
-            if (!hasBatchIds) {
+            if (scopeInstituteId == null && !hasBatchIds) {
                 return Page.empty(pageable);
             }
             return doubtsRepository.findDoubtsWithFilter(filteredContentPositions, filteredContentTypes, filteredSources,
-                    filteredSourceIds, filteredUserIds, filteredStatus, filteredBatchIds, startDate, endDate, pageable);
+                    filteredSourceIds, filteredTypes, filteredUserIds, filteredStatus, scopeInstituteId,
+                    batchIdsForQuery, hasBatchIds, startDate, endDate, pageable);
         }
 
         // Scoped (teacher/student) callers: the visibility predicates in the query already restrict
         // results to doubts the user can see. An empty batch list here means "no explicit batch
         // filter" rather than "no visible doubts" — critical for teachers who are directly assigned
         // to a doubt on a batch they don't have FSPSSM access to.
-        List<String> batchIdsForQuery = hasBatchIds ? filteredBatchIds : List.of("");
         return doubtsRepository.findDoubtsWithFilterForViewer(filteredContentPositions, filteredContentTypes, filteredSources,
-                filteredSourceIds, filteredUserIds, filteredStatus, batchIdsForQuery, hasBatchIds, startDate, endDate,
-                viewerUserId, pageable);
+                filteredSourceIds, filteredTypes, filteredUserIds, filteredStatus, scopeInstituteId, batchIdsForQuery,
+                hasBatchIds, startDate, endDate, viewerUserId, pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {
@@ -171,6 +182,8 @@ public class DoubtService {
                     .parentLevel(doubt.getParentLevel()==null ? 0 : doubt.getParentLevel())
                     .source(doubt.getSource())
                     .sourceId(doubt.getSourceId())
+                    .type(doubt.getType())
+                    .instituteId(doubt.getInstituteId())
                     .subjectId(subjectId)
                     .sourceName(sourceName)
                     .batchId(doubt.getPackageSessionId())

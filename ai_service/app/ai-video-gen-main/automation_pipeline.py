@@ -15345,6 +15345,11 @@ class VideoGenerationPipeline:
                 except Exception:
                     pass  # corrupt cache — regenerate
 
+            # Cooperative-stop checkpoint: a worker that hasn't begun its
+            # (expensive) work yet bails the instant the user cancels, instead
+            # of running a full shot whose output we're about to throw away.
+            self._check_stop()
+
             # Sub-shot decomposition (experimental flag) — split dense shots
             # into 2 focused sub-shots before HTML generation. Both sub-shots
             # recurse with the parent's `shot_idx` so neighbour context and
@@ -16798,6 +16803,10 @@ class VideoGenerationPipeline:
                 "- The outer JSON MUST close properly with `}`. If content is too long, cut elements.\n"
                 "- Return ONLY the raw JSON object. No markdown fences."
             )
+            # Cooperative-stop checkpoint right before the most expensive step
+            # in the shot (the HTML LLM call + up to 3 retries). Lets an
+            # in-flight worker abort within one sub-step of a cancel.
+            self._check_stop()
             max_attempts = 3
             # Cumulative usage across all attempts — tracks retry token burns
             usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -17224,6 +17233,11 @@ class VideoGenerationPipeline:
                         )
                 except Exception as _av_err:
                     print(f"   ⚠️ Inline <aivideo> composer error on shot {shot_idx + 1}: {_av_err}")
+
+            # Cooperative-stop checkpoint before the post-render gate chain
+            # (density validator → bbox lint → vision review), each of which
+            # can fire its own screenshot + corrective LLM regen.
+            self._check_stop()
 
             # ── Animation density validator + targeted regen (super_ultra only) ──
             # Scans the generated HTML for GSAP tweens and sync-point delays. If the
@@ -17724,10 +17738,16 @@ class VideoGenerationPipeline:
             return entries, usage
 
         # Run all shots in parallel using ThreadPoolExecutor.
-        # Cooperative-stop checkpoint: don't submit more shots if the user
-        # has cancelled, and bail out of the result-collection loop early
-        # if cancellation comes mid-batch. In-flight shots (≤ max_workers)
-        # complete naturally; everything queued behind them is skipped.
+        # Cooperative-stop: a cancel must (a) drop every shot not yet running
+        # and (b) NOT make the pipeline thread synchronously join the in-flight
+        # ones. We therefore manage the executor MANUALLY rather than via a
+        # `with` block: `with`'s __exit__ calls shutdown(wait=True), which
+        # DRAINS the whole work queue — every still-queued shot runs to
+        # completion — before any PipelineCancelled raised inside can
+        # propagate. That is exactly why "Stop" used to let filming run to the
+        # end. Instead we shutdown(wait=False, cancel_futures=True): queued
+        # shots are cancelled outright, and in-flight shots unwind on their own
+        # at the `self._check_stop()` checkpoints inside `_shot_task`.
         all_entries: List[Dict[str, Any]] = []
         max_workers = min(8, max(1, total_shots))
 
@@ -17748,34 +17768,52 @@ class VideoGenerationPipeline:
         else:
             print(f"   🧪 [PHASE_B v3] all {len(shots)} shots are dict ✓")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        _shot_cancelled = False
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        try:
             future_map: Dict[Any, int] = {}
             for i, shot in enumerate(shots):
-                # Check before each submission so cancellation midway through
-                # the queue-up phase saves submissions for the remaining shots.
-                self._check_stop()
+                # A cancel that lands during the (microsecond-fast) queue-up
+                # phase still spares every shot not yet submitted.
+                if self._stop_event is not None and self._stop_event.is_set():
+                    _shot_cancelled = True
+                    break
                 future_map[executor.submit(_shot_task, i, shot)] = i
 
-            for future in concurrent.futures.as_completed(future_map):
-                # Check between completions too — if cancellation comes after
-                # all shots are queued but only some have run, the remaining
-                # in-flight ones still have to finish (ThreadPoolExecutor has
-                # no per-future cancel for already-running tasks), but we
-                # stop collecting their results so the pipeline can unwind.
-                if self._stop_event is not None and self._stop_event.is_set():
-                    raise PipelineCancelled("Pipeline cancelled by user during shot generation")
-                shot_idx = future_map[future]
-                try:
-                    entries, usage = future.result()
-                    all_entries.extend(entries)
-                    if usage:
-                        total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
-                        total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
-                        total_usage["total_tokens"] += usage.get("total_tokens", 0)
-                except Exception as e:
-                    import traceback as _tb_e
-                    print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
-                    print(f"      traceback:\n{_tb_e.format_exc()}")
+            if not _shot_cancelled:
+                for future in concurrent.futures.as_completed(future_map):
+                    # Stop the moment a completion reveals the cancel flag.
+                    # Already-running shots can't be force-killed, but they
+                    # self-abort at their own `_check_stop()` checkpoints; the
+                    # shutdown(cancel_futures=True) below drops the queued rest.
+                    if self._stop_event is not None and self._stop_event.is_set():
+                        _shot_cancelled = True
+                        break
+                    shot_idx = future_map[future]
+                    try:
+                        entries, usage = future.result()
+                        all_entries.extend(entries)
+                        if usage:
+                            total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                            total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+                            total_usage["total_tokens"] += usage.get("total_tokens", 0)
+                    except PipelineCancelled:
+                        # A worker bailed at one of its internal checkpoints.
+                        _shot_cancelled = True
+                        break
+                    except Exception as e:
+                        import traceback as _tb_e
+                        print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
+                        print(f"      traceback:\n{_tb_e.format_exc()}")
+        finally:
+            # Cancel queued-but-unstarted shots and return immediately — do NOT
+            # block the pipeline thread joining the in-flight ones (wait=False).
+            # On the normal path every future is already done, so this is a
+            # no-op. cancel_futures requires Python 3.9+ (we ship 3.11).
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if _shot_cancelled:
+            raise PipelineCancelled("Pipeline cancelled by user during shot generation")
 
         # Sort by start time
         all_entries.sort(key=lambda x: float(x.get("start", 0)))

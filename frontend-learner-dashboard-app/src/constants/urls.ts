@@ -143,6 +143,7 @@ export const LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST = `${BASE_URL}/admin-core-se
 export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${BASE_URL}/admin-core-service/live-session/get-earliest-schedule-id`;
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
+export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 export const GET_USER_ROLES_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;

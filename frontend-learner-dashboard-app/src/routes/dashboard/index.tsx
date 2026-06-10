@@ -61,6 +61,7 @@ import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttenda
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { DashboardPinsPanel } from "@/components/announcements";
 import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
+import { RaiseQueryCard } from "./-components/RaiseQueryCard";
 import { useServerTime } from "@/hooks/use-server-time";
 import {
   convertSessionTimeToUserTimezone,
@@ -539,6 +540,9 @@ export function DashboardComponent() {
 
         {/* Recent System Notifications Widget */}
         <RecentSystemNotifications />
+
+        {/* General query intake — only when the institute enabled the dashboard card */}
+        <RaiseQueryCard />
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>

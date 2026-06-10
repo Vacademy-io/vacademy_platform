@@ -1,6 +1,7 @@
 import { DateFilter } from './date-filter';
 import { BatchFilter } from './batch-filter';
 import { StatusFilter } from './status-filter';
+import { TypeFilter } from './type-filter';
 import { Funnel } from '@phosphor-icons/react';
 
 export const Filters = () => {
@@ -12,6 +13,7 @@ export const Filters = () => {
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
                 <StatusFilter />
+                <TypeFilter />
                 <BatchFilter />
                 <DateFilter />
             </div>

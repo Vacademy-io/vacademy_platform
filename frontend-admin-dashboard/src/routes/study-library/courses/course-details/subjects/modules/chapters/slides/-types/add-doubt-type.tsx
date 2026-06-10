@@ -11,12 +11,17 @@ export interface DoubtType {
     name: string;
     source: 'video' | string;
     source_id: string;
+    /** Configurable query type key (DOUBT, TECHNICAL, PAYMENT, ...). Absent ⇒ DOUBT. */
+    type?: string;
+    /** Owning institute — required for GENERAL queries (no batch). */
+    institute_id?: string;
     raised_time: string; // ISO 8601 timestamp
     resolved_time: string | null; // ISO 8601 timestamp
     content_position: string; // Format: HH:MM:SS
     content_type: string;
     html_text: string;
-    status: 'ACTIVE' | 'INACTIVE' | 'RESOLVED' | 'UNRESOLVED' | 'DELETED';
+    // Backend only ever emits ACTIVE | RESOLVED | DELETED; non-RESOLVED renders as "Pending" in UI.
+    status: 'ACTIVE' | 'RESOLVED' | 'DELETED';
     parent_id: string | null;
     parent_level: number;
     doubt_assignee_request_user_ids: string[];

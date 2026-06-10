@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Payload stored inside the institute's DOUBT_MANAGEMENT_SETTING slot. Controls which faculty are
  * auto-assigned to new doubts.
@@ -44,6 +46,71 @@ public class DoubtManagementSettingDataDto {
      * institute can disable push, etc.
      */
     private DoubtNotificationPrefs notifications;
+
+    /**
+     * Controls the learner-facing general-query intake (top-bar "?" icon + dashboard card).
+     * {@code null} or {@code enabled=false} means existing institutes are unaffected — the new
+     * entry points stay hidden and only the in-course slide doubt flow remains.
+     */
+    private LearnerQueryPrefs learnerQuery;
+
+    /**
+     * Configurable query types (DOUBT, TECHNICAL, PAYMENT, ...) with per-type default-assignee
+     * routing. {@code null}/empty ⇒ legacy behavior: every doubt is treated as DOUBT and routed via
+     * {@link #defaultAssigneeSource}.
+     */
+    private List<QueryTypeConfig> queryTypes;
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class LearnerQueryPrefs {
+        /** Master switch — when false (default) neither entry point is shown to learners. */
+        private Boolean enabled;
+        /** Show the "?" quick-access icon in the learner top layout bar. */
+        private Boolean showTopbarIcon;
+        /** Show the "Need help? Raise a query" card on the learner dashboard. */
+        private Boolean showDashboardCard;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class QueryTypeConfig {
+        /** Stable key persisted on doubts.type (e.g. DOUBT, TECHNICAL, PAYMENT). Never renamed. */
+        private String key;
+        /** User-facing label shown in admin filters/columns and the learner type dropdown. */
+        private String label;
+        /** When false, the type is hidden everywhere (kept for historical rows). Default true. */
+        private Boolean enabled;
+        /** The built-in academic DOUBT type — cannot be deleted from the admin UI. */
+        private Boolean isSystem;
+        /** When true, learners may pick this type when raising a general query. */
+        private Boolean learnerSelectable;
+        /** Per-type default-assignee routing. {@code null} ⇒ fall back to {@link #defaultAssigneeSource}. */
+        private QueryTypeAssignee assignee;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class QueryTypeAssignee {
+        /**
+         * One of SUBJECT_TEACHER | BATCH_TEACHER | BOTH | ROLE | SPECIFIC_USERS | NONE. String (not
+         * enum) so an older/newer frontend can't break the whole settings blob with an unknown value.
+         */
+        private String source;
+        /** Role name to route to when {@code source=ROLE} (e.g. ADMIN). */
+        private String role;
+        /** Explicit handler user ids when {@code source=SPECIFIC_USERS}. */
+        private List<String> userIds;
+    }
 
     @Data
     @Builder

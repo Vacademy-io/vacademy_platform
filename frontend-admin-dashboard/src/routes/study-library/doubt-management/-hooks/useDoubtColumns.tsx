@@ -5,6 +5,7 @@ import { DoubtCell } from '../-components/doubt-table/doubt-cell';
 import { MarkAsResolvedCell } from '../-components/doubt-table/mark-as-resolved-cell';
 import { BatchCell } from '../-components/doubt-table/batch-cell';
 import { TypeCell } from '../-components/doubt-table/type-cell';
+import { CategoryCell } from '../-components/doubt-table/category-cell';
 import { AssigneeCell } from '../-components/doubt-table/assignee-cell';
 import { ActionsCell } from '../-components/doubt-table/actions-cell';
 import { NavigateCell } from '../-components/doubt-table/navigate-cell';
@@ -17,7 +18,7 @@ const getInitials = (name?: string) => {
     if (!cleaned) return '?';
     const parts = cleaned.split(/\s+/);
     const first = parts[0]?.[0] ?? '';
-    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+    const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
     return (first + last).toUpperCase();
 };
 
@@ -47,7 +48,7 @@ const DateStack = ({ iso }: { iso?: string | null }) => {
     return (
         <div className="flex flex-col leading-tight">
             <span className="text-sm font-medium text-neutral-800">{parts.date}</span>
-            <span className="text-[11px] text-neutral-500">{parts.time}</span>
+            <span className="text-caption text-neutral-500">{parts.time}</span>
         </div>
     );
 };
@@ -80,7 +81,7 @@ export const useDoubtTableColumns = () => {
                 return (
                     <div className="flex items-center gap-2">
                         <Avatar className="size-8">
-                            <AvatarFallback className="bg-primary-100 text-[11px] font-semibold text-primary-700">
+                            <AvatarFallback className="bg-primary-100 text-caption font-semibold text-primary-700">
                                 {getInitials(name)}
                             </AvatarFallback>
                         </Avatar>
@@ -97,8 +98,13 @@ export const useDoubtTableColumns = () => {
             cell: ({ row }) => <BatchCell batch_id={row.original.batch_id} />,
         },
         {
+            accessorKey: 'category',
+            header: 'Category',
+            cell: ({ row }) => <CategoryCell doubt={row.original} />,
+        },
+        {
             accessorKey: 'type',
-            header: 'Type',
+            header: 'Format',
             cell: ({ row }) => <TypeCell doubt={row.original} />,
         },
         {

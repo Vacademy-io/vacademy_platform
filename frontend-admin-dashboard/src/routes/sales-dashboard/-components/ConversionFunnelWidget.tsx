@@ -107,7 +107,13 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
                         people" answer one glance away. */}
                     <ul className="space-y-1.5 md:w-44">
                         {stages.map((s, i) => {
-                            const dropPct = dropoffs[i];
+                            // `noUncheckedIndexedAccess` makes array reads
+                            // `T | undefined`; `dropoffs` is built off the
+                            // same stages list so `dropoffs[i]` is in
+                            // range, but TS can't prove it — coerce the
+                            // missing case to null so DropoffChip's
+                            // `number | null` prop stays honest.
+                            const dropPct = dropoffs[i] ?? null;
                             return (
                                 <li
                                     key={s.status_key}

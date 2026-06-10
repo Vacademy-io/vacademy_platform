@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Cell, Funnel, FunnelChart, LabelList, ResponsiveContainer, Tooltip } from 'recharts';
 import { fetchFunnel } from '../-services/sales-dashboard-services';
 
 interface Props {
@@ -8,6 +9,20 @@ interface Props {
     to: number | undefined;
 }
 
+/**
+ * Tapered conversion funnel — same recharts `FunnelChart` pattern that
+ * /challenge-analytics → ChurnAnalysis uses, so the visual identity is
+ * consistent across dashboards. Recharts renders each stage as a real
+ * trapezoid whose width interpolates between its count and the next stage's,
+ * which is the "this is actually a funnel" shape the previous CSS-band
+ * version couldn't produce.
+ *
+ * Backend supplies a per-stage colour from the institute's status palette;
+ * unknown / missing colours fall back to a sequential green→amber→red ramp
+ * so the eye reads "good at the top, attrition at the bottom" by default.
+ */
+const FALLBACK_COLORS = ['#10B981', '#22C55E', '#84CC16', '#EAB308', '#F59E0B', '#F97316', '#EF4444'];
+
 export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props) {
     const { data, isLoading } = useQuery({
         queryKey: ['sales-dashboard-funnel', instituteId, teamId, from, to],
@@ -16,7 +31,28 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
     });
 
     const stages = data ?? [];
-    const max = Math.max(1, ...stages.map((s) => s.count));
+
+    // Recharts needs `name` + `value` keys; we also carry the original count
+    // so the tooltip + side-rail can use it. Filter zero stages out — a
+    // recharts Funnel with 0-value cells renders as a flat sliver that
+    // breaks the taper.
+    const funnelData = stages
+        .filter((s) => s.count > 0)
+        .map((s, idx) => ({
+            name: s.label,
+            value: s.count,
+            statusKey: s.status_key,
+            fill: s.color || FALLBACK_COLORS[idx % FALLBACK_COLORS.length],
+        }));
+
+    // Per-stage drop-off vs the previous stage — useful in the right rail.
+    // Computed off the FULL stages list (including zeros) so the percentages
+    // don't lie about a stage that was filtered for rendering.
+    const dropoffs = stages.map((s, i) => {
+        const prev = i > 0 ? stages[i - 1]?.count ?? 0 : null;
+        if (prev == null || prev <= 0) return null;
+        return Math.round(((prev - s.count) / prev) * 100);
+    });
 
     return (
         <section className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -25,34 +61,125 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
                 <p className="text-caption text-neutral-500">Pipeline by status</p>
             </div>
             {isLoading ? (
-                <div className="text-subtitle text-neutral-500">Loading…</div>
+                <div className="flex h-64 items-center justify-center text-subtitle text-neutral-500">
+                    Loading…
+                </div>
             ) : stages.length === 0 ? (
-                <div className="text-subtitle text-neutral-500">No data yet.</div>
+                <div className="flex h-64 items-center justify-center text-subtitle text-neutral-500">
+                    No data yet.
+                </div>
+            ) : funnelData.length === 0 ? (
+                <div className="flex h-64 items-center justify-center text-subtitle text-neutral-500">
+                    Every stage is empty in this window.
+                </div>
             ) : (
-                <ul className="space-y-2">
-                    {stages.map((s) => (
-                        <li key={s.status_key} className="flex items-center gap-2">
-                            <span
-                                aria-hidden="true"
-                                className={`inline-block size-2 rounded-full ${
-                                    s.color ? '' : 'bg-neutral-500'
-                                }`}
-                                // Dynamic per-stage color comes from the
-                                // backend (status palette); fall back to a
-                                // design-token class above when absent.
-                                style={s.color ? { backgroundColor: s.color } : undefined}
-                            />
-                            <span className="w-32 truncate text-subtitle text-neutral-700">{s.label}</span>
-                            <div
-                                className="h-3 rounded bg-primary-100"
-                                style={{ width: `${(s.count / max) * 100}%`, minWidth: 2 }}
-                                aria-label={`${s.label}: ${s.count}`}
-                            />
-                            <span className="ml-auto text-caption text-neutral-600">{s.count}</span>
-                        </li>
-                    ))}
-                </ul>
+                <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
+                    {/* Funnel itself */}
+                    <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <FunnelChart>
+                                <Tooltip content={<FunnelTooltip />} />
+                                <Funnel dataKey="value" data={funnelData} isAnimationActive>
+                                    <LabelList
+                                        position="right"
+                                        fill="#4b5563"
+                                        stroke="none"
+                                        dataKey="name"
+                                        fontSize={12}
+                                    />
+                                    <LabelList
+                                        position="center"
+                                        fill="#ffffff"
+                                        stroke="none"
+                                        dataKey="value"
+                                        fontSize={13}
+                                        fontWeight={600}
+                                    />
+                                    {funnelData.map((entry) => (
+                                        <Cell key={entry.statusKey} fill={entry.fill} />
+                                    ))}
+                                </Funnel>
+                            </FunnelChart>
+                        </ResponsiveContainer>
+                    </div>
+
+                    {/* Per-stage drop-off rail — keeps the "where am I losing
+                        people" answer one glance away. */}
+                    <ul className="space-y-1.5 md:w-44">
+                        {stages.map((s, i) => {
+                            // `noUncheckedIndexedAccess` makes array reads
+                            // `T | undefined`; `dropoffs` is built off the
+                            // same stages list so `dropoffs[i]` is in
+                            // range, but TS can't prove it — coerce the
+                            // missing case to null so DropoffChip's
+                            // `number | null` prop stays honest.
+                            const dropPct = dropoffs[i] ?? null;
+                            return (
+                                <li
+                                    key={s.status_key}
+                                    className="flex items-center gap-2 text-caption"
+                                >
+                                    <span
+                                        aria-hidden="true"
+                                        className="inline-block size-2.5 rounded-sm"
+                                        style={{
+                                            backgroundColor:
+                                                s.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+                                        }}
+                                    />
+                                    <span className="flex-1 truncate text-neutral-700">{s.label}</span>
+                                    <span className="font-medium text-neutral-900">{s.count}</span>
+                                    <DropoffChip pct={dropPct} />
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
             )}
         </section>
+    );
+}
+
+function FunnelTooltip({
+    active,
+    payload,
+}: {
+    active?: boolean;
+    payload?: Array<{ payload?: { name?: string; value?: number; statusKey?: string }; value?: number }>;
+}) {
+    if (!active || !payload?.length) return null;
+    const item = payload[0];
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white px-3 py-2 shadow-md">
+            <p className="text-body font-medium text-neutral-900">{item?.payload?.name}</p>
+            <p className="text-caption text-neutral-600">
+                <span className="font-semibold text-neutral-900">
+                    {item?.value?.toLocaleString()}
+                </span>{' '}
+                lead{item?.value === 1 ? '' : 's'}
+            </p>
+        </div>
+    );
+}
+
+function DropoffChip({ pct }: { pct: number | null }) {
+    if (pct == null)
+        return <span className="w-14 text-right text-neutral-400">—</span>;
+    if (pct === 0)
+        return <span className="w-14 text-right font-medium text-success-700">held</span>;
+    if (pct < 0)
+        return (
+            <span className="w-14 text-right font-medium text-info-700">
+                +{Math.abs(pct)}%
+            </span>
+        );
+    return (
+        <span
+            className={`w-14 text-right font-medium ${
+                pct > 50 ? 'text-danger-700' : 'text-warning-700'
+            }`}
+        >
+            −{pct}%
+        </span>
     );
 }

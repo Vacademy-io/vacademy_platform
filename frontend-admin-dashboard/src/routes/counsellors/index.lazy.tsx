@@ -1,4 +1,4 @@
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { createLazyFileRoute, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -61,7 +61,11 @@ function isCounsellorsPageEnabled(): boolean {
     return sub?.visible === true;
 }
 
-function RouteComponent() {
+/**
+ * Exported so the `/counsellors/$userId` lazy route can mount the same
+ * gate-then-page wrapper without duplicating the feature-disabled check.
+ */
+export function CounsellorsRouteWrapper() {
     if (!isCounsellorsPageEnabled()) {
         return (
             <FeatureDisabledNotice
@@ -73,10 +77,29 @@ function RouteComponent() {
     return <WorkbenchPage />;
 }
 
-function WorkbenchPage() {
+function RouteComponent() {
+    return <CounsellorsRouteWrapper />;
+}
+
+/**
+ * Shared by both `/counsellors` (no drawer) and `/counsellors/$userId` (drawer
+ * open for that user). Reading the URL param with `{ strict: false }` lets the
+ * SAME component render at either route without throwing in the no-param case.
+ *
+ * URL is the source of truth for which drawer is open — opening / closing the
+ * drawer navigates, and a hard refresh on `/counsellors/<id>` reopens the
+ * drawer for that user. Makes the URL shareable: paste it to a colleague and
+ * they land directly on that counsellor's leads + activity.
+ */
+export function WorkbenchPage() {
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId();
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
+    // Both routes can render this — `userId` is the param when at the
+    // /counsellors/$userId subroute, undefined when at /counsellors.
+    const params = useParams({ strict: false }) as { userId?: string };
+    const urlUserId = params?.userId;
 
     useEffect(() => {
         setNavHeading('Counsellors');
@@ -181,13 +204,61 @@ function WorkbenchPage() {
         counsellors.map((c) => c.user_id)
     );
 
+    // URL → drawer sync. When the URL carries a userId, find that counsellor
+    // in the full candidate list (settings-side size=500 fetch) and pin the
+    // drawer to them. Falls back to the current page if the candidate set
+    // hasn't loaded yet. Skip when the in-memory state already matches the
+    // URL — otherwise typing in the search box would yank focus around.
+    useEffect(() => {
+        if (!urlUserId) {
+            if (openCounsellor !== null) setOpenCounsellor(null);
+            return;
+        }
+        if (openCounsellor?.user_id === urlUserId) return;
+        const found =
+            candidates.find((c) => c.user_id === urlUserId) ??
+            counsellors.find((c) => c.user_id === urlUserId) ??
+            null;
+        if (found) {
+            setOpenCounsellor(found);
+            setDetailTab('leads');
+        }
+    }, [urlUserId, candidates, counsellors, openCounsellor]);
+
+    /**
+     * Open the drawer for a counsellor — drives URL state, not local state.
+     * URL change wakes the effect above which then sets openCounsellor.
+     */
+    function openDrawer(c: WorkbenchCounsellor) {
+        setDetailTab('leads');
+        void navigate({
+            to: '/counsellors/$userId',
+            params: { userId: c.user_id },
+        });
+    }
+
+    function closeDrawer() {
+        void navigate({ to: '/counsellors' });
+    }
+
     // ACTIVE direction: legacy direct flip — no leads to move, no dialog
     // needed. (For INACTIVE we go through the reassign-first flow below.)
     const setActiveMutation = useMutation({
         mutationFn: (userId: string) =>
             setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
         onSuccess: () => {
+            // BOTH lists need to refetch:
+            //   * `workbench-counsellors`           — the paginated display list
+            //   * `workbench-counsellors-candidates` — the size=500 query that
+            //     feeds the reassign dialog's target dropdown. Without this,
+            //     a counsellor just marked back to ACTIVE stays filtered out
+            //     of the target list (the dropdown is gated on `is_active`)
+            //     until the user hard-refreshes — which is the bug you saw
+            //     after flipping someone inactive → active.
             queryClient.invalidateQueries({ queryKey: ['workbench-counsellors', instituteId] });
+            queryClient.invalidateQueries({
+                queryKey: ['workbench-counsellors-candidates', instituteId],
+            });
             toast.success('Marked active');
         },
         onError: (e) => {
@@ -243,7 +314,14 @@ function WorkbenchPage() {
     }
 
     function handleReassignComplete() {
+        // Reassign-and-mark-inactive flips pool memberships, so the
+        // candidates list (which gates the reassign dropdown on is_active)
+        // also needs to refetch — otherwise the just-inactivated counsellor
+        // would still appear as a valid target on the next dialog open.
         queryClient.invalidateQueries({ queryKey: ['workbench-counsellors', instituteId] });
+        queryClient.invalidateQueries({
+            queryKey: ['workbench-counsellors-candidates', instituteId],
+        });
         queryClient.invalidateQueries({ queryKey: ['workbench-leads', instituteId] });
     }
 
@@ -399,10 +477,7 @@ function WorkbenchPage() {
                     }
                     onOpen={(uid) => {
                         const c = counsellors.find((x) => x.user_id === uid);
-                        if (c) {
-                            setOpenCounsellor(c);
-                            setDetailTab('leads');
-                        }
+                        if (c) openDrawer(c);
                     }}
                     onToggleStatus={(uid, isActive) => {
                         const c = counsellors.find((x) => x.user_id === uid);
@@ -417,10 +492,7 @@ function WorkbenchPage() {
                             key={c.user_id}
                             counsellor={c}
                             instituteId={instituteId}
-                            onOpen={() => {
-                                setOpenCounsellor(c);
-                                setDetailTab('leads');
-                            }}
+                            onOpen={() => openDrawer(c)}
                             onToggleStatus={() =>
                                 handleStatusToggle(c.user_id, c.full_name ?? c.user_id, c.is_active)
                             }
@@ -452,7 +524,9 @@ function WorkbenchPage() {
             {/* ── Detail slide-over panel (Radix Sheet, portaled) ── */}
             <DetailDrawer
                 open={!!openCounsellor}
-                onOpenChange={(o) => !o && setOpenCounsellor(null)}
+                onOpenChange={(o) => {
+                    if (!o) closeDrawer();
+                }}
                 counsellor={openCounsellor}
                 tab={detailTab}
                 onTabChange={setDetailTab}

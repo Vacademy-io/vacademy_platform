@@ -144,4 +144,26 @@ public class CounsellorWorkbenchController {
         Timestamp to = toMillis != null ? new Timestamp(toMillis) : null;
         return ResponseEntity.ok(workbenchService.activityFeed(userId, instituteId, from, to, limit));
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // Per-lead transfer chain
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the counsellor-assignment chain for one lead, oldest first.
+     * Powers the expand-row "transfer history" in the counsellor drawer's
+     * Leads tab. RBAC: caller must have access to the lead's current
+     * assignee (enforced in the service layer).
+     *
+     * The {@code leadUserId} path variable is the lead's user_id (same id
+     * carried by {@link WorkbenchLeadDTO#getUserId()}), not the
+     * user_lead_profile.id.
+     */
+    @GetMapping("/leads/{leadUserId}/transfers")
+    public ResponseEntity<List<LeadTransferDTO>> leadTransfers(
+            @PathVariable String leadUserId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(workbenchService.leadTransfers(instituteId, leadUserId, user));
+    }
 }

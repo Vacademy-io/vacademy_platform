@@ -5,6 +5,7 @@ import { getInstituteDetails } from "@/services/signup-api";
 import { getDecodedAccessTokenFromStorage } from "@/lib/auth/sessionUtility";
 import {
   canDownloadSlideType,
+  canPrintPdfSlide,
   SLIDE_DOWNLOAD_PERMISSION_SETTING_KEY,
   type SlideDownloadPermissionData,
 } from "@/constants/slide-download-permission";
@@ -116,5 +117,7 @@ export function useSlideDownloadPermission() {
     [data, roles]
   );
 
-  return { canDownload, isResolved: identityResolved };
+  const canPrintPdf = useCallback(() => canPrintPdfSlide(data, roles), [data, roles]);
+
+  return { canDownload, canPrintPdf, isResolved: identityResolved };
 }

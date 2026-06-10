@@ -4,6 +4,7 @@ import {
     COUNSELLOR_WORKBENCH_CONFIG,
     COUNSELLOR_WORKBENCH_CONFIG_UPDATE,
     COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS,
+    COUNSELLOR_WORKBENCH_LEAD_TRANSFERS,
     COUNSELLOR_WORKBENCH_MY_LEADS,
     COUNSELLOR_WORKBENCH_MY_TEAM,
     COUNSELLOR_WORKBENCH_REASSIGN,
@@ -81,6 +82,14 @@ export interface ReassignPayload {
     // Powers the reassign-first UI: confirming the dialog atomically moves
     // the leads AND takes the counsellor offline.
     mark_inactive?: boolean;
+    /**
+     * Optional scope filter. When set, the backend only moves these specific
+     * leads (matched by user_lead_profile.id == WorkbenchLead.lead_id) instead
+     * of the source counsellor's entire open-leads list. The per-row Reassign
+     * button passes a single id here so clicking it doesn't drain the
+     * counsellor's whole pipeline.
+     */
+    lead_ids?: string[];
 }
 
 export interface ReassignResult {
@@ -233,6 +242,39 @@ export async function fetchActivityFeed(
 ) {
     const res = await authenticatedAxiosInstance.get<ActivityFeedItem[]>(
         COUNSELLOR_WORKBENCH_ACTIVITY(userId, instituteId, fromMillis, toMillis, limit)
+    );
+    return res.data;
+}
+
+/**
+ * One row in a lead's counsellor-assignment chain. The very first row has
+ * `from_user_id === null` (initial assignment, nobody handed it off). Names
+ * are server-hydrated from auth_service; fall back to the user_id when the
+ * hydration call failed and the name came back null.
+ */
+export interface LeadTransfer {
+    from_user_id: string | null;
+    from_name: string | null;
+    to_user_id: string;
+    to_name: string | null;
+    actor_id: string | null;
+    actor_name: string | null;
+    /** Workbench tag: WORKBENCH_REASSIGN, POOL_ASSIGNMENT, etc. */
+    trigger: string | null;
+    /** Reassign mode tag: SINGLE / ROUND_ROBIN / MANUAL. Null for non-workbench assigns. */
+    mode: string | null;
+    /** ISO timestamp. */
+    at: string;
+}
+
+/**
+ * Fetch a lead's full transfer chain (oldest → newest). RBAC is enforced
+ * server-side: the lead's current assignee must be in the caller's
+ * descendant set, otherwise the server returns an error.
+ */
+export async function fetchLeadTransfers(instituteId: string, leadUserId: string) {
+    const res = await authenticatedAxiosInstance.get<LeadTransfer[]>(
+        COUNSELLOR_WORKBENCH_LEAD_TRANSFERS(instituteId, leadUserId)
     );
     return res.data;
 }

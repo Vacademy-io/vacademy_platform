@@ -548,15 +548,6 @@ export function DashboardComponent() {
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
-            {/* Play Theme Gamification Widgets — lead with streak, XP, achievements */}
-            {isPlayTheme && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                <StreakCounterWidget />
-                <XpDisplayWidget />
-                <AchievementBadgesWidget />
-              </div>
-            )}
-
             {/* Stats and Widgets Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {[
@@ -745,6 +736,15 @@ export function DashboardComponent() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Play Theme Gamification Widgets */}
+            {isPlayTheme && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <StreakCounterWidget />
+                <XpDisplayWidget />
+                <AchievementBadgesWidget />
+              </div>
             )}
 
             {/* Explore Buttons Section */}

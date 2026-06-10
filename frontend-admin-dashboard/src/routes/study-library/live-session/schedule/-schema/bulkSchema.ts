@@ -95,6 +95,20 @@ export const feedbackQuestionSchema = z.object({
     allow_half: z.boolean().nullish(),
 });
 
+/**
+ * One field on the public registration form. Mirrors the single-class step-2
+ * `addParticipantsSchema.fields` shape so the bulk flow can reuse the exact
+ * same builder UI and feed `transformFormToDTOStep2` without translation.
+ */
+export const bulkRegistrationFieldSchema = z.object({
+    id: z.string().optional(),
+    label: z.string().min(1, 'Field label is required').max(100, 'Field label too long'),
+    required: z.boolean(),
+    isDefault: z.boolean(),
+    type: z.string(),
+    options: z.array(z.object({ label: z.string(), name: z.string() })).optional(),
+});
+
 export const bulkSharedOptionsSchema = z.object({
     enableWaitingRoom: z.boolean().default(false),
     /** Minutes before start time to open the waiting room. Used only when enableWaitingRoom is true. */
@@ -150,6 +164,12 @@ export const bulkSessionFormSchema = z.object({
     // === Step-2 settings (applied to every created session) ===
     /** Private = batches assigned per row; Public = anyone with the link. */
     accessType: z.nativeEnum(AccessType).default(AccessType.PRIVATE),
+    /**
+     * Public registration-form fields, shared across every session created from
+     * the grid. Only meaningful when accessType === PUBLIC — seeded from the
+     * institute's default fields and editable like single-class step 2.
+     */
+    fields: z.array(bulkRegistrationFieldSchema).default([]),
     notifyBy: z
         .object({
             mail: z.boolean(),

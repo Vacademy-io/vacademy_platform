@@ -50,6 +50,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Copy, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -123,6 +124,27 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
 
     // Distinct package sessions across all scoped invites.
     const psList = collectPackageSessions(scopedInvites);
+
+    // PS-id → "Course · Level · Session" label for the Learners tab. Primary source is the
+    // sub-org's scoped invites (already fetched above and enriched with names); falls back
+    // to the institute store, then the raw id for the rare PS not in either.
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+    const psLabelById = new Map<string, string>(
+        psList.map((ps) => [ps.id, ps.label] as [string, string])
+    );
+    const courseLabelFor = (psId: string): string => {
+        const fromInvites = psLabelById.get(psId);
+        if (fromInvites) return fromInvites;
+        const d = getDetailsFromPackageSessionId({ packageSessionId: psId });
+        if (d) {
+            return (
+                [d.package_dto?.package_name, d.level?.level_name, d.session?.session_name]
+                    .filter(Boolean)
+                    .join(' · ') || psId
+            );
+        }
+        return psId;
+    };
 
     const [showLedger, setShowLedger] = useState(false);
     const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
@@ -563,6 +585,32 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                         Enrolled {fmtDate(l.enrolled_date)}
                                                     </p>
                                                 )}
+                                                {(() => {
+                                                    const psIds =
+                                                        l.package_session_ids &&
+                                                        l.package_session_ids.length > 0
+                                                            ? l.package_session_ids
+                                                            : l.package_session_id
+                                                              ? [l.package_session_id]
+                                                              : [];
+                                                    if (psIds.length === 0) return null;
+                                                    return (
+                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                            {psIds.map((psId) => (
+                                                                <span
+                                                                    key={psId}
+                                                                    title={courseLabelFor(psId)}
+                                                                    className="inline-flex max-w-[220px] items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                                                >
+                                                                    <BookOpen className="h-2.5 w-2.5 shrink-0" />
+                                                                    <span className="truncate">
+                                                                        {courseLabelFor(psId)}
+                                                                    </span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                             {hasDues ? (
                                                 <div className="text-right text-xs">

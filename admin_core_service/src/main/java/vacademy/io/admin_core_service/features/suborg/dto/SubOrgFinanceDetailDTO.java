@@ -73,7 +73,10 @@ public class SubOrgFinanceDetailDTO {
     public static class LearnerRow {
         private String userId;
         private String fullName;
+        /** Kept for backward-compat: the learner's first package session. */
         private String packageSessionId;
+        /** Every package session this learner is actively enrolled into under the sub-org. */
+        private List<String> packageSessionIds;
         private String userPlanId;
         private Date enrolledDate;
 

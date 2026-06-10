@@ -96,6 +96,11 @@ export function ReassignDialog({
         setSubmitting(true);
         try {
             let result;
+            // Every commit scopes to `openLeads` (the lead set the dialog was
+            // opened with). For per-row reassign that's a single lead — the
+            // backend's `lead_ids` whitelist keeps SINGLE/RR mode from
+            // sweeping up the source counsellor's whole pipeline.
+            const scopeIds = openLeads.map((l) => l.lead_id);
             // Reassign-first edge case: marking inactive with no open leads —
             // backend short-circuits before evaluating mode-specific args, so
             // we send a no-op SINGLE request without a target. The flip still
@@ -118,6 +123,7 @@ export function ReassignDialog({
                     from_user_id: fromUserId,
                     mode: 'SINGLE',
                     target_user_id: target,
+                    lead_ids: scopeIds,
                     mark_inactive: markInactive,
                 });
             } else if (mode === 'ROUND_ROBIN') {
@@ -125,6 +131,7 @@ export function ReassignDialog({
                     institute_id: instituteId,
                     from_user_id: fromUserId,
                     mode: 'ROUND_ROBIN',
+                    lead_ids: scopeIds,
                     mark_inactive: markInactive,
                 });
             } else {
@@ -141,6 +148,10 @@ export function ReassignDialog({
                         lead_id,
                         to_user_id,
                     })),
+                    // MANUAL already encodes the lead set via `assignments`,
+                    // but pass the scope explicitly anyway so the backend
+                    // never broadens beyond the dialog's intent.
+                    lead_ids: scopeIds,
                     mark_inactive: markInactive,
                 });
             }
@@ -175,8 +186,15 @@ export function ReassignDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl">
-                <DialogHeader>
+            {/* The dialog now fills most of the screen for the manual flow
+                (which can list dozens of leads), but we cap it at 85vh so the
+                header / mode picker / footer stay anchored while the body
+                scrolls inside. `flex flex-col` + `min-h-0` on the body is the
+                Tailwind dance that lets an inner scroll-container actually
+                shrink — without min-h-0 the body grows to its content height
+                and overflows the viewport instead of scrolling. */}
+            <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-5xl flex-col gap-0 p-0">
+                <DialogHeader className="border-b border-neutral-200 px-6 py-4">
                     <DialogTitle>
                         {markInactive
                             ? `Mark ${fromUserName ?? 'counsellor'} inactive`
@@ -191,7 +209,7 @@ export function ReassignDialog({
                     )}
                 </DialogHeader>
 
-                <div className="space-y-3">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
                     {/* Skip the mode picker entirely when there's nothing to
                         move — the dialog is then just a confirmation for the
                         atomic inactive flip. */}
@@ -205,7 +223,7 @@ export function ReassignDialog({
                     {!(markInactive && openLeads.length === 0) && mode === 'SINGLE' && (
                         <div>
                             <label className="mb-1 block text-caption font-medium text-neutral-700">
-                                Move all to
+                                {openLeads.length === 1 ? 'Move to' : 'Move all to'}
                             </label>
                             <select
                                 className="w-full rounded border border-neutral-300 px-3 py-2"
@@ -243,7 +261,7 @@ export function ReassignDialog({
                     )}
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="border-t border-neutral-200 px-6 py-4">
                     <MyButton buttonType="secondary" onClick={() => onOpenChange(false)} disable={submitting}>
                         Cancel
                     </MyButton>
@@ -325,8 +343,13 @@ function ManualPreviewTable({
         );
     }
     return (
-        <div className="overflow-auto rounded border border-neutral-200">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
+        // Only the table body needs to scroll independently — the parent
+        // dialog body provides the vertical scroll. The sticky header keeps
+        // the "Lead | Target counsellor" labels visible while the manager
+        // scrolls through dozens of rows. `overflow-x-auto` survives narrow
+        // viewports without forcing the parent into double-scroll.
+        <div className="overflow-x-auto rounded border border-neutral-200">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white px-3 py-2">
                 <span className="text-caption text-neutral-500">
                     {preview.assignments.length} leads · adjust targets inline
                 </span>

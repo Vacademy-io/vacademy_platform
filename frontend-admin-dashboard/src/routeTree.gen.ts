@@ -51,6 +51,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
@@ -472,6 +473,13 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const CounsellorsUserIdRoute = CounsellorsUserIdRouteImport.update({
+  id: "/counsellors/$userId",
+  path: "/counsellors/$userId",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/counsellors/$userId.lazy").then((d) => d.Route),
+)
 const WorkflowListIndexRoute = WorkflowListIndexRouteImport.update({
   id: "/workflow/list/",
   path: "/workflow/list/",
@@ -1571,6 +1579,7 @@ export interface FileRoutesByFullPath {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1749,6 +1758,7 @@ export interface FileRoutesByTo {
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1929,6 +1939,7 @@ export interface FileRoutesById {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2110,6 +2121,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2288,6 +2300,7 @@ export interface FileRouteTypes {
     | "/explore-ai"
     | "/landing"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2467,6 +2480,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2647,6 +2661,7 @@ export interface RootRouteChildren {
   LandingLazyRoute: typeof LandingLazyRoute
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
   PricingLazyRoute: typeof PricingLazyRoute
+  CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -3126,6 +3141,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/counsellors/$userId": {
+      id: "/counsellors/$userId"
+      path: "/counsellors/$userId"
+      fullPath: "/counsellors/$userId"
+      preLoaderRoute: typeof CounsellorsUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/workflow/list/": {
@@ -4081,6 +4103,7 @@ const rootRouteChildren: RootRouteChildren = {
   LandingLazyRoute: LandingLazyRoute,
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
   PricingLazyRoute: PricingLazyRoute,
+  CounsellorsUserIdRoute: CounsellorsUserIdRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,

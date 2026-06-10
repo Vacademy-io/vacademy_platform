@@ -6,7 +6,6 @@ import { getDecodedAccessTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { normalizeRoleKey } from "@/constants/slide-download-permission";
 
 const SLIDE_CONTENT_PROTECTION_SETTING_KEY = "SLIDE_CONTENT_PROTECTION_SETTING";
-const DEV_BYPASS_STORAGE_KEY = "slideAccessDevBypass";
 
 interface ProtectionData {
   version?: number;
@@ -15,8 +14,9 @@ interface ProtectionData {
 }
 
 /**
- * Dev escape hatch: `?access=dev` disables the protection for the rest of the
- * browser session (persisted in sessionStorage). Escape hatch, not a lock.
+ * Dev escape hatch: `?access=dev` (tolerant of a stray extra "?") disables the
+ * protection. URL-only and NOT sticky — protection returns the instant the
+ * param is gone from the URL. Escape hatch, not a lock.
  */
 function isDevBypass(): boolean {
   try {
@@ -25,15 +25,10 @@ function isDevBypass(): boolean {
     // "?access=dev" to a URL that already has a query string (producing a stray
     // second "?", e.g. ...&sessionId=xyz?access=dev) — not only when it is a
     // well-formed query param.
-    const hasAccessDev = window.location.href.split(/[?&#]/).some((token) => {
+    return window.location.href.split(/[?&#]/).some((token) => {
       const [key, value] = token.split("=");
       return key === "access" && value === "dev";
     });
-    if (hasAccessDev) {
-      sessionStorage.setItem(DEV_BYPASS_STORAGE_KEY, "1");
-      return true;
-    }
-    return sessionStorage.getItem(DEV_BYPASS_STORAGE_KEY) === "1";
   } catch {
     return false;
   }

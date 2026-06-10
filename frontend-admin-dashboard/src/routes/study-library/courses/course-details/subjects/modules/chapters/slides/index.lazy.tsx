@@ -6,6 +6,7 @@ import { NonAdminSlidesView } from './non-admin/NonAdminSlidesView';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useMemo } from 'react';
 import { QuickAddView, type ChapterSearchParamsForQuickAdd } from './-quick-add';
+import { SlideProtectionGuard } from './-components/SlideProtectionGuard';
 
 interface ChapterSearchParams {
     courseId: string;
@@ -60,13 +61,20 @@ function RouteComponent(): JSX.Element {
         };
     }, [courseId, studyLibraryData]);
 
-    if (searchParams.quickAdd) {
-        return <QuickAddView search={searchParams as unknown as ChapterSearchParamsForQuickAdd} />;
-    }
-
-    return userRole === 'ADMIN' ? (
-        <AdminSlidesView {...searchParams} />
-    ) : (
-        <NonAdminSlidesView {...searchParams} />
+    return (
+        <>
+            {/* Slide content protection (right-click + DevTools/view-source shortcuts),
+                per-role, while viewing slides in the admin app. Renders nothing. */}
+            <SlideProtectionGuard />
+            {searchParams.quickAdd ? (
+                <QuickAddView
+                    search={searchParams as unknown as ChapterSearchParamsForQuickAdd}
+                />
+            ) : userRole === 'ADMIN' ? (
+                <AdminSlidesView {...searchParams} />
+            ) : (
+                <NonAdminSlidesView {...searchParams} />
+            )}
+        </>
     );
 }

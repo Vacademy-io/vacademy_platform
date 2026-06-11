@@ -1,6 +1,5 @@
-import { isValidPhoneNumber, getCountryCallingCode, type CountryCode } from 'libphonenumber-js';
+import { isValidPhoneNumber } from 'libphonenumber-js';
 import { z } from 'zod';
-import { getPreferredPhoneCountries } from '@/services/domain-routing';
 
 /**
  * Country-aware phone validation, shared by every phone input in the app.
@@ -38,27 +37,16 @@ export const isBlankPhone = (value: string | undefined | null): boolean => {
 };
 
 /**
- * True when `value` is a valid phone number.
- *
- * The dial code is normally embedded in the value (e.g. "+919876543210" /
- * "919876543210") since the phone widget always prepends it. Legacy/imported
- * records, however, may hold a BARE national number with no country code (e.g.
- * "9876543210"), which `isValidPhoneNumber` would misread (as "+98…") and reject.
- * To keep such records editable, when the value isn't already valid we retry with
- * the institute's default country dial code prefixed. New input is unaffected
- * (it already carries the dial code, so the first check passes).
+ * True when `value` is a valid phone number for the country implied by its dial
+ * code. The phone widget always embeds the dial code (e.g. "+919876543210" /
+ * "919876543210"), so an incomplete number like "+9179998738" (dial code + only
+ * 8 national digits) is correctly rejected.
  */
 export const isValidPhoneValue = (value: string | undefined | null): boolean => {
     if (!value) return false;
     const raw = String(value).trim();
     try {
-        if (isValidPhoneNumber(raw.startsWith('+') ? raw : `+${raw}`)) return true;
-        const digits = raw.replace(/\D/g, '');
-        if (!digits) return false;
-        const cc = getCountryCallingCode(
-            getPreferredPhoneCountries().defaultCountry.toUpperCase() as CountryCode
-        );
-        return isValidPhoneNumber(`+${cc}${digits}`);
+        return isValidPhoneNumber(raw.startsWith('+') ? raw : `+${raw}`);
     } catch {
         return false;
     }

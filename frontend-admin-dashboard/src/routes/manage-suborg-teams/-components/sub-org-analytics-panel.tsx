@@ -50,6 +50,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Copy, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
@@ -124,12 +125,34 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     // Distinct package sessions across all scoped invites.
     const psList = collectPackageSessions(scopedInvites);
 
+    // PS-id → "Course · Level · Session" label for the Learners tab. Primary source is the
+    // sub-org's scoped invites (already fetched above and enriched with names); falls back
+    // to the institute store, then the raw id for the rare PS not in either.
+    const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
+    const psLabelById = new Map<string, string>(
+        psList.map((ps) => [ps.id, ps.label] as [string, string])
+    );
+    const courseLabelFor = (psId: string): string => {
+        const fromInvites = psLabelById.get(psId);
+        if (fromInvites) return fromInvites;
+        const d = getDetailsFromPackageSessionId({ packageSessionId: psId });
+        if (d) {
+            return (
+                [d.package_dto?.package_name, d.level?.level_name, d.session?.session_name]
+                    .filter(Boolean)
+                    .join(' · ') || psId
+            );
+        }
+        return psId;
+    };
+
     const [showLedger, setShowLedger] = useState(false);
     const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
     const [drawer, setDrawer] = useState<{
         userId: string;
         name?: string;
         subtitle?: string;
+        courses?: { id: string; label: string }[];
     } | null>(null);
     const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
     // Create Invoice CTA in the Invoices tab — surfaces the same dialog the drawer
@@ -545,13 +568,24 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                         <button
                                             type="button"
                                             key={l.user_id}
-                                            onClick={() =>
+                                            onClick={() => {
+                                                const psIds =
+                                                    l.package_session_ids &&
+                                                    l.package_session_ids.length > 0
+                                                        ? l.package_session_ids
+                                                        : l.package_session_id
+                                                          ? [l.package_session_id]
+                                                          : [];
                                                 setDrawer({
                                                     userId: l.user_id,
                                                     name: l.full_name || l.user_id,
                                                     subtitle: 'Learner',
-                                                })
-                                            }
+                                                    courses: psIds.map((psId) => ({
+                                                        id: psId,
+                                                        label: courseLabelFor(psId),
+                                                    })),
+                                                });
+                                            }}
                                             className="flex w-full items-center justify-between border-b border-muted px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/40"
                                         >
                                             <div className="min-w-0 flex-1">
@@ -563,6 +597,32 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                         Enrolled {fmtDate(l.enrolled_date)}
                                                     </p>
                                                 )}
+                                                {(() => {
+                                                    const psIds =
+                                                        l.package_session_ids &&
+                                                        l.package_session_ids.length > 0
+                                                            ? l.package_session_ids
+                                                            : l.package_session_id
+                                                              ? [l.package_session_id]
+                                                              : [];
+                                                    if (psIds.length === 0) return null;
+                                                    return (
+                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                            {psIds.map((psId) => (
+                                                                <span
+                                                                    key={psId}
+                                                                    title={courseLabelFor(psId)}
+                                                                    className="inline-flex max-w-[220px] items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                                                >
+                                                                    <BookOpen className="h-2.5 w-2.5 shrink-0" />
+                                                                    <span className="truncate">
+                                                                        {courseLabelFor(psId)}
+                                                                    </span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                             {hasDues ? (
                                                 <div className="text-right text-xs">
@@ -787,6 +847,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 userId={drawer?.userId || null}
                 userName={drawer?.name}
                 subtitle={drawer?.subtitle}
+                courses={drawer?.courses}
                 readOnly={isCallerSubOrgAdmin()}
             />
 

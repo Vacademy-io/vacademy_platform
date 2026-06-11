@@ -7,7 +7,6 @@ import { getRolesForCurrentInstitute } from '@/lib/auth/instituteUtils';
 import { normalizeRoleKey } from '@/constants/slide-download-permission';
 
 const SETTING_KEY = 'SLIDE_CONTENT_PROTECTION_SETTING';
-const DEV_BYPASS_STORAGE_KEY = 'slideAccessDevBypass';
 
 interface ContentProtectionData {
     roles?: Record<string, boolean>;
@@ -16,19 +15,15 @@ interface ContentProtectionData {
 
 /**
  * Dev escape hatch: an `access=dev` token anywhere in the URL (tolerant of a
- * stray extra "?") disables the protection for the rest of the browser session.
+ * stray extra "?") disables the protection. URL-only and NOT sticky —
+ * protection returns the instant the param is gone from the URL.
  */
 function isDevBypass(): boolean {
     try {
-        const hasAccessDev = window.location.href.split(/[?&#]/).some((token) => {
+        return window.location.href.split(/[?&#]/).some((token) => {
             const [key, value] = token.split('=');
             return key === 'access' && value === 'dev';
         });
-        if (hasAccessDev) {
-            sessionStorage.setItem(DEV_BYPASS_STORAGE_KEY, '1');
-            return true;
-        }
-        return sessionStorage.getItem(DEV_BYPASS_STORAGE_KEY) === '1';
     } catch {
         return false;
     }

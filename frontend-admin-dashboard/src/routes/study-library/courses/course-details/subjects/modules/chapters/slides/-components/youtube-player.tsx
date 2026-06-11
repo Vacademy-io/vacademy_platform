@@ -23,6 +23,7 @@ import {
     converDataToVideoFormat,
 } from '../-helper/helper';
 import { useSlides } from '../-hooks/use-slides';
+import { useSlideContentProtectionEnabled } from '../-hooks/useSlideContentProtectionEnabled';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
 import { useMediaNavigationStore } from '../-stores/media-navigation-store';
@@ -185,6 +186,18 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
     const playerRef = useRef<YTPlayer | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
+
+    // When Slide Content Protection is on, an overlay blocks right-click on the
+    // (cross-origin) YouTube iframe. The overlay also swallows clicks, so we
+    // forward a click to play/pause; the custom seek bar below still scrubs.
+    const contentProtected = useSlideContentProtectionEnabled();
+    const togglePlayPause = () => {
+        const p = playerRef.current;
+        if (!p) return;
+        const isPlaying = p.getPlayerState() === window.YT?.PlayerState?.PLAYING;
+        if (isPlaying) p.pauseVideo();
+        else p.playVideo();
+    };
     const [isAPIReady, setIsAPIReady] = useState(false);
     const [videoDuration, setVideoDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
@@ -502,6 +515,14 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
                     ref={containerRef}
                     className="absolute left-0 top-0 size-full bg-neutral-100"
                 />
+                {contentProtected && (
+                    <div
+                        className="pointer-events-auto absolute inset-0 z-50 cursor-pointer"
+                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={togglePlayPause}
+                        aria-hidden
+                    />
+                )}
             </div>
 
             {/* Timeline with Question Markers */}
@@ -629,7 +650,7 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
                                         }}
                                     />
                                     <div className="flex items-center gap-2">
-                                        <div className="rounded-lg border p-[6px] px-[10px]">
+                                        <div className="rounded-lg border p-1.5 px-2.5">
                                             <span>{question.questionType}</span>
                                         </div>
                                         <VideoQuestionDialogEditPreview

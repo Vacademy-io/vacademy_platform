@@ -24,7 +24,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Bell, Copy, Plus } from '@phosphor-icons/react';
-import { CircleCheck, Download, ExternalLink, FileText, Lock } from 'lucide-react';
+import { BookOpen, CircleCheck, Download, ExternalLink, FileText, Lock } from 'lucide-react';
 
 /**
  * Resolve a working URL for the invoice. Mirrors manage-students payment-history:
@@ -57,6 +57,10 @@ interface Props {
     userName?: string | null;
     /** Short context line ("Sub-org admin", "Learner — Class · 2026-2027", "Team member"). */
     subtitle?: string;
+    /** Courses the member is enrolled into (id + resolved "Course · Level · Session" label).
+     *  Rendered as a read-only list at the top of the drawer when non-empty. Optional —
+     *  callers that don't have course data (e.g. the admin "Open history") simply omit it. */
+    courses?: { id: string; label: string }[];
     /** When true, the installment editor is visually disabled. The parent-institute
      *  admin is the only role that can edit a sub-org admin's CPO ledger; sub-org
      *  admins must NOT edit their own finance agreement. Backend also enforces. */
@@ -74,6 +78,7 @@ export function MemberHistoryDrawer({
     userId,
     userName,
     subtitle,
+    courses,
     readOnly = false,
 }: Props) {
     return (
@@ -94,6 +99,25 @@ export function MemberHistoryDrawer({
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                     {userId ? (
                         <div className="space-y-6">
+                            {courses && courses.length > 0 && (
+                                <section>
+                                    <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                        <BookOpen className="h-4 w-4" />
+                                        Enrolled Courses ({courses.length})
+                                    </h3>
+                                    <ul className="space-y-1 rounded-md border">
+                                        {courses.map((c) => (
+                                            <li
+                                                key={c.id}
+                                                className="flex items-center gap-2 border-b border-muted px-3 py-2 text-xs last:border-b-0"
+                                            >
+                                                <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                                <span className="truncate">{c.label}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+                            )}
                             {readOnly && (
                                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                                     <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />

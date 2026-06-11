@@ -152,6 +152,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         userId: string;
         name?: string;
         subtitle?: string;
+        courses?: { id: string; label: string }[];
     } | null>(null);
     const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
     // Create Invoice CTA in the Invoices tab — surfaces the same dialog the drawer
@@ -567,13 +568,24 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                         <button
                                             type="button"
                                             key={l.user_id}
-                                            onClick={() =>
+                                            onClick={() => {
+                                                const psIds =
+                                                    l.package_session_ids &&
+                                                    l.package_session_ids.length > 0
+                                                        ? l.package_session_ids
+                                                        : l.package_session_id
+                                                          ? [l.package_session_id]
+                                                          : [];
                                                 setDrawer({
                                                     userId: l.user_id,
                                                     name: l.full_name || l.user_id,
                                                     subtitle: 'Learner',
-                                                })
-                                            }
+                                                    courses: psIds.map((psId) => ({
+                                                        id: psId,
+                                                        label: courseLabelFor(psId),
+                                                    })),
+                                                });
+                                            }}
                                             className="flex w-full items-center justify-between border-b border-muted px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/40"
                                         >
                                             <div className="min-w-0 flex-1">
@@ -835,6 +847,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 userId={drawer?.userId || null}
                 userName={drawer?.name}
                 subtitle={drawer?.subtitle}
+                courses={drawer?.courses}
                 readOnly={isCallerSubOrgAdmin()}
             />
 

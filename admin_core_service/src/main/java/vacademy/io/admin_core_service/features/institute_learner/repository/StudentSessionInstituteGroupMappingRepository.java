@@ -347,13 +347,29 @@ public interface StudentSessionInstituteGroupMappingRepository
 
   /**
    * Count active learner members in a sub-organization for a specific package session.
-   * Excludes ROOT_ADMIN from the count — only SUBORG_LEARNER seats are validated.
+   * Excludes ROOT_ADMIN from the count — only learner seats are validated.
+   *
+   * Membership mirrors {@link #findActiveSubOrgRoster(String)}: a learner counts if EITHER
+   * their mapping is stamped with this sub_org_id (add-member / auto-link path) OR their
+   * user_plan was created from one of the sub-org's invites (enroll_invite.sub_org_id).
+   * The second arm is essential because SUBORG_LEARNER self-enrollment does NOT stamp
+   * ssigm.sub_org_id — without it those learners wouldn't count against the seat cap.
    */
-  @Query("SELECT COUNT(s) FROM StudentSessionInstituteGroupMapping s " +
-      "WHERE s.subOrg.id = :subOrgId " +
-      "AND s.packageSession.id = :packageSessionId " +
-      "AND s.status = :status " +
-      "AND (s.commaSeparatedOrgRoles IS NULL OR s.commaSeparatedOrgRoles NOT LIKE '%ROOT_ADMIN%')")
+  @Query(value = """
+      SELECT COUNT(*)
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      WHERE ssigm.package_session_id = :packageSessionId
+        AND ssigm.status = :status
+        AND (ssigm.comma_separated_org_roles IS NULL
+             OR ssigm.comma_separated_org_roles NOT LIKE '%ROOT_ADMIN%')
+        AND (
+              ssigm.sub_org_id = :subOrgId
+              OR up.enroll_invite_id IN (
+                  SELECT ei.id FROM enroll_invite ei WHERE ei.sub_org_id = :subOrgId
+              )
+            )
+      """, nativeQuery = true)
   long countBySubOrgIdAndPackageSessionIdAndStatus(
       @Param("subOrgId") String subOrgId,
       @Param("packageSessionId") String packageSessionId,

@@ -152,6 +152,9 @@ AvatarModelLiteral = Literal[
     "fal-ai/heygen/avatar4/image-to-video",
     "veed/fabric-1.0",
     "fal-ai/flashtalk",
+    # LTX 2.3 audio-to-video. General audio-driven generator (not a dedicated
+    # lip-sync avatar) — supports a tunable `avatar_fps`.
+    "fal-ai/ltx-2.3-quality/audio-to-video",
 ]
 
 # Provider for studio_avatar / saved-avatar resolution. Single source of truth —
@@ -190,6 +193,17 @@ class HostAvatarConfig(BaseModel):
     quality: Literal["480p", "720p"] = Field(
         default="480p",
         description="Avatar video resolution. Same per-second price for both qualities.",
+    )
+    avatar_fps: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=60,
+        description=(
+            "Output frames-per-second. Only used by audio-to-video models that "
+            "expose it (LTX 2.3 `fal-ai/ltx-2.3-quality/audio-to-video`); "
+            "ignored by the dedicated lip-sync avatars (Kling/HeyGen/Fabric/"
+            "FlashTalk). None → the model's own default (24)."
+        ),
     )
     saved_avatar_id: Optional[str] = Field(
         default=None,

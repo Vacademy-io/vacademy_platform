@@ -11,6 +11,9 @@ Used by `automation_pipeline._run_avatar_batch` during the HTML stage when
     • veed/fabric-1.0                            ($0.0800 / sec)
     • fal-ai/heygen/avatar4/image-to-video       ($0.1000 / sec, supports aspect ratio)
     • fal-ai/kling-video/ai-avatar/v2/pro        ($0.1150 / sec, highest fidelity)
+    • fal-ai/ltx-2.3-quality/audio-to-video      (priced PER-MEGAPIXEL, ~$0.024/sec @480p·24fps;
+                                                 general audio-driven gen, NOT dedicated lip-sync;
+                                                 host image is the OPTIONAL initial frame; tunable fps)
 
   Built-in catalog (enum + audio → video — no Seedream, no face image):
     • argil/avatars/audio-to-video               ($0.02  / input-sec)
@@ -159,6 +162,7 @@ def _build_payload(
     details_prompt: str = "",
     external_avatar_id: Optional[str] = None,
     orientation: str = "landscape",
+    fps: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Map canonical inputs → model-specific fal.ai payload.
 
@@ -221,6 +225,33 @@ def _build_payload(
                 "image_url": image_url,
                 "audio_url": audio_url,
             }
+        if model == "fal-ai/ltx-2.3-quality/audio-to-video":
+            # LTX 2.3 audio-to-video. Unlike the dedicated lip-sync avatars
+            # above, this is a GENERAL audio-driven generator: audio_url +
+            # prompt (+ optional initial frame). No `loras` field on this
+            # (non-LoRA) endpoint.
+            #   • `match_audio_length` keys the clip length off the narration.
+            #     fal caps num_frames at 481, so a single audio slice longer
+            #     than ~481/fps s (≈20s @ 24fps) will be rejected by fal.
+            #   • `generate_audio` keeps the driving narration in the output mp4.
+            #   • `resolution="auto"` sizes the output to the host image's
+            #     aspect (so portrait/landscape follows the face image); the
+            #     480p/720p `quality` field is not a valid LTX resolution enum,
+            #     so it is intentionally NOT forwarded here.
+            payload: Dict[str, Any] = {
+                "audio_url": audio_url,
+                "prompt": (details_prompt or
+                           "A person speaking naturally with subtle head movements."),
+                "match_audio_length": True,
+                "generate_audio": True,
+                "resolution": "auto",
+            }
+            if image_url:
+                payload["image_url"] = image_url
+                payload["image_strength"] = 0.7
+            if fps:
+                payload["frames_per_second"] = int(fps)
+            return payload
         raise ValueError(f"Unsupported custom-avatar model: {model!r}")
 
     if provider == "argil":
@@ -381,6 +412,7 @@ class FalAvatarClient:
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
         orientation: str = "landscape",
+        fps: Optional[int] = None,
     ) -> FalSubmission:
         """POST /queue.fal.run/{endpoint} → {request_id, status_url}.
 
@@ -397,6 +429,7 @@ class FalAvatarClient:
             details_prompt=details_prompt,
             external_avatar_id=external_avatar_id,
             orientation=orientation,
+            fps=fps,
         )
         endpoint = _resolve_endpoint_model(provider, model)
 
@@ -483,6 +516,7 @@ class FalAvatarClient:
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
         orientation: str = "landscape",
+        fps: Optional[int] = None,
     ) -> AvatarShotResult:
         """Submit + poll a single shot under the bounded concurrency semaphore.
 
@@ -502,6 +536,7 @@ class FalAvatarClient:
                     provider=provider,
                     external_avatar_id=external_avatar_id,
                     orientation=orientation,
+                    fps=fps,
                 )
                 result.fal_request_id = submission.request_id
             except AudioCapExceeded as e:
@@ -569,6 +604,7 @@ class FalAvatarClient:
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
         orientation: str = "landscape",
+        fps: Optional[int] = None,
     ) -> List[AvatarShotResult]:
         """Render N shots concurrently (bounded by the semaphore).
 
@@ -590,6 +626,7 @@ class FalAvatarClient:
                 provider=provider,
                 external_avatar_id=external_avatar_id,
                 orientation=orientation,
+                fps=fps,
             )
             for s in shots
         ]

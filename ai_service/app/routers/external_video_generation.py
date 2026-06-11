@@ -17,7 +17,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, 
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
-from ..db import db_dependency, db_session as make_db_session
+from ..db import (
+    db_dependency,
+    db_session as make_db_session,
+    background_db_session as make_bg_db_session,
+)
 from ..dependencies import get_institute_from_api_key, require_credits
 from ..schemas.video_generation import (
     VideoGenerationRequest,
@@ -353,7 +357,7 @@ async def generate_video_external(
         async def _run_generation(q: asyncio.Queue, vid: str, p: VideoGenerationRequest,
                                    ts: str, inst_id: str) -> None:
             try:
-                with make_db_session() as bg_session:
+                with make_bg_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
                         # Session-less repo: every get/update opens its own
                         # short-lived, pre-pinged session and closes it. Sharing
@@ -416,7 +420,11 @@ async def generate_video_external(
                 logger.info(f"[BG-Gen] Background task cancelled for {vid}")
                 raise
             except Exception as exc:
-                logger.error(f"[BG-Gen] Background task error for {vid}: {exc}")
+                logger.error(
+                    f"[BG-Gen] Background task error for {vid}: "
+                    f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
                 # Refund all credits charged for this failed video
                 try:
                     with make_db_session() as refund_session:
@@ -685,7 +693,7 @@ async def resume_video_external(
         async def _run_resume(q: asyncio.Queue, vid: str, ts: str, inst_id: str,
                              p: ResumeRequest) -> None:
             try:
-                with make_db_session() as bg_session:
+                with make_bg_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
                         # Session-less repo — see note in _run_generation. Avoids
                         # idle-in-transaction kills across the long resume render.
@@ -742,7 +750,11 @@ async def resume_video_external(
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
-                logger.error(f"[Resume] Background task error for {vid}: {exc}")
+                logger.error(
+                    f"[Resume] Background task error for {vid}: "
+                    f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
                 try:
                     with make_db_session() as refund_session:
                         from ..services.token_usage_service import TokenUsageService
@@ -852,7 +864,7 @@ async def retry_video_external(
 
     async def _run_retry(q: asyncio.Queue, vid: str, inst_id: str) -> None:
         try:
-            with make_db_session() as bg_session:
+            with make_bg_db_session() as bg_session:
                 bg_svc = VideoGenerationService(
                     # Session-less repo — see note in _run_generation. Avoids
                     # idle-in-transaction kills across the long retry render.
@@ -902,7 +914,11 @@ async def retry_video_external(
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
-            logger.error(f"[Retry] Background task error for {vid}: {exc}")
+            logger.error(
+                f"[Retry] Background task error for {vid}: "
+                f"{type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
             try:
                 with make_db_session() as refund_session:
                     from ..services.token_usage_service import TokenUsageService

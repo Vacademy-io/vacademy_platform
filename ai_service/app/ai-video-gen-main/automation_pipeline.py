@@ -1542,7 +1542,7 @@ class OpenRouterClient:
             cached_messages = list(messages)
 
         last_error = None
-        for model_to_use in models_to_try:
+        for _model_idx, model_to_use in enumerate(models_to_try):
             try:
                 payload: Dict[str, Any] = {
                     "model": model_to_use,
@@ -1622,12 +1622,28 @@ class OpenRouterClient:
                     last_error = RuntimeError(f"OpenRouter request failed with {model_to_use}: {exc.code} {exc.reason}\n{detail}")
                 else:
                     last_error = RuntimeError(f"OpenRouter request error with {model_to_use}: {str(exc)}")
-                    
-                # If this is not the last model, continue to next
-                if model_to_use != models_to_try[-1]:
-                    print(f"⚠️ Model {model_to_use} failed. Trying next model...")
+
+                # One-line, grep-able failure reason — provider error bodies can
+                # be huge and multi-line, so collapse whitespace and truncate.
+                _reason = " ".join(str(last_error).split())
+                if len(_reason) > 500:
+                    _reason = _reason[:500] + "…"
+
+                # If this is not the last model, continue to next. Index-based:
+                # `model_to_use != models_to_try[-1]` mis-fired (raised early)
+                # when the same model id appeared twice in the chain.
+                if _model_idx < len(models_to_try) - 1:
+                    print(
+                        f"⚠️ Model {model_to_use} failed at stage '{_llm_stage.get()}' — "
+                        f"{_reason} — falling back to {models_to_try[_model_idx + 1]} "
+                        f"(model {_model_idx + 2}/{len(models_to_try)})"
+                    )
                     continue
                 # Last model failed, raise the error
+                print(
+                    f"❌ All {len(models_to_try)} model(s) failed at stage "
+                    f"'{_llm_stage.get()}'; last error from {model_to_use}: {_reason}"
+                )
                 raise last_error from exc
         
         # Should never reach here, but just in case
@@ -13322,6 +13338,8 @@ class VideoGenerationPipeline:
                     provider=host_provider,
                     external_avatar_id=external_avatar_id,
                     orientation=("portrait" if self.video_width < self.video_height else "landscape"),
+                    # LTX-only fps; read from the run's host plan (None → model default).
+                    fps=((self._host_plan or {}).get("avatar") or {}).get("avatar_fps"),
                 )
             )
         except Exception as e:
@@ -13840,6 +13858,8 @@ class VideoGenerationPipeline:
                     provider="custom",
                     external_avatar_id=None,
                     orientation=("portrait" if self.video_width < self.video_height else "landscape"),
+                    # LTX-only fps; read from the run's host plan (None → model default).
+                    fps=((self._host_plan or {}).get("avatar") or {}).get("avatar_fps"),
                 )
             )
         except Exception as e:
@@ -14245,6 +14265,7 @@ class VideoGenerationPipeline:
         avatar_cfg = self._host_plan.get("avatar") or {}
         host_model = avatar_cfg.get("avatar_model") or "fal-ai/kling-video/ai-avatar/v2/standard"
         host_quality = avatar_cfg.get("quality") or "480p"
+        host_fps = avatar_cfg.get("avatar_fps")  # LTX-only; None → model default (24)
         face_image_url = avatar_cfg.get("face_image_url") or ""
         details_prompt = avatar_cfg.get("details_prompt") or ""
         # Provider routing — drives whether we run Seedream (custom) or skip
@@ -14923,6 +14944,7 @@ class VideoGenerationPipeline:
                         provider=host_provider,
                         external_avatar_id=external_avatar_id,
                         orientation=("portrait" if self.video_width < self.video_height else "landscape"),
+                        fps=host_fps,
                     )
                 )
             except Exception as e:

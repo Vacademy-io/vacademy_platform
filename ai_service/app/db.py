@@ -1,3 +1,4 @@
+import logging
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 _engine: Optional[Engine] = None
@@ -66,6 +69,53 @@ def db_session() -> Iterator[Session]:
     except Exception:
         session.rollback()
         raise
+    finally:
+        session.close()
+
+
+@contextmanager
+def background_db_session() -> Iterator[Session]:
+    """
+    Context-managed DB session for LONG-RUNNING background tasks
+    (video generation / resume / retry).
+
+    Identical to `db_session()` except the exit commit is best-effort.
+    These tasks run for many minutes; SQLAlchemy auto-begins a
+    transaction on the session's first read, so by the time the task
+    finishes the connection has usually been killed by PgBouncer /
+    Postgres (idle-in-transaction timeout) and `commit()` raises
+    `psycopg.errors.ProtocolViolation: server conn crashed?` — AFTER
+    the task already succeeded. With `db_session()` that propagates
+    into the caller's error path and a successful run gets reported
+    as failed (and refunded). All meaningful writes on these paths go
+    through short-lived sessions that commit themselves, so nothing
+    rides on this final commit — log it loudly and move on.
+    """
+    session_factory = get_sessionmaker()
+    session: Session = session_factory()
+    try:
+        yield session
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            logger.warning("background_db_session: rollback failed", exc_info=True)
+        raise
+    else:
+        try:
+            session.commit()
+        except Exception:
+            logger.warning(
+                "background_db_session: exit commit failed (stale connection "
+                "after a long-running task?) — swallowed so a finished task "
+                "is not misreported as failed; any uncommitted writes on "
+                "this session are discarded",
+                exc_info=True,
+            )
+            try:
+                session.rollback()
+            except Exception:
+                pass
     finally:
         session.close()
 

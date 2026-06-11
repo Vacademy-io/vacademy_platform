@@ -164,6 +164,7 @@ def make_host_plan(
                 details_prompt=details_prompt,
                 avatar_model=avatar_model,               # type: ignore[arg-type]
                 quality=cfg.quality,
+                avatar_fps=cfg.avatar_fps,
             ),
         )
         endpoint = effective_avatar_endpoint(provider, plan.avatar.avatar_model)

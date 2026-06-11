@@ -1936,6 +1936,39 @@ function HostTabBody({
                                 </div>
                             </Field>
 
+                            {/* FPS — only for audio-to-video models that expose it (LTX 2.3).
+                               Hidden for the dedicated lip-sync avatars + built-ins. */}
+                            {host.avatar?.avatar_model ===
+                                'fal-ai/ltx-2.3-quality/audio-to-video' && (
+                                <Field
+                                    icon={<Film className="size-3.5" />}
+                                    label="Frames per second"
+                                    helper="Higher fps = smoother motion and a higher per-second cost. LTX 2.3 only."
+                                >
+                                    <Select
+                                        value={String(host.avatar?.avatar_fps ?? 24)}
+                                        onValueChange={(v) =>
+                                            patchAvatar({ avatar_fps: Number(v) })
+                                        }
+                                    >
+                                        <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[24, 30, 48, 60].map((f) => (
+                                                <SelectItem
+                                                    key={f}
+                                                    value={String(f)}
+                                                    className="text-xs"
+                                                >
+                                                    {f} fps
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </Field>
+                            )}
+
                             {/* Host-in-video percentage */}
                             <Field
                                 icon={<Users className="size-3.5" />}

@@ -421,12 +421,17 @@ public class MetaOAuthController {
      */
     @GetMapping("/connectors")
     public ResponseEntity<List<ConnectorListItemDTO>> listConnectors(
-            @RequestParam String instituteId) {
+            @RequestParam String instituteId,
+            @RequestParam(name = "includeAllVendors", defaultValue = "false") boolean includeAllVendors) {
         List<FormWebhookConnector> connectors = connectorRepository
                 .findByInstituteIdAndIsActiveTrue(instituteId);
 
+        // Default keeps the Integrations screen's existing behaviour (ad platforms only).
+        // includeAllVendors=true surfaces every connector — incl. Zoho/Google/Microsoft
+        // forms — for the Center Management screen, which edits per-center metadata.
         List<ConnectorListItemDTO> result = connectors.stream()
-                .filter(c -> "META_LEAD_ADS".equals(c.getVendor())
+                .filter(c -> includeAllVendors
+                        || "META_LEAD_ADS".equals(c.getVendor())
                         || "GOOGLE_LEAD_ADS".equals(c.getVendor()))
                 .map(ConnectorListItemDTO::from)
                 .collect(Collectors.toList());

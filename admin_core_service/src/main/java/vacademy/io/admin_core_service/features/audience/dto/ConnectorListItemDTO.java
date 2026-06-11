@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnec
 public class ConnectorListItemDTO {
     private String id;
     private String vendor;
+    private String vendorId;
     private String audienceId;
     private String platformPageId;
     private String platformFormId;
@@ -33,6 +34,7 @@ public class ConnectorListItemDTO {
         return ConnectorListItemDTO.builder()
                 .id(c.getId())
                 .vendor(c.getVendor())
+                .vendorId(c.getVendorId())
                 .audienceId(c.getAudienceId())
                 .platformPageId(c.getPlatformPageId())
                 .platformFormId(c.getPlatformFormId())

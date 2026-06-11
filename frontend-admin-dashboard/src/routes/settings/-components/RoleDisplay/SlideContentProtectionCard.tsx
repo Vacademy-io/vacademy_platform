@@ -100,7 +100,7 @@ export default function SlideContentProtectionCard({
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Slide Content Protection</CardTitle>
+                <CardTitle>Copy &amp; Screen Protection</CardTitle>
                 <CardDescription>
                     Disable right-click and the common developer / view-source shortcuts (F12,
                     Ctrl/Cmd+Shift+I/J/C, Ctrl+U) on slides for {roleLabel} in the learner app. This

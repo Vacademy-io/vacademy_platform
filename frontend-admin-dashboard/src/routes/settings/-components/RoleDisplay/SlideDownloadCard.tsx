@@ -87,7 +87,7 @@ export default function SlideDownloadCard({ roleKey, roleLabel }: SlideDownloadC
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Slide Downloads</CardTitle>
+                <CardTitle>Download Permissions</CardTitle>
                 <CardDescription>
                     Choose which slide types {roleLabel} can download. Turning a slide type off
                     hides its in-app download control — a best-effort deterrent that cannot block

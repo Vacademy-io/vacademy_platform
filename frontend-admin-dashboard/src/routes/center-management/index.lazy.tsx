@@ -99,12 +99,13 @@ const mergeAndSerialize = (
 ): string => {
     const merged = { ...existing };
     for (const key of STRUCTURED_KEYS) {
-        if (structured[key] !== undefined) {
-            if (structured[key] === '') {
+        const value = structured[key];
+        if (value !== undefined) {
+            if (value === '') {
                 // remove blank values to keep the object clean
                 delete merged[key];
             } else {
-                merged[key] = structured[key];
+                merged[key] = value;
             }
         }
     }

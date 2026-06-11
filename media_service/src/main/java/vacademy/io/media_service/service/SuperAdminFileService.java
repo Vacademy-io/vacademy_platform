@@ -100,7 +100,8 @@ public class SuperAdminFileService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        String sortField = SORTABLE_FIELDS.getOrDefault(sortBy, "createdOn");
+        // Map.of-backed maps reject null keys even on lookup
+        String sortField = sortBy == null ? "createdOn" : SORTABLE_FIELDS.getOrDefault(sortBy, "createdOn");
         Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(direction, sortField));
 
@@ -216,7 +217,8 @@ public class SuperAdminFileService {
             return null;
         }
         try {
-            String bucket = PUBLIC_BUCKET_SOURCES.contains(file.getSource()) ? publicBucket : bucketName;
+            String bucket = file.getSource() != null && PUBLIC_BUCKET_SOURCES.contains(file.getSource())
+                    ? publicBucket : bucketName;
             GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucket, file.getKey().trim())
                     .withMethod(HttpMethod.GET)
                     .withExpiration(addDays(expiryDays));

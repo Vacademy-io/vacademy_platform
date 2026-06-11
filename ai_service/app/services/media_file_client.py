@@ -8,40 +8,24 @@ to hand to the transcription / MathPix pipelines.
 Endpoint: GET /media-service/internal/get-url/id?fileId=&expiryDays= → URL (plain
 string body). media_service gates every URI containing "internal" with
 InternalAuthFilter, which requires the same client-auth headers the Java callers
-send via InternalClientUtils.makeHmacRequest: clientName = settings.client_name
-(registered as an internal client in media_service), Signature = the client's
-secret. Without them the call bounces back as a 401. Same scheme as
-assessment_client._internal_headers().
+send via InternalClientUtils.makeHmacRequest: clientName + Signature. We resolve
+those via internal_auth.internal_auth_headers() — which reuses the trusted
+admin_core_service credentials from the shared DB. Without them the call bounces
+back as a 401.
 """
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import httpx
 
 from ..config import get_settings
+from .internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_EXPIRY_DAYS = 7
-
-
-def _internal_headers() -> Dict[str, str]:
-    settings = get_settings()
-    if not settings.client_secret:
-        # Fail with a clear, actionable message instead of letting the call hit
-        # media_service and bounce back as an opaque 401.
-        raise RuntimeError(
-            "CLIENT_SECRET is not configured — ai_service cannot make the "
-            "internal client-auth call to media_service. Set CLIENT_SECRET (the "
-            "secret registered for client_name='%s') to resolve media file IDs."
-            % settings.client_name
-        )
-    return {
-        "clientName": settings.client_name,
-        "Signature": settings.client_secret,
-    }
 
 
 async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> str:
@@ -54,7 +38,7 @@ async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> 
             resp = await client.get(
                 url,
                 params={"fileId": file_id, "expiryDays": expiry_days},
-                headers=_internal_headers(),
+                headers=await internal_auth_headers(),
             )
             resp.raise_for_status()
             file_url: Optional[str] = resp.text

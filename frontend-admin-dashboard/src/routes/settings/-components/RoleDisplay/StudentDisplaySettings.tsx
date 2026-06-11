@@ -46,8 +46,6 @@ import {
     saveStudentDisplaySettings,
 } from '@/services/student-display-settings';
 import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
-import SlideDownloadCard from './SlideDownloadCard';
-import SlideContentProtectionCard from './SlideContentProtectionCard';
 
 const STUDENT_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
     {
@@ -675,10 +673,6 @@ export default function StudentDisplaySettings(): JSX.Element {
             </Card>
 
             <MaxActiveSessionsSetting />
-
-            <SlideDownloadCard roleKey="LEARNER" roleLabel="learners" />
-
-            <SlideContentProtectionCard roleKey="LEARNER" roleLabel="learners" />
             </section>
 
             <section id="grp-learning" className="space-y-6">

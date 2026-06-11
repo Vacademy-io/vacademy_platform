@@ -6,6 +6,7 @@ import NamingSettings from '../-components/NamingSettings';
 import NotificationSettings from '../-components/Notification/NotificationSettings';
 import RoleDisplaySettingsMain from '../-components/RoleDisplay/RoleDisplaySettingsMain';
 import StudentDisplaySettings from '@/routes/settings/-components/RoleDisplay/StudentDisplaySettings';
+import ContentProtectionSettings from '../-components/ContentProtectionSettings';
 import CustomFieldsSettings from '@/components/settings/CustomFieldsSettings';
 import CertificatesSettings from '../-components/Certificates/CertificatesSettings';
 import { TemplateSettings } from '@/components/templates';
@@ -41,6 +42,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.StudentDisplay,
             value: 'Student Display',
             component: StudentDisplaySettings,
+        },
+        {
+            tab: SettingsTabs.ContentProtection,
+            value: 'Content Protection',
+            component: ContentProtectionSettings,
         },
         {
             tab: SettingsTabs.Naming,

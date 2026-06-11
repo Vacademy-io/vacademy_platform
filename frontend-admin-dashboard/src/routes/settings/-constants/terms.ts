@@ -101,6 +101,7 @@ export const enum SettingsTabs {
     Notification = 'notification',
     RoleDisplay = 'roleDisplay',
     StudentDisplay = 'studentDisplay',
+    ContentProtection = 'contentProtection',
     CustomFields = 'customFields',
     Certificates = 'certificates',
     Templates = 'templates',

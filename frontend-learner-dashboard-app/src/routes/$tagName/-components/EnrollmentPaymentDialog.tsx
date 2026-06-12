@@ -15,7 +15,7 @@ import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand l
 import { Lock } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
-import { isValidPhoneValue } from "@/lib/phone-validation";
+import { isBlankPhone, validatePhoneField } from "@/lib/phone-validation";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
 import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
@@ -167,9 +167,6 @@ export const EnrollmentPaymentDialog: React.FC<
     return emailRegex.test(email);
   };
 
-  // Country-aware validity for the number the user typed (dial code embedded).
-  const validatePhone = (phone: string): boolean => isValidPhoneValue(phone);
-
   const handleEmailChange = (value: string) => {
     setEmail(value);
     setValidationError("");
@@ -212,12 +209,11 @@ export const EnrollmentPaymentDialog: React.FC<
         hasErrors = true;
       }
 
-      // Validate phone (optional - only validate format if user typed a number).
-      // PhoneInput pre-fills the country dial code, so we only consider phone
-      // "entered" when it has enough digits to be a real number (7+).
-      const phoneDigits = phone.replace(/\D/g, "");
-      if (phoneDigits.length >= 7 && !validatePhone(phone)) {
-        setPhoneError("Please enter a valid phone number with country code");
+      // Validate phone (optional — but any digits typed beyond the pre-filled
+      // country dial code must form a valid number for that country).
+      const phoneFieldError = validatePhoneField(phone);
+      if (phoneFieldError) {
+        setPhoneError(phoneFieldError);
         hasErrors = true;
       }
 
@@ -623,6 +619,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       enableSearch={true}
                       value={phone}
                       onChange={(value) => handlePhoneChange(value)}
+                      onBlur={() => setPhoneError(validatePhoneField(phone) ?? "")}
                       inputClass="!w-full h-10 !rounded-md !border-input"
                       buttonClass="!rounded-l-md !border-input"
                       containerClass="!w-full"
@@ -953,7 +950,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           currency={currency}
                           email={email}
                           fullName={fullName}
-                          phone={phone}
+                          phone={isBlankPhone(phone) ? "" : phone}
                           instituteId={instituteId}
                           courseData={courseData}
                           enrollmentData={enrollmentData}
@@ -968,7 +965,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           currency={currency}
                           email={email}
                           fullName={fullName}
-                          phone={phone}
+                          phone={isBlankPhone(phone) ? "" : phone}
                           instituteId={instituteId}
                           courseData={courseData}
                           enrollmentData={enrollmentData}
@@ -985,7 +982,7 @@ export const EnrollmentPaymentDialog: React.FC<
                             currency={currency}
                             email={email}
                             fullName={fullName}
-                            phone={phone}
+                            phone={isBlankPhone(phone) ? "" : phone}
                             instituteId={instituteId}
                             courseData={courseData}
                             enrollmentData={enrollmentData}

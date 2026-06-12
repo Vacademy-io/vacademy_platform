@@ -1,4 +1,4 @@
-import { isValidPhoneNumber } from "libphonenumber-js";
+import { AsYouType, isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod";
 
 /**
@@ -28,12 +28,26 @@ const invalidMessage = (label: string): string =>
 
 /**
  * True when the value carries no national number beyond the country dial code
- * (e.g. "", undefined, or a dial-code-only "+91"). The longest dial code is 3
- * digits, so anything with <= 3 digits total is treated as blank.
+ * (e.g. "", undefined, or a dial-code-only "+91"). The dial code is parsed from
+ * the value itself, so "+91" is blank but "+919" (one national digit) is not —
+ * a global digit-count threshold can't tell those apart because dial codes are
+ * 1–3 digits long.
  */
 export const isBlankPhone = (value: string | undefined | null): boolean => {
   if (!value) return true;
-  return value.replace(/\D/g, "").length <= 3;
+  const raw = String(value).trim();
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return true;
+  try {
+    const asYouType = new AsYouType();
+    asYouType.input(raw.startsWith("+") ? raw : `+${raw}`);
+    if ((asYouType.getNumber()?.nationalNumber ?? "").length > 0) return false;
+  } catch {
+    // fall through to the digit-count heuristic
+  }
+  // Unparseable calling code: the longest dial code is 3 digits, so anything
+  // with <= 3 digits total is treated as blank.
+  return digits.length <= 3;
 };
 
 /**

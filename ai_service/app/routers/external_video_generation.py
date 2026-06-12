@@ -23,6 +23,7 @@ from ..db import (
     background_db_session as make_bg_db_session,
 )
 from ..dependencies import get_institute_from_api_key, require_credits
+from ..services.timeline_revision import TimelineRevisionConflict
 from ..schemas.video_generation import (
     VideoGenerationRequest,
     VideoStatusResponse,
@@ -188,6 +189,32 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
         repository=AiVideoRepository(session=db),
         s3_service=S3Service()
     )
+
+
+def _ensure_video_access(video_id: str, institute_id: str, db: Session):
+    """Tenant guard: verify `video_id` belongs to the calling institute.
+
+    Ownership is `extra_metadata.institute_id`, stamped at generation time.
+    Mismatches return 404 (not 403) so a leaked key can't be used to probe
+    which video_ids exist. Records without a stamp (videos generated before
+    institute stamping, or via internal tooling) pass through — locking those
+    out would brick every legacy video for its rightful owner.
+
+    Returns the AiGenVideo record so callers that need it anyway can reuse
+    it instead of re-querying.
+    """
+    record = AiVideoRepository(session=db).get_by_video_id(video_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    owner = str((record.extra_metadata or {}).get("institute_id") or "").strip()
+    if owner and owner != institute_id:
+        logger.warning(
+            "Tenant mismatch: institute %s attempted to access video %s "
+            "owned by institute %s — returning 404",
+            institute_id, video_id, owner,
+        )
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    return record
 
 
 @router.post(
@@ -525,13 +552,10 @@ async def cancel_generation_external(
     failed, or never existed). Idempotent for repeated calls within the brief
     window before cleanup completes.
     """
-    # Look up the video — 404 if it doesn't exist. Auth (X-Institute-Key) is
-    # already enforced by the dependency above; the existing endpoints follow
-    # the same pattern (no per-video ownership column on AiGenVideo).
+    # Look up the video — 404 if it doesn't exist or belongs to another
+    # institute (tenant guard via extra_metadata.institute_id).
     with make_db_session() as session:
-        video = AiVideoRepository(session).get_by_video_id(video_id)
-        if not video:
-            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+        video = _ensure_video_access(video_id, institute_id, session)
         already_done = video.status in ("COMPLETED", "FAILED", "CANCELLED")
 
     if already_done:
@@ -628,10 +652,7 @@ async def resume_video_external(
 
     Authentication: Requires 'X-Institute-Key' header.
     """
-    repo = AiVideoRepository(session=db)
-    video_record = repo.get_by_video_id(video_id)
-    if not video_record:
-        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    video_record = _ensure_video_access(video_id, institute_id, db)
 
     # A cancelled video is intentionally terminated — refusing resume keeps
     # the user's "stopped" semantic clean (otherwise hitting Resume would
@@ -827,10 +848,7 @@ async def retry_video_external(
 
     Authentication: Requires 'X-Institute-Key' header.
     """
-    repo = AiVideoRepository(session=db)
-    video_record = repo.get_by_video_id(video_id)
-    if not video_record:
-        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    video_record = _ensure_video_access(video_id, institute_id, db)
     if video_record.status not in ("FAILED", "STALLED"):
         raise HTTPException(
             status_code=400,
@@ -1005,7 +1023,7 @@ async def get_video_status_external(
     Get current status and files for a video generation.
     Authentication: Requires 'X-Institute-Key' header.
     """
-    # TODO: In future, verify video belongs to institute
+    _ensure_video_access(video_id, institute_id, db)
     status = service.get_video_status(video_id)
     
     if not status:
@@ -1029,6 +1047,7 @@ async def get_video_urls_external(
     Get HTML timeline and audio URLs for a video.
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(video_id, institute_id, db)
     status = service.get_video_status(video_id)
 
     if not status:
@@ -1102,6 +1121,7 @@ async def get_video_thumbnails_external(
     Returns an empty set (`options=[]`) when the thumbnail stage hasn't run
     yet — the frontend shows its placeholder until options arrive.
     """
+    _ensure_video_access(video_id, institute_id, db)
     status = service.get_video_status(video_id)
     if not status:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
@@ -1134,6 +1154,7 @@ async def update_video_thumbnail_external(
     400 if `selected_id` doesn't match an option in the set.
     404 if the video doesn't exist or has no thumbnails yet.
     """
+    _ensure_video_access(video_id, institute_id, db)
     repo = AiVideoRepository(db)
     updated = repo.set_selected_thumbnail(video_id, payload.selected_id)
     if updated is None:
@@ -1180,6 +1201,7 @@ async def regenerate_video_thumbnails_external(
     Cost is bundled into the original video generation budget (no extra
     credit charge for regenerate).
     """
+    _ensure_video_access(video_id, institute_id, db)
     status = service.get_video_status(video_id)
     if not status:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
@@ -1230,6 +1252,7 @@ async def regenerate_frame_external(
     Returns the new HTML for preview.
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.regenerate_video_frame(
             video_id=payload.video_id,
@@ -1267,6 +1290,7 @@ async def add_frame_external(
 
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.add_video_frame(
             video_id=payload.video_id,
@@ -1280,8 +1304,11 @@ async def add_frame_external(
             html_end_x=payload.html_end_x,
             html_end_y=payload.html_end_y,
             entry_meta=payload.entry_meta,
+            expected_revision=payload.expected_revision,
         )
         return result
+    except TimelineRevisionConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1303,6 +1330,7 @@ async def update_frame_external(
     Call this after previewing the regenerated frame to confirm changes.
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.update_video_frame(
             video_id=payload.video_id,
@@ -1314,8 +1342,11 @@ async def update_frame_external(
             entry_id=payload.entry_id,
             entry_meta=payload.entry_meta,
             html_model=payload.html_model,
+            expected_revision=payload.expected_revision,
         )
         return result
+    except TimelineRevisionConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IndexError as e:
@@ -1350,13 +1381,17 @@ async def reorder_frame_external(
 
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.reorder_video_frame(
             video_id=payload.video_id,
             entry_id=payload.entry_id,
             to_index=payload.to_index,
+            expected_revision=payload.expected_revision,
         )
         return result
+    except TimelineRevisionConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1384,13 +1419,17 @@ async def delete_frame_external(
 
     Authentication: Requires 'X-Institute-Key' header.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.delete_video_frame(
             video_id=payload.video_id,
             entry_id=payload.entry_id,
             frame_index=payload.frame_index,
+            expected_revision=payload.expected_revision,
         )
         return result
+    except TimelineRevisionConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IndexError as e:
@@ -1461,6 +1500,7 @@ async def build_sentence_clips_external(
     video_id = (payload or {}).get("video_id")
     if not isinstance(video_id, str) or not video_id:
         raise HTTPException(status_code=400, detail="video_id is required")
+    _ensure_video_access(video_id, institute_id, db)
 
     settings = get_settings()
     if not settings.render_server_url:
@@ -1587,6 +1627,7 @@ async def regenerate_sentence_external(
     )
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Off the event loop — same reason as /shot/regenerate: the pipeline's
         # Sarvam TTS uses asyncio.run() and would silently fall back to a
@@ -1728,6 +1769,7 @@ async def regenerate_shot_external(
     )
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Run the blocking TTS+splice off the event loop. Critical: the pipeline's
         # Sarvam TTS calls asyncio.run() internally, which raises ("cannot be
@@ -1818,6 +1860,7 @@ async def rebuild_master_external(
         repository=service.repository,
         video_gen_root=service.video_gen_root,
     )
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Off the event loop — runs ffmpeg concat + S3 I/O.
         result = await asyncio.to_thread(svc.rebuild_master_from_shots, payload.video_id)
@@ -1882,6 +1925,7 @@ async def silence_sentence_external(
         repository=service.repository,
         video_gen_root=service.video_gen_root,
     )
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Off the event loop — the splice makes a blocking render-server call.
         result = await asyncio.to_thread(
@@ -1964,6 +2008,7 @@ async def silence_shot_external(
         repository=service.repository,
         video_gen_root=service.video_gen_root,
     )
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Off the event loop — the splice makes a blocking render-server call.
         result = await asyncio.to_thread(
@@ -2105,6 +2150,7 @@ async def insert_shot_external(
         quality_tier = str((record.extra_metadata or {}).get("quality_tier") or "ultra")
     html_model = _resolve_html_model(db, quality_tier)
 
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         # Off the event loop — runs LLM/HTML generation + S3 I/O.
         result = await asyncio.to_thread(
@@ -2158,7 +2204,8 @@ async def request_video_render(
             detail="Render server not configured. Set RENDER_SERVER_URL.",
         )
 
-    # Validate video exists and has required stages completed
+    # Validate video exists, belongs to this institute, and has required stages
+    _ensure_video_access(video_id, institute_id, db)
     status = service.get_video_status(video_id)
     if not status:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
@@ -2403,9 +2450,7 @@ async def get_render_status(
         )
 
     repo = AiVideoRepository(session=db)
-    video_record = repo.get_by_video_id(video_id)
-    if not video_record:
-        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    video_record = _ensure_video_access(video_id, institute_id, db)
 
     meta = dict(video_record.extra_metadata or {})
     rs = dict(meta.get("render_status") or {})
@@ -2502,6 +2547,7 @@ async def clear_rendered_video(
     from metadata. The next call to /render/{video_id} will start a fresh
     render. Useful when the user wants to re-download with different settings.
     """
+    _ensure_video_access(video_id, institute_id, db)
     repo = AiVideoRepository(session=db)
     updated = repo.clear_video_url(video_id)
     if not updated:
@@ -3813,6 +3859,7 @@ async def add_audio_track_external(
     payload: AddAudioTrackRequest,
     service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
 ):
     """
     Append a new audio track (background music, SFX, etc.) to the video's
@@ -3820,6 +3867,7 @@ async def add_audio_track_external(
     During render it will be mixed with the narration via FFmpeg amix.
     In the learner player it is played via Web Audio API for perfect sync.
     """
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.add_audio_track(
             video_id=payload.video_id,
@@ -3830,6 +3878,7 @@ async def add_audio_track_external(
             fade_in=payload.fade_in,
             fade_out=payload.fade_out,
             track_id=payload.track_id,
+            loop=payload.loop,
         )
         return result
     except ValueError as e:
@@ -3847,8 +3896,10 @@ async def update_audio_track_external(
     payload: UpdateAudioTrackRequest,
     service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
 ):
     """Patch one or more fields of an audio track (label, url, volume, delay, fades)."""
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.update_audio_track(
             video_id=payload.video_id,
@@ -3859,6 +3910,7 @@ async def update_audio_track_external(
             delay=payload.delay,
             fade_in=payload.fade_in,
             fade_out=payload.fade_out,
+            loop=payload.loop,
         )
         return result
     except ValueError as e:
@@ -3876,8 +3928,10 @@ async def delete_audio_track_external(
     payload: DeleteAudioTrackRequest,
     service: VideoGenerationService = Depends(get_video_service),
     institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
 ):
     """Remove an audio track from the video's meta.audio_tracks list."""
+    _ensure_video_access(payload.video_id, institute_id, db)
     try:
         result = await service.delete_audio_track(
             video_id=payload.video_id,

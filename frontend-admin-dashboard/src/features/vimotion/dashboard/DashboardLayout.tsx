@@ -89,6 +89,7 @@ function DashboardShell() {
                 apiKey: params.apiKey || undefined,
                 orientation: params.orientation || 'landscape',
                 kind: undefined,
+                projectId: undefined,
                 focusTime: undefined,
             },
         });

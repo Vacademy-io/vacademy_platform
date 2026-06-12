@@ -53,6 +53,19 @@ function VimVideoEditorRoute() {
 function EditorMobileGate() {
     const navigate = useNavigate();
     const { videoId } = useParams({ from: '/vim/edit/$videoId/' });
+    const { kind, projectId } = useSearch({ from: '/vim/edit/$videoId/' });
+    const handleBack = () => {
+        // Studio builds have no production view — return to the project page.
+        if (kind === 'studio') {
+            if (projectId) {
+                navigate({ to: '/vim/studio/$projectId', params: { projectId } });
+            } else {
+                navigate({ to: '/vim/dashboard', search: { tab: 'studio' } });
+            }
+            return;
+        }
+        navigate({ to: '/vim/dashboard', search: { videoId } });
+    };
     return (
         <div className="pt-safe pb-safe flex min-h-screen flex-col items-center justify-center bg-[#FAFAF7] px-6 py-10 text-center">
             <div className="flex size-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-neutral-200">
@@ -71,10 +84,10 @@ function EditorMobileGate() {
             </p>
             <button
                 type="button"
-                onClick={() => navigate({ to: '/vim/dashboard', search: { videoId } })}
+                onClick={handleBack}
                 className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md bg-neutral-900 px-5 text-sm font-semibold text-white hover:bg-neutral-800"
             >
-                Back to video
+                {kind === 'studio' ? 'Back to project' : 'Back to video'}
             </button>
         </div>
     );
@@ -83,16 +96,35 @@ function EditorMobileGate() {
 function VimVideoEditorShell() {
     const navigate = useNavigate();
     const { videoId } = useParams({ from: '/vim/edit/$videoId/' });
-    const { htmlUrl, audioUrl, wordsUrl, avatarUrl, apiKey, orientation, kind, focusTime } =
-        useSearch({
-            from: '/vim/edit/$videoId/',
-        });
+    const {
+        htmlUrl,
+        audioUrl,
+        wordsUrl,
+        avatarUrl,
+        apiKey,
+        orientation,
+        kind,
+        projectId,
+        focusTime,
+    } = useSearch({
+        from: '/vim/edit/$videoId/',
+    });
     const { startTourIfNew } = useVimTour();
 
     // Back from the editor returns to the production view of this video so the
     // user stays inside the vim shell. The default behavior in VideoEditorPage
     // navigates to `/video-api-studio`, which would punt them out of vim.
+    // Studio builds have no production view (`?videoId=` only resolves AI-gen
+    // video ids) — go back to the owning project's detail page instead.
     const handleBack = () => {
+        if (kind === 'studio') {
+            if (projectId) {
+                navigate({ to: '/vim/studio/$projectId', params: { projectId } });
+            } else {
+                navigate({ to: '/vim/dashboard', search: { tab: 'studio' } });
+            }
+            return;
+        }
         navigate({ to: '/vim/dashboard', search: { videoId } });
     };
 

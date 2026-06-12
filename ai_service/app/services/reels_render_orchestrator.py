@@ -65,14 +65,19 @@ class StageDef:
     end_pct: int
 
 
+# Band widths roughly track real wall-clock cost per stage (2026-06-12
+# audit): the worker RENDER dominates, SOURCE_CLIP (densify + optional
+# matting) is second, HTML is a no-op. The previous bands gave 30% of the
+# bar to the no-op HTML stage and 10% to RENDER, so the bar sprinted to
+# 90% and froze for minutes — indistinguishable from a hang.
 STAGE_PIPELINE: list[StageDef] = [
-    StageDef(STAGE_AUDIO_EDIT,   0, 15),
-    StageDef(STAGE_SOURCE_CLIP, 15, 35),
-    StageDef(STAGE_STYLE_GUIDE, 35, 40),
-    StageDef(STAGE_DIRECTOR,    40, 55),
-    StageDef(STAGE_HTML,        55, 85),
-    StageDef(STAGE_ASSEMBLE,    85, 90),
-    StageDef(STAGE_RENDER,      90, 100),
+    StageDef(STAGE_AUDIO_EDIT,   0, 10),
+    StageDef(STAGE_SOURCE_CLIP, 10, 35),
+    StageDef(STAGE_STYLE_GUIDE, 35, 38),
+    StageDef(STAGE_DIRECTOR,    38, 55),
+    StageDef(STAGE_HTML,        55, 58),
+    StageDef(STAGE_ASSEMBLE,    58, 62),
+    StageDef(STAGE_RENDER,      62, 100),
 ]
 
 
@@ -264,6 +269,48 @@ def dispatch_render(ctx: RenderContext) -> asyncio.Task:
     _PENDING_RENDER_TASKS.add(task)
     task.add_done_callback(_PENDING_RENDER_TASKS.discard)
     return task
+
+
+# ---------------------------------------------------------------------------
+# Stuck-render reaper
+# ---------------------------------------------------------------------------
+# Renders run as in-process asyncio tasks — a deploy/crash/OOMKill strands
+# rows in PENDING/IN_PROGRESS forever, the FE polls a corpse, and (before
+# the dedup-staleness fix) the zombie blocked re-rendering its candidate.
+# The reaper sweeps on startup and every REAPER_INTERVAL_S thereafter,
+# failing rows whose updated_at is older than REAPER_STALE_MINUTES. Healthy
+# renders write progress far more often than that, so the cutoff is
+# replica-safe.
+
+REAPER_INTERVAL_S = 300
+REAPER_STALE_MINUTES = 30
+
+_REAPER_TASK: Optional[asyncio.Task] = None
+
+
+async def _reaper_loop() -> None:
+    while True:
+        try:
+            reaped = await asyncio.to_thread(
+                AiReelRepository().reap_stuck, REAPER_STALE_MINUTES
+            )
+            if reaped:
+                logger.warning(
+                    "[REAPER] failed %d stuck reel(s) older than %d min",
+                    reaped, REAPER_STALE_MINUTES,
+                )
+        except Exception:
+            logger.exception("[REAPER] sweep raised — will retry next interval")
+        await asyncio.sleep(REAPER_INTERVAL_S)
+
+
+def start_reels_reaper() -> None:
+    """Start the periodic reaper task (idempotent). Call from app startup
+    (lifespan) — requires a running event loop."""
+    global _REAPER_TASK
+    if _REAPER_TASK is not None and not _REAPER_TASK.done():
+        return
+    _REAPER_TASK = asyncio.create_task(_reaper_loop(), name="reels-reaper")
 
 
 # G6: Explicit registration helper. The orchestrator's STAGE_HANDLERS dict

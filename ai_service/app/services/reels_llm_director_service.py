@@ -1017,10 +1017,10 @@ def _fill_missing_required(
       * **Hook**: derived from the candidate's working title (uppercased,
         truncated to 6 words). Falls back to the first non-stopword
         content word of the reel if the title is empty/junk.
-      * **Micro_hook**: highest-importance non-stopword in the middle
-        30-70% of the reel, placed at that word's t_start, with a 1.5s
-        window. If no clear winner, we synthesize "WHAT HAPPENS NEXT" as
-        a generic curiosity-gap fallback.
+      * **Micro_hook**: highest-importance spoken PHRASE (2-4 consecutive
+        words) in the middle 30-65% of the reel, placed at the phrase's
+        onset. If no phrase qualifies, the slot is SKIPPED — a generic
+        filler reads as template spam and is worse than no overlay.
 
     Returns the spec list with any missing slots filled in. Preserves
     monotonic ordering by t_start.
@@ -1115,17 +1115,28 @@ def _synth_hook(
     )
 
 
+# Phrase-window bounds for the deterministic micro_hook. A 2-4 word
+# spoken phrase ("LOSE 80% OF VIEWERS") re-engages far better than a
+# single floating word ("TEAMWORK") — single words read as decoration,
+# phrases read as a claim.
+_SYNTH_PHRASE_MIN_WORDS = 2
+_SYNTH_PHRASE_MAX_WORDS = 4
+
+
 def _synth_micro_hook(
     word_importance_reel_time: list[dict],
     reel_duration_s: float,
 ) -> Optional[OverlaySpec]:
-    """Build a deterministic micro_hook by picking the highest-importance
-    non-stopword in the middle 30-70% of the reel.
+    """Build a deterministic micro_hook from the highest-importance spoken
+    PHRASE (2-4 consecutive words) in the middle of the reel.
 
     The micro_hook validator only accepts t_start in [0.30*dur, 0.70*dur],
-    so we constrain candidate words to that band. Falls back to a generic
-    curiosity-gap text if nothing scores well — better to ship a generic
-    re-engagement beat than skip the slot entirely.
+    so candidate phrases must start in that band. Windows must begin and
+    end on content words (no dangling stopwords), must not cross a
+    sentence boundary, and must contain at least one importance>=3 word —
+    if nothing qualifies the slot is SKIPPED entirely. A generic filler
+    ("WAIT FOR IT"-style) telegraphs template output and tests worse than
+    leaving the mid-beat to the speaker.
     """
     if reel_duration_s < 4.0:
         # Reel too short for a midpoint overlay to make sense.
@@ -1133,54 +1144,90 @@ def _synth_micro_hook(
     mid_lo = 0.30 * reel_duration_s
     mid_hi = 0.65 * reel_duration_s  # leave room for a 1.5s overlay before 0.70*dur
 
-    best: Optional[dict] = None
-    best_score = -1.0
+    # Normalize once: (clean_token, raw_token, t_start, t_end, importance).
+    words: list[tuple[str, str, float, float, int]] = []
     for w in word_importance_reel_time:
         try:
             ts = float(w.get("t_start") or 0.0)
+            te = float(w.get("t_end") or 0.0)
         except (TypeError, ValueError):
             continue
-        if not (mid_lo <= ts <= mid_hi):
+        raw = str(w.get("word") or "").strip()
+        clean = raw.strip(".,!?;:\"'")
+        if not clean:
             continue
-        tok = str(w.get("word") or "").strip().strip(".,!?")
-        if not tok or tok.lower() in _FALLBACK_STOPWORDS:
+        words.append((clean, raw, ts, te, int(w.get("importance") or 2)))
+
+    best: Optional[dict] = None
+    best_score = -1.0
+    for i, (clean_i, _raw_i, ts_i, _te_i, imp_i) in enumerate(words):
+        if not (mid_lo <= ts_i <= mid_hi):
             continue
-        importance = int(w.get("importance") or 2)
-        # Prefer longer words too — single-syllable hits read poorly as overlay.
-        score = importance + 0.05 * len(tok)
-        if score > best_score:
-            best_score = score
-            best = {"word": tok, "t_start": ts, "importance": importance}
+        # Phrase must START on a content word.
+        if clean_i.lower() in _FALLBACK_STOPWORDS:
+            continue
+        for length in range(_SYNTH_PHRASE_MIN_WORDS, _SYNTH_PHRASE_MAX_WORDS + 1):
+            window = words[i:i + length]
+            if len(window) < length:
+                break
+            # No sentence boundary INSIDE the phrase (the last word may
+            # carry one — that's the natural end of the claim).
+            if any(t[1].rstrip("'\"").endswith((".", "?", "!")) for t in window[:-1]):
+                break
+            # Phrase must END on a content word too.
+            if window[-1][0].lower() in _FALLBACK_STOPWORDS:
+                continue
+            text = " ".join(t[0] for t in window)
+            if len(text) > MAX_OVERLAY_CHARS:
+                continue
+            max_imp = max(t[4] for t in window)
+            if max_imp < 3:
+                # No genuinely important anchor — not worth an overlay.
+                continue
+            # Total importance favors dense claims; the small length bonus
+            # breaks ties toward fuller phrases over fragments.
+            score = sum(t[4] for t in window) + 0.15 * length
+            # Continuation penalty: if the window stops mid-claim (next
+            # word is a content word and the window doesn't end the
+            # sentence), a truncated overlay like "TEAMWORK IS YOUR
+            # GREATEST" beats-out the complete "GREATEST STRENGTH" on raw
+            # sum alone — punish the cut so natural phrase ends win.
+            ends_sentence = window[-1][1].rstrip("'\"").endswith((".", "?", "!"))
+            nxt = words[i + length] if i + length < len(words) else None
+            if not ends_sentence and nxt is not None and nxt[0].lower() not in _FALLBACK_STOPWORDS:
+                score -= 1.5 * nxt[4]
+            if score > best_score:
+                best_score = score
+                best = {
+                    "text": text,
+                    "t_start": ts_i,
+                    "t_end_phrase": window[-1][3],
+                    "max_importance": max_imp,
+                }
 
-    if best is not None:
-        text = best["word"].upper()
-        t_start = float(best["t_start"])
-        t_end = min(t_start + 1.5, mid_hi + 1.5, reel_duration_s - 0.5)
-        # Validator requires duration ≥ MIN_OVERLAY_DURATION_S; if our window
-        # was clipped too tight by the reel end, skip rather than ship a
-        # malformed overlay.
-        if t_end - t_start < MIN_OVERLAY_DURATION_S:
-            return None
-        color = "important" if best["importance"] >= 3 else "neutral"
-        return OverlaySpec(
-            type="micro_hook",
-            t_start=t_start,
-            t_end=t_end,
-            text=text,
-            color_intent=color,
-        )
-
-    # Generic curiosity-gap fallback. Placed at exactly 50% through.
-    midpoint = 0.50 * reel_duration_s
-    end = midpoint + 1.5
-    if end >= reel_duration_s - 0.5:
+    if best is None:
         return None
+
+    t_start = float(best["t_start"])
+    # Hold a beat past the spoken phrase, inside the validator's duration
+    # band, never spilling into the loop_back tail.
+    t_end = min(
+        max(t_start + 1.5, float(best["t_end_phrase"]) + 0.4),
+        t_start + MAX_OVERLAY_DURATION_S,
+        reel_duration_s - 0.5,
+    )
+    # Validator requires duration ≥ MIN_OVERLAY_DURATION_S; if our window
+    # was clipped too tight by the reel end, skip rather than ship a
+    # malformed overlay.
+    if t_end - t_start < MIN_OVERLAY_DURATION_S:
+        return None
+    color = "important" if best["max_importance"] >= 3 else "neutral"
     return OverlaySpec(
         type="micro_hook",
-        t_start=midpoint,
-        t_end=end,
-        text="WAIT FOR IT",
-        color_intent="neutral",
+        t_start=t_start,
+        t_end=t_end,
+        text=best["text"].upper(),
+        color_intent=color,
     )
 
 

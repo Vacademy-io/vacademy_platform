@@ -8,7 +8,7 @@ reused for request-scope reads.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Sequence
 
 from sqlalchemy import select, update, delete
@@ -325,6 +325,13 @@ class AiReelRepository:
         FE's polling lands on a row that's still progressing.
         """
         session = self._get_session()
+        # Staleness cutoff: a row that hasn't written progress in 30 min is
+        # a zombie (orphaned by a deploy/crash mid-render), not an active
+        # render. Without this cutoff a single orphan permanently blocked
+        # re-rendering its candidate+config (2026-06-12 audit). The reaper
+        # flips such rows to FAILED on its next sweep; until then we simply
+        # don't dedup against them.
+        freshness_cutoff = datetime.utcnow() - timedelta(minutes=30)
         stmt = (
             select(AiReel)
             .where(
@@ -334,6 +341,7 @@ class AiReelRepository:
                 # config_hash is stashed inside the JSONB config blob — this
                 # avoids a schema migration. JSONB '->>' returns text.
                 AiReel.config["render_config_hash"].astext == render_config_hash,
+                AiReel.updated_at >= freshness_cutoff,
             )
             .order_by(AiReel.created_at.desc())
             .limit(1)
@@ -344,6 +352,46 @@ class AiReelRepository:
             if _is_connection_error(e):
                 return self._get_fresh_session().execute(stmt).scalar_one_or_none()
             raise
+
+    def reap_stuck(self, stale_minutes: int = 30) -> int:
+        """Flip non-terminal reels with no DB write in `stale_minutes` to
+        FAILED and return how many were reaped.
+
+        The render pipeline runs as an in-process asyncio task — a deploy,
+        crash, or OOMKill mid-render leaves the row PENDING/IN_PROGRESS
+        forever with the FE polling a corpse. Every healthy stage writes
+        progress far more often than the cutoff, and updated_at is touched
+        on each write (Column onupdate), so staleness is replica-safe — a
+        sweep on instance B can't kill an in-flight render on instance A.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=stale_minutes)
+        session = self._get_fresh_session()
+        try:
+            stmt = (
+                update(AiReel)
+                .where(
+                    AiReel.status.in_(("PENDING", "IN_PROGRESS")),
+                    AiReel.updated_at < cutoff,
+                )
+                .values(
+                    status="FAILED",
+                    error_message=(
+                        "[REAPER] render orphaned — no progress for "
+                        f"{stale_minutes} min (service restart or stalled pipeline). "
+                        "Re-render to try again."
+                    ),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            res = session.execute(stmt)
+            session.commit()
+            return int(res.rowcount or 0)
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Reel reaper sweep failed: {e}")
+            return 0
+        finally:
+            session.close()
 
     def list_by_institute(
         self,

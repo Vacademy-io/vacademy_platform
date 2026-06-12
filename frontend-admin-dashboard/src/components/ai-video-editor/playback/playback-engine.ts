@@ -89,6 +89,11 @@ interface ScheduleArgs {
     volume: number;
     fadeIn: number;
     fadeOut: number;
+    /** Repeat the buffer until playback stops (bg music). The read offset
+     *  wraps modulo the buffer length so scrubbing deep into the timeline
+     *  still hears the right point in the loop. fadeOut is ignored — a
+     *  looping track has no natural end inside the buffer. */
+    loop?: boolean;
 }
 
 function scheduleBuffer({
@@ -99,15 +104,17 @@ function scheduleBuffer({
     volume,
     fadeIn,
     fadeOut,
+    loop = false,
 }: ScheduleArgs): ScheduledSource | null {
     // Where in the buffer we start reading (s)
     const offset = playheadStart - timelineStart;
-    if (offset >= buffer.duration) return null; // already past end
-    const realOffset = Math.max(0, offset);
+    if (!loop && offset >= buffer.duration) return null; // already past end
+    const realOffset = loop ? Math.max(0, offset) % buffer.duration : Math.max(0, offset);
     const realCtxStart = ctx.currentTime + Math.max(0, -offset);
 
     const src = ctx.createBufferSource();
     src.buffer = buffer;
+    src.loop = loop;
     const gain = ctx.createGain();
 
     if (fadeIn > 0 && realOffset < fadeIn) {
@@ -120,7 +127,7 @@ function scheduleBuffer({
         gain.gain.setValueAtTime(volume, realCtxStart);
     }
 
-    if (fadeOut > 0) {
+    if (fadeOut > 0 && !loop) {
         const fadeStartOffset = buffer.duration - fadeOut;
         if (fadeStartOffset > realOffset) {
             const fadeStartCtx = realCtxStart + (fadeStartOffset - realOffset);
@@ -190,6 +197,7 @@ async function scheduleTrack(
             volume: track.volume ?? 1,
             fadeIn: track.fadeIn ?? 0,
             fadeOut: track.fadeOut ?? 0,
+            loop: track.loop ?? false,
         });
         if (scheduled) sources.push(scheduled);
     } catch {

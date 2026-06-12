@@ -143,9 +143,12 @@ def _source_clip_html(url: str, source_start: float, source_end: float) -> str:
     structured source_start/source_end fields.
 
     NOT muted: Studio has no TTS narration — the source clip's own audio is
-    the soundtrack. At render time the worker captures this browser <video>
-    audio and mixes it with the (silent) master narration; in the editor it
-    plays the clip's audio directly. (The editor UI can still mute playback.)"""
+    the soundtrack, and the EDITOR plays it from this <video> directly. The
+    render worker does NOT capture browser <video> audio (it strips
+    data-source-clip tags and composites pixels only — Playwright frames are
+    silent); the rendered MP4's soundtrack is the P7 ASSEMBLE_AUDIO master
+    track (s3_urls.audio), assembled from the same source ranges. Keep the two
+    in sync: muting this tag silences the editor, not the render."""
     safe = _html.escape(url, quote=True)
     frag = f"#t={source_start:.2f},{source_end:.2f}"
     return (

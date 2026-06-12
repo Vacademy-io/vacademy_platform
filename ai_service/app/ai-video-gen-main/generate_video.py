@@ -1234,6 +1234,40 @@ def render_video_from_json(
                 }
                 // 5b. Sync Anime.js registered timelines
                 try { if (window._animeSeek) window._animeSeek(state.t); } catch(e) {}
+                // 5c. Scrub CSS animations inside opted-in subtrees.
+                // CSS keyframe animations run on the WALL clock, but frames here
+                // are captured at non-realtime pace — without scrubbing, every
+                // animation-delay'd reveal (reels karaoke captions, stat pops,
+                // chart draws, emoji pops) lands at a machine-dependent time in
+                // the output MP4. Subtrees marked data-anim-scrub get every
+                // WAAPI-visible animation paused and pinned to the scrub clock:
+                // currentTime = (state.t - host inTime), which preserves the
+                // authored animation-delay semantics exactly. Opt-in so legacy
+                // video-gen shots keep their historical wall-clock behavior.
+                try {
+                    const scrubHosts = document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]');
+                    scrubHosts.forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        const optIns = root.querySelectorAll('[data-anim-scrub]');
+                        if (optIns.length === 0) return;
+                        const inTime = parseFloat(host.dataset.inTime || '0');
+                        const relMs = Math.max(0, (state.t - inTime) * 1000);
+                        const seen = new Set();
+                        optIns.forEach(el => {
+                            let anims = [];
+                            try { anims = el.getAnimations({ subtree: true }); } catch (e) {}
+                            anims.forEach(a => {
+                                if (seen.has(a)) return;
+                                seen.add(a);
+                                try {
+                                    if (a.playState !== 'paused') a.pause();
+                                    a.currentTime = relMs;
+                                } catch (e) {}
+                            });
+                        });
+                    });
+                } catch (e) {}
                 // 6. Seek stock videos (skip entirely if none exist).
                 //
                 // Broken-video defence: when a stock URL fails to load, the <video>
@@ -1304,11 +1338,24 @@ def render_video_from_json(
                                     const relTime = state.t - inTime;
                                     let targetTime = 0;
                                     if (v.duration && v.duration > 0 && relTime >= 0) {
-                                        targetTime = relTime % v.duration;
+                                        // Only explicitly-looping videos wrap with
+                                        // modulo; everything else (e.g. the reels
+                                        // speaker clip) clamps to its last frame so
+                                        // a timeline that slightly outruns the clip
+                                        // doesn't flash the first frame at the end.
+                                        const loops = v.loop || v.hasAttribute('loop') || v.dataset.loop === '1';
+                                        targetTime = loops
+                                            ? (relTime % v.duration)
+                                            : Math.min(relTime, Math.max(0, v.duration - (state.frameStepS || 0.04)));
                                     } else if (relTime >= 0) {
                                         targetTime = relTime;
                                     }
-                                    if (Math.abs(v.currentTime - targetTime) > 0.05) {
+                                    // Half-frame tolerance: the previous fixed 50ms
+                                    // tolerance exceeded the 33-40ms frame step, so
+                                    // consecutive-frame seeks were skipped and video
+                                    // motion ran at half rate (judder).
+                                    const seekTol = Math.min(0.05, (state.frameStepS || 0.04) / 2);
+                                    if (Math.abs(v.currentTime - targetTime) > seekTol) {
                                         await new Promise(r => {
                                             v.addEventListener('seeked', r, { once: true });
                                             setTimeout(r, 250);
@@ -1902,6 +1949,7 @@ def render_video_from_json(
                     "character": _char_state,
                     "caption": _caption_entry,
                     "t": t,
+                    "frameStepS": 1.0 / float(fps),
                     "seekVideos": True,
                     "segmentChanged": _segment_changed,
                 })

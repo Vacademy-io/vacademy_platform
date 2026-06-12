@@ -444,6 +444,33 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                 JOIN scorm_slide sc ON sc.id = vs.source_id
                 WHERE vs.source_type = 'SCORM'
             ),
+            assessment_slides AS (
+                SELECT
+                    vs.chapter_id,
+                    vs.created_at,
+                    vs.slide_order,
+                    json_build_object(
+                        'id', vs.slide_id,
+                        'title', vs.title,
+                        'status', vs.status,
+                        'is_loaded', TRUE,
+                        'new_slide', TRUE,
+                        'source_id', vs.source_id,
+                        'description', vs.description,
+                        'slide_order', vs.slide_order,
+                        'source_type', vs.source_type,
+                        'parent_id', vs.parent_id,
+                        'assessment_slide', json_build_object(
+                            'id', asl.id,
+                            'assessment_id', asl.assessment_id,
+                            'allow_reattempt', asl.allow_reattempt,
+                            'show_result', asl.show_result
+                        )
+                    ) AS slide_data
+                FROM valid_slides vs
+                JOIN assessment_slide asl ON asl.id = vs.source_id
+                WHERE vs.source_type = 'ASSESSMENT'
+            ),
             all_slides AS (
                 SELECT * FROM video_slides
                 UNION ALL
@@ -460,6 +487,8 @@ public interface ChapterRepository extends JpaRepository<Chapter, String> {
                 SELECT * FROM html_video_slides
                 UNION ALL
                 SELECT * FROM scorm_slides
+                UNION ALL
+                SELECT * FROM assessment_slides
             )
             SELECT json_agg(
                        json_build_object(

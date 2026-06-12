@@ -170,6 +170,7 @@ export interface Report {
   end_time: string;
   sections: AllSections;
   play_mode: string;
+  report_release_status: string;
 }
 export interface ParsedHistoryState {
   report?: Report;

@@ -7,6 +7,7 @@ import {
     FilePdf,
     PlayCircle,
     ClipboardText,
+    ListChecks,
 } from '@phosphor-icons/react';
 import { Video, Sparkles } from 'lucide-react';
 import { ReactNode, useEffect, useMemo } from 'react';
@@ -87,6 +88,10 @@ export const getIcon = (
 
     if (source_type === 'QUIZ') {
         return <ClipboardText className={`${iconClass} text-orange-500`} />;
+    }
+
+    if (source_type === 'ASSESSMENT') {
+        return <ListChecks className={`${iconClass} text-rose-500`} />;
     }
 
     // HTML_VIDEO icon (blue video + sparkle)

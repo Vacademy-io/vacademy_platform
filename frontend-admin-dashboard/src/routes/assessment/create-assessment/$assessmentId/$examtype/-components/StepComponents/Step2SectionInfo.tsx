@@ -373,6 +373,16 @@ export const Step2SectionInfo = ({
 
     useEffect(() => {
         if (assessmentId !== 'defaultId') {
+            // Hydrate this section's questions from the server copy ONLY while the
+            // form section is still empty. The effect's dependency is the whole
+            // section, so it re-ran on every edit and overwrote questions the user
+            // just added (e.g. from a saved paper) with the server copy — which is
+            // empty for a freshly created assessment, so the additions vanished.
+            const currentQuestions =
+                getValues(`section.${index}.adaptive_marking_for_each_question`) || [];
+            if (currentQuestions.length > 0 || !adaptiveMarking.adaptiveMarking?.length) {
+                return;
+            }
             setValue(
                 `section.${index}.adaptive_marking_for_each_question`,
                 adaptiveMarking.adaptiveMarking

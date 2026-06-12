@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { enrollForProductPage } from '../-services/product-page-service';
 import {
@@ -36,6 +36,7 @@ export const CombinedPaymentStep = ({
     } = useProductPageStore();
 
     const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+    const hasAutoEnrolledRef = useRef(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [paymentError, setPaymentError] = useState<string | null>(null);
 
@@ -113,6 +114,18 @@ export const CombinedPaymentStep = ({
     const handleFreeEnroll = () => {
         doEnroll({ vendor: 'FREE', amount: 0, currency });
     };
+
+    // Auto-skip the payment step for free enrollments — mirrors the invite flow
+    // (learner-invitation-response): when the total is 0, enroll immediately on
+    // mount instead of waiting for a button click. The ref guards against
+    // double-firing (React Strict Mode / re-renders).
+    useEffect(() => {
+        if (amount <= 0 && !hasAutoEnrolledRef.current && !isProcessing) {
+            hasAutoEnrolledRef.current = true;
+            handleFreeEnroll();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [amount]);
 
     const handleRazorpayPay = async () => {
         setIsProcessing(true);
@@ -224,19 +237,27 @@ export const CombinedPaymentStep = ({
                     )}
 
                     {/* Vendor-specific payment UI — free path driven by amount only, not vendor label */}
-                    {amount === 0 ? (
-                        <button
-                            type="button"
-                            disabled={isProcessing}
-                            onClick={handleFreeEnroll}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                        >
-                            {isProcessing ? (
-                                <><SpinnerGap className="size-4 animate-spin" /> Processing...</>
-                            ) : (
-                                'Complete Enrollment (Free)'
-                            )}
-                        </button>
+                    {amount <= 0 ? (
+                        // Free enrollment auto-completes on mount (see useEffect above);
+                        // show a loading state, and only fall back to a retry button on error.
+                        paymentError ? (
+                            <button
+                                type="button"
+                                disabled={isProcessing}
+                                onClick={handleFreeEnroll}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            >
+                                {isProcessing ? (
+                                    <><SpinnerGap className="size-4 animate-spin" /> Completing your enrollment…</>
+                                ) : (
+                                    'Retry Enrollment'
+                                )}
+                            </button>
+                        ) : (
+                            <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white">
+                                <SpinnerGap className="size-4 animate-spin" /> Completing your enrollment…
+                            </div>
+                        )
                     ) : vendor === 'RAZORPAY' ? (
                         <>
                             <RazorpayCheckoutForm

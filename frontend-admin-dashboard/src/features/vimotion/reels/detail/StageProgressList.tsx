@@ -16,15 +16,23 @@ import { VimotionLoader } from '../../brand/VimotionLoader';
 import { cn } from '@/lib/utils';
 import type { ReelResponse } from '../services/reels-api';
 
+// Stage keys are the backend's; labels/hints are creator language — never
+// surface raw pipeline vocabulary to users.
 const STAGE_ORDER: Array<{ key: string; label: string; hint: string }> = [
-    { key: 'AUDIO_EDIT', label: 'Audio edit', hint: 'Cutting + atempo on the speaker audio' },
-    { key: 'SOURCE_CLIP', label: 'Source clip', hint: 'Aspect crop + frame-accurate cuts' },
-    { key: 'STYLE_GUIDE', label: 'Style guide', hint: 'Palette + typography' },
-    { key: 'DIRECTOR', label: 'Director', hint: 'Shot plan + overlay placement' },
-    { key: 'HTML', label: 'HTML', hint: 'Per-shot HTML generation' },
-    { key: 'ASSEMBLE', label: 'Assemble', hint: 'Final {meta, entries} payload' },
-    { key: 'RENDER', label: 'Render', hint: 'Frame capture + MP4 encoding' },
+    { key: 'AUDIO_EDIT', label: 'Cleaning audio', hint: 'Trimming pauses and tightening the speech' },
+    { key: 'SOURCE_CLIP', label: 'Cutting your clip', hint: 'Cropping and trimming the source video' },
+    { key: 'STYLE_GUIDE', label: 'Designing the look', hint: 'Picking colors and typography' },
+    { key: 'DIRECTOR', label: 'Planning overlays', hint: 'Placing captions, titles and graphics' },
+    { key: 'HTML', label: 'Building graphics', hint: 'Preparing the overlay layers' },
+    { key: 'ASSEMBLE', label: 'Assembling the timeline', hint: 'Putting audio, video and overlays together' },
+    { key: 'RENDER', label: 'Exporting video', hint: 'Recording frames and encoding the MP4' },
 ];
+
+/** Creator-language label for a backend stage key. Falls back to the raw
+ *  key only for stages this list doesn't know about yet. */
+export function stageLabel(stageKey: string): string {
+    return STAGE_ORDER.find((s) => s.key === stageKey)?.label ?? stageKey;
+}
 
 interface StageProgressListProps {
     reel: ReelResponse;

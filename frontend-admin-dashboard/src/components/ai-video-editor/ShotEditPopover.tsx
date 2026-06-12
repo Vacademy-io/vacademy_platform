@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { ShotClip } from '@/components/ai-video-player/types';
 import { useVideoEditorStore } from './stores/video-editor-store';
+import { FriendlyError, humanizeNarrationError } from './utils/sentence-api';
 
 interface Props {
     /** The shot the user clicked on. The popover edits its `text`. */
@@ -45,7 +46,7 @@ export function ShotEditPopover({
     const { regenerateShot, silenceShot, regeneratingShotIdx, regeneratingSentenceId } =
         useVideoEditorStore();
     const [draft, setDraft] = useState(shot.text);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<FriendlyError | null>(null);
     const [silencing, setSilencing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -111,9 +112,9 @@ export function ShotEditPopover({
             toast.success('Shot re-narrated and audio updated');
             onClose();
         } else {
-            const msg = result.error || 'Re-narration failed';
-            setError(msg);
-            toast.error(msg);
+            const friendly = humanizeNarrationError(result.error || '', 'Re-narration failed');
+            setError(friendly);
+            toast.error(friendly.message);
         }
     };
 
@@ -127,9 +128,9 @@ export function ShotEditPopover({
             toast.success('Shot muted — audio replaced with silence');
             onClose();
         } else {
-            const msg = result.error || 'Mute failed';
-            setError(msg);
-            toast.error(msg);
+            const friendly = humanizeNarrationError(result.error || '', 'Mute failed');
+            setError(friendly);
+            toast.error(friendly.message);
         }
     };
 
@@ -207,7 +208,21 @@ export function ShotEditPopover({
                 </p>
             )}
 
-            {error && <p className="text-[11px] text-red-500">{error}</p>}
+            {error && (
+                <div className="flex flex-col gap-1">
+                    <p className="text-[11px] text-red-500">{error.message}</p>
+                    {error.detail && (
+                        <details className="text-[10px] text-gray-400">
+                            <summary className="cursor-pointer select-none hover:text-gray-600">
+                                Technical details
+                            </summary>
+                            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1.5 leading-snug text-gray-500">
+                                {error.detail}
+                            </pre>
+                        </details>
+                    )}
+                </div>
+            )}
 
             <div className="mt-1 flex items-center justify-between gap-2">
                 <div>

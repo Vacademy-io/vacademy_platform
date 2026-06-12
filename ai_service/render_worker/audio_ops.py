@@ -23,7 +23,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from urllib.request import Request as _UrlReq, urlopen
 
 # Env var names, checked in order. AWS_S3_PUBLIC_BUCKET is what deploy.sh
@@ -36,6 +36,15 @@ DEFAULT_REGION = "ap-south-1"
 DEFAULT_USER_AGENT = "VacademyRenderWorker/1.0"
 DOWNLOAD_TIMEOUT_S = 120
 FFMPEG_TIMEOUT_S = 600
+
+# Minimum seconds of base audio a head/tail slice must span to take part in
+# a splice join. Below ~2 MP3 frames (≈52 ms) a stream-copied cut can contain
+# zero audio frames — ffmpeg writes a header-only file that later fails to
+# demux as an input ("Invalid frame size (576)"). Splicing the LAST sentence
+# hits this: tail_start clamps to base_duration, so the tail slice is empty.
+MIN_JOIN_SEGMENT_S = 0.06
+# Below this a crossfade window is meaningless — hard-concat that join instead.
+MIN_CROSSFADE_S = 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -202,59 +211,43 @@ def splice_audio(
         if tail_start > base_duration:
             tail_start = base_duration
 
-        head = tmp / "head.mp3"
-        tail = tmp / "tail.mp3"
-        _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
-            "-i", str(base), "-c", "copy", str(head),
-        ], what="splice head")
-        _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
-            "-i", str(base), "-c", "copy", str(tail),
-        ], what="splice tail")
-
-        # Concat with crossfade between head→new→tail. Re-encoding is required
-        # for crossfade so we can't stream-copy here, but we keep bitrate at
-        # 192k to match concat_audio for consistent quality across the file.
-        output = tmp / "spliced.mp3"
-        head_dur = probe_duration(head)
         new_dur = probe_duration(new_clip)
-        # acrossfade overlaps two streams by `d` seconds, so the final length
-        # of (head ⨯ new) is head_dur + new_dur − d, and similarly for the
-        # tail join. If a clip is shorter than the crossfade window, fall back
-        # to a hard concat to avoid ffmpeg errors / silent truncation.
-        cf_head_new = min(crossfade_s, head_dur, new_dur) if crossfade_ms else 0
-        tail_dur = probe_duration(tail)
-        cf_new_tail = min(crossfade_s, new_dur, tail_dur) if crossfade_ms else 0
+        if new_dur <= 0:
+            raise AudioOpsError("replacement clip has no decodable audio")
 
-        if cf_head_new == 0 and cf_new_tail == 0:
-            # No crossfade possible (e.g. splicing at the very start/end and
-            # one side is zero-length). Use simple concat demuxer.
-            concat_list = tmp / "concat.txt"
-            concat_list.write_text(
-                "\n".join([
-                    f"file '{head}'",
-                    f"file '{new_clip}'",
-                    f"file '{tail}'",
-                ]),
-                encoding="utf-8",
-            )
+        # Cut head/tail only when there's real audio on that side. Splicing
+        # the FIRST sentence leaves (almost) no head; the LAST sentence
+        # leaves no tail (tail_start clamps to base_duration). A stream-copied
+        # cut of a near-zero span contains no MP3 frames and can't even be
+        # opened as an ffmpeg input, so those sides are skipped entirely.
+        parts: List[Tuple[Path, float]] = []
+        if head_end > MIN_JOIN_SEGMENT_S:
+            head = tmp / "head.mp3"
             _run_ffmpeg([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_list),
-                "-c", "copy", str(output),
-            ], what="splice concat (no crossfade)")
-        else:
-            filter_parts = [
-                f"[0:a][1:a]acrossfade=d={cf_head_new}:c1=tri:c2=tri[hn]",
-                f"[hn][2:a]acrossfade=d={cf_new_tail}:c1=tri:c2=tri[out]",
-            ]
+                "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
+                "-i", str(base), "-c", "copy", str(head),
+            ], what="splice head")
+            head_dur = probe_duration(head)
+            if head_dur > 0:
+                parts.append((head, head_dur))
+        parts.append((new_clip, new_dur))
+        if base_duration - tail_start > MIN_JOIN_SEGMENT_S:
+            tail = tmp / "tail.mp3"
             _run_ffmpeg([
-                "ffmpeg", "-y",
-                "-i", str(head), "-i", str(new_clip), "-i", str(tail),
-                "-filter_complex", ";".join(filter_parts),
-                "-map", "[out]", "-b:a", "192k", str(output),
-            ], what="splice crossfade")
+                "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
+                "-i", str(base), "-c", "copy", str(tail),
+            ], what="splice tail")
+            tail_dur = probe_duration(tail)
+            if tail_dur > 0:
+                parts.append((tail, tail_dur))
+
+        output = tmp / "spliced.mp3"
+        _join_audio_parts(
+            parts,
+            crossfade_s if crossfade_ms else 0.0,
+            output,
+            what="splice crossfade",
+        )
 
         new_total = probe_duration(output)
         _upload_to_s3(s3, bucket_name, output_key, output.read_bytes(), "audio/mpeg")
@@ -330,52 +323,41 @@ def silence_audio_range(
             str(silence_clip),
         ], what="silence synth")
 
-        head = tmp / "head.mp3"
-        tail = tmp / "tail.mp3"
-        _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
-            "-i", str(base), "-c", "copy", str(head),
-        ], what="silence head")
-        _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
-            "-i", str(base), "-c", "copy", str(tail),
-        ], what="silence tail")
-
-        # Reuse the splice crossfade pipeline. Same fallback to hard concat
-        # if either side is too short for a crossfade window.
-        output = tmp / "silenced.mp3"
-        head_dur = probe_duration(head)
         silence_dur = probe_duration(silence_clip)
-        tail_dur = probe_duration(tail)
-        cf_head_new = min(crossfade_s, head_dur, silence_dur) if crossfade_ms else 0
-        cf_new_tail = min(crossfade_s, silence_dur, tail_dur) if crossfade_ms else 0
+        if silence_dur <= 0:
+            raise AudioOpsError("failed to synthesize silence clip")
 
-        if cf_head_new == 0 and cf_new_tail == 0:
-            concat_list = tmp / "concat.txt"
-            concat_list.write_text(
-                "\n".join([
-                    f"file '{head}'",
-                    f"file '{silence_clip}'",
-                    f"file '{tail}'",
-                ]),
-                encoding="utf-8",
-            )
+        # Same join policy as splice_audio: skip a head/tail side that has
+        # no real audio (silencing the first/last sentence) instead of
+        # feeding an empty, undemuxable cut into ffmpeg.
+        parts: List[Tuple[Path, float]] = []
+        if head_end > MIN_JOIN_SEGMENT_S:
+            head = tmp / "head.mp3"
             _run_ffmpeg([
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_list),
-                "-c", "copy", str(output),
-            ], what="silence concat (no crossfade)")
-        else:
-            filter_parts = [
-                f"[0:a][1:a]acrossfade=d={cf_head_new}:c1=tri:c2=tri[hn]",
-                f"[hn][2:a]acrossfade=d={cf_new_tail}:c1=tri:c2=tri[out]",
-            ]
+                "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
+                "-i", str(base), "-c", "copy", str(head),
+            ], what="silence head")
+            head_dur = probe_duration(head)
+            if head_dur > 0:
+                parts.append((head, head_dur))
+        parts.append((silence_clip, silence_dur))
+        if base_duration - tail_start > MIN_JOIN_SEGMENT_S:
+            tail = tmp / "tail.mp3"
             _run_ffmpeg([
-                "ffmpeg", "-y",
-                "-i", str(head), "-i", str(silence_clip), "-i", str(tail),
-                "-filter_complex", ";".join(filter_parts),
-                "-map", "[out]", "-b:a", "192k", str(output),
-            ], what="silence crossfade")
+                "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
+                "-i", str(base), "-c", "copy", str(tail),
+            ], what="silence tail")
+            tail_dur = probe_duration(tail)
+            if tail_dur > 0:
+                parts.append((tail, tail_dur))
+
+        output = tmp / "silenced.mp3"
+        _join_audio_parts(
+            parts,
+            crossfade_s if crossfade_ms else 0.0,
+            output,
+            what="silence crossfade",
+        )
 
         new_total = probe_duration(output)
         _upload_to_s3(s3, bucket_name, output_key, output.read_bytes(), "audio/mpeg")
@@ -384,6 +366,58 @@ def silence_audio_range(
             new_duration=new_total,
             duration_delta=new_total - base_duration,
         )
+
+
+def _join_audio_parts(
+    parts: List[Tuple[Path, float]],
+    crossfade_s: float,
+    output: Path,
+    what: str,
+) -> None:
+    """Join 1–3 audio clips into `output`, crossfading each join when both
+    sides are long enough, hard-concatenating (concat filter) otherwise.
+
+    Always re-encodes at 192k: the parts come from different encoders (the
+    narration master is 48 kHz stereo, fresh TTS clips are 24 kHz mono), so
+    a stream-copied concat would produce a corrupt file. Both acrossfade and
+    the concat filter negotiate a common sample rate / channel layout.
+    """
+    if not parts:
+        raise AudioOpsError(f"{what}: nothing to join")
+    if len(parts) == 1:
+        _run_ffmpeg([
+            "ffmpeg", "-y", "-i", str(parts[0][0]),
+            "-b:a", "192k", str(output),
+        ], what=f"{what} (single part)")
+        return
+
+    filter_parts: List[str] = []
+    prev_label = "0:a"
+    prev_dur = parts[0][1]
+    for idx in range(1, len(parts)):
+        _path, dur = parts[idx]
+        out_label = "out" if idx == len(parts) - 1 else f"j{idx}"
+        cf = min(crossfade_s, prev_dur, dur)
+        if cf >= MIN_CROSSFADE_S:
+            filter_parts.append(
+                f"[{prev_label}][{idx}:a]acrossfade=d={cf}:c1=tri:c2=tri[{out_label}]"
+            )
+            prev_dur = prev_dur + dur - cf
+        else:
+            filter_parts.append(
+                f"[{prev_label}][{idx}:a]concat=n=2:v=0:a=1[{out_label}]"
+            )
+            prev_dur = prev_dur + dur
+        prev_label = out_label
+
+    cmd: List[str] = ["ffmpeg", "-y"]
+    for path, _dur in parts:
+        cmd += ["-i", str(path)]
+    cmd += [
+        "-filter_complex", ";".join(filter_parts),
+        "-map", "[out]", "-b:a", "192k", str(output),
+    ]
+    _run_ffmpeg(cmd, what=what)
 
 
 def probe_duration(path: Path) -> float:

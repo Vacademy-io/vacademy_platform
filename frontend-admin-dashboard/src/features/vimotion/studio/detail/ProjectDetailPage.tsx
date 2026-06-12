@@ -6,12 +6,13 @@
  * land in P4/P5. For now this confirms the project persisted and shows what
  * the user configured.
  */
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowLeft,
     CheckCircle,
+    CircleNotch,
     DownloadSimple,
     FilmStrip,
     Image as ImageIcon,
@@ -29,6 +30,7 @@ import {
     publishStudioBuild,
     renderStudioBuild,
     type BuildSummary,
+    type ProjectResponse,
     type ProjectStatus,
     type TargetAspect,
 } from '../services/studio-api';
@@ -42,8 +44,32 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
     ARCHIVED: 'Archived',
 };
 
+/** True when some wizard step hasn't been confirmed yet (resume-able).
+ *  Mirrors CreatePage.firstUnconfirmedStep's key check. */
+function hasUnconfirmedStep(project: ProjectResponse): boolean {
+    const confirmed = project.confirmed_plan ?? {};
+    return ['arrangement', 'cuts', 'overlays', 'audio'].some((s) => !(s in confirmed));
+}
+
+/**
+ * A render the user just kicked off from this page. Render submission does
+ * NOT change the build's status server-side (it stays AWAITING_EDIT or
+ * RENDERED), so the detail query's PENDING|BUILDING polling never engages —
+ * we track in-flight renders locally and poll the build until it resolves.
+ */
+interface RenderFlight {
+    /** Worker job id — on success the backend stamps it into
+     *  extra_metadata.render_job_id alongside s3_urls.video. */
+    jobId: string;
+    /** error_message snapshot at submit time. Failure is signalled by a *new*
+     *  '[RENDER] …' message (the backend never clears old ones), so a stale
+     *  message from a previous attempt must not re-trip immediately. */
+    priorError: string | null;
+}
+
 export function ProjectDetailPage({ projectId }: { projectId: string }) {
     const navigate = useNavigate();
+    const qc = useQueryClient();
     const instituteId = getInstituteId();
     const apiKey = useVimotionApiKey(instituteId);
 
@@ -53,8 +79,79 @@ export function ProjectDetailPage({ projectId }: { projectId: string }) {
         projectId,
     });
 
-    const backToStudio = () =>
-        navigate({ to: '/vim/dashboard', search: { tab: 'studio' } });
+    // Renders in flight (keyed by build id) + the inline error from the most
+    // recent failed attempt per build. The Render button doubles as retry.
+    const [renderFlights, setRenderFlights] = useState<Record<string, RenderFlight>>({});
+    const [renderErrors, setRenderErrors] = useState<Record<string, string>>({});
+
+    const handleRenderStart = useCallback((buildId: string, flight: RenderFlight) => {
+        setRenderErrors((prev) => {
+            if (!(buildId in prev)) return prev;
+            const next = { ...prev };
+            delete next[buildId];
+            return next;
+        });
+        setRenderFlights((prev) => ({ ...prev, [buildId]: flight }));
+    }, []);
+
+    // Poll while any render is in flight: every 5s fetch each in-flight build
+    // (the full record carries error_message; the list summaries don't) and
+    // refresh the detail query so row status/MP4 affordances update. Success =
+    // our job id landed in extra_metadata.render_job_id (set together with
+    // s3_urls.video → has_video); failure = a new '[RENDER] …' error_message
+    // (the build returns to AWAITING_EDIT, so it stays renderable).
+    useEffect(() => {
+        const key = apiKey.data;
+        if (!key || Object.keys(renderFlights).length === 0) return;
+        let cancelled = false;
+        const tick = async () => {
+            for (const [buildId, flight] of Object.entries(renderFlights)) {
+                try {
+                    const full = await getStudioBuild(key, buildId);
+                    if (cancelled) return;
+                    const extra = full.extra_metadata as { render_job_id?: string } | undefined;
+                    const hasVideo = Boolean(
+                        (full.s3_urls as Record<string, unknown> | undefined)?.video
+                    );
+                    if (extra?.render_job_id === flight.jobId && hasVideo) {
+                        setRenderFlights((prev) => {
+                            const next = { ...prev };
+                            delete next[buildId];
+                            return next;
+                        });
+                        toast.success(
+                            `${full.name || `Build v${full.version}`} rendered — MP4 ready.`
+                        );
+                    } else if (
+                        full.error_message?.startsWith('[RENDER]') &&
+                        full.error_message !== flight.priorError
+                    ) {
+                        const message = full.error_message;
+                        setRenderFlights((prev) => {
+                            const next = { ...prev };
+                            delete next[buildId];
+                            return next;
+                        });
+                        setRenderErrors((prev) => ({ ...prev, [buildId]: message }));
+                    }
+                } catch {
+                    // network blip — keep polling
+                }
+            }
+            if (!cancelled) {
+                qc.invalidateQueries({
+                    queryKey: ['studio-project', instituteId, projectId],
+                });
+            }
+        };
+        const timer = window.setInterval(() => void tick(), 5_000);
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+        };
+    }, [renderFlights, apiKey.data, instituteId, projectId, qc]);
+
+    const backToStudio = () => navigate({ to: '/vim/dashboard', search: { tab: 'studio' } });
 
     if (projectQuery.isLoading || apiKey.isLoading) {
         return (
@@ -106,9 +203,7 @@ export function ProjectDetailPage({ projectId }: { projectId: string }) {
                     {project.target_aspect && (
                         <p className="mt-1 text-sm text-neutral-500">
                             {project.target_aspect}
-                            {project.target_duration_s
-                                ? ` · ~${project.target_duration_s}s`
-                                : ''}
+                            {project.target_duration_s ? ` · ~${project.target_duration_s}s` : ''}
                         </p>
                     )}
                 </div>
@@ -143,15 +238,9 @@ export function ProjectDetailPage({ projectId }: { projectId: string }) {
                             )}
                         >
                             {ref.kind === 'image' ? (
-                                <ImageIcon
-                                    weight="duotone"
-                                    className="size-3.5 text-neutral-500"
-                                />
+                                <ImageIcon weight="duotone" className="size-3.5 text-neutral-500" />
                             ) : (
-                                <FilmStrip
-                                    weight="duotone"
-                                    className="size-3.5 text-neutral-500"
-                                />
+                                <FilmStrip weight="duotone" className="size-3.5 text-neutral-500" />
                             )}
                             <span className="font-mono font-medium text-neutral-900">
                                 {ref.handle}
@@ -163,14 +252,46 @@ export function ProjectDetailPage({ projectId }: { projectId: string }) {
 
             {/* Builds */}
             <section className="rounded-lg border border-neutral-200 bg-white p-4">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    Builds ({project.builds.length})
-                </h2>
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        Builds ({project.builds.length})
+                    </h2>
+                    {/* Resume whenever a wizard step is still unconfirmed — not
+                        just on zero builds (every pre-P7 project lacks 'audio'). */}
+                    {hasUnconfirmedStep(project) && project.builds.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() =>
+                                navigate({
+                                    to: '/vim/studio/new',
+                                    search: { projectId: project.id },
+                                })
+                            }
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 text-caption font-medium text-neutral-700 transition-colors hover:bg-neutral-50"
+                        >
+                            <Sparkle weight="bold" className="size-3.5" /> Resume planning
+                        </button>
+                    )}
+                </div>
                 {project.builds.length === 0 ? (
-                    <p className="text-sm text-neutral-500">
-                        No builds yet. Once you finish the wizard and build a
-                        version, it’ll appear here — ready to open in the editor.
-                    </p>
+                    <div className="space-y-3">
+                        <p className="text-sm text-neutral-500">
+                            No builds yet. Once you finish the wizard and build a version, it’ll
+                            appear here — ready to open in the editor.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                navigate({
+                                    to: '/vim/studio/new',
+                                    search: { projectId: project.id },
+                                })
+                            }
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-caption font-medium text-white transition-colors hover:bg-neutral-800"
+                        >
+                            <Sparkle weight="bold" className="size-3.5" /> Resume planning
+                        </button>
+                    </div>
                 ) : (
                     <ul className="space-y-2">
                         {project.builds.map((b) => (
@@ -181,6 +302,9 @@ export function ProjectDetailPage({ projectId }: { projectId: string }) {
                                 instituteId={instituteId}
                                 projectId={projectId}
                                 aspect={project.target_aspect}
+                                rendering={b.id in renderFlights}
+                                renderError={renderErrors[b.id]}
+                                onRenderStart={handleRenderStart}
                             />
                         ))}
                     </ul>
@@ -208,12 +332,18 @@ function BuildRow({
     instituteId,
     projectId,
     aspect,
+    rendering,
+    renderError,
+    onRenderStart,
 }: {
     build: BuildSummary;
     apiKey: string | undefined;
     instituteId: string | undefined;
     projectId: string;
     aspect?: TargetAspect | null;
+    rendering: boolean;
+    renderError?: string;
+    onRenderStart: (buildId: string, flight: RenderFlight) => void;
 }) {
     const navigate = useNavigate();
     const qc = useQueryClient();
@@ -221,6 +351,20 @@ function BuildRow({
 
     const ready = build.status === 'AWAITING_EDIT' || build.status === 'RENDERED';
     const orientation = aspect === '9:16' ? 'portrait' : 'landscape';
+
+    // The list summaries don't carry error_message — fetch the full record
+    // once for FAILED rows so the user can see *why* the build died.
+    const failedDetail = useQuery({
+        queryKey: ['studio-build-error', build.id, apiKey],
+        enabled: !!apiKey && build.status === 'FAILED',
+        staleTime: 60_000,
+        queryFn: () => getStudioBuild(apiKey as string, build.id),
+    });
+    const rawError =
+        renderError ??
+        (build.status === 'FAILED' ? failedDetail.data?.error_message ?? null : null);
+    // "[RENDER]"/"[STAGE]" prefixes are routing markers, not user copy.
+    const inlineError = rawError?.replace(/^\[[A-Z_]+\]\s*/, '') ?? null;
 
     const openInEditor = async () => {
         if (!apiKey) return;
@@ -246,6 +390,9 @@ function BuildRow({
                     // enabled at build) → editor previews them.
                     wordsUrl: s3.words ?? undefined,
                     avatarUrl: undefined,
+                    // Back from the editor returns here (the project page) —
+                    // build ids don't resolve in the dashboard production view.
+                    projectId,
                     focusTime: undefined,
                 },
             });
@@ -274,8 +421,14 @@ function BuildRow({
         if (!apiKey) return;
         setBusy('render');
         try {
-            await renderStudioBuild(apiKey, build.id, {});
-            qc.invalidateQueries({ queryKey: ['studio-project', instituteId, projectId] });
+            // Snapshot error_message first — failure detection is "a *new*
+            // [RENDER] message", and the backend never clears the old one.
+            const before = await getStudioBuild(apiKey, build.id);
+            const result = await renderStudioBuild(apiKey, build.id, {});
+            onRenderStart(build.id, {
+                jobId: result.job_id,
+                priorError: before.error_message ?? null,
+            });
             toast.success('Render started — it’ll appear here when ready.');
         } catch (e) {
             toast.error(e instanceof Error ? e.message : 'Render failed.');
@@ -285,54 +438,66 @@ function BuildRow({
     };
 
     return (
-        <li className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-neutral-900">
-                    {build.name || `Build v${build.version}`}
-                </span>
-                {build.is_published && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-caption font-medium text-emerald-700">
-                        <CheckCircle weight="fill" className="size-3" /> Published
+        <li className="rounded-md border border-neutral-200 px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-medium text-neutral-900">
+                        {build.name || `Build v${build.version}`}
                     </span>
-                )}
-                <span
-                    className={cn(
-                        'rounded-full px-2 py-0.5 text-caption font-medium',
-                        BUILD_STATUS_CLS[build.status] ?? 'bg-neutral-100 text-neutral-600'
+                    {build.is_published && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-caption font-medium text-emerald-700">
+                            <CheckCircle weight="fill" className="size-3" /> Published
+                        </span>
                     )}
-                >
-                    {build.status.toLowerCase().replace('_', ' ')}
-                </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-                {ready && (
-                    <RowButton onClick={openInEditor} busy={busy === 'open'} icon={PencilSimple}>
-                        Edit
-                    </RowButton>
-                )}
-                {ready && (
-                    <RowButton onClick={render} busy={busy === 'render'} icon={Sparkle}>
-                        Render
-                    </RowButton>
-                )}
-                {build.has_video && (
-                    <a
-                        href={`/vim/studio/${projectId}`}
-                        onClick={(e) => {
-                            e.preventDefault();
-                            void openVideo(apiKey, build.id);
-                        }}
-                        className="inline-flex h-8 items-center gap-1 rounded-md bg-neutral-100 px-2.5 text-caption font-medium text-neutral-700 hover:bg-neutral-200"
+                    <span
+                        className={cn(
+                            'rounded-full px-2 py-0.5 text-caption font-medium',
+                            BUILD_STATUS_CLS[build.status] ?? 'bg-neutral-100 text-neutral-600'
+                        )}
                     >
-                        <DownloadSimple className="size-3.5" /> MP4
-                    </a>
-                )}
-                {ready && !build.is_published && (
-                    <RowButton onClick={publish} busy={busy === 'publish'} icon={CheckCircle}>
-                        Publish
-                    </RowButton>
-                )}
+                        {build.status.toLowerCase().replace('_', ' ')}
+                    </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    {ready && (
+                        <RowButton
+                            onClick={openInEditor}
+                            busy={busy === 'open'}
+                            icon={PencilSimple}
+                        >
+                            Edit
+                        </RowButton>
+                    )}
+                    {ready && !rendering && (
+                        <RowButton onClick={render} busy={busy === 'render'} icon={Sparkle}>
+                            Render
+                        </RowButton>
+                    )}
+                    {rendering && (
+                        <span className="inline-flex h-8 items-center gap-1.5 rounded-md bg-indigo-50 px-2.5 text-caption font-medium text-indigo-700">
+                            <CircleNotch className="size-3.5 animate-spin" /> Rendering…
+                        </span>
+                    )}
+                    {build.has_video && (
+                        <a
+                            href={`/vim/studio/${projectId}`}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                void openVideo(apiKey, build.id);
+                            }}
+                            className="inline-flex h-8 items-center gap-1 rounded-md bg-neutral-100 px-2.5 text-caption font-medium text-neutral-700 hover:bg-neutral-200"
+                        >
+                            <DownloadSimple className="size-3.5" /> MP4
+                        </a>
+                    )}
+                    {ready && !build.is_published && (
+                        <RowButton onClick={publish} busy={busy === 'publish'} icon={CheckCircle}>
+                            Publish
+                        </RowButton>
+                    )}
+                </div>
             </div>
+            {inlineError && <p className="mt-1.5 text-caption text-rose-600">{inlineError}</p>}
         </li>
     );
 }

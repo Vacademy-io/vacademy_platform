@@ -11,9 +11,11 @@
  * toasts a placeholder for now; slice 3 wires the drawer.
  */
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { AlertCircle, ChevronLeft, Sparkles } from 'lucide-react';
 import { getInstituteId } from '@/constants/helper';
+import { getInputAsset } from '@/routes/video-api-studio/-services/input-asset';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useScan } from '../hooks/useScan';
 import type { ReelCandidate } from '../services/reels-api';
@@ -55,6 +57,21 @@ export function CreatePage() {
         scanLimit,
         topicKeywords,
     });
+
+    // Full asset record for the picked source — the scan response doesn't
+    // carry the playable video URL, and the deep-link path (`?fromAssetId`)
+    // never goes through the picker. The segment players in the grid + tray
+    // need it; until it lands they degrade to poster-only.
+    const assetQuery = useQuery({
+        queryKey: ['input-asset', pickedAssetId, apiKey.data],
+        enabled: !!apiKey.data && !!pickedAssetId,
+        staleTime: 5 * 60_000,
+        queryFn: () => getInputAsset(apiKey.data as string, pickedAssetId as string),
+    });
+    const sourceVideoUrl =
+        assetQuery.data?.assets_urls?.source_video
+        ?? assetQuery.data?.source_url
+        ?? null;
 
     // Preview drawer state — opens with the user's selection from the grid.
     const [previewIds, setPreviewIds] = useState<string[]>([]);
@@ -152,7 +169,13 @@ export function CreatePage() {
                             />
                         ) : scan.data ? (
                             <ScanResultsGrid
+                                // Re-key on the scan identity so the grid's
+                                // internal selection can't survive a config
+                                // change served from cache — those ids would
+                                // belong to a different scan's candidates.
+                                key={scan.data.config_hash}
                                 candidates={scan.data.candidates}
+                                sourceVideoUrl={sourceVideoUrl}
                                 onPreview={onPreview}
                                 onBack={
                                     search.fromAssetId
@@ -174,6 +197,7 @@ export function CreatePage() {
                     inputAssetId={pickedAssetId}
                     candidatesById={candidatesById}
                     candidateIds={previewIds}
+                    sourceVideoUrl={sourceVideoUrl}
                 />
             )}
         </div>
@@ -204,8 +228,9 @@ function ScanningPanel({ onCancel }: { onCancel: () => void }) {
                 Finding engaging moments…
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
-                We’re scoring every candidate window against hook, pacing, info-density and
-                loop-quality. Usually under a second.
+                We’re analyzing your video for strong hooks, tight pacing and
+                share-worthy moments. The first scan can take 10–20 seconds;
+                re-scans are near-instant.
             </p>
             <div className="mt-6 flex items-center justify-center gap-2 text-sm text-neutral-500">
                 <VimotionLoader size={16} className="text-neutral-500" label="Scanning" />

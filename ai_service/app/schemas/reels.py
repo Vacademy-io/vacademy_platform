@@ -186,8 +186,10 @@ class CutSpan(BaseModel):
     """A contiguous range to remove from source audio + video.
 
     `user` cuts come from the FE trim UI (Phase 2 B3) and can run up to
-    MAX_USER_CUT_SPAN_S (~15s) — auto-generated cuts (silence/word/filler)
-    are capped at MAX_CUT_SPAN_S (~2s).
+    MAX_USER_CUT_SPAN_S (~15s). Auto `filler` cuts (whole disfluency runs)
+    are capped at MAX_CUT_SPAN_S (~2s); `silence` cuts span however much
+    of a pause is trimmed, and window-edge sentence drops (kind="word")
+    can run longer than 2s — nothing meaningful is inside either.
     """
     t_start: float
     t_end: float
@@ -227,7 +229,7 @@ class EnrichedCandidate(BaseModel):
         "we synthesized importance/title without an LLM call. Surface this on "
         "the FE so users can see when enrichment quality is degraded.",
     )
-    title: str = Field(..., description="≤8-word working title")
+    title: str = Field(..., description="≤8-word spoken-style hook line")
     rationale: str = Field(..., description="≤20-word reason this clip is worth rendering")
     word_importance: list[WordImportance]
     cut_plan: list[CutSpan]

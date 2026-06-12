@@ -1,30 +1,41 @@
 /**
  * `/vim/studio/new` — the create wizard host.
  *
- * State machine (P1 wires Step 0 → project create → hand to Step 1):
- *   ingest        — IngestStep; on submit POSTs /projects, then advances
- *   arrangement   — placeholder until P2 wires the arrangement step
- *   cuts / overlays / audio — placeholders until P3 / P6 / P7
- *
+ * State machine: ingest → arrangement → cuts → overlays → audio → build.
  * Once a project is created its id lives in `projectId`; subsequent steps
- * operate on that id. Navigating away + back resumes from the project detail
- * page (P5), not this wizard.
+ * operate on that id.
+ *
+ * Resume (P7): `/vim/studio/new?projectId=…` skips ingest — the project is
+ * fetched, handles hydrate from its asset refs, and the wizard opens at the
+ * first step that isn't in `confirmed_plan` yet (all confirmed → build).
+ * Re-entering a step re-plans it; confirmed choices are re-proposed, not
+ * restored verbatim.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
-import { useCreateStudioProject } from '../hooks/useStudioProjects';
-import type { CreateProjectRequest } from '../services/studio-api';
+import { useCreateStudioProject, useStudioProject } from '../hooks/useStudioProjects';
+import type { CreateProjectRequest, ProjectResponse } from '../services/studio-api';
 import { WizardShell, type WizardStepId } from './WizardShell';
 import { IngestStep } from './IngestStep';
 import { ArrangementStep } from './ArrangementStep';
 import { CutsStep } from './CutsStep';
 import { OverlaysStep } from './OverlaysStep';
+import { AudioStep } from './AudioStep';
 import { BuildStep } from './BuildStep';
 
-export function CreatePage() {
+/** First wizard step missing from confirmed_plan (wizard order). */
+function firstUnconfirmedStep(project: ProjectResponse): WizardStepId {
+    const confirmed = project.confirmed_plan ?? {};
+    for (const s of ['arrangement', 'cuts', 'overlays', 'audio'] as const) {
+        if (!(s in confirmed)) return s;
+    }
+    return 'build';
+}
+
+export function CreatePage({ resumeProjectId }: { resumeProjectId?: string }) {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const apiKey = useVimotionApiKey(instituteId);
@@ -38,6 +49,29 @@ export function CreatePage() {
         apiKey: apiKey.data,
         instituteId,
     });
+
+    // Resume mode — hydrate from an existing project, once.
+    const resumeProject = useStudioProject({
+        apiKey: apiKey.data,
+        instituteId,
+        projectId: resumeProjectId,
+    });
+    const resumedRef = useRef(false);
+    useEffect(() => {
+        if (resumedRef.current || !resumeProjectId || !resumeProject.data) return;
+        resumedRef.current = true;
+        const project = resumeProject.data;
+        setProjectId(project.id);
+        setImageHandles(
+            new Set(
+                project.source_asset_refs.filter((r) => r.kind === 'image').map((r) => r.handle)
+            )
+        );
+        setVideoHandles(
+            project.source_asset_refs.filter((r) => r.kind === 'video').map((r) => r.handle)
+        );
+        setStep(firstUnconfirmedStep(project));
+    }, [resumeProjectId, resumeProject.data]);
 
     const onIngestSubmit = (request: CreateProjectRequest) => {
         if (!apiKey.data) {
@@ -55,17 +89,13 @@ export function CreatePage() {
                     )
                 );
                 setVideoHandles(
-                    project.source_asset_refs
-                        .filter((r) => r.kind === 'video')
-                        .map((r) => r.handle)
+                    project.source_asset_refs.filter((r) => r.kind === 'video').map((r) => r.handle)
                 );
                 setStep('arrangement');
                 toast.success('Project created. Let’s arrange your clips.');
             },
             onError: (e) => {
-                toast.error(
-                    e instanceof Error ? e.message : 'Could not create the project.'
-                );
+                toast.error(e instanceof Error ? e.message : 'Could not create the project.');
             },
         });
     };
@@ -84,19 +114,32 @@ export function CreatePage() {
         );
     }
 
+    if (resumeProjectId && resumeProject.isError) {
+        return (
+            <div className="mx-auto max-w-5xl p-8">
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                    Could not load that project — it may have been deleted.
+                </div>
+            </div>
+        );
+    }
+
+    if (resumeProjectId && !resumedRef.current) {
+        return (
+            <div className="mx-auto flex max-w-5xl items-center justify-center p-16">
+                <p className="animate-pulse text-sm text-neutral-500">Loading your project…</p>
+            </div>
+        );
+    }
+
     return (
-        <WizardShell
-            currentStep={step}
-            onBack={step === 'ingest' ? backToDashboard : undefined}
-        >
+        <WizardShell currentStep={step} onBack={step === 'ingest' ? backToDashboard : undefined}>
             {step === 'ingest' && (
                 <IngestStep
                     apiKey={apiKey.data ?? ''}
                     submitting={createProject.isPending}
                     error={
-                        createProject.error instanceof Error
-                            ? createProject.error.message
-                            : null
+                        createProject.error instanceof Error ? createProject.error.message : null
                     }
                     onSubmit={onIngestSubmit}
                 />
@@ -127,8 +170,15 @@ export function CreatePage() {
                     apiKey={apiKey.data ?? ''}
                     instituteId={instituteId}
                     projectId={projectId}
-                    /* P7: audio step isn't built yet, so overlays advances
-                       straight to build. Audio slots in here when it lands. */
+                    onConfirmed={() => setStep('audio')}
+                />
+            )}
+
+            {step === 'audio' && projectId && (
+                <AudioStep
+                    apiKey={apiKey.data ?? ''}
+                    instituteId={instituteId}
+                    projectId={projectId}
                     onConfirmed={() => setStep('build')}
                 />
             )}
@@ -145,6 +195,7 @@ export function CreatePage() {
                 step !== 'arrangement' &&
                 step !== 'cuts' &&
                 step !== 'overlays' &&
+                step !== 'audio' &&
                 step !== 'build' && (
                     <UpcomingStepPlaceholder
                         step={step}
@@ -178,14 +229,12 @@ function UpcomingStepPlaceholder({
 }) {
     return (
         <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-10 text-center">
-            <h3 className="text-base font-semibold text-neutral-900">
-                Project created ✓
-            </h3>
+            <h3 className="text-base font-semibold text-neutral-900">Project created ✓</h3>
             <p className="mx-auto mt-2 max-w-md text-sm text-neutral-600">
-                The <span className="font-medium capitalize">{step}</span> step
-                is coming next. Your project is saved
-                {projectId ? ` (id ${projectId.slice(0, 8)}…)` : ''} — you can
-                open it any time from the Studio tab.
+                The <span className="font-medium capitalize">{step}</span> step is coming next. Your
+                project is saved
+                {projectId ? ` (id ${projectId.slice(0, 8)}…)` : ''} — you can open it any time from
+                the Studio tab.
             </p>
             <button
                 type="button"

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from './hooks/useVimotionApiKey';
 import { useReelsList } from '../reels/hooks/useReelsList';
+import { stageLabel } from '../reels/detail/StageProgressList';
 import type { ReelResponse, ReelStatus } from '../reels/services/reels-api';
 
 type StatusFilter = 'all' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
@@ -188,7 +189,9 @@ function ReelCard({ reel }: { reel: ReelResponse }) {
 function describeReel(reel: ReelResponse): string {
     const parts: string[] = [];
     if (reel.status !== 'COMPLETED') {
-        parts.push(reel.current_stage);
+        // current_stage is a raw pipeline key (e.g. AUDIO_EDIT) — translate
+        // to creator language before it reaches the card.
+        parts.push(stageLabel(reel.current_stage));
     }
     const window = reel.source_window as { t_start?: number; t_end?: number } | undefined;
     if (window?.t_start != null && window?.t_end != null) {

@@ -4,14 +4,15 @@ plan snapshot into an editor-ready `{meta, entries}` timeline in S3.
 
 Mirrors the reels orchestrator pattern (StageDef bands, register_stage_handler,
 dispatch with a GC-safe pending-task set, per-stage progress persisted on the
-row). Studio's build is lighter than a render: source clips carry intrinsic
-audio, so there's no audio/words assembly — the editor plays the clips
-directly. The stages:
+row). The stages:
 
-  PENDING        → starting state
-  BUILD_TIMELINE → assemble {meta, entries} from the plan snapshot
-  UPLOAD         → S3 PUT timeline.json under ai-studio/{build_id}/
-  HANDOFF        → flip build → AWAITING_EDIT (FE polls + opens the editor)
+  PENDING           → starting state
+  ASSEMBLE_TIMELINE → assemble {meta, entries} from the plan snapshot
+  COMPOSE_HTML      → append confirmed title/text overlay entries (P6a)
+  ASSEMBLE_WORDS    → captions words track, if enabled (P6b)
+  ASSEMBLE_AUDIO    → master soundtrack from the source clips + bgm/sfx (P7)
+  UPLOAD            → S3 PUT timeline.json under ai-studio/{build_id}/
+  HANDOFF           → flip build → AWAITING_EDIT (FE polls + opens the editor)
 
 RENDER-to-MP4 happens later, from inside the editor (POST /builds/{id}/render,
 P5). Any stage exception → terminal FAILED with the stage name surfaced.
@@ -33,6 +34,7 @@ STAGE_PENDING = "PENDING"
 STAGE_BUILD_TIMELINE = "ASSEMBLE_TIMELINE"
 STAGE_COMPOSE_HTML = "COMPOSE_HTML"  # P6a: append title/text overlay entries
 STAGE_ASSEMBLE_WORDS = "ASSEMBLE_WORDS"  # P6b: build captions words track (if enabled)
+STAGE_ASSEMBLE_AUDIO = "ASSEMBLE_AUDIO"  # P7: master soundtrack + bgm/sfx
 STAGE_UPLOAD = "UPLOAD"
 STAGE_HANDOFF = "HANDOFF"
 STAGE_FAILED = "FAILED"
@@ -46,10 +48,11 @@ class StageDef:
 
 
 STAGE_PIPELINE = [
-    StageDef(STAGE_BUILD_TIMELINE, 0, 35),
-    StageDef(STAGE_COMPOSE_HTML, 35, 55),
-    StageDef(STAGE_ASSEMBLE_WORDS, 55, 80),
-    StageDef(STAGE_UPLOAD, 80, 95),
+    StageDef(STAGE_BUILD_TIMELINE, 0, 30),
+    StageDef(STAGE_COMPOSE_HTML, 30, 45),
+    StageDef(STAGE_ASSEMBLE_WORDS, 45, 60),
+    StageDef(STAGE_ASSEMBLE_AUDIO, 60, 85),
+    StageDef(STAGE_UPLOAD, 85, 95),
     StageDef(STAGE_HANDOFF, 95, 100),
 ]
 
@@ -68,6 +71,7 @@ class BuildContext:
     aspect: Optional[str]
     fps: Optional[int]
     source_asset_refs: List[dict] = field(default_factory=list)  # raw refs; P6b ASSEMBLE_WORDS fetches transcripts
+    preferences: Dict[str, Any] = field(default_factory=dict)    # P7: bgm/sfx policies enforced at build time
     # Filled by stages.
     timeline: Optional[dict] = None
     s3_urls: Dict[str, Any] = field(default_factory=dict)
@@ -88,6 +92,7 @@ STAGE_HANDLERS: Dict[str, StageHandler] = {
     STAGE_BUILD_TIMELINE: _noop_stage,  # replaced by studio_executors.build_timeline
     STAGE_COMPOSE_HTML: _noop_stage,    # replaced by studio_executors.compose_html
     STAGE_ASSEMBLE_WORDS: _noop_stage,  # replaced by studio_executors.assemble_words
+    STAGE_ASSEMBLE_AUDIO: _noop_stage,  # replaced by studio_executors.assemble_audio
     STAGE_UPLOAD: _noop_stage,          # replaced by studio_executors.upload_artifacts
     STAGE_HANDOFF: _noop_stage,         # handoff is finalized by the orchestrator itself
 }
@@ -105,6 +110,7 @@ def register_all_stages() -> None:
     from .studio_executors import build_timeline as _bt   # noqa: F401
     from .studio_executors import compose_html as _ch     # noqa: F401
     from .studio_executors import assemble_words as _aw   # noqa: F401
+    from .studio_executors import assemble_audio as _aa   # noqa: F401
     from .studio_executors import upload_artifacts as _ua  # noqa: F401
 
 

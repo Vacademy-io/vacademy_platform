@@ -29,12 +29,7 @@ export type ProjectStatus =
     | 'BUILDING'
     | 'PUBLISHED'
     | 'ARCHIVED';
-export type BuildStatus =
-    | 'PENDING'
-    | 'BUILDING'
-    | 'AWAITING_EDIT'
-    | 'RENDERED'
-    | 'FAILED';
+export type BuildStatus = 'PENDING' | 'BUILDING' | 'AWAITING_EDIT' | 'RENDERED' | 'FAILED';
 export type BuildStage =
     | 'PENDING'
     | 'ASSEMBLE_AUDIO'
@@ -189,6 +184,12 @@ export interface TextOverlayItem {
     style?: TextOverlayStyle;
 }
 
+// P7 audio step — op param shapes live in AudioStep's local state; only the
+// placement union is shared (mirrors studio_tools/propose_sfx.py). The wire
+// contract: propose_bgm {enabled, mood, music_prompt, volume 0-0.5};
+// propose_sfx {enabled, placement, volume_db -30..0}; manual_bgm {url, volume}.
+export type SfxPlacement = 'segment_boundaries' | 'all_cuts';
+
 // ---------------------------------------------------------------------------
 // Builds + project responses
 // ---------------------------------------------------------------------------
@@ -333,8 +334,7 @@ export interface FrameResponse {
     message?: string | null;
 }
 
-export type CaptionFontFamily =
-    | 'system' | 'inter' | 'montserrat' | 'noto-sans' | 'fira-code';
+export type CaptionFontFamily = 'system' | 'inter' | 'montserrat' | 'noto-sans' | 'fira-code';
 export type CaptionStyleKind = 'phrase' | 'karaoke';
 export type CaptionPosition = 'top' | 'bottom';
 export type CaptionSizeBucket = 'S' | 'M' | 'L';
@@ -469,10 +469,7 @@ export async function updateStudioProject(
     return resp.json();
 }
 
-export async function deleteStudioProject(
-    apiKey: string,
-    projectId: string
-): Promise<void> {
+export async function deleteStudioProject(apiKey: string, projectId: string): Promise<void> {
     const resp = await fetch(`${BASE}/projects/${encodeURIComponent(projectId)}`, {
         method: 'DELETE',
         headers: headers(apiKey),
@@ -531,10 +528,11 @@ export async function createStudioBuild(
     projectId: string,
     request: CreateBuildRequest
 ): Promise<BuildResponse> {
-    const resp = await fetch(
-        `${BASE}/projects/${encodeURIComponent(projectId)}/builds`,
-        { method: 'POST', headers: headers(apiKey), body: JSON.stringify(request) }
-    );
+    const resp = await fetch(`${BASE}/projects/${encodeURIComponent(projectId)}/builds`, {
+        method: 'POST',
+        headers: headers(apiKey),
+        body: JSON.stringify(request),
+    });
     if (!resp.ok) throw new Error(await readError(resp, 'Create studio build failed'));
     return resp.json();
 }
@@ -552,10 +550,7 @@ export async function listStudioBuilds(
     return resp.json();
 }
 
-export async function getStudioBuild(
-    apiKey: string,
-    buildId: string
-): Promise<BuildResponse> {
+export async function getStudioBuild(apiKey: string, buildId: string): Promise<BuildResponse> {
     const resp = await fetch(`${BASE}/builds/${encodeURIComponent(buildId)}`, {
         method: 'GET',
         headers: headers(apiKey),
@@ -568,10 +563,10 @@ export async function getStudioBuildStatus(
     apiKey: string,
     buildId: string
 ): Promise<BuildStatusResponse> {
-    const resp = await fetch(
-        `${BASE}/builds/${encodeURIComponent(buildId)}/status`,
-        { method: 'GET', headers: headers(apiKey) }
-    );
+    const resp = await fetch(`${BASE}/builds/${encodeURIComponent(buildId)}/status`, {
+        method: 'GET',
+        headers: headers(apiKey),
+    });
     if (!resp.ok) throw new Error(await readError(resp, 'Get build status failed'));
     return resp.json();
 }
@@ -580,10 +575,10 @@ export async function publishStudioBuild(
     apiKey: string,
     buildId: string
 ): Promise<ProjectResponse> {
-    const resp = await fetch(
-        `${BASE}/builds/${encodeURIComponent(buildId)}/publish`,
-        { method: 'POST', headers: headers(apiKey) }
-    );
+    const resp = await fetch(`${BASE}/builds/${encodeURIComponent(buildId)}/publish`, {
+        method: 'POST',
+        headers: headers(apiKey),
+    });
     if (!resp.ok) throw new Error(await readError(resp, 'Publish build failed'));
     return resp.json();
 }

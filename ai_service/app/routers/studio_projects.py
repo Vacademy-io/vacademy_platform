@@ -1,9 +1,10 @@
 """
 Router for the Vimotion Studio multi-asset video editing pipeline.
 
-Status: P4 — projects CRUD (P1) + wizard plan/confirm/refine (P2/P3) + builds
-(create/list/get/status/publish/delete, P4) all wired. Editor /frame/* + render
-endpoints remain 501 stubs awaiting P5.
+Status: P7 — projects CRUD (P1), wizard plan/confirm/refine for all four steps
+(P2/P3/P6/P7), builds (P4), editor /frame/* + render (P5), overlays/captions
+(P6a/b), and audio (P7: master soundtrack, bgm, sfx, per-build audio-track
+endpoints) all wired.
 
 See docs/ai_content/AI_VIDEO_STUDIO.md for phase status and the full
 endpoint surface (§4) + user-control surface (§13).
@@ -14,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -24,6 +26,7 @@ from ..models.ai_studio_project import AiStudioProject
 from ..repositories.ai_studio_build_repository import AiStudioBuildRepository
 from ..repositories.ai_studio_project_repository import AiStudioProjectRepository
 from ..schemas.studio_projects import (
+    AddStudioAudioTrackRequest,
     AddStudioFrameRequest,
     AssetRef,
     BuildResponse,
@@ -32,6 +35,7 @@ from ..schemas.studio_projects import (
     ConfirmStepRequest,
     CreateBuildRequest,
     CreateProjectRequest,
+    DeleteStudioAudioTrackRequest,
     DeleteStudioFrameRequest,
     FrameResponse,
     ModelOverrides,
@@ -40,9 +44,11 @@ from ..schemas.studio_projects import (
     ProjectSummary,
     RefineStepRequest,
     ReorderStudioFrameRequest,
+    StudioAudioTrackResponse,
     StudioRenderRequest,
     StudioRenderResponse,
     UpdateProjectRequest,
+    UpdateStudioAudioTrackRequest,
     UpdateStudioFrameRequest,
     WizardPlanRequest,
     WizardStep,
@@ -269,6 +275,11 @@ async def _plan_inputs(
         # P6b: propose_captions proposes its default config from the project's
         # caption preset (overlays step; harmless/unused for other steps).
         "caption_preset": (preferences or {}).get("caption_preset"),
+        # P7: the audio-step tools honor the project's music/sfx policies —
+        # propose_sfx's deterministic detect skips on 'never' (likewise
+        # harmless/unused for other steps).
+        "bgm_policy": (preferences or {}).get("bgm_policy") or "auto",
+        "sfx_policy": (preferences or {}).get("sfx_policy") or "auto",
     }
     return manifest, detect_ctx
 
@@ -459,8 +470,17 @@ def _extract_model_overrides_dict(project: AiStudioProject) -> dict:
 
 
 def _tier_of(project: AiStudioProject) -> str:
+    """Quality tier gating the tool matrix (tools_for_step).
+
+    Vimotion has no institute-tier resolution yet, so nothing writes
+    config['tier'] — defaulting to 'free' made every premium tool unreachable.
+    Until real tier resolution lands, default to STUDIO_DEFAULT_TIER
+    ('premium') so the premium toolset is usable; ultra-only tools stay gated.
+    """
     tier = (project.config or {}).get("tier")
-    return tier if isinstance(tier, str) and tier else "free"
+    if isinstance(tier, str) and tier:
+        return tier
+    return os.environ.get("STUDIO_DEFAULT_TIER", "premium")
 
 
 def _prior_confirmed_steps(project: AiStudioProject, step: WizardStep) -> dict:
@@ -739,6 +759,8 @@ async def create_build(
         aspect=aspect,
         fps=fps,
         source_asset_refs=project.source_asset_refs or [],  # P6b: ASSEMBLE_WORDS fetches transcripts
+        # P7: bgm/sfx policies enforced at build (raw dict; tolerant of absence)
+        preferences=(project.config or {}).get(_CONFIG_KEY_PREFERENCES) or {},
     ))
     return _build_response(build, None)
 
@@ -935,7 +957,75 @@ async def reorder_frame(
 
 
 # ---------------------------------------------------------------------------
-# Render — per build (P5)
+# Audio tracks — per build (P7). The editor's AudioTracksPanel persistence for
+# kind=studio; wire shapes mirror /external/video/v1/audio-track/* with the
+# build id in the PATH.
+# ---------------------------------------------------------------------------
+
+@router.post("/builds/{build_id}/audio-track/add", response_model=StudioAudioTrackResponse)
+async def add_audio_track(
+    build_id: str,
+    body: AddStudioAudioTrackRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> StudioAudioTrackResponse:
+    """Append an audio track (background music, extra VO) to the build
+    timeline's meta.audio_tracks. The render worker mixes these via FFmpeg;
+    the editor previews them via Web Audio."""
+    from ..services.studio_frame_service import StudioFrameService
+    try:
+        result = await asyncio.to_thread(
+            StudioFrameService().add_audio_track,
+            build_id, institute_id,
+            label=body.label, url=body.url, volume=body.volume, delay=body.delay,
+            fade_in=body.fade_in, fade_out=body.fade_out, loop=body.loop,
+            track_id=body.track_id,
+        )
+    except Exception as e:
+        raise _frame_error_to_http(e)
+    return StudioAudioTrackResponse(**result)
+
+
+@router.post("/builds/{build_id}/audio-track/update", response_model=StudioAudioTrackResponse)
+async def update_audio_track(
+    build_id: str,
+    body: UpdateStudioAudioTrackRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> StudioAudioTrackResponse:
+    """Patch one or more fields of an audio track (label, url, volume, delay, fades)."""
+    from ..services.studio_frame_service import StudioFrameService
+    try:
+        result = await asyncio.to_thread(
+            StudioFrameService().update_audio_track,
+            build_id, institute_id,
+            track_id=body.track_id, label=body.label, url=body.url,
+            volume=body.volume, delay=body.delay,
+            fade_in=body.fade_in, fade_out=body.fade_out,
+        )
+    except Exception as e:
+        raise _frame_error_to_http(e)
+    return StudioAudioTrackResponse(**result)
+
+
+@router.post("/builds/{build_id}/audio-track/delete", response_model=StudioAudioTrackResponse)
+async def delete_audio_track(
+    build_id: str,
+    body: DeleteStudioAudioTrackRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> StudioAudioTrackResponse:
+    """Remove an audio track from the build timeline's meta.audio_tracks."""
+    from ..services.studio_frame_service import StudioFrameService
+    try:
+        result = await asyncio.to_thread(
+            StudioFrameService().delete_audio_track,
+            build_id, institute_id, track_id=body.track_id,
+        )
+    except Exception as e:
+        raise _frame_error_to_http(e)
+    return StudioAudioTrackResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# Render — per build (P5; P7 audio + failure recovery)
 # ---------------------------------------------------------------------------
 
 @router.post("/builds/{build_id}/render", response_model=StudioRenderResponse, status_code=202)
@@ -945,10 +1035,10 @@ async def render_build(
     institute_id: str = Depends(get_institute_from_api_key),
 ) -> StudioRenderResponse:
     """Render the (possibly editor-modified) build timeline to MP4 via the
-    render worker. Submits + polls in a background task (mirrors reels). The
-    build's audio is the source clips' intrinsic audio (browser-captured); a
-    silent master narration is generated to satisfy the worker's required
-    audio_url. Returns the worker job_id immediately."""
+    render worker. Submits + polls in a background task (mirrors reels). Audio
+    is the P7 master soundtrack (`s3_urls.audio`, baked from the source clips
+    at build time); a silent master is generated only as a fallback for
+    image-only / pre-P7 builds. Returns the worker job_id immediately."""
     from ..services.studio_render_service import (
         RenderAlreadyInProgress,
         submit_studio_render,
@@ -956,7 +1046,16 @@ async def render_build(
     build_repo = AiStudioBuildRepository()
     repo = AiStudioProjectRepository()
     build, _ = _load_build_or_404(build_repo, repo, build_id, institute_id)
-    if build.status not in ("AWAITING_EDIT", "RENDERED"):
+    # Renderable: AWAITING_EDIT (normal), RENDERED (re-render). Also allow a
+    # FAILED row whose failure was a RENDER (not a build) and whose timeline is
+    # intact — recovery for builds bricked before render failures stopped
+    # setting status=FAILED (P7 fix).
+    renderable = build.status in ("AWAITING_EDIT", "RENDERED") or (
+        build.status == "FAILED"
+        and str(build.error_message or "").startswith("[RENDER]")
+        and (build.s3_urls or {}).get("timeline")
+    )
+    if not renderable:
         raise HTTPException(status_code=409, detail={
             "error": "build_not_renderable",
             "message": f"Build is {build.status}; render after it reaches AWAITING_EDIT.",

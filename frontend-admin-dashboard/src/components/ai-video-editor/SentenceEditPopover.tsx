@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { SentenceClip } from '@/components/ai-video-player/types';
 import { useVideoEditorStore } from './stores/video-editor-store';
+import { FriendlyError, humanizeNarrationError } from './utils/sentence-api';
 
 interface Props {
     /** The sentence the user clicked on. The popover edits its `text`. */
@@ -47,10 +48,9 @@ export function SentenceEditPopover({
     affectedEntryCount,
     onClose,
 }: Props) {
-    const { regenerateSentence, silenceSentence, regeneratingSentenceId } =
-        useVideoEditorStore();
+    const { regenerateSentence, silenceSentence, regeneratingSentenceId } = useVideoEditorStore();
     const [draft, setDraft] = useState(sentence.text);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<FriendlyError | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -121,13 +121,13 @@ export function SentenceEditPopover({
         const result = await regenerateSentence(sentence.id, trimmed);
         if (result.ok) {
             toast.success(
-                isSilenced ? 'Narration added' : 'Sentence re-narrated and audio updated',
+                isSilenced ? 'Narration added' : 'Sentence re-narrated and audio updated'
             );
             onClose();
         } else {
-            const msg = result.error || 'Re-narration failed';
-            setError(msg);
-            toast.error(msg);
+            const friendly = humanizeNarrationError(result.error || '', 'Re-narration failed');
+            setError(friendly);
+            toast.error(friendly.message);
         }
     };
 
@@ -139,9 +139,9 @@ export function SentenceEditPopover({
             toast.success('Sentence muted — audio replaced with silence');
             onClose();
         } else {
-            const msg = result.error || 'Failed to mute sentence';
-            setError(msg);
-            toast.error(msg);
+            const friendly = humanizeNarrationError(result.error || '', 'Failed to mute sentence');
+            setError(friendly);
+            toast.error(friendly.message);
         }
     };
 
@@ -194,9 +194,7 @@ export function SentenceEditPopover({
                 disabled={isRegenerating}
                 rows={3}
                 placeholder={
-                    isSilenced
-                        ? 'Type the new narration for this slot…'
-                        : 'Sentence text…'
+                    isSilenced ? 'Type the new narration for this slot…' : 'Sentence text…'
                 }
                 className="resize-y rounded border border-gray-200 px-2 py-1.5 text-sm leading-snug text-gray-800 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 disabled:bg-gray-50 disabled:text-gray-500"
             />
@@ -210,12 +208,26 @@ export function SentenceEditPopover({
 
             {isSilenced && (
                 <p className="text-[11px] text-gray-500">
-                    This slot is currently silent ({sentence.duration.toFixed(2)}s). Type
-                    new narration above and press “Add narration” to fill it.
+                    This slot is currently silent ({sentence.duration.toFixed(2)}s). Type new
+                    narration above and press “Add narration” to fill it.
                 </p>
             )}
 
-            {error && <p className="text-[11px] text-red-500">{error}</p>}
+            {error && (
+                <div className="flex flex-col gap-1">
+                    <p className="text-[11px] text-red-500">{error.message}</p>
+                    {error.detail && (
+                        <details className="text-[10px] text-gray-400">
+                            <summary className="cursor-pointer select-none hover:text-gray-600">
+                                Technical details
+                            </summary>
+                            <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-1.5 leading-snug text-gray-500">
+                                {error.detail}
+                            </pre>
+                        </details>
+                    )}
+                </div>
+            )}
 
             <div className="mt-1 flex items-center justify-end gap-2">
                 {/* Silence sits to the LEFT of the primary action so a quick
@@ -257,6 +269,6 @@ export function SentenceEditPopover({
                 </button>
             </div>
         </div>,
-        document.body,
+        document.body
     );
 }

@@ -155,6 +155,9 @@ AvatarModelLiteral = Literal[
     # LTX 2.3 audio-to-video. General audio-driven generator (not a dedicated
     # lip-sync avatar) — supports a tunable `avatar_fps`.
     "fal-ai/ltx-2.3-quality/audio-to-video",
+    # Seedance 2.0 reference-to-video. Audio-capable (reference image + driving
+    # audio → video). Per-second priced, ≤15s audio cap, no fps param.
+    "bytedance/seedance-2.0/reference-to-video",
 ]
 
 # Provider for studio_avatar / saved-avatar resolution. Single source of truth —
@@ -918,6 +921,14 @@ class UpdateFrameRequest(BaseModel):
             "alongside `html`. None = leave existing value untouched."
         ),
     )
+    expected_revision: Optional[int] = Field(
+        None,
+        description=(
+            "Optimistic-lock check: the meta.revision the client loaded. On "
+            "mismatch the request fails with HTTP 409 and nothing is written. "
+            "Omit to skip the check (the write still bumps the revision)."
+        ),
+    )
 
 
 class AddFrameRequest(BaseModel):
@@ -943,6 +954,14 @@ class AddFrameRequest(BaseModel):
             "as 'no override' and omitted from the stored entry_meta."
         ),
     )
+    expected_revision: Optional[int] = Field(
+        None,
+        description=(
+            "Optimistic-lock check: the meta.revision the client loaded. On "
+            "mismatch the request fails with HTTP 409 and nothing is written. "
+            "Omit to skip the check (the write still bumps the revision)."
+        ),
+    )
 
 
 class AddFrameResponse(BaseModel):
@@ -964,6 +983,14 @@ class DeleteFrameRequest(BaseModel):
     entry_id: Optional[str] = Field(None, description="Stable entry ID to remove")
     frame_index: Optional[int] = Field(
         None, description="Position of the frame to remove (fallback when entry_id is missing)"
+    )
+    expected_revision: Optional[int] = Field(
+        None,
+        description=(
+            "Optimistic-lock check: the meta.revision the client loaded. On "
+            "mismatch the request fails with HTTP 409 and nothing is written. "
+            "Omit to skip the check (the write still bumps the revision)."
+        ),
     )
 
 
@@ -990,6 +1017,14 @@ class ReorderFrameRequest(BaseModel):
     video_id: str = Field(..., description="Video ID")
     entry_id: str = Field(..., description="Stable entry ID to move")
     to_index: int = Field(..., description="Target 0-based index in the post-move timeline")
+    expected_revision: Optional[int] = Field(
+        None,
+        description=(
+            "Optimistic-lock check: the meta.revision the client loaded. On "
+            "mismatch the request fails with HTTP 409 and nothing is written. "
+            "Omit to skip the check (the write still bumps the revision)."
+        ),
+    )
 
 
 class ReorderFrameResponse(BaseModel):
@@ -1012,6 +1047,7 @@ class AudioTrackItem(BaseModel):
     delay: float = Field(default=0.0, ge=0.0, description="Seconds to wait before starting")
     fade_in: float = Field(default=0.0, ge=0.0, description="Fade-in duration in seconds")
     fade_out: float = Field(default=0.0, ge=0.0, description="Fade-out duration in seconds")
+    loop: bool = Field(default=False, description="Repeat the track until video end (render applies a tail fade at total_duration)")
 
 
 class AddAudioTrackRequest(BaseModel):
@@ -1022,6 +1058,7 @@ class AddAudioTrackRequest(BaseModel):
     delay: float = Field(default=0.0, ge=0.0)
     fade_in: float = Field(default=0.0, ge=0.0)
     fade_out: float = Field(default=0.0, ge=0.0)
+    loop: bool = Field(default=False, description="Repeat the track until video end")
     track_id: Optional[str] = Field(None, description="Client-provided track ID (auto-generated if absent)")
 
 
@@ -1034,6 +1071,7 @@ class UpdateAudioTrackRequest(BaseModel):
     delay: Optional[float] = Field(None, ge=0.0)
     fade_in: Optional[float] = Field(None, ge=0.0)
     fade_out: Optional[float] = Field(None, ge=0.0)
+    loop: Optional[bool] = Field(None, description="Repeat the track until video end (None = leave unchanged)")
 
 
 class DeleteAudioTrackRequest(BaseModel):

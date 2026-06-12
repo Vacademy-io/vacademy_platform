@@ -97,13 +97,72 @@ CAPTION_MIN_BLOCK_DURATION_S = 0.3
 # Use `_effective_caption_palette(ctx)` rather than reading DEFAULT directly
 # so source_derived overrides flow through every consumer (caption builder,
 # stat HTML, motion-graphic renderers).
+#
+# Accents are tuned for READABILITY over live video — saturated-but-soft
+# hues with enough luminance to hold up against skin tones and busy
+# backgrounds. Pure-signal neons (#02FB23 green / #FF3B30 red) vibrate
+# against the outline shadow and read as "template spam".
 DEFAULT_CAPTION_PALETTE = {
     "body": "#FFFFFF",
-    "important": "#F7C204",   # yellow
-    "definition": "#02FB23",  # green
-    "warning": "#FF3B30",     # red
+    "important": "#FFC72B",   # warm yellow
+    "definition": "#4ADE80",  # soft emerald
+    "warning": "#FF6B6B",     # coral red
     "stroke": "#000000",
 }
+
+# Google-Fonts css2 import covering every Inter weight the director's
+# templates use (400 body → 900 hook). The editor's html-processor only
+# loads Inter 400/600, so without this import the browser FAUX-BOLDS the
+# 600 cut for 800/900 text — mushy strokes at hook sizes. Every text-
+# bearing fragment prepends this <style>:
+#   * editor: each entry is its own iframe → document-scoped @import
+#     loads normally (the iframe already preconnects to fonts.googleapis).
+#   * render worker: the dispatcher hoists @import URLs out of shadow-root
+#     <style> tags into document.head links and waits for them plus
+#     document.fonts.ready before capturing frames.
+# display=block holds text invisible until the real font arrives instead
+# of flashing a fallback with different metrics.
+_FONT_CSS2_URL = (
+    "https://fonts.googleapis.com/css2"
+    "?family=Inter:wght@400;600;700;800;900&display=block"
+)
+_FONT_IMPORT_STYLE = f"<style>@import url('{_FONT_CSS2_URL}');</style>"
+
+# System emoji font stack — Inter has no color-emoji glyphs, so emoji
+# spans must opt out of the text stack or they render as monochrome
+# fallback boxes.
+_EMOJI_FONT_STACK = (
+    "'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"
+)
+
+
+def _outline_text_shadow(
+    color: str = "#000",
+    *,
+    ambient: str = "0 0.10em 0.30em rgba(0,0,0,0.55)",
+) -> str:
+    """Layered directional text-shadow that reads as a glyph outline.
+
+    `-webkit-text-stroke` centers the stroke ON the glyph path, eating
+    into thin strokes — at heavy weights the stroke visibly cracks the
+    counters of digits/letters. Stacked directional shadows paint
+    entirely BEHIND the glyph, so the letterform stays intact.
+
+    Em-based offsets scale with the element's font-size, so one helper
+    serves 2vw chart labels and 14vw stat values alike. `ambient` adds a
+    soft drop for contrast lift over video; pass "" to skip it.
+    """
+    o = "0.05em"   # orthogonal reach
+    d = "0.035em"  # diagonal reach (~o/√2 keeps the ring round)
+    parts = [
+        f"{o} 0 0 {color}", f"-{o} 0 0 {color}",
+        f"0 {o} 0 {color}", f"0 -{o} 0 {color}",
+        f"{d} {d} 0 {color}", f"-{d} {d} 0 {color}",
+        f"{d} -{d} 0 {color}", f"-{d} -{d} 0 {color}",
+    ]
+    if ambient:
+        parts.append(ambient)
+    return ",".join(parts)
 
 
 def _effective_caption_palette(style_override: Optional[dict]) -> dict:
@@ -134,16 +193,20 @@ def _effective_caption_palette(style_override: Optional[dict]) -> dict:
 #
 # Text overlays from the LLM director (hook / micro_hook / loop_back /
 # emphasis) display the SAME content the speaker is saying, in larger
-# colored type. Running the karaoke caption block underneath stacks two
-# layers of similar text — the audit screenshots showed yellow
+# colored type. Running the karaoke caption block in the SAME band stacks
+# two layers of similar text — the audit screenshots showed yellow
 # "TEAMWORK IS YOUR GREATEST STRENGTH" overlaid on white "It's really
 # always" karaoke captions, fighting for the same visual real estate.
 #
-# Fix: caption builder accepts `suppression_ranges` (time ranges where a
-# text overlay is active). Blocks that overlap any suppression range get
-# dropped. Visual overlays (broll / stat / motion_graphic) do NOT
-# suppress — they sit at a different z-band and captions add value when
-# they're on screen.
+# Suppression is GEOMETRIC, not blanket: a text overlay only hides
+# caption blocks when its vertical band actually intersects the caption
+# band for the active layout. Hook / micro_hook / loop_back / emphasis
+# all default to the upper third while captions live in the lower third,
+# so in the common full-speaker case they coexist (hook on top, captions
+# below) — blanket suppression was blacking out ~8-12s of captions per
+# 30s reel including the entire hook window. Visual overlays (broll /
+# stat / motion_graphic) never suppress — they sit at a different z-band
+# and captions add value while they're on screen.
 _CAPTION_SUPPRESSING_OVERLAY_TYPES = frozenset({
     "overlay_hook",
     "overlay_micro_hook",
@@ -151,20 +214,61 @@ _CAPTION_SUPPRESSING_OVERLAY_TYPES = frozenset({
     "overlay_emphasis",
 })
 
+# Estimated frame-height (%) consumed by each text-overlay type: ~2 lines
+# at the type's font size plus breathing room. Paired with the type's
+# `top_pct` from `_OVERLAY_STYLE_BY_TYPE` to form its vertical band.
+_OVERLAY_EST_HEIGHT_PCT: dict[str, float] = {
+    "hook": 14.0,
+    "micro_hook": 12.0,
+    "loop_back": 14.0,
+    "emphasis": 10.0,
+}
 
-def _collect_text_overlay_ranges(overlay_shots: list) -> list[tuple[float, float]]:
-    """Extract `(in_time, exit_time)` tuples from text-overlay shots only.
+# Estimated caption-band height (%): up to 2 lines at the caption font
+# size, measured from the block's `bottom` anchor upward.
+_CAPTION_EST_HEIGHT_PCT = 14.0
 
-    Pulls from `_Shot.entry_meta["shot_type"]` which the spec_to_shot
-    builders set to `overlay_<spec.type>` for every OverlaySpec. Visual
-    overlay types (broll_video, broll_image, animated_stat, motion_graphic)
-    are NOT in `_CAPTION_SUPPRESSING_OVERLAY_TYPES`, so this returns only
-    the text-overlay ranges that should hide overlapping caption blocks.
+
+def _caption_band_for_layout(layout: str) -> tuple[float, float]:
+    """(top_pct, bottom_pct) of the frame band captions occupy for `layout`.
+
+    Derived from `_CAPTION_BOTTOM_PCT_BY_LAYOUT` (the block's CSS `bottom`
+    anchor) minus the estimated caption height. Percentages measured from
+    the TOP of the frame.
     """
+    bottom_anchor = _CAPTION_BOTTOM_PCT_BY_LAYOUT.get(
+        layout, _CAPTION_BOTTOM_PCT_DEFAULT
+    )
+    band_bottom = 100.0 - float(bottom_anchor)
+    return band_bottom - _CAPTION_EST_HEIGHT_PCT, band_bottom
+
+
+def _collect_caption_suppression_ranges(
+    overlay_shots: list,
+    layout: str,
+) -> list[tuple[float, float]]:
+    """Time ranges of text overlays whose vertical band intersects the
+    caption band for `layout` — only those should hide caption blocks.
+
+    Pulls `entry_meta["shot_type"]` (set to `overlay_<spec.type>` by the
+    spec_to_shot builders) to identify text overlays, then checks the
+    type's [top_pct, top_pct + est_height] band against the layout's
+    caption band. Overlays parked in the upper third never reach the
+    lower-third caption band, so they coexist with captions; layouts
+    that push captions up (stacked / pip) can still collide and suppress.
+    """
+    band_top, band_bottom = _caption_band_for_layout(layout)
     ranges: list[tuple[float, float]] = []
     for shot in overlay_shots or []:
         meta = getattr(shot, "entry_meta", None) or {}
-        if meta.get("shot_type") in _CAPTION_SUPPRESSING_OVERLAY_TYPES:
+        shot_type = meta.get("shot_type") or ""
+        if shot_type not in _CAPTION_SUPPRESSING_OVERLAY_TYPES:
+            continue
+        spec_type = shot_type.removeprefix("overlay_")
+        style = _OVERLAY_STYLE_BY_TYPE.get(spec_type, _OVERLAY_STYLE_BY_TYPE["emphasis"])
+        o_top = float(style["top_pct"])
+        o_bottom = o_top + _OVERLAY_EST_HEIGHT_PCT.get(spec_type, 12.0)
+        if o_top < band_bottom and band_top < o_bottom:
             ranges.append((float(shot.in_time), float(shot.exit_time)))
     return ranges
 
@@ -413,14 +517,15 @@ class ReelsDirectorService:
         palette = _effective_caption_palette(
             (ctx.extra_metadata or {}).get("style_palette")
         )
-        # Phase 2e caption-overlay dedup: a text overlay (hook /
-        # micro_hook / loop_back / emphasis) IS the caption for its time
-        # slice — running a karaoke caption underneath stacks two layers
-        # of similar text. Collect the text-overlay ranges from the
-        # already-built overlay shots and drop caption blocks that
-        # overlap. Visual overlays (broll / stat / motion_graphic) sit
-        # at a different z-band; they don't suppress.
-        suppression_ranges = _collect_text_overlay_ranges(overlay_shots)
+        # Phase 2e caption-overlay dedup, geometric edition: a text
+        # overlay only suppresses caption blocks when its vertical band
+        # actually intersects the caption band for this layout. Upper-
+        # third overlays (hook / micro_hook / emphasis defaults) coexist
+        # with lower-third captions. Visual overlays (broll / stat /
+        # motion_graphic) sit at a different z-band; they never suppress.
+        suppression_ranges = _collect_caption_suppression_ranges(
+            overlay_shots, effective_layout
+        )
         if word_importance_reel_time:
             caption_shots = self._build_caption_blocks_from_reel_time(
                 word_importance_reel_time,
@@ -784,40 +889,30 @@ class ReelsDirectorService:
 
     @staticmethod
     def _build_hook_overlay(title: str, hook_end: float) -> _Shot:
-        """Bold caption-style overlay for the hook window.
+        """Bold caption-style overlay for the hook window (deterministic
+        fallback path — the LLM-spec path goes through `_spec_to_shot`).
 
-        Hormozi-style: Inter 900, white + drop shadow, near the top of the
-        9:16 frame (research §12.4 says Y=70% is the caption convention,
-        but the *hook* overlay sits higher to leave room for spoken
-        captions below).
+        Reuses `_build_overlay_html` so the fallback hook gets the same
+        treatment as LLM-directed hooks: loaded Inter 900, entrance
+        animation, outline shadow, accent bar. Hormozi-style near the top
+        of the 9:16 frame (research §12.4 says Y=70% is the caption
+        convention, but the *hook* overlay sits higher so spoken captions
+        coexist below).
         """
-        safe = html_lib.escape(title)
-        # Positioned with vw-relative font for resolution independence.
-        # ~5vw on a 1080px-wide frame = ~54px; on 540px wide = ~27px.
-        fragment = (
-            '<div style="'
-            'position:absolute;'
-            'left:6%;right:6%;'
-            'top:14%;'
-            'font:900 6.5vw/1.15 Inter,Montserrat,sans-serif;'
-            'letter-spacing:-0.01em;'
-            'text-transform:uppercase;'
-            'color:#FFFFFF;'
-            'text-align:center;'
-            '-webkit-text-stroke:1.5px #000;'
-            'text-shadow:0 4px 14px rgba(0,0,0,0.55);'
-            'pointer-events:none;'
-            '">'
-            f'{safe}'
-            '</div>'
+        spec = OverlaySpec(
+            type="hook",
+            t_start=0.0,
+            t_end=hook_end,
+            text=title,
+            color_intent="neutral",
         )
         return _Shot(
             id="shot-hook",
             in_time=0.0,
             exit_time=round(hook_end, 3),
             z=Z_HOOK_OVERLAY,
-            html=fragment,
-            entry_meta={"shot_type": "hook_overlay", "text": title},
+            html=_build_overlay_html(spec),
+            entry_meta={"shot_type": "overlay_hook", "text": title},
         )
 
     @staticmethod
@@ -999,27 +1094,30 @@ def _remap_word_importance(
 
 
 # Visual treatment per overlay type — bigger/bolder for the structural hooks,
-# softer for emphasis so they don't fight the captions.
+# softer for emphasis so they don't fight the captions. All four park in
+# the UPPER THIRD so they coexist with lower-third captions (geometric
+# suppression in `_collect_caption_suppression_ranges` keys off `top_pct`).
+# `entrance` picks the settle animation defined in `_build_overlay_html`.
 _OVERLAY_STYLE_BY_TYPE = {
     "hook": {
         "top_pct": 14, "font_weight": 900, "font_size_vw": 6.5,
         "uppercase": True, "letter_spacing": "-0.01em",
-        "stroke_px": 1.5, "shadow": "0 4px 14px rgba(0,0,0,0.55)",
+        "entrance": "ovl-pop", "accent_bar": True,
     },
     "micro_hook": {
-        "top_pct": 28, "font_weight": 900, "font_size_vw": 5.5,
+        "top_pct": 24, "font_weight": 900, "font_size_vw": 5.5,
         "uppercase": True, "letter_spacing": "-0.005em",
-        "stroke_px": 1.5, "shadow": "0 3px 10px rgba(0,0,0,0.55)",
+        "entrance": "ovl-pop", "accent_bar": False,
     },
     "loop_back": {
         "top_pct": 14, "font_weight": 900, "font_size_vw": 6.5,
         "uppercase": True, "letter_spacing": "-0.01em",
-        "stroke_px": 1.5, "shadow": "0 4px 14px rgba(0,0,0,0.55)",
+        "entrance": "ovl-pop", "accent_bar": True,
     },
     "emphasis": {
-        "top_pct": 36, "font_weight": 800, "font_size_vw": 4.5,
+        "top_pct": 30, "font_weight": 800, "font_size_vw": 4.5,
         "uppercase": False, "letter_spacing": "0",
-        "stroke_px": 1.0, "shadow": "0 2px 6px rgba(0,0,0,0.5)",
+        "entrance": "ovl-rise", "accent_bar": False,
     },
 }
 
@@ -1034,30 +1132,68 @@ _OVERLAY_COLOR_BY_INTENT = {
 
 
 def _build_overlay_html(spec: "OverlaySpec") -> str:
-    """Render one OverlaySpec to a body-fragment HTML string.
+    """Render one text OverlaySpec to a body-fragment HTML string.
 
     All overlays share the same "absolutely-positioned bold caption" base;
-    `type` + `color_intent` choose the visual variant.
+    `type` + `color_intent` choose the visual variant. The wrapper carries
+    `data-anim-scrub` so the render worker pins the entrance animation to
+    the scrub clock instead of the wall clock.
+
+    Entrance settles within ~400ms — scale/translate overshoot for the
+    structural hooks (`ovl-pop`), a quieter rise for emphasis
+    (`ovl-rise`). Hook / loop_back additionally get an accent bar under
+    the text that wipes in, giving the most important 2.5s an actual
+    designed moment instead of static type.
     """
     style = _OVERLAY_STYLE_BY_TYPE.get(spec.type, _OVERLAY_STYLE_BY_TYPE["emphasis"])
     color = _OVERLAY_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
     text = html_lib.escape(spec.text)
     transform = "uppercase" if style["uppercase"] else "none"
+    # Accent bar inherits the intent color; white text gets the palette's
+    # `important` accent so the bar never disappears into the text above.
+    bar_color = color if color != "#FFFFFF" else DEFAULT_CAPTION_PALETTE["important"]
+    accent_bar = (
+        f'<div style="width:14%;height:0.55vw;margin:1.1vw auto 0;'
+        f'border-radius:999px;background:{bar_color};'
+        'box-shadow:0 0.2vw 0.8vw rgba(0,0,0,0.45);'
+        'transform-origin:center;animation:ovl-bar 360ms 180ms both;"></div>'
+        if style["accent_bar"] else ""
+    )
     return (
-        '<div style="'
+        _FONT_IMPORT_STYLE +
+        '<style>'
+        '@keyframes ovl-pop{'
+        '0%{opacity:0;transform:scale(0.82) translateY(1.2vw)}'
+        '70%{opacity:1;transform:scale(1.04) translateY(-0.2vw)}'
+        '100%{opacity:1;transform:scale(1) translateY(0)}'
+        '}'
+        '@keyframes ovl-rise{'
+        '0%{opacity:0;transform:translateY(1.6vw)}'
+        '100%{opacity:1;transform:translateY(0)}'
+        '}'
+        '@keyframes ovl-bar{'
+        '0%{transform:scaleX(0)}'
+        '100%{transform:scaleX(1)}'
+        '}'
+        '</style>'
+        '<div data-anim-scrub="1" style="'
         'position:absolute;'
         'left:6%;right:6%;'
         f'top:{style["top_pct"]}%;'
+        'pointer-events:none;'
+        f'animation:{style["entrance"]} 400ms cubic-bezier(0.22,1.2,0.36,1) both;'
+        '">'
+        '<div style="'
         f'font:{style["font_weight"]} {style["font_size_vw"]}vw/1.15 Inter,Montserrat,sans-serif;'
         f'letter-spacing:{style["letter_spacing"]};'
         f'text-transform:{transform};'
         f'color:{color};'
         'text-align:center;'
-        f'-webkit-text-stroke:{style["stroke_px"]}px #000;'
-        f'text-shadow:{style["shadow"]};'
-        'pointer-events:none;'
+        f'text-shadow:{_outline_text_shadow()};'
         '">'
         f'{text}'
+        '</div>'
+        f'{accent_bar}'
         '</div>'
     )
 
@@ -1164,28 +1300,47 @@ _STAT_COLOR_BY_INTENT: dict[str, str] = {
 }
 
 
+# Shared card chrome for stat / motion-graphic overlays. The dark
+# translucent scrim guarantees label contrast no matter what the speaker
+# clip is doing behind the overlay — raw text/charts floating over a face
+# read as a glitch, a card reads as a designed insert.
+_CARD_CSS = (
+    "background:rgba(11,13,18,0.66);"
+    "border:1px solid rgba(255,255,255,0.13);"
+    "border-radius:2.2vw;"
+    "backdrop-filter:blur(10px);"
+    "box-shadow:0 1.2vw 3.6vw rgba(0,0,0,0.45);"
+)
+
+
 def _build_stat_html(spec: "OverlaySpec") -> str:
     """Render an animated_stat OverlaySpec.
 
     Big bold `value` with a scale-pop entry animation, optional `subtitle`
-    underneath in smaller weight. Color comes from `color_intent`.
-    Document-scoped @keyframes — each entry becomes its own iframe so
-    keyframe names don't collide across shots.
+    underneath in smaller weight, both inside a dark card scrim. Color
+    comes from `color_intent`. Document-scoped @keyframes — each entry
+    becomes its own iframe so keyframe names don't collide across shots.
+    The wrapper carries `data-anim-scrub` so the pop lands on the scrub
+    clock in the rendered MP4.
     """
     wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
     color = _STAT_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
     value = html_lib.escape(spec.value)
     subtitle = html_lib.escape(spec.subtitle) if spec.subtitle else ""
     # Font size scales by position — full is much larger than corner.
-    value_font_vw = {"full": 14, "corner": 7, "lower_third": 10}.get(spec.position, 14)
-    subtitle_font_vw = {"full": 4, "corner": 2.5, "lower_third": 3}.get(spec.position, 4)
+    value_font_vw = {"full": 12, "corner": 6, "lower_third": 9}.get(spec.position, 12)
+    subtitle_font_vw = {"full": 4.2, "corner": 2.6, "lower_third": 3.2}.get(spec.position, 4.2)
+    card_pad = {"full": "3vw 5vw", "corner": "1.6vw 2.4vw", "lower_third": "2vw 3.6vw"}.get(
+        spec.position, "3vw 5vw"
+    )
     subtitle_html = (
         f'<div style="font:700 {subtitle_font_vw}vw/1.25 Inter,Montserrat,sans-serif;'
-        f'color:#FFFFFF;margin-top:0.6vw;letter-spacing:0.02em;'
-        f'text-shadow:0 2px 8px rgba(0,0,0,0.55);">{subtitle}</div>'
+        f'color:#FFFFFF;margin-top:0.8vw;letter-spacing:0.02em;'
+        f'text-shadow:0 0.08em 0.3em rgba(0,0,0,0.55);">{subtitle}</div>'
         if subtitle else ""
     )
     return (
+        _FONT_IMPORT_STYLE +
         '<style>'
         # Big scale-pop with slight overshoot — feels like the number
         # snaps in. 480ms is the sweet spot; faster looks twitchy.
@@ -1195,14 +1350,18 @@ def _build_stat_html(spec: "OverlaySpec") -> str:
         '100%{opacity:1;transform:scale(1) translateY(0)}'
         '}'
         '</style>'
-        f'<div style="{wrapper}pointer-events:none;">'
-        f'<div style="font:900 {value_font_vw}vw/1 Inter,Montserrat,sans-serif;'
-        f'color:{color};letter-spacing:-0.02em;'
-        '-webkit-text-stroke:2px #000;'
-        'text-shadow:0 6px 20px rgba(0,0,0,0.6);'
+        f'<div data-anim-scrub="1" style="{wrapper}pointer-events:none;">'
+        f'<div style="{_CARD_CSS}padding:{card_pad};max-width:100%;'
+        'display:flex;flex-direction:column;align-items:center;text-align:center;'
         'animation:stat-pop 480ms both;">'
+        # Card scrim already guarantees contrast — a soft drop is enough.
+        # A full outline ring on 12vw digits reads heavy-handed.
+        f'<div style="font:900 {value_font_vw}vw/1.05 Inter,Montserrat,sans-serif;'
+        f'color:{color};letter-spacing:-0.02em;'
+        'text-shadow:0 0.06em 0.25em rgba(0,0,0,0.5);">'
         f'{value}</div>'
         f'{subtitle_html}'
+        '</div>'
         '</div>'
     )
 
@@ -1287,26 +1446,33 @@ def _build_bar_chart_html(spec: "OverlaySpec") -> str:
         delay_s = i * 0.12
         bar_html.append(
             '<div style="flex:1;display:flex;flex-direction:column;align-items:center;'
-            'justify-content:flex-end;height:100%;gap:0.4vw;">'
-            f'<div style="font:800 3vw/1 Inter,Montserrat,sans-serif;'
+            'justify-content:flex-end;height:100%;gap:0.6vw;">'
+            f'<div style="font:800 4vw/1 Inter,Montserrat,sans-serif;'
             f'color:{color};letter-spacing:-0.01em;'
-            '-webkit-text-stroke:1.5px #000;'
-            'text-shadow:0 2px 6px rgba(0,0,0,0.5);">'
+            'text-shadow:0 0.06em 0.2em rgba(0,0,0,0.5);">'
             f'{display_v}</div>'
-            f'<div class="vx-bar" style="width:62%;background:{color};'
-            'border-radius:8px 8px 0 0;'
+            # Subtle top-light sheen over the flat intent color so bars
+            # read as objects, not flat rectangles.
+            '<div class="vx-bar" style="width:62%;'
+            'background:linear-gradient(180deg,rgba(255,255,255,0.22),'
+            f'rgba(0,0,0,0.18)),{color};'
+            'border-radius:0.8vw 0.8vw 0 0;'
             f'animation:bar-grow 520ms {delay_s:.2f}s both;'
             f'--vx-target-h:{height_pct:.1f}%;'
             'box-shadow:0 4px 16px rgba(0,0,0,0.45);">'
             '</div>'
-            f'<div style="font:700 2.2vw/1.2 Inter,Montserrat,sans-serif;'
+            f'<div style="font:700 3.2vw/1.2 Inter,Montserrat,sans-serif;'
             'color:#FFFFFF;letter-spacing:0.02em;'
-            'text-shadow:0 2px 6px rgba(0,0,0,0.55);">'
+            'text-shadow:0 0.06em 0.2em rgba(0,0,0,0.55);">'
             f'{label}</div>'
             '</div>'
         )
     bars_inner = "".join(bar_html)
+    card_pad = {"full": "2.6vw 3.2vw", "corner": "1.4vw 1.8vw", "lower_third": "1.8vw 2.6vw"}.get(
+        spec.position, "2.6vw 3.2vw"
+    )
     return (
+        _FONT_IMPORT_STYLE +
         '<style>'
         # CSS custom property `--vx-target-h` carries the per-bar target
         # height; the keyframe interpolates from 0 to that value.
@@ -1314,8 +1480,14 @@ def _build_bar_chart_html(spec: "OverlaySpec") -> str:
         '0%{height:0%}'
         '100%{height:var(--vx-target-h)}'
         '}'
+        '@keyframes card-in{'
+        '0%{opacity:0;transform:scale(0.94)}'
+        '100%{opacity:1;transform:scale(1)}'
+        '}'
         '</style>'
-        f'<div style="{wrapper}pointer-events:none;">'
+        f'<div data-anim-scrub="1" style="{wrapper}pointer-events:none;">'
+        f'<div style="{_CARD_CSS}padding:{card_pad};width:100%;'
+        'animation:card-in 260ms both;">'
         # `min-height:22vh` is load-bearing for the corner position: that
         # wrapper has no explicit height, so `height:100%` here would
         # resolve to auto → the bar's `height:var(--vx-target-h)` (a %)
@@ -1328,6 +1500,7 @@ def _build_bar_chart_html(spec: "OverlaySpec") -> str:
         '<div style="display:flex;align-items:flex-end;justify-content:center;'
         'gap:6%;width:100%;height:100%;min-height:22vh;">'
         f'{bars_inner}'
+        '</div>'
         '</div>'
         '</div>'
     )
@@ -1406,18 +1579,18 @@ def _build_line_chart_html(spec: "OverlaySpec") -> str:
             'filter:drop-shadow(0 1px 2px rgba(0,0,0,0.55));" />'
         )
         value_label_html.append(
-            f'<text x="{x:.2f}" y="{max(6.0, y - 4.0):.2f}" '
+            f'<text x="{x:.2f}" y="{max(7.0, y - 4.5):.2f}" '
             'font-family="Inter,Montserrat,sans-serif" font-weight="800" '
-            f'font-size="4.2" fill="{color}" text-anchor="middle" '
-            f'paint-order="stroke" stroke="#000" stroke-width="1" '
+            f'font-size="6" fill="{color}" text-anchor="middle" '
+            f'paint-order="stroke" stroke="#000" stroke-width="1.2" '
             f'style="opacity:0;animation:line-point 220ms {delay_s:.2f}s forwards;">'
             f'{html_lib.escape(_format_chart_value(values[i]))}</text>'
         )
         axis_label_html.append(
-            f'<text x="{x:.2f}" y="92" '
+            f'<text x="{x:.2f}" y="93" '
             'font-family="Inter,Montserrat,sans-serif" font-weight="700" '
-            'font-size="4" fill="#FFFFFF" text-anchor="middle" '
-            'paint-order="stroke" stroke="#000" stroke-width="0.8" '
+            'font-size="5.2" fill="#FFFFFF" text-anchor="middle" '
+            'paint-order="stroke" stroke="#000" stroke-width="1" '
             f'style="opacity:0;animation:line-point 220ms {delay_s:.2f}s forwards;">'
             f'{html_lib.escape(labels[i])}</text>'
         )
@@ -1427,12 +1600,22 @@ def _build_line_chart_html(spec: "OverlaySpec") -> str:
     inner_aspect = {"full": "16/10", "corner": "1/1", "lower_third": "16/9"}.get(
         spec.position, "16/10"
     )
+    card_pad = {"full": "2.4vw 3vw", "corner": "1.4vw 1.8vw", "lower_third": "1.6vw 2.4vw"}.get(
+        spec.position, "2.4vw 3vw"
+    )
     return (
+        _FONT_IMPORT_STYLE +
         '<style>'
         '@keyframes line-draw{to{stroke-dashoffset:0}}'
         '@keyframes line-point{to{opacity:1}}'
+        '@keyframes card-in{'
+        '0%{opacity:0;transform:scale(0.94)}'
+        '100%{opacity:1;transform:scale(1)}'
+        '}'
         '</style>'
-        f'<div style="{wrapper}pointer-events:none;">'
+        f'<div data-anim-scrub="1" style="{wrapper}pointer-events:none;">'
+        f'<div style="{_CARD_CSS}padding:{card_pad};width:100%;'
+        'animation:card-in 260ms both;">'
         f'<div style="width:100%;aspect-ratio:{inner_aspect};max-height:100%;">'
         '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" '
         'style="width:100%;height:100%;overflow:visible;">'
@@ -1445,6 +1628,7 @@ def _build_line_chart_html(spec: "OverlaySpec") -> str:
         f'{"".join(value_label_html)}'
         f'{"".join(axis_label_html)}'
         '</svg>'
+        '</div>'
         '</div>'
         '</div>'
     )
@@ -1487,17 +1671,17 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
     gradient = ", ".join(stops)
 
     # Per-position sizing for the disc + legend.
-    disc_width = {"full": "55%", "corner": "70%", "lower_third": "30%"}.get(
-        spec.position, "55%"
+    disc_width = {"full": "46%", "corner": "62%", "lower_third": "26%"}.get(
+        spec.position, "46%"
     )
-    legend_font_vw = {"full": 2.4, "corner": 1.3, "lower_third": 2.0}.get(
+    legend_font_vw = {"full": 3.2, "corner": 1.7, "lower_third": 2.4}.get(
+        spec.position, 3.2
+    )
+    legend_dot_vw = {"full": 1.7, "corner": 1.0, "lower_third": 1.3}.get(
+        spec.position, 1.7
+    )
+    legend_gap_vw = {"full": 2.4, "corner": 1.2, "lower_third": 1.8}.get(
         spec.position, 2.4
-    )
-    legend_dot_vw = {"full": 1.4, "corner": 0.9, "lower_third": 1.2}.get(
-        spec.position, 1.4
-    )
-    legend_gap_vw = {"full": 2.0, "corner": 1.0, "lower_third": 1.5}.get(
-        spec.position, 2.0
     )
 
     legend_items: list[str] = []
@@ -1505,12 +1689,11 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
         pct = (val / total) * 100.0
         delay_s = 0.55 + i * 0.08
         legend_items.append(
-            f'<div style="display:flex;align-items:center;gap:0.5vw;'
+            f'<div style="display:flex;align-items:center;gap:0.6vw;'
             f'opacity:0;animation:pie-legend 280ms {delay_s:.2f}s forwards;'
             f'font:800 {legend_font_vw}vw/1.1 Inter,Montserrat,sans-serif;'
             'color:#FFFFFF;letter-spacing:0.02em;'
-            '-webkit-text-stroke:0.8px #000;'
-            'text-shadow:0 2px 6px rgba(0,0,0,0.55);">'
+            'text-shadow:0 0.06em 0.2em rgba(0,0,0,0.55);">'
             f'<span style="display:inline-block;width:{legend_dot_vw}vw;'
             f'height:{legend_dot_vw}vw;border-radius:50%;background:{wedge_colors[i]};'
             'box-shadow:0 0 0 1px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.45);">'
@@ -1520,7 +1703,11 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
         )
     legend_html = "".join(legend_items)
 
+    card_pad = {"full": "3vw 3.4vw", "corner": "1.6vw 2vw", "lower_third": "1.8vw 2.6vw"}.get(
+        spec.position, "3vw 3.4vw"
+    )
     return (
+        _FONT_IMPORT_STYLE +
         '<style>'
         '@keyframes pie-pop{'
         '0%{opacity:0;transform:scale(0.4) rotate(-90deg)}'
@@ -1528,8 +1715,15 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
         '100%{opacity:1;transform:scale(1) rotate(0)}'
         '}'
         '@keyframes pie-legend{to{opacity:1}}'
+        '@keyframes card-in{'
+        '0%{opacity:0;transform:scale(0.94)}'
+        '100%{opacity:1;transform:scale(1)}'
+        '}'
         '</style>'
-        f'<div style="{wrapper}pointer-events:none;gap:1vw;">'
+        f'<div data-anim-scrub="1" style="{wrapper}pointer-events:none;">'
+        f'<div style="{_CARD_CSS}padding:{card_pad};width:100%;'
+        'display:flex;flex-direction:column;align-items:center;gap:1.4vw;'
+        'animation:card-in 260ms both;">'
         # The pie disc — conic-gradient renders the wedges; pie-pop
         # animates it in.
         f'<div style="width:{disc_width};aspect-ratio:1;border-radius:50%;'
@@ -1538,8 +1732,9 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
         'animation:pie-pop 600ms both;"></div>'
         # Legend row below
         f'<div style="display:flex;flex-wrap:wrap;justify-content:center;'
-        f'align-items:center;gap:0.6vw {legend_gap_vw}vw;max-width:96%;">'
+        f'align-items:center;gap:0.8vw {legend_gap_vw}vw;max-width:96%;">'
         f'{legend_html}'
+        '</div>'
         '</div>'
         '</div>'
     )
@@ -1548,10 +1743,11 @@ def _build_pie_chart_html(spec: "OverlaySpec") -> str:
 def _build_comparison_icons_html(spec: "OverlaySpec") -> str:
     """Two-card qualitative comparison with VS divider (exactly 2 items).
 
-    Cards slide in from their respective sides (left from left, right from
-    right) with the VS pill popping in between them after a brief delay.
-    Values are optional — when a bar's value <= 0 we render label-only;
-    when > 0 we show the value above the label as a big bold number.
+    Each side is a REAL card (dark scrim, rounded, padded) that slides in
+    from its respective side, with a styled VS pill popping in between
+    them after a brief delay. Values are optional — when a bar's value
+    <= 0 we render label-only; when > 0 we show the value above the label
+    as a big bold number.
 
     Layout: row-flex with `flex:1` on each card, centered VS pill between.
     The wrapper's outer column-flex is overridden by an inner row-flex
@@ -1566,9 +1762,16 @@ def _build_comparison_icons_html(spec: "OverlaySpec") -> str:
 
     # Per-position sizing — comparison cards are big at full, compact at
     # corner (small space), wide at lower_third (horizontal band).
-    value_vw = {"full": 6.0, "corner": 3.0, "lower_third": 4.5}.get(spec.position, 6.0)
-    label_vw = {"full": 3.6, "corner": 2.0, "lower_third": 3.0}.get(spec.position, 3.6)
-    vs_vw = {"full": 4.5, "corner": 2.5, "lower_third": 3.5}.get(spec.position, 4.5)
+    value_vw = {"full": 6.5, "corner": 3.2, "lower_third": 5.0}.get(spec.position, 6.5)
+    label_vw = {"full": 4.0, "corner": 2.2, "lower_third": 3.2}.get(spec.position, 4.0)
+    vs_vw = {"full": 3.4, "corner": 1.9, "lower_third": 2.6}.get(spec.position, 3.4)
+    card_pad = {"full": "2.8vw 1.6vw", "corner": "1.4vw 1vw", "lower_third": "1.8vw 1.2vw"}.get(
+        spec.position, "2.8vw 1.6vw"
+    )
+
+    # VS pill accent: intent color when set, palette yellow when neutral —
+    # a white-on-white pill would vanish against the card text.
+    vs_bg = color if color != "#FFFFFF" else DEFAULT_CAPTION_PALETTE["important"]
 
     def _card_html(item: dict, side: str) -> str:
         label = html_lib.escape(str(item.get("label") or ""))
@@ -1580,25 +1783,25 @@ def _build_comparison_icons_html(spec: "OverlaySpec") -> str:
             value_block = (
                 f'<div style="font:900 {value_vw}vw/1 Inter,Montserrat,sans-serif;'
                 f'color:{color};letter-spacing:-0.01em;'
-                '-webkit-text-stroke:1.5px #000;'
-                'text-shadow:0 3px 10px rgba(0,0,0,0.55);">'
+                'text-shadow:0 0.06em 0.25em rgba(0,0,0,0.5);">'
                 f'{_format_chart_value(val)}</div>'
             )
         return (
             f'<div style="flex:1;display:flex;flex-direction:column;'
-            'align-items:center;justify-content:center;gap:0.7vw;'
+            'align-items:center;justify-content:center;gap:0.9vw;'
+            f'{_CARD_CSS}padding:{card_pad};'
             f'animation:{anim} 480ms {delay_ms}ms both;opacity:0;">'
             f'{value_block}'
             f'<div style="font:800 {label_vw}vw/1.15 Inter,Montserrat,sans-serif;'
             'color:#FFFFFF;letter-spacing:0.02em;text-align:center;'
             'padding:0 0.4vw;'
-            '-webkit-text-stroke:1.1px #000;'
-            'text-shadow:0 2px 8px rgba(0,0,0,0.55);">'
+            'text-shadow:0 0.06em 0.2em rgba(0,0,0,0.55);">'
             f'{label}</div>'
             '</div>'
         )
 
     return (
+        _FONT_IMPORT_STYLE +
         '<style>'
         '@keyframes cmp-slide-left{'
         '0%{opacity:0;transform:translateX(-30%)}'
@@ -1614,16 +1817,17 @@ def _build_comparison_icons_html(spec: "OverlaySpec") -> str:
         '100%{opacity:1;transform:scale(1)}'
         '}'
         '</style>'
-        f'<div style="{wrapper}pointer-events:none;">'
+        f'<div data-anim-scrub="1" style="{wrapper}pointer-events:none;">'
         # Inner row-flex — overrides the wrapper's column direction.
         '<div style="display:flex;flex-direction:row;align-items:center;'
-        'justify-content:center;gap:1vw;width:100%;height:100%;">'
+        'justify-content:center;gap:1.4vw;width:100%;">'
         f'{_card_html(left, "left")}'
-        # VS divider — pops in after both cards have started sliding.
+        # VS pill — pops in after both cards have started sliding. Dark
+        # text on an accent pill so it reads as a badge, not loose type.
         f'<div style="font:900 {vs_vw}vw/1 Inter,Montserrat,sans-serif;'
-        f'color:{color};letter-spacing:0.04em;flex:0 0 auto;'
-        '-webkit-text-stroke:2px #000;'
-        'text-shadow:0 4px 12px rgba(0,0,0,0.65);'
+        f'color:#101218;background:{vs_bg};letter-spacing:0.04em;flex:0 0 auto;'
+        'padding:0.55em 0.7em;border-radius:999px;'
+        'box-shadow:0 0.4vw 1.6vw rgba(0,0,0,0.5);'
         'animation:cmp-vs-pop 480ms 220ms both;opacity:0;">'
         'VS</div>'
         f'{_card_html(right, "right")}'
@@ -1695,68 +1899,82 @@ def _build_caption_block_html(
     layout: str = "full_speaker_with_overlays",
     palette: Optional[dict] = None,
 ) -> str:
-    """Build a single caption block fragment with **per-word karaoke
-    reveal** animation (Phase 2a).
+    """Build a single caption block fragment with a **moving active-word
+    highlight** (karaoke pill).
 
-    Each word fades-in + scales-up at its own `t_start` (relative to the
-    block's `in_time`) — matching the "word-by-word reveal" pattern
-    research §12.4 identifies as the highest-retention style across
-    educational + storytelling short-form.
+    The whole 3-word page is visible from the block's first frame (one
+    quick settle on the wrapper), and a highlight pill travels word to
+    word: each word carries a keyframed "active" state whose
+    animation-delay/duration map exactly to the word's [t_start, t_end)
+    on the reel timeline. That's the spoken-word-tracking style research
+    §12.4 identifies as highest-retention — the eye follows the pill, not
+    a popping wall of text.
 
     Implementation:
-      - One `<style>` block defines the `karaoke-reveal` keyframes.
-        Keyframes are document-scoped per CSS spec — defining inside the
-        entry's iframe body works correctly.
-      - One `<span>` per word with `animation-delay` set to the word's
-        offset from `block_in_time`. Each entry becomes its own iframe;
-        CSS animation timeline starts from iframe load = entry's
-        `inTime` on the reel timeline. So animation-delay maps 1:1 to
-        per-word reveal moments.
-      - Color encoding: keyword_type words stay in their assigned color
-        from `palette` (default Hormozi yellow / definition green /
-        warning red, or a STYLE_GUIDE override for `important`); normal
-        words are white. Both pop on reveal.
+      - The wrapper carries `data-anim-scrub` — the render worker pins
+        every animation in the subtree to `currentTime = t - inTime`, so
+        per-word delays are frame-accurate in the MP4 (the editor's
+        per-entry iframe gets the same timing from iframe-load).
+      - `cap-active` keyframes hold the pill state (accent background,
+        dark text) constant for the animation's whole run; the default
+        fill-mode (none) switches it on at the delay and off at
+        delay+duration — exact word-timing on/off.
+      - Color encoding: keyword_type words sit in their palette accent
+        while idle (important / definition / warning); normal words are
+        white. The active pill always uses the palette's `important`
+        accent so the moving highlight stays consistent.
+      - Glyphs are outlined with layered text-shadow (no text-stroke —
+        it cracks heavy weights) for legibility over any footage.
       - Y position varies by `layout` — see `_CAPTION_BOTTOM_PCT_BY_LAYOUT`.
 
     NB: scrubbing the editor backward then forward will re-mount the
     iframe — animations replay from the start. Live playback (the render
-    worker's case) plays linearly so animations sync correctly.
+    worker's case) scrubs deterministically so animations sync correctly.
     """
     # Fall back to DEFAULT_CAPTION_PALETTE when caller didn't pass one
     # (e.g. test fixtures, future call sites that haven't been migrated).
     pal = palette if isinstance(palette, dict) and palette else DEFAULT_CAPTION_PALETTE
     body_color = pal.get("body", DEFAULT_CAPTION_PALETTE["body"])
     stroke_color = pal.get("stroke", DEFAULT_CAPTION_PALETTE["stroke"])
+    accent = pal.get("important", DEFAULT_CAPTION_PALETTE["important"])
     block_in = float(block[0]["in_time"])
+    block_end = float(block[-1]["exit_time"])
     bottom_pct = _CAPTION_BOTTOM_PCT_BY_LAYOUT.get(layout, _CAPTION_BOTTOM_PCT_DEFAULT)
 
+    visible_words = [w for w in block if str(w["word"]).strip()]
     spans: list[str] = []
-    for w in block:
+    for i, w in enumerate(visible_words):
         text = html_lib.escape(str(w["word"]).strip())
-        if not text:
-            continue
         kt = w.get("keyword_type")
         color = pal.get(kt) if kt else body_color
         # Negative or sub-millisecond offsets get clamped to 0 — protects
         # against rounding/precision edge cases at block boundaries.
         offset = max(0.0, float(w["in_time"]) - block_in)
+        # Pill duration = the word's spoken duration. Floor keeps flash
+        # words readable; the last word holds past the block's end so the
+        # pill never visibly drops before the entry unmounts.
+        dur = max(0.12, float(w["exit_time"]) - float(w["in_time"]))
+        if i == len(visible_words) - 1:
+            dur = max(dur, (block_end - block_in) - offset + 0.2)
         spans.append(
             f'<span style="'
             f'color:{color};'
             'display:inline-block;'
-            'opacity:0;'
-            f'animation:karaoke-reveal 280ms {offset:.3f}s both;'
+            'padding:0.04em 0.14em;'
+            'margin:0 0.05em;'
+            'border-radius:0.18em;'
+            f'animation:cap-active {dur:.3f}s {offset:.3f}s;'
             '">'
             f'{text}'
             '</span>'
         )
         # Emoji punctuation (Phase 2c.7) — appended AFTER the word's
         # main span when the LLM tagged this slot. The emoji pops in
-        # 150ms after the word reveals so it punches rather than competes
-        # with the word's own scale-pop. -webkit-text-stroke and
-        # text-shadow inherited from the block wrapper would harm emoji
-        # rendering, so we reset them on the emoji span. Emoji escaping
-        # via html_lib is harmless — emoji characters pass through.
+        # 150ms after its word goes active so it punches rather than
+        # competes with the pill switch. Inter has no color-emoji glyphs,
+        # so the span opts into the system emoji stack; the inherited
+        # outline shadow would render as a dark smear behind the emoji
+        # art, so it's reset to a plain drop.
         emoji = w.get("emoji")
         if emoji:
             emoji_offset = offset + 0.15
@@ -1765,44 +1983,54 @@ def _build_caption_block_html(
                 '<span style="'
                 'display:inline-block;'
                 'opacity:0;'
-                'margin-left:0.18em;'
-                '-webkit-text-stroke:0;'
+                'margin-left:0.1em;'
+                f'font-family:{_EMOJI_FONT_STACK};'
+                'font-size:1.15em;'
                 'text-shadow:0 2px 4px rgba(0,0,0,0.45);'
                 f'animation:emoji-pop 360ms {emoji_offset:.3f}s both;'
                 '">'
                 f'{safe_emoji}'
                 '</span>'
             )
-    inner = " ".join(spans)
+    inner = "".join(spans)
     return (
         # Document-scoped @keyframes. Defining inside the entry iframe
         # body is valid per CSS spec and keeps the entry self-contained.
+        _FONT_IMPORT_STYLE +
         '<style>'
-        '@keyframes karaoke-reveal{'
-        '0%{opacity:0;transform:scale(0.6) translateY(8px)}'
-        '55%{opacity:1;transform:scale(1.12) translateY(-2px)}'
-        '100%{opacity:1;transform:scale(1) translateY(0)}'
+        # Whole-page settle — the page is readable from frame one.
+        '@keyframes cap-in{'
+        '0%{opacity:0;transform:translateY(0.25em) scale(0.96)}'
+        '100%{opacity:1;transform:translateY(0) scale(1)}'
         '}'
-        # Emoji-pop is a wider scale + slight rotation so it visually
-        # contrasts with the karaoke-reveal of adjacent words. Larger
-        # overshoot than karaoke-reveal (1.4× vs 1.12×) makes the emoji
-        # feel like a punchline rather than continuation.
+        # Active-word pill. Identical first/last frames hold the state
+        # for the animation's whole run; default fill-mode none flips it
+        # on/off exactly at the word's boundaries. The dark text needs no
+        # outline against the accent pill, so the inherited shadow is
+        # cleared while active.
+        '@keyframes cap-active{'
+        f'0%{{background-color:{accent};color:#101218;text-shadow:none;transform:scale(0.99)}}'
+        '20%{transform:scale(1.07)}'
+        f'100%{{background-color:{accent};color:#101218;text-shadow:none;transform:scale(1.04)}}'
+        '}'
+        # Emoji-pop: wider scale + slight rotation so the emoji feels
+        # like a punchline rather than another caption word.
         '@keyframes emoji-pop{'
         '0%{opacity:0;transform:scale(0.3) rotate(-15deg)}'
         '60%{opacity:1;transform:scale(1.4) rotate(8deg)}'
         '100%{opacity:1;transform:scale(1) rotate(0)}'
         '}'
         '</style>'
-        '<div style="'
+        '<div data-anim-scrub="1" style="'
         'position:absolute;'
-        'left:6%;right:6%;'
+        'left:4%;right:4%;'
         f'bottom:{bottom_pct}%;'
-        'font:800 6vw/1.2 Inter,Montserrat,sans-serif;'
-        'letter-spacing:0;'
+        'font:800 9vw/1.1 Inter,Montserrat,sans-serif;'
+        'letter-spacing:0.005em;'
         'text-align:center;'
-        f'-webkit-text-stroke:2px {stroke_color};'
-        'text-shadow:0 3px 8px rgba(0,0,0,0.6);'
+        f'text-shadow:{_outline_text_shadow(stroke_color)};'
         'pointer-events:none;'
+        'animation:cap-in 180ms both;'
         '">'
         f'{inner}'
         '</div>'

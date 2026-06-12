@@ -47,6 +47,34 @@ export interface ScriptInjectionRef {
     originalLiteral: string;
 }
 
+/**
+ * Remove top-level standalone `translate(...)` functions from a transform
+ * list, preserving every other function (rotate, scale, matrix, translateX,
+ * translate3d, …) byte-for-byte. Paren-depth aware: the old
+ * `/translate\([^)]*\)/g` strip stopped at the FIRST `)`, so values with
+ * inner parens (`translate(calc(100% - 20px), 0)`) were cut mid-function and
+ * the trailing fragment corrupted the whole transform (B10).
+ */
+function stripTranslateFunctions(transform: string): string {
+    const kept: string[] = [];
+    let depth = 0;
+    let current = '';
+    for (const ch of transform) {
+        current += ch;
+        if (ch === '(') {
+            depth++;
+        } else if (ch === ')') {
+            depth = Math.max(0, depth - 1);
+            if (depth === 0) {
+                const fn = current.trim();
+                if (!/^translate\s*\(/i.test(fn)) kept.push(fn);
+                current = '';
+            }
+        }
+    }
+    return kept.join(' ');
+}
+
 /** Parse translate(Xpx, Ypx) from a CSS transform string. */
 function parseTranslate(transform: string): { x: number; y: number } {
     const m = transform.match(/translate\(\s*([+-]?[\d.]+)px\s*,\s*([+-]?[\d.]+)px\s*\)/);
@@ -404,9 +432,7 @@ function applyScriptInjectionPatch(
                     const existing = parseTranslate(el.style.transform || '');
                     const tx = patch.translateX ?? existing.x;
                     const ty = patch.translateY ?? existing.y;
-                    const other = (el.style.transform || '')
-                        .replace(/translate\([^)]*\)\s*/g, '')
-                        .trim();
+                    const other = stripTranslateFunctions(el.style.transform || '');
                     const tp = `translate(${tx}px, ${ty}px)`;
                     el.style.transform = other ? `${tp} ${other}` : tp;
                     if (!el.style.position) el.style.position = 'relative';
@@ -558,9 +584,7 @@ export function applyTextPatch(html: string, index: number, patch: TextPatch): s
             const tx = patch.translateX ?? existing.x;
             const ty = patch.translateY ?? existing.y;
             // Strip old translate, keep other transforms (rotate, scale, etc.)
-            const otherTransforms = (el.style.transform || '')
-                .replace(/translate\([^)]*\)\s*/g, '')
-                .trim();
+            const otherTransforms = stripTranslateFunctions(el.style.transform || '');
             const translatePart = `translate(${tx}px, ${ty}px)`;
             el.style.transform = otherTransforms
                 ? `${translatePart} ${otherTransforms}`

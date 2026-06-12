@@ -534,7 +534,19 @@ async def scan_reel_candidates(
                 "topic": cs.score.topic,
                 "composite": cs.score.composite,
             },
-            "breakdown": cs.score.breakdown or {},
+            "breakdown": {
+                **(cs.score.breakdown or {}),
+                # /preview replays the scan's exact targeting + keywords —
+                # the candidate row is the only artifact that survives
+                # between /scan and /preview, so the request knobs ride
+                # along here. Not exposed to the FE: the breakdown
+                # whitelist in `_candidate_row_to_response` filters it out.
+                "scan_config": {
+                    "target_duration_sec": request.target_duration_sec,
+                    "duration_tolerance_sec": request.duration_tolerance_sec,
+                    "topic_keywords": list(request.topic_keywords or []),
+                },
+            },
             "transcript_snippet": cs.transcript_snippet,
             "thumbnail_strip_url": None,
         }
@@ -739,14 +751,11 @@ async def preview_reel_candidates(
     asset = _validate_source_asset(asset, institute_id)
     context = await _fetch_context_json(asset.context_json_url or "")
 
-    # Recover target / tolerance / topic_keywords from the candidate's
-    # config_hash → actually those aren't stored. The scan request's
-    # values live only in the original /scan call; we re-derive from
-    # the candidate's source window vs target_duration field. For now,
-    # default to the candidate's predicted_output_duration_s as the
-    # target (the user already saw it on the scan card) with the same
-    # 3s tolerance as scan default. Future: persist scan_request on the
-    # candidate row so /preview replays the exact same config.
+    # Target / tolerance / topic_keywords come from the `scan_config` blob
+    # the /scan handler persists into each candidate's breakdown. Legacy
+    # rows (created before scan_config existed) fall back to the
+    # candidate's own predicted duration as the target with the scan-
+    # default 3s tolerance and no keywords.
     preview_svc = ReelsPreviewService()
 
     # Split rows into cache hits (cheap, sync) and misses (need LLM).
@@ -765,14 +774,29 @@ async def preview_reel_candidates(
     # independent LLM call + DB write; gathering parallelizes the LLM hops
     # (the slow part) so p95 doesn't grow linearly with picks.
     async def _enrich_one(row) -> tuple[Any, dict]:
-        target = int(round(row.predicted_output_duration_s or 25))
-        tolerance = 3  # FE may want to expose this later; safe default for now
+        scan_cfg = (row.breakdown or {}).get("scan_config") or {}
+        try:
+            target = int(scan_cfg.get("target_duration_sec") or 0)
+        except (TypeError, ValueError):
+            target = 0
+        if target <= 0:
+            target = int(round(row.predicted_output_duration_s or 25))
+        try:
+            tolerance = int(scan_cfg.get("duration_tolerance_sec") or 0)
+        except (TypeError, ValueError):
+            tolerance = 0
+        if tolerance <= 0:
+            tolerance = 3
+        topic_keywords = tuple(
+            k for k in (scan_cfg.get("topic_keywords") or ())
+            if isinstance(k, str) and k.strip()
+        )
         payload = await preview_svc.enrich(
             candidate_row=row,
             context=context,
             target_duration_sec=target,
             duration_tolerance_sec=tolerance,
-            topic_keywords=(),  # not persisted on candidate; future enhancement
+            topic_keywords=topic_keywords,
         )
         return row, payload.to_dict()
 
@@ -971,9 +995,9 @@ async def render_reel(
             snapshot["cut_plan"] = merged_cuts
             # B5: compute effective duration + echo for the FE confirmation card.
             # PB1 fix (2026-05-22): align with FE math — `predicted_output_
-            # duration_s` is PRE-speedup (reels_preview_service.py L505), so
-            # subtract raw seconds directly. Dividing by `speed` mixed scales
-            # with the existing baseline display.
+            # duration_s` is PRE-speedup (plan_cuts returns 1.0x durations),
+            # so subtract raw seconds directly. Dividing by `speed` mixed
+            # scales with the existing baseline display.
             override_total_s = sum(
                 v["t_end"] - v["t_start"] for v in validated_overrides
             )

@@ -42,6 +42,7 @@ import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
+import { Route as CenterManagementIndexRouteImport } from "./routes/center-management/index"
 import { Route as AuthTransferIndexRouteImport } from "./routes/auth-transfer/index"
 import { Route as AssessmentIndexRouteImport } from "./routes/assessment/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
@@ -414,6 +415,13 @@ const ChallengeAnalyticsIndexRoute = ChallengeAnalyticsIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/challenge-analytics/index.lazy").then((d) => d.Route),
+)
+const CenterManagementIndexRoute = CenterManagementIndexRouteImport.update({
+  id: "/center-management/",
+  path: "/center-management/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/center-management/index.lazy").then((d) => d.Route),
 )
 const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
   id: "/auth-transfer/",
@@ -1589,6 +1597,7 @@ export interface FileRoutesByFullPath {
   "/ai-center/": typeof AiCenterIndexRoute
   "/assessment/": typeof AssessmentIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
+  "/center-management/": typeof CenterManagementIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
@@ -1768,6 +1777,7 @@ export interface FileRoutesByTo {
   "/ai-center": typeof AiCenterIndexRoute
   "/assessment": typeof AssessmentIndexRoute
   "/auth-transfer": typeof AuthTransferIndexRoute
+  "/center-management": typeof CenterManagementIndexRoute
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
@@ -1949,6 +1959,7 @@ export interface FileRoutesById {
   "/ai-center/": typeof AiCenterIndexRoute
   "/assessment/": typeof AssessmentIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
+  "/center-management/": typeof CenterManagementIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
@@ -2131,6 +2142,7 @@ export interface FileRouteTypes {
     | "/ai-center/"
     | "/assessment/"
     | "/auth-transfer/"
+    | "/center-management/"
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
@@ -2310,6 +2322,7 @@ export interface FileRouteTypes {
     | "/ai-center"
     | "/assessment"
     | "/auth-transfer"
+    | "/center-management"
     | "/challenge-analytics"
     | "/community"
     | "/connector-center-details"
@@ -2490,6 +2503,7 @@ export interface FileRouteTypes {
     | "/ai-center/"
     | "/assessment/"
     | "/auth-transfer/"
+    | "/center-management/"
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
@@ -2671,6 +2685,7 @@ export interface RootRouteChildren {
   AiCenterIndexRoute: typeof AiCenterIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
+  CenterManagementIndexRoute: typeof CenterManagementIndexRoute
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
@@ -3078,6 +3093,13 @@ declare module "@tanstack/react-router" {
       path: "/challenge-analytics"
       fullPath: "/challenge-analytics/"
       preLoaderRoute: typeof ChallengeAnalyticsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/center-management/": {
+      id: "/center-management/"
+      path: "/center-management"
+      fullPath: "/center-management/"
+      preLoaderRoute: typeof CenterManagementIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/auth-transfer/": {
@@ -4113,6 +4135,7 @@ const rootRouteChildren: RootRouteChildren = {
   AiCenterIndexRoute: AiCenterIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
+  CenterManagementIndexRoute: CenterManagementIndexRoute,
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,

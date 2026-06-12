@@ -114,6 +114,8 @@ export const saveGoogleConnector = async (
 export interface ConnectorListItem {
     id: string;
     vendor: string;
+    /** Vendor-side id — e.g. the Zoho form code 'JS-114', the Meta form id, the Google key. */
+    vendorId: string | null;
     audienceId: string;
     platformPageId: string | null;
     platformFormId: string | null;
@@ -131,10 +133,17 @@ export interface ConnectorListItem {
     defaultValuesJson: string | null;
 }
 
-/** List all active ad-platform connectors for an institute. */
-export const listConnectors = async (instituteId: string): Promise<ConnectorListItem[]> => {
+/**
+ * List active connectors for an institute. By default returns only ad-platform
+ * connectors (Meta/Google) for the Integrations screen. Pass includeAllVendors=true
+ * to also get Zoho/Google-Forms/Microsoft connectors for the Center Management screen.
+ */
+export const listConnectors = async (
+    instituteId: string,
+    includeAllVendors = false
+): Promise<ConnectorListItem[]> => {
     const res = await authenticatedAxiosInstance.get(`${BASE}/connectors`, {
-        params: { instituteId },
+        params: includeAllVendors ? { instituteId, includeAllVendors: true } : { instituteId },
     });
     // Guard: API may return non-array on error or if endpoint isn't deployed yet
     return Array.isArray(res.data) ? res.data : [];

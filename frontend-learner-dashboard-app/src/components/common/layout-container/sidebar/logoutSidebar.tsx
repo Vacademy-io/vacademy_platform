@@ -13,15 +13,12 @@ import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { Switch } from "@/components/ui/switch";
-import { useTheme as useModeTheme } from "@/providers/theme-provider";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
-import { User, X } from "@phosphor-icons/react";
+import { User } from "@phosphor-icons/react";
 import { useIsIOS } from "@/hooks/useIsIOS";
-import { Capacitor } from "@capacitor/core";
 
 export const LogoutSidebar = ({
   sidebarComponent,
@@ -36,18 +33,13 @@ export const LogoutSidebar = ({
   } = useStore();
   const navigate = useNavigate();
   const isIOS = useIsIOS();
-  const isMobile = Capacitor.isNativePlatform();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
       window.location.href = homeIconClickRoute;
     }
   };
 
-  const { theme, setTheme } = useModeTheme();
   const { permissions } = useStudentPermissions();
-  const isDark = theme === "dark";
-  const hideModeChangeButton =
-    import.meta.env.VITE_HIDE_MODE_CHANGE_BUTTON === "true";
 
   const [filteredHamburgerItems, setFilteredHamburgerItems] = useState(
     HamBurgerSidebarItemsData
@@ -165,7 +157,7 @@ export const LogoutSidebar = ({
           <div 
             onClick={() => {
               setSidebarOpen();
-              navigate({ to: '/user-profile' as any });
+              navigate({ to: "/user-profile" });
             }}
             className="px-5 py-4 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50/50 to-white/50 dark:from-neutral-900/50 dark:to-neutral-900/50 cursor-pointer hover:from-neutral-100/50 hover:to-neutral-50/50 dark:hover:from-neutral-800/50 dark:hover:to-neutral-800/50 transition-colors"
           >
@@ -202,24 +194,8 @@ export const LogoutSidebar = ({
           </div>
         )}
 
-        {!hideModeChangeButton && (
-          <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-100 dark:border-neutral-800">
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                Dark mode
-              </span>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                Toggle appearance
-              </span>
-            </div>
-            <Switch
-              checked={isDark}
-              onCheckedChange={(checked) =>
-                setTheme(checked ? "dark" : "light")
-              }
-            />
-          </div>
-        )}
+        {/* Dark-mode toggle removed 2026-06-11: dark fidelity is not ready
+            across the redesigned surfaces; the provider pins light. */}
 
         <div className="flex-1 px-3 py-4 overflow-y-auto bg-gradient-to-b from-white to-neutral-50/50 dark:from-neutral-900 dark:to-neutral-900/50">
           <SidebarMenu className="space-y-1.5">
@@ -253,14 +229,6 @@ export const LogoutSidebar = ({
           </SidebarMenu>
         </div>
 
-        <div className="px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-neutral-50 to-white dark:from-neutral-900 dark:to-neutral-900">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center gap-2 text-xs text-neutral-400">
-              <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="font-medium">Connected</span>
-            </div>
-          </div>
-        </div>
       </SheetContent>
     </Sheet>
   );

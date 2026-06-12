@@ -43,6 +43,7 @@ import type {
   Chapter,
 } from "@/stores/study-library/use-modules-with-chapters-store";
 import { fetchSlidesByChapterId, type Slide } from "@/hooks/study-library/use-slides";
+import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
 
 type BreadcrumbSubject = {
   id: string;
@@ -127,7 +128,7 @@ const SlideRow = ({
 }) => {
   const Icon = getSlideIcon(slide);
   const title = getSlideTitle(slide);
-  const isComplete = (slide.percentage_completed ?? 0) >= 80;
+  const isComplete = (slide.percentage_completed ?? 0) >= SLIDE_COMPLETION_THRESHOLD;
   return (
     <button
       type="button"
@@ -522,7 +523,7 @@ export const CourseTreeSidebar = ({
             loading={isLoading}
             subLabel={
               slides && slides.length > 0
-                ? `${slides.filter((s) => (s.percentage_completed ?? 0) >= 80).length}/${slides.length} slides`
+                ? `${slides.filter((s) => (s.percentage_completed ?? 0) >= SLIDE_COMPLETION_THRESHOLD).length}/${slides.length} slides`
                 : undefined
             }
             onToggle={() => toggleChapter(subjectId, moduleId, chapter.id)}
@@ -604,7 +605,7 @@ export const CourseTreeSidebar = ({
             isOnCurrentPath={isOnPath}
             subLabel={
               chapters.length > 0
-                ? `${chapters.filter((c) => (c.percentage_completed ?? 0) >= 90).length}/${chapters.length} chapters`
+                ? `${chapters.filter((c) => (c.percentage_completed ?? 0) >= SLIDE_COMPLETION_THRESHOLD).length}/${chapters.length} chapters`
                 : undefined
             }
             onToggle={() => toggleModule(subjectId, moduleId)}

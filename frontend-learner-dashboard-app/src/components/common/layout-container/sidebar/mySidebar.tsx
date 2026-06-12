@@ -16,17 +16,19 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-import {
-  SidebarStateType,
-  sideBarStateType,
-} from "../../../../types/layout-container-types";
+import { sideBarStateType } from "../../../../types/layout-container-types";
 import { SidebarItem } from "./sidebar-item";
 import {
   HamBurgerSidebarItemsData,
   filterHamburgerMenuItemsWithPermissions,
+  getTerminology,
   getTerminologyPlural,
 } from "./utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import {
+  ContentTerms,
+  RoleTerms,
+  SystemTerms,
+} from "@/types/naming-settings";
 import "./scrollbarStyle.css";
 import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -44,6 +46,7 @@ import {
   AppStoreLogo,
   WindowsLogo,
   AppleLogo,
+  SignOut,
 } from "@phosphor-icons/react";
 import type {
   SidebarItemsType,
@@ -52,6 +55,8 @@ import type {
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useIsIOS } from "@/hooks/useIsIOS";
 import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
+import type { Student } from "@/types/user/user-detail";
 import { X } from "@phosphor-icons/react";
 
 // Local letter-based icon factory for tabs without predefined icons
@@ -64,7 +69,7 @@ const createLetterIcon =
           }`}
         aria-hidden
       >
-        <span className="leading-none font-medium uppercase">{letter}</span>
+        <span className="text-caption leading-none font-medium uppercase">{letter}</span>
       </div>
     );
 
@@ -94,7 +99,6 @@ export const MySidebar = ({
     windowsAppLink,
     macAppLink,
     learnerPortalUrl,
-    instructorPortalUrl,
     subOrgName,
     subOrgLogoUrl,
     hideInstituteName,
@@ -116,6 +120,41 @@ export const MySidebar = ({
     HamBurgerSidebarItemsData
   );
   const [hideSidebar, setHideSidebar] = useState<boolean>(false);
+  const [studentData, setStudentData] = useState<Student | null>(null);
+
+  // Identity footer: read the logged-in learner from Preferences (same
+  // storage the hamburger sheet uses) so the sidebar can show who is
+  // signed in and link to the profile screen.
+  useEffect(() => {
+    const fetchStudentData = async () => {
+      try {
+        const { value } = await Preferences.get({ key: "StudentDetails" });
+        if (!value) return;
+        const parsedData = JSON.parse(value);
+        let studentDetails: Student | null = null;
+        if (Array.isArray(parsedData)) {
+          studentDetails = parsedData.length > 0 ? parsedData[0] : null;
+        } else if (typeof parsedData === "object" && parsedData !== null) {
+          studentDetails = parsedData;
+        }
+        if (studentDetails) setStudentData(studentDetails);
+      } catch (error) {
+        console.error("Error reading student details for sidebar:", error);
+      }
+    };
+    fetchStudentData();
+  }, []);
+
+  const learnerDisplayName =
+    studentData?.full_name?.trim() ||
+    getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+  const learnerInitials =
+    learnerDisplayName
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((word) => word.charAt(0))
+      .join("")
+      .toUpperCase() || "L";
 
   const iconByTabId: Record<string, unknown> = useMemo(
     () => ({
@@ -241,23 +280,38 @@ export const MySidebar = ({
   }
 
   return (
-    <Sidebar side="left" collapsible={sidebarComponent ? "offcanvas" : "icon"}>
+    <Sidebar
+      side="left"
+      collapsible={sidebarComponent ? "offcanvas" : "icon"}
+      // Custom sidebars (the slides-viewer course tree) carry long slide
+      // titles and a breadcrumb trail; give them a wider rail than the
+      // standard nav sidebar.
+      style={
+        sidebarComponent
+          ? ({ "--sidebar-width": "19rem" } as React.CSSProperties)
+          : undefined
+      }
+    >
       <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
-        <SidebarHeader>
+        <SidebarHeader className="border-b border-border pb-2">
           {isAndroid && (
             <button
+              type="button"
               onClick={toggleSidebar}
-              className="absolute top-4 mt-6 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+              aria-label="Close sidebar"
+              className="absolute top-4 mt-6 right-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={18} />
             </button>
           )}
-          <SidebarMenu className={`px-2 ${isAndroid || isIOS ? 'mt-12' : ''}`}>
+          <SidebarMenu className={`px-1 ${isAndroid || isIOS ? 'mt-12' : ''}`}>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="default"
                 className={cn(
-                  "h-auto min-h-10 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                  "h-auto min-h-10 gap-3 rounded-lg data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                  "group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:!p-1",
+                  "[.ui-play_&]:rounded-xl",
                   // When the institute name is hidden and we're not in
                   // sub-org mode, center the logo in the expanded sidebar
                   // so a wide custom-sized logo fills the sheet area.
@@ -270,24 +324,24 @@ export const MySidebar = ({
                 {subOrgName ? (
                   /* Sub-org branding: show sub-org logo/name + "Powered by parent" */
                   <div className="flex flex-col gap-1 py-1 w-full">
-                    <div className="flex items-center gap-2">
-                      <div className="flex aspect-square size-7 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0">
+                    <div className="flex h-10 items-center gap-3">
+                      <div className="flex aspect-square size-8 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0">
                         {subOrgLogoUrl ? (
-                          <img src={subOrgLogoUrl} alt="Logo" className="size-7 object-contain rounded-md bg-white" />
+                          <img src={subOrgLogoUrl} alt="Logo" className="size-8 object-contain rounded-md bg-white" />
                         ) : (
-                          <div className="h-7 w-7 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-primary-700 dark:text-neutral-200">
+                          <div className="size-8 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-caption font-semibold text-primary-500 dark:text-neutral-200">
                             {(subOrgName[0] || "S").toUpperCase()}
                           </div>
                         )}
                       </div>
                       {isExpanded && (
-                        <span className="truncate font-semibold uppercase text-sm leading-tight">
+                        <span className="truncate text-subtitle font-semibold">
                           {subOrgName}
                         </span>
                       )}
                     </div>
                     {isExpanded && (
-                      <div className="flex items-center gap-1.5 pl-9">
+                      <div className="flex items-center gap-1.5 pl-11">
                         <span className="text-caption text-muted-foreground whitespace-nowrap">Powered by</span>
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                           <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-20 object-contain" />
@@ -304,7 +358,7 @@ export const MySidebar = ({
                       className={
                         hasCustomLogoDims
                           ? "flex items-center justify-center text-sidebar-primary-foreground shrink-0"
-                          : "flex aspect-square size-7 items-center justify-center rounded-md text-sidebar-primary-foreground"
+                          : "flex aspect-square size-8 items-center justify-center rounded-md text-sidebar-primary-foreground shrink-0"
                       }
                       style={customLogoStyle}
                     >
@@ -315,7 +369,7 @@ export const MySidebar = ({
                           className={
                             hasCustomLogoDims
                               ? "object-contain rounded-md bg-white"
-                              : "size-7 object-contain rounded-md bg-white"
+                              : "size-8 object-contain rounded-md bg-white"
                           }
                           style={customLogoStyle}
                         />
@@ -323,8 +377,8 @@ export const MySidebar = ({
                         <div
                           className={
                             hasCustomLogoDims
-                              ? "rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-primary-700 dark:text-neutral-200"
-                              : "h-7 w-7 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-xs font-semibold text-primary-700 dark:text-neutral-200"
+                              ? "rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-caption font-semibold text-primary-500 dark:text-neutral-200"
+                              : "size-8 rounded-md bg-primary-50 dark:bg-neutral-800 flex items-center justify-center text-caption font-semibold text-primary-500 dark:text-neutral-200"
                           }
                           style={customLogoStyle}
                         >
@@ -333,8 +387,8 @@ export const MySidebar = ({
                       )}
                     </div>
                     {!hideInstituteName && (
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold uppercase">
+                      <div className="grid h-10 flex-1 content-center text-left leading-tight">
+                        <span className="truncate text-subtitle font-semibold">
                           {instituteName}
                         </span>
                       </div>
@@ -385,11 +439,17 @@ export const MySidebar = ({
         appStoreAppLink ||
         windowsAppLink ||
         macAppLink ||
-        learnerPortalUrl) && (
-          <SidebarFooter>
-            {state === "expanded" || isMobile ? (
-              <div className="flex flex-col gap-2 px-2 pb-2 mt-auto">
-                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider pl-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-600">
+        learnerPortalUrl ||
+        studentData) && (
+          <SidebarFooter className="border-t border-border">
+            {(playStoreAppLink ||
+              appStoreAppLink ||
+              windowsAppLink ||
+              macAppLink ||
+              learnerPortalUrl) &&
+            ((state === "expanded" || isMobile) ? (
+              <div className="flex flex-col gap-2 px-2">
+                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider pl-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
                   Apps & Portals
                 </span>
                 <div className="flex flex-wrap gap-1">
@@ -525,7 +585,62 @@ export const MySidebar = ({
                   </Popover>
                 </SidebarMenuItem>
               </SidebarMenu>
-            )}
+            ))}
+            {studentData &&
+              (state === "expanded" || isMobile ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate({ to: "/user-profile" })}
+                    className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                  >
+                    <span
+                      aria-hidden
+                      className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-500"
+                    >
+                      {learnerInitials}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-body font-medium">
+                      {learnerDisplayName}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate({ to: "/logout" })}
+                    aria-label="Log out"
+                    title="Log out"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                  >
+                    <SignOut className="size-5" weight="duotone" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate({ to: "/user-profile" })}
+                    aria-label="Open profile"
+                    title={learnerDisplayName}
+                    className="flex size-10 items-center justify-center rounded-lg hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                  >
+                    <span
+                      aria-hidden
+                      className="flex size-8 items-center justify-center rounded-full bg-primary-50 text-caption font-semibold text-primary-500"
+                    >
+                      {learnerInitials}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate({ to: "/logout" })}
+                    aria-label="Log out"
+                    title="Log out"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                  >
+                    <SignOut className="size-5" weight="duotone" />
+                  </button>
+                </div>
+              ))}
           </SidebarFooter>
         )}
     </Sidebar>

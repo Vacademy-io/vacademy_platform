@@ -538,7 +538,7 @@ function EmbedComponent() {
 
   if (!isSafetyVerified) {
     return (
-      <LayoutContainer>
+      <LayoutContainer fullWidth>
         <div className="w-full h-nav-offset flex items-center justify-center">
           <SafetyWarningModal
             open={true}
@@ -578,7 +578,7 @@ function EmbedComponent() {
           <span className="truncate text-xs font-medium text-white/80">
             {sessionDetails.title}
           </span>
-          <span className="ml-auto rounded bg-red-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+          <span className="ml-auto rounded bg-red-600 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-white">
             Live
           </span>
         </div>
@@ -593,7 +593,7 @@ function EmbedComponent() {
   }
 
   return (
-    <LayoutContainer>
+    <LayoutContainer fullWidth>
       <Helmet>
         <title>
           {document?.title || sessionDetails.title || (sessionId ? getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession) : getTerminology(ContentTerms.Session, SystemTerms.Session))}

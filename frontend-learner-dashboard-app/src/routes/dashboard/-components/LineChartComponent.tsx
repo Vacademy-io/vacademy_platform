@@ -6,17 +6,9 @@ import { formatTimeFromMillis, millisToMinutes } from "@/helpers/formatTimeFromM
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, TrendUp, Users } from "@phosphor-icons/react";
 import { usePlayTheme } from "@/hooks/use-play-theme";
-
-const chartConfig = {
-    avg_daily_time_minutes: {
-        label: "Your Time",
-        color: "hsl(var(--primary))",
-    },
-    avg_daily_time_minutes_batch: {
-        label: "Batch Average",
-        color: "hsl(var(--muted-foreground))",
-    },
-} satisfies ChartConfig;
+import { cn } from "@/lib/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 
 export interface ChartDataType {
     activity_date: string;
@@ -28,12 +20,25 @@ export interface ChartDataType {
 
 export const LineChartComponent = ({ userActivity }: { userActivity: UserActivityArray }) => {
     const isPlay = usePlayTheme();
+    const batchLabel = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
 
-    // Play mode chart colors
-    const userLineColor = isPlay ? "var(--play-c-success)" : "hsl(var(--primary))";
-    const batchLineColor = isPlay ? "var(--play-c-accent)" : "hsl(var(--muted-foreground))";
+    // ONE data accent: the learner's own line. The batch comparison line is
+    // neutral in every mode so the chart reads "you vs a quiet reference".
+    const userLineColor = isPlay ? "var(--play-c-info)" : "hsl(var(--primary))";
+    const batchLineColor = isPlay ? "var(--play-c-muted)" : "hsl(var(--muted-foreground))";
     const gridColor = isPlay ? "var(--play-c-surface)" : "hsl(var(--border))";
     const bgColor = "hsl(var(--background))";
+
+    const chartConfig = {
+        avg_daily_time_minutes: {
+            label: "Your Time",
+            color: "hsl(var(--primary))",
+        },
+        avg_daily_time_minutes_batch: {
+            label: `${batchLabel} Average`,
+            color: "hsl(var(--muted-foreground))",
+        },
+    } satisfies ChartConfig;
 
     // Transform API data to chart data format and preserve original millisecond values
     const chartData = userActivity.map(item => ({
@@ -54,11 +59,21 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     const avgBatchTime = totalBatchTime / chartData.length;
     const performanceRatio = avgBatchTime > 0 ? (avgUserTime / avgBatchTime) : 0;
 
+    // Honesty gate: only judge the learner when there is activity to judge.
+    const hasActivity = chartData.some(d => d.time_spent_by_user_millis > 0);
+
     const getPerformanceStatus = () => {
-        if (performanceRatio >= 1.2) return { text: "Excellent", color: "bg-green-500/10 text-green-700 border-green-200 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800" };
-        if (performanceRatio >= 1.0) return { text: "Above Average", color: "bg-primary/10 text-primary border-primary/20 [.ui-vibrant_&]:bg-primary/20 [.ui-vibrant_&]:text-primary-800" };
-        if (performanceRatio >= 0.8) return { text: "On Track", color: "bg-blue-500/10 text-blue-700 border-blue-200 [.ui-vibrant_&]:bg-blue-100 [.ui-vibrant_&]:text-blue-800" };
-        return { text: "Needs Focus", color: "bg-orange-500/10 text-orange-700 border-orange-200 [.ui-vibrant_&]:bg-orange-100 [.ui-vibrant_&]:text-orange-800" };
+        if (!hasActivity) {
+            // New learner with zero recorded activity: neutral, no warning color.
+            return {
+                text: "Just getting started",
+                color: "bg-muted/60 text-muted-foreground border-border [.ui-play_&]:bg-play-surface [.ui-play_&]:text-play-ink [.ui-play_&]:border-transparent",
+            };
+        }
+        if (performanceRatio >= 1.2) return { text: "Excellent", color: "bg-success-50 text-success-700 border-success-200 [.ui-vibrant_&]:bg-success-100" };
+        if (performanceRatio >= 1.0) return { text: "Above Average", color: "bg-success-50 text-success-600 border-success-200 [.ui-vibrant_&]:bg-success-100" };
+        if (performanceRatio >= 0.8) return { text: "On Track", color: "bg-info-50 text-info-700 border-info-200 [.ui-vibrant_&]:bg-info-100" };
+        return { text: "Needs Focus", color: "bg-warning-50 text-warning-700 border-warning-200 [.ui-vibrant_&]:bg-warning-100" };
     };
 
     const performanceStatus = getPerformanceStatus();
@@ -68,11 +83,11 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Enhanced Header with Performance Metrics */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
                 <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-primary/20 [.ui-play_&]:rounded-xl">
-                        <TrendUp size={18} className="text-primary" />
+                    <div className="p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-play-surface [.ui-play_&]:rounded-xl">
+                        <TrendUp size={18} className="text-primary [.ui-play_&]:text-play-ink" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black">Learning Progress Trend</h3>
+                        <h3 className="text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Learning Progress Trend</h3>
                         <p className="text-xs sm:text-sm text-muted-foreground flex items-center space-x-1">
                             <Calendar size={12} className="flex-shrink-0" />
                             <span>Weekly learning activity comparison</span>
@@ -84,18 +99,18 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                     <Badge className={`${performanceStatus.color} border text-xs sm:text-sm font-medium px-2 sm:px-3 py-1 [.ui-play_&]:font-black [.ui-play_&]:rounded-full [.ui-play_&]:shadow-play-badge`}>
                         {performanceStatus.text}
                     </Badge>
-                    {chartData.length > 0 && (
-                        <div className="hidden md:flex items-center space-x-4 bg-gray-50/80 rounded-lg px-3 sm:px-4 py-2 border border-gray-200/60 [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl">
+                    {hasActivity && chartData.length > 0 && (
+                        <div className="hidden md:flex items-center space-x-4 bg-muted/40 rounded-lg px-3 sm:px-4 py-2 border border-border [.ui-play_&]:rounded-xl">
                             <div className="flex items-center space-x-2 text-xs sm:text-sm">
-                                <div className="w-2 sm:w-3 h-2 sm:h-3 rounded-full bg-primary-500"></div>
-                                <span className="text-gray-600 font-medium [.ui-play_&]:text-primary [.ui-play_&]:font-bold">
+                                <div className="w-2 sm:w-3 h-2 sm:h-3 rounded-full bg-primary [.ui-play_&]:bg-play-info"></div>
+                                <span className="text-foreground font-medium tabular-nums [.ui-play_&]:text-play-ink">
                                     Avg: {formatTimeFromMillis(avgUserTime * 60 * 1000, 'minutes')}
                                 </span>
                             </div>
-                            <div className="w-px h-3 sm:h-4 bg-gray-300 [.ui-play_&]:bg-primary-200"></div>
+                            <div className="w-px h-3 sm:h-4 bg-border"></div>
                             <div className="flex items-center space-x-2 text-xs sm:text-sm">
-                                <Users size={12} className="text-gray-400 [.ui-play_&]:text-primary-400" />
-                                <span className="text-gray-600 font-medium [.ui-play_&]:text-primary [.ui-play_&]:font-bold">
+                                <Users size={12} className="text-muted-foreground" />
+                                <span className="text-foreground font-medium tabular-nums [.ui-play_&]:text-play-ink">
                                     {formatTimeFromMillis(avgBatchTime * 60 * 1000, 'minutes')}
                                 </span>
                             </div>
@@ -105,14 +120,14 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             </div>
 
             {/* Enhanced Legend */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/30 rounded-lg sm:rounded-xl border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/40 rounded-lg sm:rounded-xl border border-border [.ui-play_&]:rounded-xl">
                 <div className="flex items-center space-x-2">
-                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-primary shadow-sm"></div>
-                    <span className="text-xs sm:text-sm font-medium text-foreground">Your Study Time</span>
+                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-primary [.ui-play_&]:bg-play-info"></div>
+                    <span className="text-xs sm:text-sm font-medium text-foreground [.ui-play_&]:text-play-ink">Your Study Time</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-muted-foreground shadow-sm"></div>
-                    <span className="text-xs sm:text-sm font-medium text-foreground">Batch Average</span>
+                    <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-muted-foreground [.ui-play_&]:bg-play-muted"></div>
+                    <span className="text-xs sm:text-sm font-medium text-foreground [.ui-play_&]:text-play-ink">{batchLabel} Average</span>
                 </div>
                 <div className="ml-auto flex items-center space-x-1 text-xs text-muted-foreground">
                     <Clock size={10} className="sm:w-3 sm:h-3" />
@@ -125,7 +140,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 {/* Background pattern */}
                 <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-transparent"></div>
 
-                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
+                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-play-surface [.ui-play_&]:rounded-xl">
                     <ResponsiveContainer width="100%" height={280}>
                         <ChartContainer config={chartConfig} className="w-full h-full overflow-hidden">
                             <LineChart
@@ -183,7 +198,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
 
                                 <ChartTooltip
                                     cursor={{
-                                        stroke: 'hsl(var(--primary))',
+                                        stroke: userLineColor,
                                         strokeDasharray: '4 4',
                                         strokeWidth: 2,
                                         opacity: 0.6
@@ -191,10 +206,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     content={({ active, payload, label }) => {
                                         if (active && payload && payload.length) {
                                             return (
-                                                <div className="bg-white/95 backdrop-blur-sm border border-gray-200/80 rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-lg max-w-xs">
+                                                <div className="bg-background/95 backdrop-blur-sm border border-border rounded-lg sm:rounded-xl p-3 sm:p-4 shadow-lg max-w-xs">
                                                     <div className="flex items-center space-x-2 mb-2 sm:mb-3">
-                                                        <Calendar size={12} className="text-primary-500 flex-shrink-0" />
-                                                        <p className="text-xs sm:text-sm font-semibold text-gray-900">
+                                                        <Calendar size={12} className="text-muted-foreground flex-shrink-0" />
+                                                        <p className="text-xs sm:text-sm font-semibold text-foreground">
                                                             {dayjs(label).format("dddd, MMM DD")}
                                                         </p>
                                                     </div>
@@ -208,15 +223,16 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                                             return (
                                                                 <div key={`item-${index}`} className="flex items-center justify-between space-x-3 sm:space-x-4">
                                                                     <div className="flex items-center space-x-2">
+                                                                        {/* Inline style allowed: swatch mirrors the dynamic recharts series color */}
                                                                         <div
                                                                             className="w-2 h-2 sm:w-3 sm:h-3 rounded-full shadow-sm"
                                                                             style={{ backgroundColor: entry.color }}
                                                                         />
-                                                                        <span className="text-xs sm:text-sm text-gray-700 font-medium">
+                                                                        <span className="text-xs sm:text-sm text-muted-foreground font-medium">
                                                                             {entry.name}
                                                                         </span>
                                                                     </div>
-                                                                    <span className="text-xs sm:text-sm font-semibold text-gray-900">
+                                                                    <span className="text-xs sm:text-sm font-semibold text-foreground tabular-nums">
                                                                         {formatTimeFromMillis(originalMillis, 'full')}
                                                                     </span>
                                                                 </div>
@@ -224,12 +240,12 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                                         })}
                                                     </div>
 
-                                                    {/* Performance indicator in tooltip */}
-                                                    {payload.length >= 2 && payload[0]?.value !== undefined && payload[1]?.value !== undefined && (
-                                                        <div className="mt-2 sm:mt-3 pt-2 border-t border-gray-200">
+                                                    {/* Performance indicator: only judge days the learner actually studied */}
+                                                    {payload.length >= 2 && payload[0]?.value !== undefined && payload[1]?.value !== undefined && (payload[0]?.payload?.time_spent_by_user_millis || 0) > 0 && (
+                                                        <div className="mt-2 sm:mt-3 pt-2 border-t border-border">
                                                             <div className="flex items-center justify-between text-xs">
-                                                                <span className="text-gray-600">Performance vs Batch:</span>
-                                                                <span className={`font-semibold ${(payload[0].value || 0) >= (payload[1].value || 0) ? 'text-success-600' : 'text-warning-600'
+                                                                <span className="text-muted-foreground">Performance vs {batchLabel}:</span>
+                                                                <span className={`font-semibold ${(payload[0].value || 0) >= (payload[1].value || 0) ? 'text-success-600' : 'text-muted-foreground'
                                                                     }`}>
                                                                     {(payload[0].value || 0) >= (payload[1].value || 0) ? '↗ Above' : '↘ Below'}
                                                                 </span>
@@ -243,22 +259,22 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     }}
                                 />
 
-                                {/* Batch Average Line (Background) */}
+                                {/* Batch Average Line (neutral reference, background) */}
                                 <Line
                                     dataKey="avg_daily_time_minutes_batch"
                                     type="monotone"
-                                    name="Batch Average"
+                                    name={`${batchLabel} Average`}
                                     stroke={batchLineColor}
-                                    strokeWidth={isPlay ? 3 : 2}
-                                    strokeDasharray={isPlay ? "6 3" : "8 4"}
+                                    strokeWidth={2}
+                                    strokeDasharray="6 4"
                                     dot={{
                                         fill: batchLineColor,
-                                        r: isPlay ? 4 : 3,
+                                        r: 3,
                                         strokeWidth: 2,
                                         stroke: bgColor
                                     }}
                                     activeDot={{
-                                        r: isPlay ? 7 : 5,
+                                        r: 5,
                                         stroke: batchLineColor,
                                         strokeWidth: 3,
                                         fill: bgColor,
@@ -266,7 +282,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                                     }}
                                 />
 
-                                {/* User Time Line (Foreground) */}
+                                {/* User Time Line (the single data accent, foreground) */}
                                 <Line
                                     dataKey="avg_daily_time_minutes"
                                     type="monotone"
@@ -294,39 +310,53 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 </div>
             </div>
 
-            {/* Performance Insights */}
+            {/* Performance Insights: quiet neutral tiles when there is activity,
+                a friendly note (no zeros, no judgment) when there is none yet */}
             {chartData.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
-                        <div className="flex items-center space-x-2 mb-1">
-                            <TrendUp size={14} className="text-primary-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Consistency</span>
+                hasActivity ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                            <div className="flex items-center space-x-2 mb-1">
+                                <TrendUp size={14} className="text-muted-foreground" />
+                                <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Consistency</span>
+                            </div>
+                            <p className="text-sm font-bold text-foreground tabular-nums [.ui-play_&]:text-play-ink">
+                                {chartData.filter(d => d.avg_daily_time_minutes > 0).length}/{chartData.length} active days
+                            </p>
                         </div>
-                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
-                            {chartData.filter(d => d.avg_daily_time_minutes > 0).length}/{chartData.length} active days
-                        </p>
-                    </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
-                        <div className="flex items-center space-x-2 mb-1">
-                            <Clock size={14} className="text-success-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Peak Day</span>
+                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                            <div className="flex items-center space-x-2 mb-1">
+                                <Clock size={14} className="text-muted-foreground" />
+                                <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Peak Day</span>
+                            </div>
+                            <p className="text-sm font-bold text-foreground tabular-nums [.ui-play_&]:text-play-ink">
+                                {formatTimeFromMillis(Math.max(...chartData.map(d => d.time_spent_by_user_millis)), 'minutes')}
+                            </p>
                         </div>
-                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
-                            {formatTimeFromMillis(Math.max(...chartData.map(d => d.time_spent_by_user_millis)), 'minutes')}
-                        </p>
-                    </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
-                        <div className="flex items-center space-x-2 mb-1">
-                            <Users size={14} className="text-info-600" />
-                            <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Vs Batch</span>
+                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                            <div className="flex items-center space-x-2 mb-1">
+                                <Users size={14} className="text-muted-foreground" />
+                                <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Vs {batchLabel}</span>
+                            </div>
+                            <p className={cn(
+                                "text-sm font-bold tabular-nums",
+                                performanceRatio >= 1
+                                    ? "text-success-600 [.ui-play_&]:text-play-success-deep"
+                                    : "text-foreground [.ui-play_&]:text-play-ink"
+                            )}>
+                                {performanceRatio > 1 ? '+' : ''}{((performanceRatio - 1) * 100).toFixed(0)}% difference
+                            </p>
                         </div>
-                        <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
-                            {performanceRatio > 1 ? '+' : ''}{((performanceRatio - 1) * 100).toFixed(0)}% difference
+                    </div>
+                ) : (
+                    <div className="rounded-lg sm:rounded-xl border border-border bg-muted/40 p-4 text-center [.ui-play_&]:rounded-xl">
+                        <p className="text-sm font-medium text-muted-foreground">
+                            Your activity will appear here as you learn.
                         </p>
                     </div>
-                </div>
+                )
             )}
         </div>
     );

@@ -7,12 +7,10 @@ import { getStoredDetails } from "@/routes/assessment/examination/-utils.ts/useF
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ChartBar, Clock, Lightning, Target, Medal, TrendUp, ChartBarHorizontal, Table } from "@phosphor-icons/react";
+import { Clock, Target, Medal, TrendUp, ChartBarHorizontal, Table } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { cn } from "@/lib/utils";
-import { playIllustrations } from "@/assets/play-illustrations";
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
@@ -67,7 +65,7 @@ const InlineStat = ({
     </div>
     <div>
       <span className="text-sm font-bold [.ui-play_&]:text-white">{value}</span>
-      <span className="text-xs text-muted-foreground ml-1 [.ui-play_&]:text-white/60">{label}</span>
+      <span className="text-xs text-muted-foreground ml-1 [.ui-play_&]:text-white/90">{label}</span>
     </div>
   </div>
 );
@@ -79,6 +77,9 @@ export const PastLearningInsights = () => {
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [streakDays, setStreakDays] = useState<number>(0);
   const [activeView, setActiveView] = useState<"chart" | "table">("chart");
+
+  // Honesty gate: with zero recorded activity the header zero-stats are noise.
+  const hasActivity = userActivity.some((day) => day.time_spent_by_user_millis > 0);
 
   useEffect(() => {
     const fetchUserActivity = async () => {
@@ -142,10 +143,12 @@ export const PastLearningInsights = () => {
     <div className="animate-fade-in-up">
       <Card className={cn(
         "shadow-none relative overflow-hidden",
-        "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20",
-        "[.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
+        // Vibrant: white card with a tenant-primary top rail (no fixed hues)
+        "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
         "[.ui-vibrant_&]:shadow-sm",
-        "[.ui-play_&]:!bg-play-info [.ui-play_&]:!border-2 [.ui-play_&]:!border-play-info-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-info"
+        // Navy is the only dark play surface that may carry white text;
+        // the bright play-info band failed the contrast rule.
+        "[.ui-play_&]:!bg-play-navy [.ui-play_&]:!border-2 [.ui-play_&]:!border-play-navy-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-navy"
       )}>
         {/* Header: title + inline stats + view toggle */}
         <CardHeader className="px-5 py-3 border-b [.ui-play_&]:border-white/20">
@@ -156,15 +159,19 @@ export const PastLearningInsights = () => {
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Learning Progress</CardTitle>
-                <CardDescription className="text-xs [.ui-play_&]:text-white/60">Past 7 days activity vs batch average</CardDescription>
+                <CardDescription className="text-xs [.ui-play_&]:text-white/90">Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average</CardDescription>
               </div>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Inline stats */}
-              <InlineStat label="avg" value={avgTimeSpent} icon={Clock} />
-              <InlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
-              <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+              {/* Inline stats: only shown once there is real activity (no wall of zeros) */}
+              {hasActivity && (
+                <>
+                  <InlineStat label="avg" value={avgTimeSpent} icon={Clock} />
+                  <InlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
+                  <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+                </>
+              )}
 
               {/* View toggle */}
               <div className="flex items-center bg-muted/50 rounded-lg p-0.5 [.ui-play_&]:bg-white/20">
@@ -173,8 +180,8 @@ export const PastLearningInsights = () => {
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "chart"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-info-deep"
-                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-ink"
+                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white"
                   )}
                   title="Chart view"
                 >
@@ -185,8 +192,8 @@ export const PastLearningInsights = () => {
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "table"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-info-deep"
-                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-ink"
+                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white"
                   )}
                   title="Table view"
                 >

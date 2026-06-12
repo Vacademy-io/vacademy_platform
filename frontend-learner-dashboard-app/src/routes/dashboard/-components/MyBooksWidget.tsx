@@ -13,51 +13,66 @@ interface MyBooksWidgetProps {
     className?: string;
 }
 
+interface BookPackage {
+    id?: string;
+    package_name?: string;
+    instructors?: { full_name?: string }[];
+}
+
 const PAGE_SIZE = 10;
 
 export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
     const [initialLoading, setInitialLoading] = useState(true);
     const [loading, setLoading] = useState(false);
-    const [books, setBooks] = useState<any[]>([]);
+    const [books, setBooks] = useState<BookPackage[]>([]);
     const [activeTab, setActiveTab] = useState("purchased");
     const [page, setPage] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [totalBooks, setTotalBooks] = useState(0);
     const [levelIdMap, setLevelIdMap] = useState<Record<string, string>>({});
+    // Whether the learner has any books at all (across both tabs). When false
+    // and settled, the widget renders nothing instead of an empty shell.
+    const [hasAnyBooks, setHasAnyBooks] = useState(false);
 
-    const fetchBooks = useCallback(async (levelId: string | undefined, pageNo: number) => {
-        try {
-            setLoading(true);
-            const instituteId = await getInstituteId();
-            const response = await authenticatedAxiosInstance.post(
-                urlPublicCourseDetails,
-                {
-                    status: [],
-                    level_ids: levelId ? [levelId] : [],
-                    faculty_ids: [],
-                    search_by_name: "",
-                    tag: [],
-                    package_types: ["COURSE"],
-                    min_percentage_completed: 0,
-                    max_percentage_completed: 0,
-                    type: "PROGRESS",
-                    sort_columns: { createdAt: "DESC" },
-                },
-                {
-                    params: { instituteId, page: pageNo, size: PAGE_SIZE },
-                }
-            );
+    const fetchBooks = useCallback(
+        async (levelId: string | undefined, pageNo: number): Promise<number> => {
+            try {
+                setLoading(true);
+                const instituteId = await getInstituteId();
+                const response = await authenticatedAxiosInstance.post(
+                    urlPublicCourseDetails,
+                    {
+                        status: [],
+                        level_ids: levelId ? [levelId] : [],
+                        faculty_ids: [],
+                        search_by_name: "",
+                        tag: [],
+                        package_types: ["COURSE"],
+                        min_percentage_completed: 0,
+                        max_percentage_completed: 0,
+                        type: "PROGRESS",
+                        sort_columns: { createdAt: "DESC" },
+                    },
+                    {
+                        params: { instituteId, page: pageNo, size: PAGE_SIZE },
+                    }
+                );
 
-            setBooks(response.data?.content || []);
-            setTotalPages(response.data?.totalPages || 0);
-            setTotalBooks(response.data?.totalElements || 0);
-        } catch (error) {
-            // Silently skip
-        } finally {
-            setLoading(false);
-            setInitialLoading(false);
-        }
-    }, []);
+                const total = response.data?.totalElements || 0;
+                setBooks(response.data?.content || []);
+                setTotalPages(response.data?.totalPages || 0);
+                setTotalBooks(total);
+                if (total > 0) setHasAnyBooks(true);
+                return total;
+            } catch {
+                // Silently skip
+                return 0;
+            } finally {
+                setLoading(false);
+            }
+        },
+        []
+    );
 
     useEffect(() => {
         const init = async () => {
@@ -76,8 +91,37 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                     }
                 }
                 setLevelIdMap(map);
-                await fetchBooks(map["buy"], 0);
-            } catch (error) {
+                const purchasedCount = await fetchBooks(map["buy"], 0);
+                // Purchased tab is empty — probe the rented level so we only
+                // hide the widget when BOTH tabs are genuinely empty.
+                if (purchasedCount === 0 && map["rent"]) {
+                    try {
+                        const rentProbe = await authenticatedAxiosInstance.post(
+                            urlPublicCourseDetails,
+                            {
+                                status: [],
+                                level_ids: [map["rent"]],
+                                faculty_ids: [],
+                                search_by_name: "",
+                                tag: [],
+                                package_types: ["COURSE"],
+                                min_percentage_completed: 0,
+                                max_percentage_completed: 0,
+                                type: "PROGRESS",
+                                sort_columns: { createdAt: "DESC" },
+                            },
+                            { params: { instituteId, page: 0, size: 1 } }
+                        );
+                        if ((rentProbe.data?.totalElements || 0) > 0) {
+                            setHasAnyBooks(true);
+                        }
+                    } catch {
+                        // Probe failure: keep the widget hidden
+                    }
+                }
+            } catch {
+                // Silently skip — widget stays hidden when nothing loaded
+            } finally {
                 setInitialLoading(false);
             }
         };
@@ -95,6 +139,11 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                 </CardContent>
             </Card>
         );
+    }
+
+    // Settled and no books on either tab: render nothing instead of an empty shell
+    if (!hasAnyBooks) {
+        return null;
     }
 
     return (
@@ -120,7 +169,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                     <div className={cn("space-y-2 transition-all duration-300", loading && "opacity-50 pointer-events-none")}>
                         {books.length > 0 ? (
                             <div className="grid grid-cols-1 gap-2">
-                                {books.map((book: any, idx: number) => (
+                                {books.map((book, idx) => (
                                     <div
                                         key={book.id || idx}
                                         className="flex items-center gap-3 p-2.5 rounded-lg border border-border bg-card hover:bg-secondary/20 transition-colors shadow-sm"

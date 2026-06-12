@@ -128,9 +128,9 @@ export function UpcomingLiveClassesWidget({
     <Card
       className={cn(
         "relative overflow-hidden transition-shadow hover:shadow-md",
-        "[.ui-vibrant_&]:border-violet-200 dark:[.ui-vibrant_&]:border-violet-800/50",
-        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-violet-50/50",
-        "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20",
+        // Vibrant: white card with a tenant-primary top rail (no fixed hues)
+        "[.ui-vibrant_&]:border-primary-100",
+        "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
         // Play: premium solid navy card with press shadow
         "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
         "[.ui-play_&]:shadow-play-4d-navy [.ui-play_&]:hover:shadow-play-4d-navy",
@@ -148,7 +148,10 @@ export function UpcomingLiveClassesWidget({
           <div
             className={cn(
               "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400",
-              "[.ui-vibrant_&]:bg-violet-200/70 dark:[.ui-vibrant_&]:bg-violet-800/40",
+              // Vibrant: primary icon chip (dark-prefixed too so the default
+              // dark: violet classes can't out-rank it in dark mode)
+              "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
+              "dark:[.ui-vibrant_&]:bg-primary-100 dark:[.ui-vibrant_&]:text-primary-500",
               // Play icon
               "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
             )}

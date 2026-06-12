@@ -78,21 +78,29 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
 }
 
 function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
+  // Curated dashboard order. The dashboard renders a 2/3 main column and a
+  // 1/3 rail on large screens; orders only sort widgets WITHIN their column,
+  // so institutes' saved orders keep working after the redesign.
   const ids: StudentDashboardWidgetConfig["id"][] = [
-    "coursesStat",
-    "assessmentsStat",
-    "evaluationStat",
+    // Main column: continue learning first, then the stat-cards row.
     "continueLearning",
+    "coursesStat",
+    "liveClasses",
+    "evaluationStat",
+    "assessmentsStat",
+    // Progress and insights widgets.
     "learningAnalytics",
     "activityTrend",
     "dailyProgress",
-    "liveClasses",
-    "thisWeekAttendance",
-    "referAFriend",
     "myClasses",
+    // Commerce widgets (hidden in play mode).
     "myMembership",
     "myBooks",
+    // Rail column: announcements pin panel renders first (not configurable),
+    // then live classes and attendance.
     "upcomingLiveClasses",
+    "thisWeekAttendance",
+    "referAFriend",
   ];
   return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }

@@ -29,6 +29,7 @@ export const StatCard = ({
     className,
     iconClassName,
     illustration,
+    emptyActionLabel,
 }: {
     title: string;
     count: number | undefined;
@@ -39,26 +40,37 @@ export const StatCard = ({
     className?: string;
     iconClassName?: string;
     illustration?: React.FC<React.SVGProps<SVGSVGElement>>;
+    /** Shown instead of the title when the count is genuinely 0, turning the
+     *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
+    emptyActionLabel?: string;
 }) => {
     const isPlay = usePlayTheme();
 
+    // Skeleton while loading — covers the count-not-yet-known (undefined/null) case
     if (isLoading) return <StatCardSkeleton />;
+
+    const isEmpty = (count ?? 0) === 0;
+    const showAction = isEmpty && !!emptyActionLabel;
+    const subtitleText = showAction ? emptyActionLabel : title;
 
     return (
         <Card
             onClick={onClick}
             className={cn(
                 "group relative overflow-hidden cursor-pointer transition-all duration-base ease-out-soft hover:shadow-md hover:border-primary/20 h-full",
-                // Vibrant Mode Styles
-                "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
-                "[.ui-vibrant_&]:border-slate-200 dark:[.ui-vibrant_&]:border-slate-700",
+                // Vibrant: card stays white unless the caller passes the
+                // primary-50 wash + top-rail via className (tenant grammar)
                 // Play Mode Styles
                 "[.ui-play_&]:border-0 [.ui-play_&]:hover:-translate-y-1 [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
                 className
             )}
             tabIndex={0}
             role="button"
-            aria-label={`View ${title} - ${count} items`}
+            aria-label={
+                showAction
+                    ? `${title} - ${emptyActionLabel}`
+                    : `View ${title} - ${count ?? 0} items`
+            }
             onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
@@ -85,7 +97,7 @@ export const StatCard = ({
                                 {(count ?? 0).toLocaleString()}
                             </div>
                             <div className="text-caption font-bold text-white/90 uppercase tracking-wide">
-                                {title}
+                                {subtitleText}
                             </div>
                         </div>
                     </div>
@@ -101,8 +113,7 @@ export const StatCard = ({
                         <div className="flex items-center justify-between mb-3">
                             <div className={cn(
                                 "p-2 bg-primary/10 rounded-md text-primary ring-1 ring-primary/20 transition-colors group-hover:bg-primary/20",
-                                "[.ui-vibrant_&]:ring-0 [.ui-vibrant_&]:text-slate-700",
-                                "[.ui-vibrant_&]:dark:bg-slate-800 [.ui-vibrant_&]:dark:text-slate-300",
+                                "[.ui-vibrant_&]:ring-0",
                                 iconClassName
                             )}>
                                 <Icon size={20} weight="duotone" className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -117,9 +128,10 @@ export const StatCard = ({
                             </div>
                             <div className={cn(
                                 "text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors line-clamp-1",
-                                "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:group-hover:text-primary"
+                                "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:group-hover:text-primary",
+                                showAction && "text-primary font-semibold group-hover:text-primary"
                             )}>
-                                {title}
+                                {subtitleText}
                             </div>
                         </div>
                     </CardContent>

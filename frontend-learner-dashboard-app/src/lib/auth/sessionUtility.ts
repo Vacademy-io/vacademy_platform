@@ -149,13 +149,19 @@ const isTokenExpired = (token: string | null): boolean => {
     return true;
   }
 
-  const tokenData = jwtDecode(token);
+  try {
+    const tokenData = jwtDecode(token);
 
-  if (!isNullOrEmptyOrUndefined(tokenData.exp)) {
-    const expirationTime = new Date(tokenData.exp * 1000); // Convert seconds to milliseconds
-    return expirationTime <= new Date(); // Check if expiration time is less than or equal to current time
-  } else {
-    // Expiration time not found in token, consider it expired
+    if (!isNullOrEmptyOrUndefined(tokenData.exp)) {
+      const expirationTime = new Date(tokenData.exp * 1000); // Convert seconds to milliseconds
+      return expirationTime <= new Date(); // Check if expiration time is less than or equal to current time
+    } else {
+      // Expiration time not found in token, consider it expired
+      return true;
+    }
+  } catch {
+    // Malformed token — treat as expired so callers go through the
+    // refresh/login path instead of crashing on the decode
     return true;
   }
 };

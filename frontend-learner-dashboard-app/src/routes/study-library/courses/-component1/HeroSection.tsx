@@ -1,12 +1,19 @@
 import { H1 } from "@/components/design-system/typography";
 import { cn } from "@/lib/utils";
-import { BookOpen } from "@phosphor-icons/react";
+import { BookOpen, Play } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { handleFetchUserRoleDetails } from "../-services/institute-details";
 import { useEffect, useState } from "react";
+import {
+    getLatestResume,
+    resumeSearchParams,
+    RESUME_ROUTE,
+    type ResumeEntry,
+} from "@/services/resume-thread";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
@@ -28,22 +35,47 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
-    const { data: instituteDetails } = useSuspenseQuery(
+    // useQuery (NOT useSuspenseQuery): a failed fetch here must not throw to
+    // the router error boundary and replace the whole courses page — the hero
+    // only loses its optional "Create Course" button.
+    const { data: instituteDetails } = useQuery(
         handleGetPublicInstituteDetails()
     );
 
-    const { data: userRoleDetails, isLoading } = useSuspenseQuery(
+    const { data: userRoleDetails, isLoading } = useQuery(
         handleFetchUserRoleDetails()
     );
 
     const [hasTeacherAndStudentRole, setHasTeacherAndStudentRole] =
         useState(false);
 
+    const navigate = useNavigate();
+    // Resume thread is written by the slides viewer; read once per mount —
+    // the catalog remounts on every visit, so mount-time freshness is enough.
+    const [resume] = useState<ResumeEntry | null>(() => getLatestResume());
+
     const roleNames = userRoleDetails?.roles?.map(
         (role: UserRole) => role.role_name
     );
 
+    const handleResume = () => {
+        if (!resume) return;
+        navigate({
+            to: RESUME_ROUTE,
+            search: resumeSearchParams(resume) as {
+                courseId: string;
+                levelId?: string;
+                subjectId: string;
+                moduleId: string;
+                chapterId: string;
+                slideId: string;
+                sessionId: string;
+            },
+        });
+    };
+
     const handleNavigate = () => {
+        if (!instituteDetails?.teacher_portal_base_url) return;
         const accessToken = localStorage.getItem(TokenKey.accessToken);
         const refreshToken = localStorage.getItem(TokenKey.refreshToken);
         window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
@@ -51,7 +83,8 @@ const HeroSection = ({
 
     useEffect(() => {
         setHasTeacherAndStudentRole(
-            roleNames.includes("STUDENT") && roleNames.includes("TEACHER")
+            (roleNames?.includes("STUDENT") ?? false) &&
+                (roleNames?.includes("TEACHER") ?? false)
         );
     }, [userRoleDetails]);
 
@@ -106,7 +139,38 @@ const HeroSection = ({
             </div>
 
             <div className="relative z-10 flex flex-col lg:flex-row mx-auto p-1 sm:p-2 lg:p-3 min-h-20 sm:min-h-8">
-                {/* Content Section */}
+                {/* Content Section — leads with the resume thread when one exists */}
+                {resume ? (
+                    <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
+                        <div className="animate-fade-in-up w-full max-w-2xl min-w-0 text-center lg:text-left">
+                            <p
+                                className={cn(
+                                    "mb-1 text-caption font-semibold uppercase tracking-wider text-muted-foreground",
+                                    "[.ui-vibrant_&]:text-primary"
+                                )}
+                            >
+                                Jump back in
+                            </p>
+                            <h1 className="line-clamp-2 break-words text-display-sm text-foreground">
+                                {resume.slideTitle}
+                            </h1>
+                            {(resume.courseName || resume.chapterName) && (
+                                <p className="mt-1 truncate text-sm text-muted-foreground">
+                                    {resume.courseName ?? resume.chapterName}
+                                </p>
+                            )}
+                            <div className="mt-3">
+                                <MyButton
+                                    onClick={handleResume}
+                                    className="w-full gap-2 sm:w-auto"
+                                >
+                                    <Play size={16} weight="fill" />
+                                    Continue
+                                </MyButton>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
                 <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
                     <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
                         {/* Header with Icon */}
@@ -151,6 +215,7 @@ const HeroSection = ({
                         </div>
                     </div>
                 </div>
+                )}
 
                 {/* Actions Section (image removed) */}
                 <div

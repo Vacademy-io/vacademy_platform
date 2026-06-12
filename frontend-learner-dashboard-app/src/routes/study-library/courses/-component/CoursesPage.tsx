@@ -6,7 +6,7 @@ import Pagination from "./Pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
 
 interface CoursesPageProps {
@@ -141,29 +141,6 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
         };
     }, [showFilters, isSticky]);
 
-    // Convert thumbnail_file_id to URLs with individual loading (more reliable)
-    useEffect(() => {
-        const convertThumbnailsToUrls = async () => {
-            //  console.log(`Starting image conversion for ${courseData.length} courses`);
-            // Collect all valid file IDs
-            const validFileIds = courseData.content
-                .map((course, index) => ({
-                    fileId: course.thumbnail_file_id,
-                    index,
-                }))
-                .filter((item) => item.fileId && item.fileId.trim() !== "");
-
-            if (validFileIds.length === 0) {
-
-                return;
-            }
-        };
-
-        if (courseData.content.length > 0) {
-            convertThumbnailsToUrls();
-        }
-    }, [courseData]);
-
     return (
         <div
             ref={scrollRef}
@@ -296,19 +273,19 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                 </div>
                                 <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2">
                                     No{" "}
-                                    {getTerminology(
+                                    {getTerminologyPlural(
                                         ContentTerms.Course,
                                         SystemTerms.Course
-                                    ).toLocaleLowerCase()}
-                                    s found
+                                    ).toLocaleLowerCase()}{" "}
+                                    found
                                 </h3>
                                 <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
                                     We couldn&apos;t find anything matching your search. Try different keywords, adjust your filters, or clear them to see all available{" "}
-                                    {getTerminology(
+                                    {getTerminologyPlural(
                                         ContentTerms.Course,
                                         SystemTerms.Course
                                     ).toLocaleLowerCase()}
-                                    s.
+                                    .
                                 </p>
                             </div>
                         </div>
@@ -317,11 +294,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             {/* Compact Results Summary */}
                             <div className="text-caption sm:text-xs text-muted-foreground mb-1">
                                 {courseData.totalElements}{" "}
-                                {getTerminology(
+                                {getTerminologyPlural(
                                     ContentTerms.Course,
                                     SystemTerms.Course
-                                ).toLocaleLowerCase()}
-                                s • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
+                                ).toLocaleLowerCase()}{" "}
+                                • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
                             </div>
 
                             {/* Course Grid — extra column at xl so wide
@@ -371,7 +348,9 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                 ""
                                             }
                                             rating={course.rating || 0}
-                                            studentCount={0}
+                                            // studentCount intentionally omitted: the API does not
+                                            // return a real count yet, and passing a hardcoded 0
+                                            // rendered a fake zero. The card hides it when absent.
                                             percentageCompleted={
                                                 course.percentage_completed || 0
                                             }

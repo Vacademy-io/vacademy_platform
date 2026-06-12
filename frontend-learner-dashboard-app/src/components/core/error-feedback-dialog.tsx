@@ -244,41 +244,32 @@ export function ErrorFeedbackDialog({
             });
 
             if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
-                let eventId = initialEventId;
+                // captureFeedback creates its own feedback event in Sentry —
+                // no synthetic info-level captureMessage needed. Attachments
+                // ride along on the same event via the hint.
+                const attachments =
+                    files && files.length > 0
+                        ? await Promise.all(
+                              Array.from(files).map(async (file) => ({
+                                  filename: file.name,
+                                  data: new Uint8Array(await file.arrayBuffer()),
+                                  contentType: file.type,
+                              }))
+                          )
+                        : undefined;
 
-                if (!eventId) {
-                    eventId = Sentry.captureMessage('User Feedback Reported', {
-                        level: 'info',
-                        extra: {
-                            route: location.pathname,
-                            description,
-                            errorDetails: error ? String(error) : 'No error object provided',
-                        },
-                    });
-                }
-
-                if (files && files.length > 0) {
-                    Sentry.withScope((scope) => {
-                        Array.from(files).forEach((file) => {
-                            scope.addAttachment({
-                                filename: file.name,
-                                data: file as unknown as Uint8Array,
-                                contentType: file.type,
-                            });
-                        });
-                        Sentry.captureMessage('User Feedback Attachment', {
-                            level: 'info',
-                            tags: { feedbackParams: 'true' },
-                        });
-                    });
-                }
-
-                await Sentry.captureFeedback({
-                    associatedEventId: eventId,
-                    name: name || 'Anonymous',
-                    email: email || 'anonymous@example.com',
-                    message: description,
-                });
+                await Sentry.captureFeedback(
+                    {
+                        associatedEventId: initialEventId,
+                        name: name || 'Anonymous',
+                        email: email || 'anonymous@example.com',
+                        message: error
+                            ? `${description}\n\nError: ${String(error)}`
+                            : description,
+                        url: location.pathname,
+                    },
+                    attachments ? { attachments } : undefined
+                );
             }
 
             toast.success('Thank you! Your report has been sent.');

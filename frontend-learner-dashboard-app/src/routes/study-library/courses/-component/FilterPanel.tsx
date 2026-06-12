@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
@@ -170,9 +170,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     const FilterContent = () => (
         <div className={cn(
             "bg-card border rounded-lg shadow-sm",
-            // Vibrant Styles - Flat Pastel
-            "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
-            "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+            // Vibrant — white panel with a tenant top-rail
+            "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
             "[.ui-vibrant_&]:shadow-md",
             // Play Styles — deep navy panel with soft layered shadow
             "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white [.ui-play_&]:border-transparent",
@@ -181,6 +180,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             {/* Desktop Header */}
             <div className={cn(
                 "p-4 border-b flex items-center justify-between",
+                // Vibrant — primary-50 wash header (color lives in headers)
+                "[.ui-vibrant_&]:bg-primary-50/60 dark:[.ui-vibrant_&]:bg-primary-500/10",
                 "[.ui-vibrant_&]:border-primary/10",
                 // Play Styles
                 "[.ui-play_&]:border-white/20"
@@ -324,10 +325,10 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             variant="outline"
                             className={cn(
                                 "w-full justify-between bg-card",
-                                // Vibrant Styles
-                                "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+                                // Vibrant — primary-50 wash trigger (tenant family)
+                                "[.ui-vibrant_&]:border-primary-200 dark:[.ui-vibrant_&]:border-primary-500/30",
                                 "[.ui-vibrant_&]:shadow-sm",
-                                "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
+                                "[.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                                 // Play Styles — bright green CTA with soft colored glow
                                 "[.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
                                 "[.ui-play_&]:shadow-play-glow-success-sm [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:hover:shadow-play-glow-success"

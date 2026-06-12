@@ -9,7 +9,8 @@ import z from "zod";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import AIReportDetailsPage from "@/components/common/my-reports/ai-report-details-page";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
-import { addHours, format } from "date-fns";
+import { addHours } from "date-fns";
+import { formatTime } from "@/lib/format-date";
 
 const aiReportParamsSchema = z.object({
   assessmentId: z.string(),
@@ -164,7 +165,7 @@ function RouteComponent() {
                 The AI report for this assessment is not available.
                 <span>We generate reports every hour.</span>
                 <span className="text-black">
-                  Please check after {format(addHours(new Date(), 1), "KK b")}.
+                  Please check back after {formatTime(addHours(new Date(), 1))}.
                 </span>
               </p>
             </div>

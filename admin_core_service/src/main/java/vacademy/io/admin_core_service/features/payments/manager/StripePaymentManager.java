@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.payments.dto.StripeCustomerDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.StripeRequestDTO;
@@ -147,9 +148,19 @@ public class StripePaymentManager implements PaymentServiceStrategy {
             }
         } catch (StripeException e) {
             logger.error("Stripe error while searching for customer by email: {}", e.getMessage(), e);
+            // A gateway failure here falls back to creating a new customer; surface it so
+            // duplicate-customer creation isn't silently masking Stripe outages.
+            SentryLogger.logWarning(e, "Stripe customer lookup by email failed", Map.of(
+                    "payment.gateway", "STRIPE",
+                    "operation", "searchCustomerByEmail"
+            ));
             return null;
         } catch (Exception e) {
             logger.error("Unexpected error while searching for customer by email: {}", e.getMessage(), e);
+            SentryLogger.logWarning(e, "Stripe customer lookup by email failed (unexpected)", Map.of(
+                    "payment.gateway", "STRIPE",
+                    "operation", "searchCustomerByEmail"
+            ));
             return null;
         }
     }

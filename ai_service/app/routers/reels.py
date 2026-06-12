@@ -18,6 +18,8 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
+import time
 from typing import Any, List, Optional
 
 import httpx
@@ -54,16 +56,22 @@ from ..schemas.reels import (
     WordImportance,
 )
 from ..config import get_settings
+from ..services.model_selection import resolve_models
 from ..services.reels_engagement_service import (
     ScoringRequest,
     score_windows,
+    window_transcript_text,
 )
 from ..services.reels_preview_service import (
     MAX_USER_CUT_SPAN_S,
     MIN_CUT_SPAN_S,
     ReelsPreviewService,
 )
-from ..services.reels_rerank_service import rerank_candidates
+from ..services.reels_rerank_service import (
+    MAX_SELECTION_WINDOWS,
+    apply_selection,
+    select_top_candidates,
+)
 from ..services.reels_render_orchestrator import (
     RenderContext,
     dispatch_render,
@@ -110,6 +118,25 @@ _PREVIEW_COMPLETION_TOKENS = 500
 # bump in lockstep if we switch model. Wrong value here means credits get
 # costed at the wrong tier, not a functional break.
 _PREVIEW_LLM_MODEL_FOR_PRICING = "anthropic/claude-3-5-haiku"
+
+# /scan LLM selection. The heuristic scorer is a PREFILTER that hands this
+# many diverse windows (full transcripts attached) to one LLM call, which
+# hard-selects + orders the final request.scan_limit the user sees. The
+# prefilter list is a prefix-stable superset: `_diversify` picks greedily,
+# so its first scan_limit picks are identical whether keep_n is scan_limit
+# or this cap — the heuristic fallback is exactly the old /scan result.
+_SELECTION_PREFILTER_CAP = MAX_SELECTION_WINDOWS  # 60
+# Model comes from the DB registry (ai_model_defaults) so ops can retune
+# without a deploy; the use case needs a seeded row, otherwise the chain
+# falls through to the hard fallback below. The previous rerank rode
+# `settings.llm_default_model` (a pro reasoning model) against a Haiku-sized
+# token budget and plausibly never produced parseable output — selection
+# explicitly requests the cheap/fast tier instead.
+_SELECTION_USE_CASE = "reels_selection"
+_SELECTION_LLM_MODEL_ENV = "REELS_SELECTION_LLM_MODEL"
+# Mirrors the other reels LLM stages (preview, llm_director) — cheap + fast,
+# no reasoning-token tax on max_tokens.
+_SELECTION_LLM_HARD_FALLBACK = "anthropic/claude-3-5-haiku"
 
 
 # ---------------------------------------------------------------------------
@@ -424,10 +451,13 @@ async def scan_reel_candidates(
 ):
     """Gate 1: score candidate reel windows over an indexed source video.
 
-    Returns ranked candidates with 4-axis scores. No LLM cost; sub-second on
-    a warm cache, a few seconds on a cold scan (download + score + persist).
-    Thumbnails for the top candidates are generated asynchronously and
-    appear on a subsequent /scan call (idempotent via config_hash).
+    Returns ranked candidates with 4-axis scores. Sub-second on a warm
+    cache. A cold scan downloads + heuristic-prefilters the source, then
+    makes ONE cheap LLM call that selects + orders the final top-N from the
+    prefilter (heuristic order is the fallback) — expect seconds, bounded
+    by the selection timeout. Thumbnails for the top candidates are
+    generated asynchronously and appear on a subsequent /scan call
+    (idempotent via config_hash).
     """
     # 1. Validate the source asset.
     asset_repo = AiInputAssetRepository(session=db)
@@ -451,12 +481,17 @@ async def scan_reel_candidates(
         )
 
     # 4. Cold scan: fetch context, score, persist.
+    cold_scan_t0 = time.monotonic()
     context = await _fetch_context_json(asset.context_json_url or "")
 
     scoring_req = ScoringRequest(
         target_duration_sec=request.target_duration_sec,
         duration_tolerance_sec=request.duration_tolerance_sec,
-        scan_limit=request.scan_limit,
+        # Prefilter wide: the LLM selection below picks the final
+        # request.scan_limit out of this superset (see the constant's note
+        # on prefix stability — truncating this list to scan_limit IS the
+        # legacy pure-heuristic result).
+        scan_limit=max(request.scan_limit, _SELECTION_PREFILTER_CAP),
         topic_keywords=tuple(request.topic_keywords or ()),
         must_include_ranges=tuple(
             (r.t_start, r.t_end) for r in (request.must_include_ranges or [])
@@ -475,48 +510,82 @@ async def scan_reel_candidates(
             cache_ttl_seconds=3600,
         )
 
-    # A2 (2026-05-22): LLM rerank pass. One Haiku call nudges the heuristic
-    # composite by up to ±10%, never blocks /scan on failure.
+    # LLM selection pass: the heuristic list above is a prefilter. One
+    # cheap/fast LLM call reads every window's FULL transcript (plus the
+    # request's real target duration + topic keywords) and hard-selects +
+    # orders the final request.scan_limit. The heuristic order is the
+    # fallback whenever the call fails, times out, or returns garbage —
+    # selection never blocks /scan.
+    selected = None
     try:
         settings = get_settings()
-        if settings.openrouter_api_key:
-            rerank_input = [
+        if settings.openrouter_api_key and len(scored) > 1:
+            transcript = context.get("transcript") or []
+            selection_input = [
                 {
                     "id": f"c{i}",
-                    "snippet": cs.transcript_snippet,
-                    "duration_s": cs.predicted_output_duration_s,
+                    # Un-elided in-window text; the 140-char display snippet
+                    # is the fallback for word-timestamp-less sources.
+                    "transcript": (
+                        window_transcript_text(
+                            transcript, cs.source_t_start, cs.source_t_end
+                        )
+                        or cs.transcript_snippet
+                    ),
+                    "t_start": cs.source_t_start,
+                    "t_end": cs.source_t_end,
+                    "predicted_duration_s": cs.predicted_output_duration_s,
+                    "scores": {
+                        "hook": cs.score.hook,
+                        "pacing": cs.score.pacing,
+                        "info": cs.score.info,
+                        "loop": cs.score.loop,
+                        "topic": cs.score.topic,
+                        "composite": cs.score.composite,
+                    },
                 }
                 for i, cs in enumerate(scored)
             ]
-            factor_map = await rerank_candidates(
-                candidates=rerank_input,
+            preferred = os.getenv(_SELECTION_LLM_MODEL_ENV, "").strip() or None
+            model, _fallbacks = resolve_models(
+                db,
+                _SELECTION_USE_CASE,
+                preferred,
+                hard_fallback=_SELECTION_LLM_HARD_FALLBACK,
+            )
+            llm_t0 = time.monotonic()
+            ordered = await select_top_candidates(
+                candidates=selection_input,
+                select_n=request.scan_limit,
+                target_duration_sec=request.target_duration_sec,
+                topic_keywords=tuple(request.topic_keywords or ()),
                 api_key=settings.openrouter_api_key,
                 base_url=settings.llm_base_url,
-                model=settings.llm_default_model,
+                model=model,
             )
-            if factor_map:
-                # Apply factor + stash reason. Re-sort + re-rank afterward.
-                for i, cs in enumerate(scored):
-                    entry = factor_map.get(f"c{i}")
-                    if entry is None:
-                        continue
-                    factor, reason = entry
-                    new_composite = max(0.0, min(100.0, cs.score.composite * factor))
-                    cs.score.composite = new_composite
-                    cs.score.breakdown["llm_rerank_factor"] = round(factor, 3)
-                    if reason:
-                        cs.score.breakdown["llm_rerank_reason"] = reason
-                scored.sort(key=lambda c: -c.score.composite)
-                for new_rank, cs in enumerate(scored, start=1):
-                    cs.rank = new_rank
+            llm_elapsed = time.monotonic() - llm_t0
+            if ordered:
+                selected = apply_selection(scored, ordered, request.scan_limit) or None
+            if selected:
                 logger.info(
-                    f"[reels.scan] rerank applied: {len(factor_map)}/{len(scored)} "
-                    f"candidates nudged"
+                    f"[reels.scan] LLM selection: {len(selected)}/{len(scored)} "
+                    f"windows in {llm_elapsed:.1f}s (model={model})"
+                )
+            else:
+                logger.warning(
+                    f"[reels.scan] LLM selection unusable after {llm_elapsed:.1f}s "
+                    f"(model={model}) — heuristic order stands"
                 )
     except Exception as exc:
-        # Rerank is best-effort. Never block /scan on failure — heuristic
-        # composite stands. Log but don't raise.
-        logger.warning(f"[reels.scan] rerank failed: {exc}")
+        # Selection is best-effort. Never block /scan on failure — the
+        # heuristic ranking stands. Log but don't raise.
+        logger.warning(f"[reels.scan] LLM selection failed: {exc}")
+    if selected:
+        scored = selected
+    else:
+        # Pure-heuristic fallback. Ranks already run 1..N in list order, so
+        # truncation preserves a contiguous 1..scan_limit ranking.
+        scored = scored[: request.scan_limit]
 
     # Persist rows so /preview and /render can reference them by id.
     rows = [
@@ -577,7 +646,13 @@ async def scan_reel_candidates(
             _populate_thumbnails, source_url_for_thumbs, midpoints
         )
 
-    # 6. Build response.
+    # 6. Build response. The duration log is the latency budget watchdog —
+    # the LLM selection turned a sub-second endpoint into a multi-second
+    # one, and this line is how ops sees that creep past the FE's patience.
+    logger.info(
+        f"[reels.scan] cold scan done in {time.monotonic() - cold_scan_t0:.1f}s "
+        f"(returned={len(persisted)}, llm_selected={bool(selected)})"
+    )
     response_candidates = [_candidate_row_to_response(row) for row in persisted]
     return ScanResponse(
         input_asset_id=request.input_asset_id,
@@ -896,6 +971,28 @@ def _reel_row_to_response(row) -> ReelResponse:
     )
 
 
+def _context_from_reel_row(row, institute_id: str) -> RenderContext:
+    """Build the orchestrator's RenderContext from a persisted ai_reels row.
+
+    Both /render (freshly created row) and /{reel_id}/retry (existing FAILED
+    row) dispatch from the same persisted state: `config` carries the full
+    RenderRequest plus render_config_hash + enriched_snapshot, and
+    `source_window` the candidate's window. Reading from the row rather than
+    the request keeps the two dispatch paths identical AND decouples the
+    background task from request-scoped session state — only plain
+    strings/dicts cross into the task.
+    """
+    return RenderContext(
+        reel_pk=str(row.id),
+        reel_id=row.reel_id,
+        institute_id=institute_id,
+        input_asset_id=str(row.input_asset_id),
+        candidate_id=str(row.parent_candidate_id) if row.parent_candidate_id else None,
+        config=row.config or {},
+        source_window=row.source_window or {},
+    )
+
+
 # ---------------------------------------------------------------------------
 # POST /render — Gate 3
 # ---------------------------------------------------------------------------
@@ -1029,19 +1126,10 @@ async def render_reel(
         extra_metadata=render_extra_metadata or None,
     )
 
-    # 4. Build the render context and dispatch the background task.
-    # We pass a plain dict-friendly snapshot rather than the SQLAlchemy row
-    # so the background task is decoupled from request-scoped session state.
-    ctx = RenderContext(
-        reel_pk=str(reel.id),
-        reel_id=reel.reel_id,
-        institute_id=institute_id,
-        input_asset_id=request.input_asset_id,
-        candidate_id=str(candidate.id),
-        config=config_dict,
-        source_window=source_window,
-    )
-    dispatch_render(ctx)
+    # 4. Build the render context from the persisted row and dispatch the
+    # background task. Shared with /{reel_id}/retry — see the helper's note
+    # on session decoupling.
+    dispatch_render(_context_from_reel_row(reel, institute_id))
 
     # 5. Return the row immediately. status=PENDING in the DB initially;
     # we re-read after dispatch in case the orchestrator already flipped
@@ -1123,6 +1211,50 @@ async def get_reel_status(
         stages=stages,
         error_message=row.error_message,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /{reel_id}/retry — re-dispatch a FAILED reel
+# ---------------------------------------------------------------------------
+
+@router.post("/{reel_id}/retry", response_model=ReelResponse)
+async def retry_reel(
+    reel_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Re-run a FAILED reel from its persisted state — same candidate, same
+    config, same enriched_snapshot the user originally chose to render. No
+    new LLM enrichment, no re-scan; the row's `config` already carries
+    everything the pipeline needs.
+
+    Only FAILED reels qualify: COMPLETED has nothing to redo, and
+    PENDING/IN_PROGRESS is already being worked — re-dispatching would race
+    the live task's row writes. The FAILED→PENDING flip is guarded in SQL
+    (`reset_for_retry` re-checks status in its WHERE clause) so two
+    concurrent retry clicks can't double-dispatch.
+
+    Returns the standard reel record, reset to PENDING, so the FE resumes
+    polling exactly as after /render.
+    """
+    repo = AiReelRepository(session=db)
+    row = repo.get_by_reel_id(reel_id)
+    if row is None or row.institute_id != institute_id:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    if row.status != "FAILED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only FAILED reels can be retried (status={row.status})",
+        )
+    if not repo.reset_for_retry(str(row.id)):
+        # Lost the race to a concurrent retry — that call is dispatching.
+        raise HTTPException(status_code=409, detail="Reel is already being retried")
+
+    logger.info(f"[/retry] re-dispatching reel {row.reel_id} after failure")
+    dispatch_render(_context_from_reel_row(row, institute_id))
+
+    db.refresh(row)
+    return _reel_row_to_response(row)
 
 
 # ---------------------------------------------------------------------------

@@ -291,8 +291,17 @@ _REAPER_TASK: Optional[asyncio.Task] = None
 async def _reaper_loop() -> None:
     while True:
         try:
+            # Reels with a live task in THIS process are never reaped, even
+            # past the staleness cutoff — failing a row whose pipeline is
+            # still running would let /retry start a second pipeline against
+            # the same row. Task names are set in dispatch_render.
+            live_reel_ids = [
+                t.get_name().removeprefix("render-")
+                for t in _PENDING_RENDER_TASKS
+                if not t.done() and t.get_name().startswith("render-")
+            ]
             reaped = await asyncio.to_thread(
-                AiReelRepository().reap_stuck, REAPER_STALE_MINUTES
+                AiReelRepository().reap_stuck, REAPER_STALE_MINUTES, live_reel_ids
             )
             if reaped:
                 logger.warning(

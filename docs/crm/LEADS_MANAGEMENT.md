@@ -209,8 +209,10 @@ Other read endpoints: `GET /v1/audience/lead/{responseId}` (single, fully hydrat
 
 | Path | Returns |
 |---|---|
-| `GET /v1/reports/leads/summary?instituteId&fromDate&toDate` | Totals (leads / converted / lost / active / conversion rate / responded / avg response minutes / TAT-met % / overdue), `by_status`, `by_source`, `by_tier`, `trend_by_day` |
-| `GET /v1/reports/counselor-performance?instituteId&fromDate&toDate` | Per-counsellor rows: assigned, responded, conversions, conversion %, avg response time, TAT met %, open, overdue + summary |
+| `GET /v1/reports/leads/summary?instituteId&fromDate&toDate[&teamId&counsellorUserId&audienceId&sourceType]` | Totals (leads / converted / lost / active / conversion rate / responded / avg response minutes / TAT-met % / overdue), `by_status`, `by_source`, `by_tier`, `trend_by_day` |
+| `GET /v1/reports/counselor-performance?instituteId&fromDate&toDate[&teamId&counsellorUserId&audienceId&sourceType]` | Per-counsellor rows: assigned, responded, conversions, conversion %, avg response time, TAT met %, open, overdue + summary |
+
+Since 2026-06-12 both endpoints are **RBAC-scoped** (mirroring `SalesDashboardService.scopedUsers`): a plain counsellor sees only their own numbers, a team head their subtree, an admin outside the leads team the leads-team scope (or unscoped when no leads team is configured). Explicit `counsellorUserId` outside a scoped caller's descendants returns 403. The per-lead counsellor identity is `COALESCE(linked_users.user_id, ulp.assigned_counselor_id)` across all seven report queries; an empty resolved scope yields a zeroed report, never a silent widening.
 
 There is also `POST /v1/audience/center-heatmap` (`AudienceAnalyticsController`) for engagement-by-center heatmaps, and internal endpoints under `/admin-core-service/internal` (converted-users-per-campaign for notification service, user-by-phone search, opt-out handling).
 

@@ -14,6 +14,7 @@ import {
 } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { LeadCallHistory } from '@/components/shared/leads';
 import { FollowUpsWidget } from './follow-ups-widget';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
@@ -1385,6 +1386,17 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
 
             {/* ── Add Note / Log Activity ── */}
             <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
+
+            {/* ── Call History ──
+                Mounted only when this tab is open, so the call list is fetched
+                lazily; recording URLs resolve on first Play click. */}
+            <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                    <div className="h-3.5 w-1 rounded-full bg-primary-500" />
+                    <h4 className="text-sm font-semibold text-neutral-700">Call History</h4>
+                </div>
+                <LeadCallHistory userId={userId} />
+            </div>
 
             {/* ── Lead Journey Timeline ── */}
             <LeadJourneyTimeline userId={userId} responseId={effectiveResponseId} />

@@ -1,6 +1,6 @@
 # Reels from Long Video — Feature Reference
 
-**Status**: Backend Phase 1 + 2a (karaoke captions) + 2b (STYLE_GUIDE palette extraction, A/B-gated) + 2c (LLM-driven Director) + 2c.1 (director hardening) + 2c.2 (preview metering) + 2c.3 (stacked + PiP layouts) + 2c.4 (auto b-roll fetch) + 2c.5 Slice 1 (per-phrase b-roll overlays) + 2c.5 Slice 2 (animated stat cards + bar_chart) + 2c.5 Slice 3 (line_chart + pie_chart + comparison_icons) + 2c.6 (whoosh SFX on hard cuts) + 2c.7 (AI emoji injection on caption keywords) + 2c.8 (LLM background-concept extraction for b-roll) + 2c.9 (stitched multi-clip bottom-half bgv for stacked) + 2d (PiP alpha-matte cutout) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints, `/render` idempotency) shipped. Frontend Phase A (Slices 1-5) + scan settings strip (target duration / scan limit / topic keywords) + render config panel (aspect / layout / pace / captions / audio / bgv source) shipped. Source-clip aspect canvas scales to canonical delivery dims (1080×1920 for 9:16). Time-varying crop tracks the speaker via piecewise-linear ffmpeg expressions.
+**Status**: Backend Phase 1 + 2a (karaoke captions) + 2b (STYLE_GUIDE palette extraction, A/B-gated) + 2c (LLM-driven Director) + 2c.1 (director hardening) + 2c.2 (preview metering) + 2c.3 (stacked + PiP layouts) + 2c.4 (auto b-roll fetch) + 2c.5 Slice 1 (per-phrase b-roll overlays) + 2c.5 Slice 2 (animated stat cards + bar_chart) + 2c.5 Slice 3 (line_chart + pie_chart + comparison_icons) + 2c.6 (whoosh SFX on hard cuts) + 2c.7 (AI emoji injection on caption keywords) + 2c.8 (LLM background-concept extraction for b-roll) + 2c.9 (stitched multi-clip bottom-half bgv for stacked) + 2d (PiP alpha-matte cutout) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints, `/render` idempotency) shipped. Frontend Phase A (Slices 1-5) + scan settings strip (target duration / scan limit / topic keywords) + render config panel (aspect / layout / pace / captions / audio / bgv source) shipped. Source-clip aspect canvas scales to canonical delivery dims (1080×1920 for 9:16). Time-varying crop tracks the speaker via piecewise-linear ffmpeg expressions. **2026-06-12 overhaul** (see §6 + §13): frame-accurate CSS-animation scrubbing in the render worker (`[data-anim-scrub]`), audio mastering (de-click span fades + loudnorm −14 LUFS + 44.1kHz/128k, ducked-bgm asplit fix, whoosh SFX flipped to opt-in), /scan inverted to heuristic-prefilter + LLM hard-selection, silence-first grammar-safe cut planner, director typography/caption rework (true Inter weights, layered-shadow outlines, 3-word karaoke pages), honest progress bands + stuck-render reaper + worker-busy retry + `POST /{reel_id}/retry`, and a batch-render FE funnel with playable source-segment previews.
 **Owners**: Vimotion team.
 **Companion docs**: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md), [INPUT_VIDEO_INDEXING.md](./INPUT_VIDEO_INDEXING.md), [VIDEO_EDITOR_REVIEW.md](./VIDEO_EDITOR_REVIEW.md), [VIMOTION_FEATURE.md](../VIMOTION_FEATURE.md). The full design + research appendix lives in the planning doc (Claude session artifact).
 
@@ -53,7 +53,7 @@ Each gate has different cost + commitment level — the design protects the user
 
 | Gate | Endpoint | Cost | What it does |
 |---|---|---|---|
-| **1 — SCAN** | `POST /scan` | Free | Scores every candidate window with a deterministic 4-axis engagement scorer (Hook / Pacing / Info / Loop). Returns 30 ranked candidates. Idempotent + 24h server-side cache. |
+| **1 — SCAN** | `POST /scan` | 1 cheap LLM call per cold scan (cached 24h) | Deterministic 4-axis engagement scorer (Hook / Pacing / Info / Loop) prefilters every candidate window; one LLM hard-selection call over the prefilter's full window transcripts picks + orders the final ranked list (heuristic order is the fallback). Idempotent + 24h server-side cache. |
 | **2 — PREVIEW** | `POST /preview` | 1 LLM call per pick (Haiku-class) | Enriches user-selected candidates: title, rationale, word-level importance, surgical cut plan that hits target duration ±3s. Falls back to heuristic on LLM failure. |
 | **3 — RENDER** | `POST /render` | Full pipeline | Async 7-stage render: AUDIO_EDIT → SOURCE_CLIP → STYLE_GUIDE → DIRECTOR → HTML → ASSEMBLE → RENDER. Polls existing render-worker for the final MP4. |
 
@@ -116,7 +116,8 @@ All routes mounted at `{AI_SERVICE_BASE_URL}/external/reels/v1/*`. Auth via exis
 - `app/routers/reels.py` — all 7 funnel endpoints + 3 frame endpoints + side-effect `register_all_stages()`
 
 **Services** (`app/services/reels_*.py`)
-- `reels_engagement_service.py` — 4-axis scorer for `/scan`
+- `reels_engagement_service.py` — 4-axis scorer for `/scan` (prefilter since 2026-06-12)
+- `reels_rerank_service.py` — `/scan` LLM hard-selection over full window transcripts (historical filename; the ±10% "rerank nudge" it used to implement is gone)
 - `reels_thumbnail_service.py` — per-candidate ffmpeg poster generation
 - `reels_preview_service.py` — `/preview` LLM call + word importance + greedy cut planner
 - `reels_render_orchestrator.py` — async 7-stage runner with module-level task ref for GC safety
@@ -139,9 +140,20 @@ All routes mounted at `{AI_SERVICE_BASE_URL}/external/reels/v1/*`. Auth via exis
 - `app/migrations/add_ai_reels_tables.sql` (ai_service-side, source of truth)
 - `admin_core_service/src/main/resources/db/migration/V245__Create_ai_reels_tables.sql` (Flyway deployment copy)
 
-### 4.2 4-axis engagement scorer
+### 4.2 Scan: heuristic prefilter + LLM hard-selection
 
-Per [research §12.2](#research-appendix) of the planning doc, scoring on a single composite hides quality signals. Veed's 4-axis (Flow/Impact/Clarity/Relevance) wins user trust over Opus's opaque single number.
+**Inverted 2026-06-12.** The 4-axis heuristic scorer is no longer the ranking authority — it's a cheap PREFILTER. A cold `/scan` now:
+
+1. Enumerates + scores every window with the deterministic 4-axis scorer (below), diversifies, and keeps up to 60 windows (`MAX_SELECTION_WINDOWS` — a prefix-stable superset: truncating it to `scan_limit` IS the legacy pure-heuristic result).
+2. Ships every kept window's FULL un-elided in-window transcript (`window_transcript_text` — boundary segments contribute only their in-window words, so the model judges exactly what the clipped window will say; middle-elided past 800 chars so the true opener and payoff stay verbatim), start/end times, predicted post-trim duration, and the heuristic axis scores as *advisory* signals, to ONE cheap LLM call (`reels_rerank_service.select_top_candidates`). The request's real target duration + topic keywords are in the prompt.
+3. The model hard-SELECTS and orders the final `scan_limit` the user sees; `apply_selection` reorders the heuristic candidates and re-assigns composites monotonically so rank and composite agree.
+4. Any failure (no API key, 30s timeout, malformed output, zero valid ids) falls back to the pure-heuristic order — selection never blocks `/scan`.
+
+The selection model resolves from the DB registry (use case `reels_selection`, env override `REELS_SELECTION_LLM_MODEL`, hard fallback Haiku-class). The previous "rerank" pass — ±10% composite nudges over 140-char snippets — is gone (it was the audit's "blindfolded rerank" finding, §13).
+
+The scan request's `target_duration_sec` / `duration_tolerance_sec` / `topic_keywords` are now persisted into each candidate's `breakdown.scan_config` (server-only — the FE breakdown whitelist filters it out), so `/preview` replays the exact targeting instead of guessing from the candidate's predicted duration.
+
+**The 4-axis prefilter** — per [research §12.2](#research-appendix) of the planning doc, scoring on a single composite hides quality signals. Veed's 4-axis (Flow/Impact/Clarity/Relevance) wins user trust over Opus's opaque single number.
 
 | Axis | Signals |
 |---|---|
@@ -153,25 +165,25 @@ Per [research §12.2](#research-appendix) of the planning doc, scoring on a sing
 Composite = weighted geometric mean (hook 0.40, pacing 0.25, info 0.20, loop 0.15). Geometric mean intentional — one weak axis tanks the composite, which matches the user-facing penalty we want.
 
 **Hard rejects**:
-- Window word-cut budget > 20% of word count (too much surgery → meaning damage)
+- Window word-cut budget over the snapper-envelope-derived cap, floored at 20% of word count. (A fixed 20% used to hard-reject every deliberately-overshot long window — the snapper extends windows past `win_max` when sentence boundaries are sparse — leaving whole regions of the source with zero candidates; long-but-trimmable windows now survive because their excess is handled by edge-shrink + speed-up, not word deletion.)
 - ≥3 face_segment moves in window (jumpy vertical crop)
 - Empty transcript snippet (silent stretch)
 
 Plus a **diversity penalty** — windows within `min(60, duration/5)`s of an already-top-ranked window get dropped after the 5th pick, so top-N spreads across the source.
 
+**2026-06-12 scorer fixes**: `"i"` and `"today"` removed from the filler-opener list — first-person claims ("I built a $1M business…") and educational framings ("Today I'm going to show you…") are among the strongest creator hooks, and the token-level penalty punished exactly those; hedge phrases ("I think…", "I guess…") are still penalized as two-token patterns. Opener scoring now judges `_opening_sentence_at` — the sentence actually *starting* at the window — instead of the whole Whisper segment covering `win_start`, which included the tail of the previous sentence when the window was snapped to a punctuation-derived sentence start mid-segment.
+
 ### 4.3 Cut planner (Gate 2)
 
-Greedy algorithm in `reels_preview_service.plan_cuts`:
+**Rewritten 2026-06-12** — the audit's "word-surgery" + "phantom silence trim" findings (§13): the old greedy planner deleted isolated mid-clause glue words to hit duration (ungrammatical speech, audible mid-clause splices) and never emitted the silence cuts its own duration prediction assumed. Now deterministic, three duration-driven steps in `reels_preview_service.plan_cuts` — each later step only runs while the reel is still over `target + tolerance`:
 
-1. Compute `excess_s = predicted_after_silence - target` from the candidate row
-2. If within tolerance → return empty cut plan
-3. Sort cuttable words (importance ≤ 1) by `(importance asc, duration desc)` — most-filler + longest first (fewer cuts = fewer crossfade artifacts)
-4. Mark words until `accumulated_s ≥ excess_s × (1 + overshoot)`. Overshoot fraction = 15% to absorb validation losses
-5. Merge consecutive marked words into spans
-6. **Validate**: drop sub-80ms spans (sub-syllable artifacts), split spans >2s (jumpy even with crossfade)
-7. **Iterate** up to 3 retries if validation losses still leave us short of target
+1. **Silence** — every prosody pause ≥0.4s fully inside the window is trimmed down to a 0.15s breathing gap (`kind="silence"`). The constants mirror the engagement scorer's `predicted_after_silence_s` math, so the scan-time prediction and the rendered edit describe the same audio. Silence spans are planned unconditionally; render time honors `PaceConfig.silence_trim` (`off` drops all silence spans, `gentle` keeps only spans from ~0.8s+ pauses) at the single point where the trim_map is derived (`reels_audio_edit_service`) — which keeps audio, video crop, and caption remap in lockstep automatically.
+2. **Disfluency runs** — maximal runs of importance==0 words (fillers, repeats, false starts), cut *whole*, and ONLY when the run borders a ≥120ms pause or a window edge on at least one side (a splice is only inaudible-as-an-edit where the speaker actually paused). Importance ≥ 1 words are never auto-cut — deleting glue words mid-clause is worse than missing the duration target. Runs >2s are skipped entirely (the importance labels are probably wrong), not split.
+3. **Edge shrink** — drop a whole trailing (preferred — the head carries the hook) or leading sentence when fillers alone can't reach target, only when the shrink lands inside `[target − tol, target + tol]`.
 
-LLM never marks `importance ≥ 2` words as cuttable. Emphasis marks + topic_keyword matches are deterministically raised to importance ≥ 2 *after* the LLM pass (post-hoc floor enforcement).
+Any remaining excess is left to the render-time `speed_multiplier`. Predicted duration is computed from the UNION of all spans, so spans planned from different signals (prosody pauses vs ASR word timing) can brush against each other without double-counting savings.
+
+The `/preview` LLM call now receives the real target duration + tolerance + topic keywords (replayed from `breakdown.scan_config`; previously it ran on defaults), and runs at temperature 0.7 — the title is now a spoken-style hook line, not a label, and importance scoring tolerates the heat because the 0-3 rubric plus deterministic floors anchor it. LLM never marks `importance ≥ 2` words as cuttable. Emphasis marks + topic_keyword matches are deterministically raised to importance ≥ 2 *after* the LLM pass (post-hoc floor enforcement).
 
 ### 4.4 Seven render stages
 
@@ -179,13 +191,15 @@ Each stage runs in a thread (`asyncio.to_thread`) so the asyncio loop stays resp
 
 | Stage | Range | What runs |
 |---|---|---|
-| AUDIO_EDIT | 0-15% | Single ffmpeg `filter_complex`: `atrim×N → concat → atempo`, then layered amix with optional `[bgm_ducked]` (sidechaincompress) and `[sfx]` (per-cut anoisesrc whooshes). Stream-copies kept spans, applies speed_multiplier (1.0-1.5), uploads MP3 |
-| SOURCE_CLIP | 15-35% | Single ffmpeg: `trim×N → concat → crop → setpts/K`. Face-aware aspect crop (9:16 face-centered, 16:9 passthrough). No audio in output (-an) |
-| STYLE_GUIDE | 35-40% | **No-op in Phase 1** — folded into DIRECTOR templates (Hormozi yellow/green/red palette) |
-| DIRECTOR | 40-55% | Deterministic template (no LLM in Phase 1): base SOURCE_CLIP entry + hook overlay (first 2.5s with candidate title) + sentence-aware caption blocks with per-word karaoke animation |
-| HTML | 55-85% | **No-op in Phase 1** — DIRECTOR generates HTML directly |
-| ASSEMBLE | 85-90% | Build `{meta, entries}` JSON. Strict body-fragment validation. Upload to S3 |
-| RENDER | 90-100% | Submit to existing render worker (`/jobs`), poll until completed, write final video URL. Intermediate progress writes for 5pp granularity |
+| AUDIO_EDIT | 0-10% | Single ffmpeg `filter_complex`: `atrim×N → concat → atempo`, then layered amix with optional `[bgm_ducked]` (sidechaincompress, fed via an `asplit` of the speaker — a labeled pad can only be consumed once) and `[sfx]` (per-cut whooshes, opt-in via `REELS_WHOOSH_SFX_ENABLED=1`). Each kept span gets 6ms qsin de-click fades at head/tail; final mix mastered with `loudnorm` −14 LUFS / −1.5 dBTP; output 44.1kHz/128k even speech-only. `PaceConfig.silence_trim` is honored here (and only here) when deriving the trim_map from the cut plan. Applies speed_multiplier (1.0-1.5), uploads MP3 |
+| SOURCE_CLIP | 10-35% | Single ffmpeg: `trim×N → concat → crop → setpts/K`. Face-aware aspect crop (9:16 face-centered, 16:9 passthrough). No audio in output (-an). Optional alpha matting for PiP |
+| STYLE_GUIDE | 35-38% | Default: no-op (Hormozi yellow/green/red palette folded into DIRECTOR templates). Opt-in `source_derived` palette extraction (Phase 2b) |
+| DIRECTOR | 38-55% | LLM-driven storyline overlays + deterministic karaoke caption pages (3-word pages with moving active-word highlight); every animated wrapper carries `data-anim-scrub="1"` |
+| HTML | 55-58% | **No-op** — DIRECTOR generates HTML directly |
+| ASSEMBLE | 58-62% | Build `{meta, entries}` JSON. Strict body-fragment validation. Upload to S3 |
+| RENDER | 62-100% | Submit to existing render worker (`/jobs`); retries worker-busy 429/503 with 15/30/60s backoff, writing a user-facing `metadata.stage_note` heartbeat ("Waiting for a render slot…") between attempts. Polls until completed, writes final video URL. Intermediate progress writes for 5pp granularity |
+
+Bands were rebalanced 2026-06-12 to track real wall-clock cost — the old bands gave 30% of the bar to the no-op HTML stage and 10% to the dominant worker RENDER, so the bar sprinted to 90% and froze for minutes (indistinguishable from a hang). The RENDER floor/ceiling in `reels_render_finalize_service.py` are now *derived* from `STAGE_PIPELINE`, so the two can't drift apart.
 
 Stages register themselves at module import via `register_stage_handler`. The orchestrator's `register_all_stages()` helper imports every stage module, guaranteeing all real handlers are installed before the first render dispatches.
 
@@ -334,6 +348,24 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 ✅ **`/render` idempotency** — backend computes a `render_config_hash` from the RenderRequest body (minus input_asset_id) and stashes it inside `AiReel.config["render_config_hash"]`. Before creating a new reel row, `AiReelRepository.find_active_for_candidate(institute, candidate, hash)` looks up any non-terminal reel (PENDING/IN_PROGRESS) with the same key and returns it instead of dispatching a duplicate render. COMPLETED/FAILED reels are NOT matched. FE adds a ref-based guard (`renderingCandidateRef`) so a sub-tick double-click is a no-op before the network call even fires.
 
+### 2026-06-12 overhaul
+
+A single-day, full-pipeline quality pass (lead + agents) driven by an end-to-end audit of published reels — root causes in §13. Earlier checkmarks above describe behavior as shipped at the time; where this list contradicts them, this list wins.
+
+✅ **Render worker — CSS-animation scrubbing** (`app/ai-video-gen-main/generate_video.py`) — frames are captured at non-realtime pace, but CSS keyframe animations ran on the WALL clock, so every `animation-delay`'d reveal (karaoke captions, stat pops, chart draws, emoji pops) landed at a machine-dependent time in the MP4. Subtrees marked `data-anim-scrub` now get every WAAPI-visible animation paused and pinned to `currentTime = (state.t − host inTime)`, preserving authored animation-delay semantics exactly — karaoke/stat/chart timing is finally frame-accurate in the output. Opt-in so legacy video-gen shots keep their historical wall-clock behavior. Also: video seek tolerance is now half a frame step (the fixed 50ms tolerance exceeded the 33-40ms frame step, so consecutive-frame seeks were skipped and motion ran at half rate — judder), and non-looping videos clamp to their last frame instead of modulo-wrapping (a timeline slightly outrunning the speaker clip used to flash the first frame at the end).
+
+✅ **Audio mastering** — ducked-bgm filtergraph fixed: the speaker pad now `asplit`s into mix + sidechain feeds (a labeled pad can only be consumed once in a filtergraph; every ducked-bgm render previously failed outright). Whoosh SFX flipped from default-on to **opt-in** (`REELS_WHOOSH_SFX_ENABLED=1`; the legacy kill-switch still wins) — the synthesized burst read as cheap hiss on every seam. Seam masking is now handled by default via 6ms qsin de-click fades on each kept span's head/tail (hard atrim+concat at word-cut seams clicked when the waveform was cut mid-cycle). Final mix mastered with `loudnorm I=-14:TP=-1.5:LRA=11` so reel volume doesn't track the source recording level; output bumped to 44.1kHz/128k even for speech-only (the 22.05kHz/96k intermediate audibly dulled sibilants).
+
+✅ **Orchestrator / ops** — honest progress bands (§4.4). **Stuck-render reaper**: `AiReelRepository.reap_stuck` flips PENDING/IN_PROGRESS rows with no DB write in 30 min to FAILED (`[REAPER]`-prefixed error); runs at app startup (lifespan hook in `app_factory.py`) and every 5 min thereafter — replica-safe because healthy stages write progress far more often than the cutoff. **Dedup staleness cutoff**: `find_active_for_candidate` ignores rows whose `updated_at` is >30 min old, so a zombie can't permanently block re-rendering its candidate+config. **Worker-busy retry + heartbeat**: RENDER submit retries 429/503 with 15/30/60s backoff, writing a `metadata.stage_note` ("Waiting for a render slot…") that the FE surfaces as an amber banner and the reaper reads as liveness. **`POST /{reel_id}/retry`**: resets a FAILED reel to PENDING (race-safe — `reset_for_retry`'s WHERE re-checks status, the loser 409s) and re-dispatches from the persisted config snapshot; the FE Failed branch grew a Retry button (`useRetryReel`, seeds the reel query for an instant flip to the Running branch).
+
+✅ **Cut planner rewrite** — see §4.3. Real silence-trim spans (`kind="silence"`) so prediction and edit finally agree, grammar-safe whole-run word cuts (importance==0 + pause-adjacent only), window-edge sentence shrink, real target/tolerance/keywords in the LLM prompt, temperature 0.7 + spoken-style hook titles.
+
+✅ **Scan inversion** — see §4.2. Heuristic prefilter (≤60 windows) + one LLM hard-selection call over full window transcripts with the request's real target duration + keywords; `scan_config` persisted on candidate rows so `/preview` replays the exact targeting; opener-list ("i"/"today" un-penalized), hook-scoring (`_opening_sentence_at`), and reject-budget (snapper-envelope-derived word-cut cap) fixes; window text built from in-window words only.
+
+✅ **Director typography + captions** — true Inter weights 400-900 loaded via a css2 `@import` with `display=block` (the editor's html-processor only loads 400/600, so 800/900 text was faux-bolded into mushy strokes at hook sizes). Layered directional text-shadow outlines (`_outline_text_shadow`) replace `-webkit-text-stroke`, which centers the stroke on the glyph path and visibly cracked counters at heavy weights. Captions are now 3-word pages (`CAPTION_WORDS_PER_BLOCK`) — the whole page is visible from its first frame with a **moving active-word highlight**, replacing the per-word reveal. Animated hook entrance; carded stat/chart renderers; caption suppression is now **geometric** — a text overlay only hides caption blocks when its vertical band actually intersects the caption band for the active layout (blanket suppression was blacking out ~8-12s of captions per 30s reel, including the entire hook window); deterministic-fallback text cleanup; every animated wrapper carries `data-anim-scrub="1"` (see the §12 contract).
+
+✅ **FE funnel** — **batch render without forced navigation**: "Render all (N)" in the tray header plus per-card render buttons POST `/render` without navigating away or closing the tray; each card shows a live status chip (Queued / Rendering N% / Done / Failed) fed by the reels-list poller, chips survive tray close/reopen and page reloads (candidate_id backfill from earlier sessions), and "Render all" skips already-queued/active/completed candidates. **Persisted render config** — per-institute localStorage hydration so choices stick across sessions. **Playable source-segment previews** — new `SegmentPlayer.tsx` plays the exact source window on scan-grid cards and tray cards (CreatePage fetches the full asset record for the playable URL; degrades to poster-only until it lands). **Thumbnail self-healing** — `useScan` background-refetches every 7s for up to ~45s while any candidate lacks a thumbnail (they're generated async server-side). Jargon-free copy (raw stage keys translated to creator language) and the advanced config panel collapsed by default.
+
 ### Validation
 
 - All inline smoke tests pass (synthetic + real `video_context.json` from staging)
@@ -354,9 +386,7 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 🔲 **Path B validation against staging** — apply Flyway V245 to staging RDS, fire a real `POST /render` against a live indexed asset, watch a real MP4 land. Catches integration issues (S3 IAM, worker version mismatches, real render times). We've done this manually a few times in development; needs to be promoted to a smoke-test that runs against every deploy.
 
-🔲 **Stuck-render reaper** — periodic job to mark PENDING > 10min as FAILED (catches the "initial flip failed silently" case from G8 review).
-
-🔲 **Per-stage retry on transient failures** — currently FAILED is terminal. A worker hiccup forces full re-render even if the failure was at the final RENDER stage.
+🔲 **Per-stage resume on retry** — `POST /{reel_id}/retry` (shipped 2026-06-12) re-dispatches the FULL pipeline from AUDIO_EDIT even when the failure was at the final RENDER stage, and the worker-busy submit retry already absorbs the most common transient. Resuming from the failed stage — reusing the already-uploaded `speaker_audio` / `speaker_clip` / `time_based_frame` intermediates — is the remaining optimization.
 
 🔲 **`/render` partial UNIQUE index** — current idempotency check is in-app. Closes the "two requests inside DB roundtrip time" race that the application-level check can't catch. Needs a Flyway migration adding `UNIQUE (institute_id, parent_candidate_id, (config->>'render_config_hash')) WHERE status IN ('PENDING','IN_PROGRESS')`.
 
@@ -365,8 +395,6 @@ Stages register themselves at module import via `register_stage_handler`. The or
 🔲 **`/preview` token-estimate refinement** — pre-flight check currently passes `prompt_tokens=N, completion_tokens=0` because `CreditCheckRequest` only has one token field. Under-estimates on models where output pricing > input pricing (e.g. Haiku $0.80/$4 per 1M). Fix needs `CreditCheckRequest` schema extension to split prompt/completion. Tail-risk: user with borderline balance gets a free preview when deduct's CAS update fails.
 
 🔲 **pytest harness for scorer + preview** — lock current behaviors so future tuning doesn't silently regress (R14 from review carryover).
-
-🔲 **Failed-render retry from FE** — currently the Failed page tells the user to pick another candidate. An explicit "Retry" button would re-fire `/render` with the same config (and a different render_config_hash if needed).
 
 ### Documentation
 
@@ -461,12 +489,11 @@ open reel.mp4
 
 | Limitation | Workaround | Fix |
 |---|---|---|
-| Initial DB-write failure during render leaves row PENDING forever | Manual DB cleanup; check ai_service logs | Phase 2: stuck-render reaper job |
-| STYLE_GUIDE / HTML stages are no-op (5pp + 30pp progress bands) | Visual progress jumps in those bands | Phase 2b: extract palette; split HTML from DIRECTOR |
-| PiP renders as rectangular window, not alpha-matte cutout | Visual is still useful; cutout would be cleaner | Phase 2d: re-run `extractor/podcast_visual.py` per reel window + cache the alpha webm |
-| Failed renders aren't retryable from FE | Pick another candidate from same source (linked from Failed page) | Phase 2: explicit retry endpoint |
+| Orphaned renders only surface as FAILED after the reaper's 30-min staleness window | FE shows the last written progress + `stage_note` until the sweep lands | Tighter heartbeat-based liveness if 30 min proves too slow in practice |
+| `/{reel_id}/retry` re-runs all 7 stages from scratch | Acceptable — pre-RENDER stages are cheap relative to the worker render | Per-stage resume (§7) reusing uploaded intermediates |
+| Cold `/scan` now includes one LLM selection call (up to 30s timeout) | Selection never blocks `/scan` — heuristic order is the silent fallback on failure/timeout | Bounded by design; warm cache stays sub-second |
 | Backend stuck on demo-mode source asset | `_validate_source_asset` rejects with 400 — clear error message | Phase 2+: demo-mode-tuned scorer |
-| `/render` idempotency check has a sub-RTT race window | Not user-reachable from a button; FE ref-guard catches double-clicks | Partial UNIQUE index migration |
+| `/render` idempotency check has a sub-RTT race window | Not user-reachable from a button; FE ref-guard catches double-clicks; staleness cutoff keeps zombies out of dedup but doesn't close the race | Partial UNIQUE index migration |
 | `/preview` pre-flight credit estimate undercounts on model-priced rates | Worst case: borderline-balance user gets a free preview when deduct's CAS fails | Schema extension to split prompt/completion in CreditCheckRequest |
 | Pexels b-roll fetched directly from `videos.pexels.com` at render time | Playwright fetches per render; slower + counts against Pexels rate limits | Phase 2c.5 follow-up: S3 mirror with TTL cache |
 
@@ -509,7 +536,8 @@ app/
 ├── schemas/
 │   └── reels.py                                     ← Pydantic
 └── services/
-    ├── reels_engagement_service.py                  ← /scan scorer
+    ├── reels_engagement_service.py                  ← /scan heuristic prefilter
+    ├── reels_rerank_service.py                      ← /scan LLM hard-selection
     ├── reels_thumbnail_service.py                   ← per-candidate posters
     ├── reels_preview_service.py                     ← /preview + cut planner
     ├── reels_render_orchestrator.py                 ← 7-stage runner
@@ -534,9 +562,10 @@ features/vimotion/reels/
 │   └── reels-api.ts                                 ← typed HTTP client
 ├── hooks/
 │   ├── useReelsList.ts
-│   ├── useScan.ts
+│   ├── useScan.ts                                   ← + thumbnail self-heal refetch
 │   ├── usePreview.ts
 │   ├── useRender.ts
+│   ├── useRetryReel.ts                              ← POST /{reel_id}/retry mutation
 │   └── useReel.ts
 ├── create/
 │   ├── CreatePage.tsx                               ← state machine + scan-config state
@@ -544,7 +573,8 @@ features/vimotion/reels/
 │   ├── ScanResultsGrid.tsx
 │   ├── ScanSettingsStrip.tsx                        ← target dur + scan limit + topic keywords
 │   ├── ReelCandidateCard.tsx
-│   ├── PreviewTray.tsx                              ← Gate 2 drawer + render config state
+│   ├── SegmentPlayer.tsx                            ← playable source-segment preview
+│   ├── PreviewTray.tsx                              ← Gate 2 drawer + batch render + status chips
 │   ├── RenderConfigPanel.tsx                        ← aspect / layout / pace / captions / audio / bgv
 │   └── WordImportanceTimeline.tsx
 ├── detail/
@@ -587,6 +617,11 @@ When changing:
 - The `Layout` literal lives in BOTH `app/schemas/reels.py` (backend Pydantic) AND `features/vimotion/reels/services/reels-api.ts` (frontend TS). FE picker (`RenderConfigPanel.SHIPPED_LAYOUTS`) only exposes the shipped subset; the schema can be ahead.
 - Layouts that require a `background_video_url` are listed in BOTH `reels_director_service.py:run()` (the auto-fetch trigger) AND `RenderConfigPanel.tsx:LAYOUTS_REQUIRING_BGV`. Same condition in both places — keep them in lockstep when adding a new layout.
 - The `motion_graphic` `graphic_kind` enum lives in `_GRAPHIC_KIND_SPECS` in `reels_llm_director_service.py` (validation rules — bar counts, value requirements, label cap) AND in the `_build_motion_graphic_html` dispatcher in `reels_director_service.py` (one renderer branch per kind). Adding a 5th kind means a dict entry + a renderer function + a sentence in the LLM prompt's "When to use which visual type" section. The prompt's schema example lists the kinds as a `|`-separated union — keep that list current too.
+- **`data-anim-scrub` contract (2026-06-12)**: the render worker (`app/ai-video-gen-main/generate_video.py`) scrubs WAAPI-visible CSS animations ONLY inside subtrees carrying `data-anim-scrub`, pinning `currentTime` to `(state.t − host inTime)` per frame. Every animated wrapper `reels_director_service.py` emits MUST carry `data-anim-scrub="1"` — a new animated template without the attribute renders at machine-dependent wall-clock times in the MP4 (the exact 2026-06-12 audit bug). It is opt-in by design: do NOT add it to legacy video-gen shots, which keep historical wall-clock behavior.
+- **Cut-plan `kind` values** (`silence` / `word` / `filler` / `user`) are produced by `reels_preview_service.plan_cuts` and consumed by `reels_audio_edit_service._load_cut_plan` — the ONLY place `PaceConfig.silence_trim` is applied. Honor pace settings there and nowhere else: the kept spans become the trim_map that AUDIO_EDIT, SOURCE_CLIP, and the DIRECTOR caption remap all share, which is what keeps audio / video / captions in lockstep. Span-length rules differ by kind: `filler` runs are capped at 2s; `silence` spans and window-edge `word` sentence drops may exceed 2s.
+- **`breakdown.scan_config`** on candidate rows is the only carrier of the scan request's target / tolerance / topic_keywords into `/preview` (written by the `/scan` handler, read by `_enrich_one`, both in `app/routers/reels.py`). It's server-only — the FE breakdown whitelist filters it out of responses. Legacy rows without it fall back to the candidate's predicted duration + 3s tolerance.
+- **`/scan` LLM selection** resolves its model from the DB registry use case `reels_selection` (env override `REELS_SELECTION_LLM_MODEL`, hard fallback Haiku-class) — seed the registry row in new environments or the chain silently rides the hard fallback. `MAX_SELECTION_WINDOWS` in `reels_rerank_service.py` caps the prefilter; `/scan` passes `max(scan_limit, cap)` to the heuristic scorer — keep those in step.
+- The RENDER stage's progress floor/ceiling in `reels_render_finalize_service.py` are **derived** from `STAGE_PIPELINE` — rebalancing bands in the orchestrator reflows the worker-progress mapping automatically (no manual sync since 2026-06-12).
 - Caption emoji injection (Phase 2c.7) is wired across FIVE files: `reels_preview_service.py` defines the validation rules (`MAX_EMOJIS_PER_REEL`, `MAX_EMOJI_LEN`, `_EMOJI_REJECT_RE`) + the system prompt's emoji guidance; the `EnrichedPayload.word_importance[].emoji` field carries it through to the candidate row; `reels_director_service.py`'s two word-dict builders (caption pre-remap + post-remap) must pass `emoji` through, and `_build_caption_block_html` renders the emoji span with its own `emoji-pop` keyframe. ALSO: the `WordImportance` Pydantic schema in `app/schemas/reels.py` AND the `WordImportance(...)` constructor in `app/routers/reels.py:get_candidate` must both carry `emoji=w.get("emoji")` or the API silently drops it (Pydantic's default `extra='ignore'`). The FE `WordImportance` TS interface in `features/vimotion/reels/services/reels-api.ts` must match. Skipping any step silently drops emojis without failing the render.
 
 Add new render stages by:
@@ -594,3 +629,18 @@ Add new render stages by:
 2. Adding the import to `register_all_stages()` in `reels_render_orchestrator.py`
 3. Adding the StageDef to `STAGE_PIPELINE`
 4. Adding the stage label + hint to FE `STAGE_ORDER` in `StageProgressList.tsx`
+
+---
+
+## 13. 2026-06-12 audit
+
+One-day full-pipeline overhaul driven by watching published reels end-to-end. Root causes found:
+
+- **The renderer never scrubbed CSS animations.** Frames are captured at non-realtime pace but CSS keyframes run on the wall clock — every `animation-delay`'d reveal (karaoke timing, stat pops, chart draws, emoji pops) landed at machine-dependent times in the MP4. All the carefully-authored director timing simply wasn't in the output. Fixed with the `[data-anim-scrub]` scrub contract (§12).
+- **Word-surgery cut planner.** The greedy planner deleted isolated mid-clause glue words (pronouns, copulas) to hit the duration target, producing ungrammatical speech with audible mid-clause splices. Replaced with silence-first, whole-run, pause-adjacent cutting (§4.3).
+- **Phantom silence trim.** The scorer's predicted durations assumed silence trimming, but the planner never emitted silence spans — rendered reels kept every pause the prediction said was gone, so clips ran long and dead air survived. `kind="silence"` spans now make prediction and edit describe the same audio.
+- **Blindfolded rerank.** The /scan LLM saw 140-char snippets and could only nudge heuristic composites ±10% — token-level proxies stayed the ranking authority. Inverted: the heuristic is a prefilter, the LLM reads full window transcripts (plus the real target duration + keywords) and hard-selects the final list (§4.2).
+- **One-at-a-time funnel.** Rendering a clip force-navigated to the detail page, destroying the user's selection and tray state — making 5 reels meant re-running the funnel 5 times. Batch render + per-card status chips keep the tray alive across the whole pass.
+- **No playable preview.** Users spent render credits on clips they had never heard — cards showed only a thumbnail and a text snippet. `SegmentPlayer` now plays the exact source segment on scan cards and tray cards.
+
+Full findings + the fix-by-fix log live in the session artifact (planning doc).

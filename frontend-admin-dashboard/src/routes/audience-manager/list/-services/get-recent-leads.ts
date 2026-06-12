@@ -83,6 +83,9 @@ export interface RecentLeadsRequest {
      *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
      *  Omitted = all counsellors (and unassigned leads). */
     assigned_counselor_id?: string;
+    /** Filter by lead source — WEBSITE / META / GOOGLE / ORGANIC / … Maps to
+     *  LeadFilterDTO.sourceType. Omitted = all sources. */
+    source_type?: string;
     page: number;
     size: number;
 }

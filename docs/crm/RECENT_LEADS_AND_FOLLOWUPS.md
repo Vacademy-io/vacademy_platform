@@ -131,7 +131,7 @@ Closing a follow-up happens from the side-view / add-note flows (`PUT /v1/lead-f
 
 ## 5. Lead Reports page
 
-Route `/audience-manager/reports` → [`lead-reports-page.tsx`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-components/lead-reports-page.tsx) + [`get-lead-reports.ts`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-services/get-lead-reports.ts). **No sidebar entry currently** — navigate by URL.
+Route `/audience-manager/reports` → [`lead-reports-page.tsx`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-components/lead-reports-page.tsx) + [`get-lead-reports.ts`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-services/get-lead-reports.ts). Sidebar entry `lead-reports` (Leads group, visible by default) added 2026-06-12; counsellor rows / status legend / source rows / Total-Leads KPI drill through to Recent Leads with matching URL filters.
 
 - Date-range filter (default last 30 days) + refresh.
 - KPI cards: total leads, conversion rate, avg response time, TAT met %.

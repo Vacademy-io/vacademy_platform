@@ -20,6 +20,7 @@ import {
     Download,
     Edit3,
     PlayCircle,
+    RotateCcw,
     Scissors,
     Trash2,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useReel } from '../hooks/useReel';
+import { useRetryReel } from '../hooks/useRetryReel';
 import { deleteReel, type ReelResponse } from '../services/reels-api';
 import { VimotionLoader } from '../../brand/VimotionLoader';
 import { StageProgressList } from './StageProgressList';
@@ -96,6 +98,10 @@ function ReelDetailBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }
 
 function RunningBody({ reel }: { reel: ReelResponse }) {
     const title = getTitle(reel);
+    // Server-written note explaining a parked bar (e.g. waiting for a render
+    // slot while the worker is at capacity). Cleared server-side when the
+    // render actually starts moving.
+    const stageNote = (reel.metadata as { stage_note?: string } | undefined)?.stage_note;
     return (
         <div className="grid gap-6 lg:grid-cols-3">
             <div className="space-y-5 lg:col-span-2">
@@ -109,6 +115,11 @@ function RunningBody({ reel }: { reel: ReelResponse }) {
                         We poll every 3 seconds — leave this page open or check back later from the
                         Reels tab.
                     </p>
+                    {stageNote && (
+                        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
+                            {stageNote}
+                        </p>
+                    )}
                 </header>
 
                 <div>
@@ -256,8 +267,16 @@ function CompletedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string })
 // ---------------------------------------------------------------------------
 
 function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
-    void apiKey; // retry-via-/render uses input_asset + candidate, slice 5+
     const navigate = useNavigate();
+    const retryMutation = useRetryReel({ apiKey, reelId: reel.reel_id });
+
+    const handleRetry = () => {
+        retryMutation.mutate(undefined, {
+            onSuccess: () => toast.success('Retrying render — same clip, same settings.'),
+            onError: (e) => toast.error(e.message),
+        });
+    };
+
     return (
         <div className="space-y-6">
             <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
@@ -268,7 +287,16 @@ function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
                         <p className="mt-1 text-sm text-red-700">
                             {reel.error_message ?? 'Unknown error.'}
                         </p>
-                        <div className="mt-4 flex gap-2">
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={handleRetry}
+                                disabled={retryMutation.isPending}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <RotateCcw className="size-4" />
+                                {retryMutation.isPending ? 'Retrying…' : 'Retry render'}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() =>
@@ -279,7 +307,7 @@ function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
                                         },
                                     })
                                 }
-                                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700"
+                                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50"
                             >
                                 Pick another candidate from this video
                             </button>

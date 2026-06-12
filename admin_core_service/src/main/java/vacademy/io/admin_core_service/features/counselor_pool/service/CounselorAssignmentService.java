@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
@@ -65,6 +66,7 @@ public class CounselorAssignmentService {
     private final CounselorPoolShiftMemberRepository shiftMemberRepository;
     private final AudienceRepository audienceRepository;        // for resolving campaign name in alert text
     private final NotificationService notificationService;      // existing helper that wraps notification_service HTTP call
+    private final LeadAssignmentNotifier leadAssignmentNotifier; // shared bell-alert sender for ALL assignment paths
 
     /**
      * Pick a counselor for a lead that just arrived on the given audience.
@@ -146,32 +148,18 @@ public class CounselorAssignmentService {
     // System alert dispatch (best-effort; failures don't break assignment)
     // ────────────────────────────────────────────────────────────────
 
-    /** Bell-icon notification for a counselor who just got a new lead. */
+    /**
+     * Bell-icon notification for a counselor who just got a new lead.
+     * Delegates to {@link LeadAssignmentNotifier} — the shared sender used by
+     * every assignment path (manual, bulk import, reassign, backup) — with
+     * the exact text/settings this method historically produced.
+     */
     private void sendNewLeadNotificationToCounsellor(CounselorPool pool, String audienceId, String counselorUserId) {
         if (counselorUserId == null || counselorUserId.isBlank()) {
             return;
         }
-        String campaignName = resolveCampaignName(audienceId);
-        try {
-            notificationService.createSystemAlertAnnouncement(
-                    pool.getInstituteId(),
-                    List.of(counselorUserId),
-                    "New lead assigned",
-                    "You have a new lead from campaign \"" + campaignName + "\".",
-                    "system",
-                    "System",
-                    "ADMIN",
-                    Map.of(
-                            "priority", 2,
-                            "isDismissible", true,
-                            "showBadge", true,
-                            "isActive", true
-                    )
-            );
-        } catch (Exception e) {
-            log.warn("Failed to send new-lead notification to counselor={} for audience={}: {}",
-                    counselorUserId, audienceId, e.getMessage());
-        }
+        leadAssignmentNotifier.notifyAssigned(
+                pool.getInstituteId(), counselorUserId, null, resolveCampaignName(audienceId));
     }
 
     /**

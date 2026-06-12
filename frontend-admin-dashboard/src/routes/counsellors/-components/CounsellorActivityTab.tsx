@@ -1,6 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { Phone, ChatCircleText, ArrowsClockwise, ListChecks, Note } from '@phosphor-icons/react';
-import { fetchActivityFeed, type ActivityFeedItem } from '../-services/counsellor-workbench-services';
+import {
+    Phone,
+    PhoneIncoming,
+    PhoneOutgoing,
+    ChatCircleText,
+    ArrowsClockwise,
+    ListChecks,
+    Note,
+} from '@phosphor-icons/react';
+import {
+    CallStatusPill,
+    CallRecordingPlayButton,
+    formatCallDuration,
+} from '@/components/shared/leads';
+import {
+    fetchActivityFeed,
+    type ActivityFeedItem,
+} from '../-services/counsellor-workbench-services';
 
 interface Props {
     instituteId: string;
@@ -24,7 +40,8 @@ export function CounsellorActivityTab({ instituteId, counsellorUserId }: Props) 
         queryFn: () => fetchActivityFeed(counsellorUserId, instituteId, undefined, undefined, 50),
     });
 
-    if (isLoading) return <div className="p-4 text-subtitle text-neutral-500">Loading activity…</div>;
+    if (isLoading)
+        return <div className="p-4 text-subtitle text-neutral-500">Loading activity…</div>;
     if (error)
         return (
             <div className="p-4 text-subtitle text-danger-600">
@@ -42,13 +59,37 @@ export function CounsellorActivityTab({ instituteId, counsellorUserId }: Props) 
     return (
         <ul className="space-y-1.5">
             {data.map((item) => (
-                <ActivityRow key={`${item.source_table}-${item.id}`} item={item} />
+                <ActivityRow
+                    key={`${item.source_table}-${item.id}`}
+                    item={item}
+                    instituteId={instituteId}
+                />
             ))}
         </ul>
     );
 }
 
-function ActivityRow({ item }: { item: ActivityFeedItem }) {
+/** CALL-row metadata emitted by WorkbenchActivityRepository's calls branch. */
+interface CallMetadata {
+    status?: string | null;
+    duration_seconds?: number | null;
+    recording_url?: string | null;
+    direction?: string | null;
+}
+
+function parseCallMetadata(json: string | null): CallMetadata | null {
+    if (!json) return null;
+    try {
+        const parsed: unknown = JSON.parse(json);
+        return parsed && typeof parsed === 'object' ? (parsed as CallMetadata) : null;
+    } catch {
+        return null;
+    }
+}
+
+function ActivityRow({ item, instituteId }: { item: ActivityFeedItem; instituteId: string }) {
+    const callMeta = item.action_type === 'CALL' ? parseCallMetadata(item.metadata_json) : null;
+
     return (
         <li className="flex items-start gap-3 rounded-md border border-neutral-200 bg-white p-3">
             <div className="mt-0.5 flex size-7 items-center justify-center rounded-full bg-neutral-100">
@@ -63,14 +104,66 @@ function ActivityRow({ item }: { item: ActivityFeedItem }) {
                         {relative(item.created_at)}
                     </time>
                 </div>
-                {item.title && (
-                    <div className="text-subtitle text-neutral-700">{item.title}</div>
-                )}
-                {item.description && (
-                    <div className="truncate text-caption text-neutral-500">{item.description}</div>
+                {callMeta ? (
+                    <CallDetails meta={callMeta} callLogId={item.id} instituteId={instituteId} />
+                ) : (
+                    <>
+                        {item.title && (
+                            <div className="text-subtitle text-neutral-700">{item.title}</div>
+                        )}
+                        {item.description && (
+                            <div className="truncate text-caption text-neutral-500">
+                                {item.description}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </li>
+    );
+}
+
+/**
+ * Rich CALL row: direction + outcome pill + duration, and inline recording
+ * playback when the call carries one. For telephony_call_log rows `item.id`
+ * IS the call-log id, which is what the presigned-URL endpoint expects.
+ */
+function CallDetails({
+    meta,
+    callLogId,
+    instituteId,
+}: {
+    meta: CallMetadata;
+    callLogId: string;
+    instituteId: string;
+}) {
+    const isInbound = meta.direction === 'INBOUND';
+    return (
+        <div className="mt-1 flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+                {meta.direction &&
+                    (isInbound ? (
+                        <span className="inline-flex items-center gap-1 text-caption text-info-600">
+                            <PhoneIncoming size={12} /> Inbound
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center gap-1 text-caption text-neutral-500">
+                            <PhoneOutgoing size={12} /> Outbound
+                        </span>
+                    ))}
+                {meta.status && <CallStatusPill status={meta.status} />}
+                <span className="text-caption text-neutral-500">
+                    · {formatCallDuration(meta.duration_seconds)}
+                </span>
+            </div>
+            {meta.recording_url && (
+                <CallRecordingPlayButton
+                    callLogId={callLogId}
+                    instituteId={instituteId}
+                    className="max-w-xs self-start"
+                />
+            )}
+        </div>
     );
 }
 

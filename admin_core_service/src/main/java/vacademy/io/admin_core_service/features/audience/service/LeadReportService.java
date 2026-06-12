@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -13,22 +14,32 @@ import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
+import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Builds the two read-only Lead Reports endpoints: a summary (KPIs + breakdowns + daily trend)
  * and per-counsellor performance. Pure aggregation over existing tables — never writes anything,
  * so it can never break any business rule. Date range defaults to the last 30 days when omitted.
+ *
+ * Every report is RBAC-scoped to the caller via {@link CounsellorScopeService} (same rules as
+ * the sales dashboard — see {@link #resolveScopeUserIds}), and optionally narrowed by team,
+ * counsellor, audience/campaign and source-type dimensions.
  */
 @Slf4j
 @Service
@@ -39,6 +50,8 @@ public class LeadReportService {
     private final LeadStatusRepository leadStatusRepository;
     private final LeadSlaConfigService leadSlaConfigService;
     private final AuthService authService;
+    private final CounsellorScopeService counsellorScopeService;
+    private final OrganizationTeamAuthClient orgTeamClient;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
 
@@ -47,23 +60,37 @@ public class LeadReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public LeadReportSummaryDTO getLeadSummary(String instituteId, String fromDate, String toDate) {
+    public LeadReportSummaryDTO getLeadSummary(String instituteId, String fromDate, String toDate,
+                                               String teamId, String counsellorUserId,
+                                               String audienceId, String sourceType,
+                                               String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
         Integer tatHours = resolveTatHours(instituteId); // null when TAT disabled
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
+        String scopeCsv = toScopeCsv(resolveScopeUserIds(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId)));
+        String audienceFilter = trimToNull(audienceId);
+        String sourceFilter = trimToNull(sourceType);
+
         LeadReportProjections.TotalsProjection totals =
-                audienceResponseRepository.findReportTotals(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportTotals(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         LeadReportProjections.ResponseStatsProjection response =
-                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatHoursParam);
+                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatHoursParam,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.StatusCountProjection> statusRows =
-                audienceResponseRepository.findReportStatusBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportStatusBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.SourceCountProjection> sourceRows =
-                audienceResponseRepository.findReportSourceBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportSourceBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.TierCountProjection> tierRows =
-                audienceResponseRepository.findReportTierBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportTierBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.DailyTrendProjection> trendRows =
-                audienceResponseRepository.findReportDailyTrend(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportDailyTrend(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
 
         long total = nz(totals != null ? totals.getTotalLeads() : null);
         long converted = nz(totals != null ? totals.getConvertedLeads() : null);
@@ -143,13 +170,20 @@ public class LeadReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public CounselorPerformanceDTO getCounselorPerformance(String instituteId, String fromDate, String toDate) {
+    public CounselorPerformanceDTO getCounselorPerformance(String instituteId, String fromDate, String toDate,
+                                                           String teamId, String counsellorUserId,
+                                                           String audienceId, String sourceType,
+                                                           String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
         Integer tatHours = resolveTatHours(instituteId);
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
+        String scopeCsv = toScopeCsv(resolveScopeUserIds(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId)));
+
         List<LeadReportProjections.CounselorRowProjection> raw = audienceResponseRepository
-                .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam);
+                .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam,
+                        scopeCsv, trimToNull(audienceId), trimToNull(sourceType));
 
         // Batch-resolve counsellor names (one call to auth-service for all ids in the result).
         Map<String, String> nameById = Collections.emptyMap();
@@ -212,6 +246,79 @@ public class LeadReportService {
                 .rows(rows)
                 .summary(summary)
                 .build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // RBAC scope resolution
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolve the counsellor-user whitelist this report should aggregate over.
+     * Mirrors SalesDashboardService.scopedUsers, with explicit narrowing on top.
+     *
+     * Priority:
+     *   1. Explicit {@code counsellorUserId} → that single counsellor. When the
+     *      caller is themselves inside the leads subtree, the target must sit
+     *      inside their RBAC descendants — 403 otherwise.
+     *   2. Explicit {@code teamId} → all users across that team's subtree,
+     *      intersected with the caller's RBAC scope when the caller is scoped.
+     *   3. Caller inside the leads subtree → their RBAC descendants. A leaf
+     *      counsellor resolves to just themselves — self-scoped reports are the
+     *      chosen product behavior.
+     *   4. Admin outside the leads subtree → everyone under the leads root.
+     *   5. Leads team not configured → null = institute-wide (admin setup mode).
+     *
+     * Returns null for "no scope filter". A non-empty list MUST be applied; an
+     * EMPTY list means "scoped to nothing" — the report comes back zeroed rather
+     * than silently widening back to institute-wide.
+     */
+    private List<String> resolveScopeUserIds(String instituteId, String callerUserId,
+                                             String teamId, String counsellorUserId) {
+        boolean callerScoped = counsellorScopeService.isCallerInLeadsSubtree(instituteId, callerUserId);
+        List<String> callerScope = callerScoped
+                ? counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId)
+                : Collections.emptyList();
+
+        if (counsellorUserId != null) {
+            if (callerScoped && !callerScope.contains(counsellorUserId)) {
+                throw new VacademyException(HttpStatus.FORBIDDEN,
+                        "You are not allowed to view reports for this counsellor.");
+            }
+            return List.of(counsellorUserId);
+        }
+
+        if (teamId != null) {
+            List<String> subtreeTeamIds = orgTeamClient.getSubtreeIncludingSelf(teamId).stream()
+                    .map(OrgTeamDTO::getId).collect(Collectors.toList());
+            List<String> teamUsers = counsellorScopeService.usersInTeams(subtreeTeamIds);
+            if (callerScoped) {
+                Set<String> allowed = new HashSet<>(callerScope);
+                teamUsers = teamUsers.stream().filter(allowed::contains).collect(Collectors.toList());
+            }
+            return teamUsers; // possibly empty → zeroed report, never silently unscoped
+        }
+
+        if (callerScoped && !callerScope.isEmpty()) {
+            return callerScope;
+        }
+
+        List<String> leadsTeamIds = counsellorScopeService.allTeamIdsUnderLeadsRoot(instituteId);
+        if (leadsTeamIds.isEmpty()) return null; // admin setup mode — no scope filter
+        List<String> users = counsellorScopeService.usersInTeams(leadsTeamIds);
+        return users.isEmpty() ? null : users;
+    }
+
+    /**
+     * null scope → null bind (no filter). EMPTY scope → "" — STRING_TO_ARRAY('', ',')
+     * is the empty array, so every row fails the scope predicate and the report comes
+     * back zeroed through the normal query path.
+     */
+    private static String toScopeCsv(List<String> scope) {
+        return scope == null ? null : String.join(",", scope);
+    }
+
+    private static String trimToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     // ─────────────────────────────────────────────────────────────────────

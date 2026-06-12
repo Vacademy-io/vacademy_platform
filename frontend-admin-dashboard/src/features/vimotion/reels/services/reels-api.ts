@@ -324,6 +324,21 @@ export async function getReelStatus(
     return resp.json();
 }
 
+/**
+ * Re-dispatch a FAILED reel from its persisted config snapshot. The server
+ * resets status/progress/error and returns the standard reel record (back
+ * in PENDING) so callers can resume polling. 409 when the reel isn't FAILED
+ * (already retried, still running, or completed).
+ */
+export async function retryReel(apiKey: string, reelId: string): Promise<ReelResponse> {
+    const resp = await fetch(`${BASE}/${encodeURIComponent(reelId)}/retry`, {
+        method: 'POST',
+        headers: headers(apiKey),
+    });
+    if (!resp.ok) throw new Error(await readError(resp, 'Retry failed'));
+    return resp.json();
+}
+
 export async function deleteReel(apiKey: string, reelId: string): Promise<void> {
     const resp = await fetch(`${BASE}/${encodeURIComponent(reelId)}`, {
         method: 'DELETE',

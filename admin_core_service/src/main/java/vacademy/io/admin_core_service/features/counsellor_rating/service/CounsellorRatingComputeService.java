@@ -28,8 +28,9 @@ import java.util.List;
  * Earlier designs stored an {@code assigned_at} column on
  * {@code user_lead_profile}; we drop that and resolve "when did this
  * counsellor take over THIS lead" at compute time from
- * {@code timeline_event(action_type IN ('Counselor assigned',
- * 'Counselor reassigned'))}. timeline_event is already the system of
+ * {@code timeline_event(action_type = 'COUNSELOR_ASSIGNED')} — the enum
+ * NAME (assigns and reassigns share the enum; see
+ * {@code LeadJourneyActionType}). timeline_event is already the system of
  * record for assignment changes — having a derived column to keep in sync
  * was an avoidable correctness hazard.
  *
@@ -37,9 +38,9 @@ import java.util.List;
  * For a counsellor c within a rolling window of <em>window_days</em>:
  * <pre>
  *   assigned_at  = MAX(timeline_event.created_at) per lead
- *                  WHERE action_type IN ('Counselor assigned',
- *                                        'Counselor reassigned')
- *                    AND type_id = user_lead_profile.id
+ *                  WHERE action_type = 'COUNSELOR_ASSIGNED'
+ *                    AND type = 'USER_LEAD_PROFILE'
+ *                    AND type_id = user_lead_profile.user_id
  *
  *   assigned     = COUNT leads where assigned_counselor_id = c
  *                              AND assigned_at >= NOW() - window_days
@@ -72,11 +73,16 @@ public class CounsellorRatingComputeService {
      * each query below so the assigned-at calculation stays in one place.
      */
     private static final String ASSIGNED_AT_LATERAL =
+            // action_type stores the enum NAME ('COUNSELOR_ASSIGNED' — assigns
+            // and reassigns share the enum), and type_id on USER_LEAD_PROFILE
+            // events is the lead's user_id, not user_lead_profile.id. See
+            // timeline_event invariants in docs/crm.
             "LEFT JOIN LATERAL ( " +
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
-            "    WHERE te.type_id = ulp.id " +
-            "      AND te.action_type IN ('Counselor assigned', 'Counselor reassigned') " +
+            "    WHERE te.type = 'USER_LEAD_PROFILE' " +
+            "      AND te.type_id = ulp.user_id " +
+            "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true ";
 
     private final LeadWorkbenchSettingService settingService;

@@ -16,11 +16,13 @@ import {
     ArrowsClockwise,
     Crown,
     ChartLineUp,
+    Phone,
     SquaresFour,
     List as ListIcon,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
+import { CounsellorCallsTab } from './-components/CounsellorCallsTab';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -43,7 +45,7 @@ export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
 });
 
-type DetailTab = 'leads' | 'activity' | 'performance';
+type DetailTab = 'leads' | 'activity' | 'calls' | 'performance';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type ViewMode = 'cards' | 'list';
 
@@ -881,6 +883,9 @@ function DetailDrawer({
                         <TabsTrigger value="activity">
                             <ArrowsClockwise size={14} className="mr-1.5" /> Activity
                         </TabsTrigger>
+                        <TabsTrigger value="calls">
+                            <Phone size={14} className="mr-1.5" /> Calls
+                        </TabsTrigger>
                         <TabsTrigger value="performance">
                             <ChartLineUp size={14} className="mr-1.5" /> Performance
                         </TabsTrigger>
@@ -895,6 +900,12 @@ function DetailDrawer({
                         )}
                         {tab === 'activity' && (
                             <CounsellorActivityTab
+                                instituteId={instituteId}
+                                counsellorUserId={counsellor.user_id}
+                            />
+                        )}
+                        {tab === 'calls' && (
+                            <CounsellorCallsTab
                                 instituteId={instituteId}
                                 counsellorUserId={counsellor.user_id}
                             />

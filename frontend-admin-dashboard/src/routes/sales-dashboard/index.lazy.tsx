@@ -15,6 +15,7 @@ import {
     ReassignmentVolumeWidget,
 } from './-components/TimeSeriesWidgets';
 import { CampaignCardsRow } from './-components/CampaignCardsRow';
+import { TeamPicker } from './-components/TeamPicker';
 import { ConversionBySourceWidget } from './-components/ConversionBySourceWidget';
 import { CallsPerDayWidget } from './-components/CallsPerDayWidget';
 import { InsightsStrip } from './-components/InsightsStrip';
@@ -115,7 +116,11 @@ function SalesDashboardPage() {
         preset === 'custom' && !!parseDateInput(customStart, false) &&
         !!parseDateInput(customEnd, true);
 
-    const teamId: string | undefined = undefined; // RBAC adds a team picker in a follow-up
+    // Team scope — fed to every widget. undefined = "All my teams" (backend
+    // falls back to the caller's RBAC descendants / leads subtree). The
+    // TeamPicker hides itself when the caller isn't in the leads team, so
+    // this stays undefined for plain admins.
+    const [teamId, setTeamId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         setNavHeading('Sales Dashboard');
@@ -135,6 +140,7 @@ function SalesDashboardPage() {
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <TeamPicker instituteId={instituteId} value={teamId} onChange={setTeamId} />
                         <div className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white p-1">
                             {(['7d', '30d', '90d', 'custom'] as const).map((p) => (
                                 <button

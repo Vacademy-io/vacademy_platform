@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import { CaretRight } from '@phosphor-icons/react';
 import { Cell, Funnel, FunnelChart, LabelList, ResponsiveContainer, Tooltip } from 'recharts';
 import { fetchFunnel } from '../-services/sales-dashboard-services';
 
@@ -21,9 +23,11 @@ interface Props {
  * unknown / missing colours fall back to a sequential green→amber→red ramp
  * so the eye reads "good at the top, attrition at the bottom" by default.
  */
-const FALLBACK_COLORS = ['#10B981', '#22C55E', '#84CC16', '#EAB308', '#F59E0B', '#F97316', '#EF4444'];
+// prettier-ignore
+const FALLBACK_COLORS = ['#10B981', '#22C55E', '#84CC16', '#EAB308', '#F59E0B', '#F97316', '#EF4444']; // design-lint-ignore: recharts fill props need concrete colors (green→red ramp)
 
 export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props) {
+    const navigate = useNavigate();
     const { data, isLoading } = useQuery({
         queryKey: ['sales-dashboard-funnel', instituteId, teamId, from, to],
         enabled: !!instituteId,
@@ -82,14 +86,14 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
                                 <Funnel dataKey="value" data={funnelData} isAnimationActive>
                                     <LabelList
                                         position="right"
-                                        fill="#4b5563"
+                                        fill="#4b5563" // design-lint-ignore: recharts SVG fill needs a concrete color (neutral-600)
                                         stroke="none"
                                         dataKey="name"
                                         fontSize={12}
                                     />
                                     <LabelList
                                         position="center"
-                                        fill="#ffffff"
+                                        fill="#ffffff" // design-lint-ignore: recharts SVG fill needs a concrete color (white)
                                         stroke="none"
                                         dataKey="value"
                                         fontSize={13}
@@ -104,8 +108,9 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
                     </div>
 
                     {/* Per-stage drop-off rail — keeps the "where am I losing
-                        people" answer one glance away. */}
-                    <ul className="space-y-1.5 md:w-44">
+                        people" answer one glance away. Each row drills through
+                        to Recent Leads filtered to that status. */}
+                    <ul className="space-y-1 md:w-48">
                         {stages.map((s, i) => {
                             // `noUncheckedIndexedAccess` makes array reads
                             // `T | undefined`; `dropoffs` is built off the
@@ -115,21 +120,38 @@ export function ConversionFunnelWidget({ instituteId, teamId, from, to }: Props)
                             // `number | null` prop stays honest.
                             const dropPct = dropoffs[i] ?? null;
                             return (
-                                <li
-                                    key={s.status_key}
-                                    className="flex items-center gap-2 text-caption"
-                                >
-                                    <span
-                                        aria-hidden="true"
-                                        className="inline-block size-2.5 rounded-sm"
-                                        style={{
-                                            backgroundColor:
-                                                s.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length],
-                                        }}
-                                    />
-                                    <span className="flex-1 truncate text-neutral-700">{s.label}</span>
-                                    <span className="font-medium text-neutral-900">{s.count}</span>
-                                    <DropoffChip pct={dropPct} />
+                                <li key={s.status_key}>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            navigate({
+                                                to: '/audience-manager/recent-leads',
+                                                search: { status: s.status_key },
+                                            })
+                                        }
+                                        className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-0.5 text-left text-caption hover:bg-neutral-50"
+                                    >
+                                        <span
+                                            aria-hidden="true"
+                                            className="inline-block size-2.5 shrink-0 rounded-sm"
+                                            style={{
+                                                backgroundColor:
+                                                    s.color ||
+                                                    FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+                                            }}
+                                        />
+                                        <span className="flex-1 truncate text-neutral-700">
+                                            {s.label}
+                                        </span>
+                                        <span className="font-medium text-neutral-900">
+                                            {s.count}
+                                        </span>
+                                        <DropoffChip pct={dropPct} />
+                                        <CaretRight
+                                            size={12}
+                                            className="shrink-0 text-neutral-300 transition-colors group-hover:text-neutral-500"
+                                        />
+                                    </button>
                                 </li>
                             );
                         })}

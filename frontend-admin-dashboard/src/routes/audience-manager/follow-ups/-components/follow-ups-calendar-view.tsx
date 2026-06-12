@@ -23,6 +23,7 @@ import {
     LeadTable,
     type LeadActionHandlers,
     type LeadCardVM,
+    type LeadTableExtraColumn,
 } from '@/components/shared/leads';
 import type { LeadNotesSummary } from '@/components/shared/leads/lead-table';
 import { classify } from './follow-up-buckets';
@@ -66,6 +67,7 @@ interface FollowUpsCalendarViewProps {
     actions: LeadActionHandlers;
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
+    extraColumns?: LeadTableExtraColumn[];
 }
 
 export function FollowUpsCalendarView({
@@ -84,6 +86,7 @@ export function FollowUpsCalendarView({
     actions,
     onStatusUpdated,
     hiddenColumns,
+    extraColumns,
 }: FollowUpsCalendarViewProps) {
     const month = useMemo(() => safeParseMonth(monthStr), [monthStr]);
     const selectedDate = useMemo(() => safeParseDate(selectedDateStr), [selectedDateStr]);
@@ -318,6 +321,7 @@ export function FollowUpsCalendarView({
                             actions={actions}
                             onStatusUpdated={onStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            extraColumns={extraColumns}
                             emptyState={
                                 <LeadEmptyState
                                     title="Nothing on this day"

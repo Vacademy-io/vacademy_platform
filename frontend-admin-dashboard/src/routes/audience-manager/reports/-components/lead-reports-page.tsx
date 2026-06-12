@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import {
     ChartLineUp,
     Users,
@@ -26,6 +27,7 @@ import {
     ArrowsClockwise,
     CaretUp,
     CaretDown,
+    CaretRight,
     Trophy,
     WarningCircle,
 } from '@phosphor-icons/react';
@@ -42,6 +44,13 @@ import {
     type CounselorPerformance,
     type CounselorRow,
 } from '../-services/get-lead-reports';
+import {
+    ALL_STATUSES_VALUE,
+    CUSTOM_DATE_VALUE,
+} from '../../recent-leads/-components/recent-leads-search';
+
+/** Where every drill-through on this page lands. */
+const RECENT_LEADS_ROUTE = '/audience-manager/recent-leads' as const;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -135,6 +144,7 @@ export function LeadReportsPage() {
 
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
+    const navigate = useNavigate();
 
     const defaults = useMemo(() => computeDefaultRange(), []);
     const [fromDate, setFromDate] = useState(defaults.from);
@@ -280,6 +290,21 @@ export function LeadReportsPage() {
                     icon={<Users size={20} weight="bold" />}
                     tone="primary"
                     loading={isLoading && !summary}
+                    onClick={() =>
+                        // Total = every status incl. Converted, so override the
+                        // recent-leads default "Active leads" filter to match.
+                        navigate({
+                            to: RECENT_LEADS_ROUTE,
+                            search: {
+                                status: ALL_STATUSES_VALUE,
+                                range: CUSTOM_DATE_VALUE,
+                                // Empty inputs would fail the route's yyyy-MM-dd
+                                // schema — omit them instead.
+                                from: applied.from || undefined,
+                                to: applied.to || undefined,
+                            },
+                        })
+                    }
                 />
                 <KpiCard
                     label="Conversion Rate"
@@ -337,7 +362,16 @@ export function LeadReportsPage() {
                         </h2>
                     </div>
                     {summary && summary.by_status.length > 0 ? (
-                        <StatusDonut data={summary.by_status} total={summary.totals.total_leads} />
+                        <StatusDonut
+                            data={summary.by_status}
+                            total={summary.totals.total_leads}
+                            onSelectStatus={(statusKey) =>
+                                navigate({
+                                    to: RECENT_LEADS_ROUTE,
+                                    search: { status: statusKey },
+                                })
+                            }
+                        />
                     ) : (
                         <EmptyHint />
                     )}
@@ -376,6 +410,12 @@ export function LeadReportsPage() {
                                 total={summary.totals.total_leads}
                                 converted={b.converted}
                                 colorClass="bg-primary-500"
+                                onClick={() =>
+                                    navigate({
+                                        to: RECENT_LEADS_ROUTE,
+                                        search: { source: b.source_type },
+                                    })
+                                }
                             />
                         ))
                     ) : (
@@ -436,7 +476,16 @@ export function LeadReportsPage() {
                         </span>
                     )}
                 </div>
-                <CounsellorTable performance={performance} loading={counsellorQuery.isLoading} />
+                <CounsellorTable
+                    performance={performance}
+                    loading={counsellorQuery.isLoading}
+                    onRowClick={(counselorId) =>
+                        navigate({
+                            to: RECENT_LEADS_ROUTE,
+                            search: { counsellor: counselorId },
+                        })
+                    }
+                />
             </section>
                 </TabsContent>
             </Tabs>
@@ -453,8 +502,10 @@ interface KpiCardProps {
     icon?: ReactNode;
     tone?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
     loading?: boolean;
+    /** Drill-through — when set the card becomes clickable (cursor + hover affordance). */
+    onClick?: () => void;
 }
-function KpiCard({ label, value, sub, icon, tone = 'default', loading }: KpiCardProps) {
+function KpiCard({ label, value, sub, icon, tone = 'default', loading, onClick }: KpiCardProps) {
     const toneToIconClass: Record<NonNullable<KpiCardProps['tone']>, string> = {
         default: 'bg-neutral-100 text-neutral-600',
         primary: 'bg-blue-100 text-blue-600',
@@ -464,7 +515,25 @@ function KpiCard({ label, value, sub, icon, tone = 'default', loading }: KpiCard
         info: 'bg-indigo-100 text-indigo-600',
     };
     return (
-        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+        <div
+            className={cn(
+                'group flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md',
+                onClick && 'cursor-pointer hover:border-primary-200'
+            )}
+            onClick={onClick}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onKeyDown={
+                onClick
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onClick();
+                          }
+                      }
+                    : undefined
+            }
+        >
             <div className="flex items-start justify-between">
                 <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
                     {label}
@@ -485,7 +554,17 @@ function KpiCard({ label, value, sub, icon, tone = 'default', loading }: KpiCard
             ) : (
                 <span className="text-3xl font-bold tracking-tight text-neutral-900">{value}</span>
             )}
-            {sub && <span className="text-xs text-neutral-500">{sub}</span>}
+            {(sub || onClick) && (
+                <span className="flex items-center justify-between text-xs text-neutral-500">
+                    {sub}
+                    {onClick && (
+                        <CaretRight
+                            size={12}
+                            className="shrink-0 text-neutral-300 transition-colors group-hover:text-neutral-500"
+                        />
+                    )}
+                </span>
+            )}
         </div>
     );
 }
@@ -517,18 +596,52 @@ interface BreakdownBarProps {
     converted?: number;
     colorHex?: string;
     colorClass?: string;
+    /** Drill-through — when set the row becomes clickable. */
+    onClick?: () => void;
 }
-function BreakdownBar({ label, count, total, converted, colorHex, colorClass }: BreakdownBarProps) {
+function BreakdownBar({
+    label,
+    count,
+    total,
+    converted,
+    colorHex,
+    colorClass,
+    onClick,
+}: BreakdownBarProps) {
     const pct = total > 0 ? Math.min(100, (count / total) * 100) : 0;
     const cpct = converted != null && total > 0 ? Math.min(100, (converted / total) * 100) : 0;
     return (
-        <div className="flex flex-col gap-1.5">
+        <div
+            className={cn(
+                'flex flex-col gap-1.5',
+                onClick && 'group -mx-1.5 cursor-pointer rounded-md px-1.5 py-1 hover:bg-neutral-50'
+            )}
+            onClick={onClick}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            onKeyDown={
+                onClick
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onClick();
+                          }
+                      }
+                    : undefined
+            }
+        >
             <div className="flex items-center justify-between text-sm">
                 <span className="truncate text-neutral-700">{label}</span>
-                <span className="font-medium text-neutral-900">
+                <span className="flex items-center gap-1 font-medium text-neutral-900">
                     {count}
                     {converted != null && (
-                        <span className="ml-2 text-xs text-green-700">({converted} conv.)</span>
+                        <span className="ml-1 text-xs text-green-700">({converted} conv.)</span>
+                    )}
+                    {onClick && (
+                        <CaretRight
+                            size={12}
+                            className="text-neutral-300 transition-colors group-hover:text-neutral-500"
+                        />
                     )}
                 </span>
             </div>
@@ -575,8 +688,10 @@ function EmptyHint() {
 interface StatusDonutProps {
     data: Array<{ status_key: string; label: string; color: string | null; count: number }>;
     total: number;
+    /** Drill-through — legend rows navigate to the filtered Recent Leads list. */
+    onSelectStatus?: (statusKey: string) => void;
 }
-function StatusDonut({ data, total }: StatusDonutProps) {
+function StatusDonut({ data, total, onSelectStatus }: StatusDonutProps) {
     const SIZE = 180;
     const THICKNESS = 26;
     const RADIUS = (SIZE - THICKNESS) / 2;
@@ -650,28 +765,41 @@ function StatusDonut({ data, total }: StatusDonutProps) {
                     <span className="text-xs text-neutral-500">leads</span>
                 </div>
             </div>
-            <ul className="flex w-full flex-col gap-2">
+            <ul className="flex w-full flex-col gap-1">
                 {data.map((d) => {
                     const pct = total > 0 ? (d.count / total) * 100 : 0;
                     return (
-                        <li
-                            key={d.status_key}
-                            className="flex items-center justify-between gap-3 text-sm"
-                        >
-                            <div className="flex min-w-0 items-center gap-2">
-                                {/* Catalog colour from API — isolated dynamic style. */}
-                                <span
-                                    className="size-3 shrink-0 rounded-sm"
-                                    style={{ backgroundColor: d.color ?? undefined }}
-                                />
-                                <span className="truncate text-neutral-700">{d.label}</span>
-                            </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="font-medium text-neutral-900">{d.count}</span>
-                                <span className="text-xs text-neutral-500">
-                                    {pct.toFixed(1)}%
-                                </span>
-                            </div>
+                        <li key={d.status_key}>
+                            <button
+                                type="button"
+                                onClick={() => onSelectStatus?.(d.status_key)}
+                                disabled={!onSelectStatus}
+                                className={cn(
+                                    'group flex w-full items-center justify-between gap-3 rounded-md px-1.5 py-1 text-left text-sm',
+                                    onSelectStatus && 'cursor-pointer hover:bg-neutral-50'
+                                )}
+                            >
+                                <div className="flex min-w-0 items-center gap-2">
+                                    {/* Catalog colour from API — isolated dynamic style. */}
+                                    <span
+                                        className="size-3 shrink-0 rounded-sm"
+                                        style={{ backgroundColor: d.color ?? undefined }}
+                                    />
+                                    <span className="truncate text-neutral-700">{d.label}</span>
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="font-medium text-neutral-900">{d.count}</span>
+                                    <span className="text-xs text-neutral-500">
+                                        {pct.toFixed(1)}%
+                                    </span>
+                                    {onSelectStatus && (
+                                        <CaretRight
+                                            size={12}
+                                            className="self-center text-neutral-300 transition-colors group-hover:text-neutral-500"
+                                        />
+                                    )}
+                                </div>
+                            </button>
                         </li>
                     );
                 })}
@@ -822,8 +950,10 @@ type SortKey =
 interface CounsellorTableProps {
     performance: CounselorPerformance | undefined;
     loading: boolean;
+    /** Drill-through — row click opens that counsellor's Recent Leads. */
+    onRowClick?: (counselorId: string) => void;
 }
-function CounsellorTable({ performance, loading }: CounsellorTableProps) {
+function CounsellorTable({ performance, loading, onRowClick }: CounsellorTableProps) {
     const [sortKey, setSortKey] = useState<SortKey>('leads_assigned');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -959,9 +1089,13 @@ function CounsellorTable({ performance, loading }: CounsellorTableProps) {
                             <tr
                                 key={r.counselor_id}
                                 className={cn(
-                                    'border-b border-neutral-100 last:border-0 hover:bg-neutral-50',
-                                    isTop && 'bg-amber-50/40'
+                                    'group border-b border-neutral-100 last:border-0 hover:bg-neutral-50',
+                                    isTop && 'bg-amber-50/40',
+                                    onRowClick && 'cursor-pointer'
                                 )}
+                                onClick={
+                                    onRowClick ? () => onRowClick(r.counselor_id) : undefined
+                                }
                             >
                                 <td className="py-2.5 pr-3">
                                     <div className="flex items-center gap-2">
@@ -974,8 +1108,14 @@ function CounsellorTable({ performance, loading }: CounsellorTableProps) {
                                             {(r.counselor_name || '?').charAt(0).toUpperCase()}
                                         </div>
                                         <div className="flex flex-col gap-0.5">
-                                            <span className="font-medium text-neutral-900">
+                                            <span className="flex items-center gap-1 font-medium text-neutral-900">
                                                 {r.counselor_name}
+                                                {onRowClick && (
+                                                    <CaretRight
+                                                        size={12}
+                                                        className="text-neutral-300 transition-colors group-hover:text-neutral-500"
+                                                    />
+                                                )}
                                             </span>
                                             {isTop && (
                                                 <span className="flex items-center gap-1 text-xs text-amber-700">

@@ -129,7 +129,7 @@ Endpoint base: `/admin-core-service/v1/counsellor-workbench`. Code at [`features
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/config?instituteId=` | Read `leads_team_id` + rating strategy (from `institute.setting` JSON) |
-| PUT | `/config` | Set `leads_team_id`. ⚠️ **Currently does NOT persist rating-strategy fields** (see Known Issues). |
+| PUT | `/config` | Partial upsert: persists rating-strategy fields via `upsertRatingStrategy` when any are present, and `leads_team_id` when non-null (a null `leads_team_id` only clears the team when the payload carries **no** rating fields — so a rating-settings save can't wipe the team). Fixed 2026-06-12. |
 | GET | `/me/team?instituteId=` | Resolve caller's home team in the leads subtree → `WorkbenchTeamDTO` (team_id, name, leads_root_team_id, ancestor_names, descendant_team_ids) |
 | GET | `/me/leads?instituteId&status&page&size` | Auth-scoped self leads — caller + descendants only |
 | GET | `/team/{teamId}/counsellors?instituteId&search&status&page&size` | Roster of a team subtree intersected with caller's RBAC. One batched query for active-membership lookup. |
@@ -230,7 +230,7 @@ Layout (top-down):
 
 Charts: funnel uses `recharts` `FunnelChart`. Time-series widgets use a hand-rolled SVG with `niceTicks()` rounding. Calls-per-day uses raw `<div>` bars.
 
-`teamId` is hard-coded to `undefined` (team picker is a follow-up).
+A `TeamPicker` in the header (added 2026-06-12) resolves the caller's home team via `GET /counsellor-workbench/me/team` and offers the descendant sub-teams; it hides entirely when the caller isn't in the leads subtree (plain admins keep `teamId = undefined` = whole scope). Funnel stage rows, leaderboard rows, and followup-widget rows drill through to Recent Leads with matching URL filters.
 
 ---
 
@@ -597,9 +597,9 @@ It's `display_order` + `is_active` (boolean). Not `sort_order` or `status = 'ACT
 
 These are real and should be tracked:
 
-1. **`CounsellorRatingComputeService.ASSIGNED_AT_LATERAL`** still uses title-cased `te.action_type IN ('Counselor assigned','Counselor reassigned')` — the same anti-pattern fixed everywhere else. **Ratings velocity score is currently always `worst` because `assigned_at` resolves to NULL → `(converted_at − NULL) = NULL` → `avg_hours = NULL`.** Owner: ratings team. Replace with `te.action_type = 'COUNSELOR_ASSIGNED'`.
-2. **`WorkbenchActivityRepository.fetchFeed`** `CASE WHEN action_type LIKE 'Counselor%'` will never match — stored value is `COUNSELOR_ASSIGNED`. Activity feed currently maps every assign event to the upper-cased catch-all instead of `LEAD_TRANSFERRED_OUT/IN`.
-3. **`PUT /v1/counsellor-workbench/config`** only writes `leads_team_id`. Every rating-strategy field in the request body is silently dropped. `LeadWorkbenchSettingService.upsertRatingStrategy` exists but isn't wired to any controller endpoint. Frontend rating settings page can't actually save changes via this path.
+1. ~~**`CounsellorRatingComputeService.ASSIGNED_AT_LATERAL`** title-cased action_type filter~~ **Fixed 2026-06-12**: now `te.action_type = 'COUNSELOR_ASSIGNED'` with the correct `type='USER_LEAD_PROFILE'` + `type_id = ulp.user_id` predicates — velocity scores compute for real from the next recompute.
+2. ~~**`WorkbenchActivityRepository.fetchFeed`** `LIKE 'Counselor%'` never matched~~ **Fixed 2026-06-12**: assign events now normalize to `LEAD_TRANSFERRED_OUT/IN` from `COUNSELOR_ASSIGNED` + `metadata_json` (`reassigned_from` / `counselor_id` vs the feed subject).
+3. ~~**`PUT /v1/counsellor-workbench/config`** dropped rating-strategy fields~~ **Fixed 2026-06-12**: the endpoint now routes to `upsertRatingStrategy` (see §5.1). Residual race: the rating-settings FE echoes the whole fetched config, so a stale non-null `leads_team_id` from a concurrent team change can be re-written — FE should omit `leads_team_id` from rating saves.
 4. **`user_lead_profile.first_response_at`** was added in V272 and backfilled. **No runtime code stamps it.** Three writers in `UserLeadProfileService` explicitly comment "first_response_at is NOT stamped here". TAT is computed on-the-fly from `timeline_event` (`AudienceService` / `AudienceResponseRepository`), so the column is dormant — safe to read as null, don't trust it.
 5. **`ROUND_ROBIN` candidates are sorted purely by user_id alphabetically.** No rating-weighting, no current-load balancing. Heavy use imbalances.
 

@@ -88,15 +88,19 @@ public class WorkbenchActivityRepository {
             "), timeline AS (" +
             "  SELECT te.id AS id, " +
             "         'timeline_event'::text AS source_table, " +
-            // Normalize the human action_type to one of the canonical labels the UI knows.
+            // Normalize the stored action_type (the enum NAME, e.g.
+            // 'COUNSELOR_ASSIGNED' — assigns and reassigns share the enum) to
+            // one of the canonical labels the UI knows. The transfer direction
+            // comes from metadata: reassigned_from = feed subject → OUT,
+            // counselor_id = feed subject → IN.
             "         CASE " +
             // jsonb ? 'key' is the PG key-exists operator but JDBC eats the
             // '?'. The "->> 'key' IS NOT NULL" form means the same thing and
             // contains no ambiguous '?'. (See sales-dashboard reassignment
             // series for the matching rewrite.)
-            "           WHEN te.action_type LIKE 'Counselor%' AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
+            "           WHEN te.action_type = 'COUNSELOR_ASSIGNED' AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
             "                AND (te.metadata_json::jsonb ->> 'reassigned_from') = ? THEN 'LEAD_TRANSFERRED_OUT' " +
-            "           WHEN te.action_type LIKE 'Counselor%' AND (te.metadata_json::jsonb ->> 'counselor_id') IS NOT NULL " +
+            "           WHEN te.action_type = 'COUNSELOR_ASSIGNED' AND (te.metadata_json::jsonb ->> 'counselor_id') IS NOT NULL " +
             "                AND (te.metadata_json::jsonb ->> 'counselor_id') = ? THEN 'LEAD_TRANSFERRED_IN' " +
             "           WHEN te.action_type ILIKE '%status%' THEN 'STATUS_CHANGED' " +
             "           WHEN te.action_type ILIKE '%note%' THEN 'NOTE_ADDED' " +

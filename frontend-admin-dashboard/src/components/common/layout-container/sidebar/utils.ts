@@ -404,6 +404,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/sales-dashboard',
                 subItemId: 'sales-dashboard',
             },
+            {
+                subItem: 'Reports',
+                subItemLink: '/audience-manager/reports',
+                subItemId: 'lead-reports',
+            },
         ],
     },
     {

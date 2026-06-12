@@ -130,7 +130,7 @@ Score **storage** is the `counsellor_rating` table (**V328** — one row per cou
 Defined in [`constants/display-settings/admin-defaults.ts`](../../frontend-admin-dashboard/src/constants/display-settings/admin-defaults.ts), toggled in the Display Settings admin UI, persisted via `display-settings.ts` service (API + localStorage fallback).
 
 - Sidebar **Leads** section (category CRM, [`sidebar/utils.ts:379`](../../frontend-admin-dashboard/src/components/common/layout-container/sidebar/utils.ts#L379)) sub-items: `lead-list-leads` (→ `/audience-manager/list`), `recent-leads`, `follow-ups`, `counsellors` (→ `/counsellors`), `sales-dashboard`. **`counsellors` and `sales-dashboard` are hidden by default** (`SUB_ITEMS_HIDDEN_BY_DEFAULT`) — typically enabled once a leads team is configured.
-- `/audience-manager/reports` has **no sidebar entry** — URL only.
+- `/audience-manager/reports` has a sidebar entry (`lead-reports`, visible by default) since 2026-06-12.
 - The "Lead Profile Tab" in the student side-view is off by default (`leadTab: false`).
 - Independently of display settings, `LEAD_SETTING.enabled = false` hides all lead UI (columns, actions, tabs).
 - Routes behind a disabled gate render `FeatureDisabledNotice`-style lock cards rather than 404s.

@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
@@ -31,6 +32,9 @@ public class AudienceController {
 
     @Autowired
     private TimelineEventService timelineEventService;
+
+    @Autowired
+    private LeadAssignmentNotifier leadAssignmentNotifier;
 
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
@@ -378,6 +382,13 @@ public class AudienceController {
                     userId);
         } catch (Exception e) {
             // best-effort — don't fail the assignment if logging fails
+        }
+        try {
+            // Bell notification to the counsellor — manual assignment should
+            // light up the bell exactly like pool auto-assignment does.
+            leadAssignmentNotifier.notifyAssigned(instituteId, counselorId, null, null);
+        } catch (Exception e) {
+            // best-effort — don't fail the assignment if notification fails
         }
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }

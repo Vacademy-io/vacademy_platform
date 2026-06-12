@@ -5,12 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
 import vacademy.io.admin_core_service.features.counsellor_rating.dto.LeaderboardEntryDTO;
 import vacademy.io.admin_core_service.features.counsellor_rating.dto.RatingDTO;
 import vacademy.io.admin_core_service.features.counsellor_rating.enums.RatingStrategyType;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.LeadWorkbenchSettingService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.math.BigDecimal;
@@ -35,6 +37,7 @@ public class CounsellorRatingService {
     private final CounsellorScopeService scopeService;
     private final LeadWorkbenchSettingService settingService;
     private final AuthService authService;
+    private final OrganizationTeamAuthClient orgTeamClient;
 
     // ────────────────────────────────────────────────────────────────
     // Single + batch reads
@@ -70,7 +73,11 @@ public class CounsellorRatingService {
 
         Collection<String> userScope = null;
         if (teamId != null && !teamId.isBlank()) {
-            List<String> teamIds = scopeService.allTeamIdsUnderLeadsRoot(instituteId);
+            // Scope to the REQUESTED team's subtree (team + descendants), not
+            // the whole leads root — otherwise the teamId filter is a no-op.
+            List<String> teamIds = orgTeamClient.getSubtreeIncludingSelf(teamId).stream()
+                    .map(OrgTeamDTO::getId)
+                    .collect(Collectors.toList());
             userScope = new HashSet<>(scopeService.usersInTeams(teamIds));
         }
         final Collection<String> scope = userScope;

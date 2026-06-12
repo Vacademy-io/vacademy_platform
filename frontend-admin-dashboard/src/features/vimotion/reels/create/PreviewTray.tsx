@@ -257,17 +257,19 @@ export function PreviewTray({
 
     /** Candidates "Render all" would still submit: never launched, or whose
      *  previous attempt failed (start error or FAILED reel). Queued/active/
-     *  completed candidates are left alone — re-rendering them is an explicit
-     *  per-card action. */
+     *  completed candidates — including ones rendered in an earlier session —
+     *  are left alone; re-rendering those is an explicit per-card action. */
     const remainingForBatch = useMemo(() => {
         const enriched = preview.data?.enriched ?? [];
         return enriched.filter((e) => {
             const launch = launches[e.candidate_id];
-            if (!launch) return true;
-            if (launch.phase === 'starting') return false;
-            if (launch.phase === 'start_failed') return true;
+            if (launch?.phase === 'starting') return false;
             const reel = reelByCandidate.get(e.candidate_id);
-            return reel?.status === 'FAILED';
+            if (reel) return reel.status === 'FAILED';
+            // No reel visible yet: a successfully-started launch is already
+            // in flight on the backend even if the poller hasn't caught up;
+            // never-launched and failed-to-start candidates are fair game.
+            return launch?.phase !== 'started';
         });
     }, [preview.data, launches, reelByCandidate]);
 

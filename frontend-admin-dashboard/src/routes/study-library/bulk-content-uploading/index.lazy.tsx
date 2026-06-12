@@ -2,7 +2,8 @@
 // then run the shared bulk-upload wizard against it.
 
 import { useEffect, useMemo, useState } from 'react';
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { isBulkContentUploadEnabled } from '@/components/common/study-library/bulk-content-uploading/feature-gate';
 import { Helmet } from 'react-helmet';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { InitStudyLibraryProvider } from '@/providers/study-library/init-study-library-provider';
@@ -31,6 +32,19 @@ export const Route = createLazyFileRoute('/study-library/bulk-content-uploading/
 });
 
 function RouteComponent() {
+    const navigate = useNavigate();
+    const enabled = isBulkContentUploadEnabled();
+
+    // Hidden by default for all institutes — direct URL hits bounce to courses.
+    useEffect(() => {
+        if (!enabled) {
+            void navigate({ to: '/study-library/courses' });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled]);
+
+    if (!enabled) return null;
+
     return (
         <LayoutContainer>
             <Helmet>

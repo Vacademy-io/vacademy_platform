@@ -1,11 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { CaretRight, BookOpen, Clock } from "@phosphor-icons/react";
+import { CaretRight, BookOpen, CheckCircle, Clock, Play } from "@phosphor-icons/react";
 import { IconRocket, IconMoodSmile, IconAdjustments } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
 import { Star } from "@phosphor-icons/react";
+import {
+    getResumeForCourse,
+    resumeSearchParams,
+    RESUME_ROUTE,
+} from "@/services/resume-thread";
 import { ProgressBar } from "@/components/ui/custom-progress-bar";
 import { ProgressRing } from "@/routes/dashboard/-components/play/ProgressRing";
 import { cn, toTitleCase } from "@/lib/utils";
@@ -55,7 +60,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
     description,
     percentageCompleted,
     tags,
-    studentCount,
     previewImageUrl,
     selectedTab,
     readTimeInMinutes,
@@ -72,6 +76,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
     const ratingValue = rating || 0;
     const cappedPercentageCompleted = Math.min(percentageCompleted, 100);
     const isCompleted = cappedPercentageCompleted === 100;
+    const isInProgress = cappedPercentageCompleted > 0 && !isCompleted;
+    // PROGRESS/COMPLETED tabs only list enrolled courses; any recorded
+    // progress implies enrollment too (the ALL tab mixes both).
+    const isEnrolled =
+        selectedTab === "PROGRESS" ||
+        selectedTab === "COMPLETED" ||
+        cappedPercentageCompleted > 0;
+    // Resume thread: where the learner left off in this course (per-device).
+    const resume = useMemo(() => getResumeForCourse(courseId), [courseId]);
 
     const LevelIcon = useMemo(() => {
         const lvl = (level_name || "").toLowerCase();
@@ -102,6 +115,37 @@ const CourseCard: React.FC<CourseCardProps> = ({
             },
         });
     };
+
+    // Continue resumes straight into the last-visited slide when the resume
+    // thread has an entry; everything else goes through course details.
+    const handleCtaClick = () => {
+        if (isInProgress && resume) {
+            router.navigate({
+                to: RESUME_ROUTE,
+                search: resumeSearchParams(resume) as {
+                    courseId: string;
+                    levelId?: string;
+                    subjectId: string;
+                    moduleId: string;
+                    chapterId: string;
+                    slideId: string;
+                    sessionId: string;
+                },
+            });
+            return;
+        }
+        handleViewCoureseDetails(courseId);
+    };
+
+    const ctaLabel = isCompleted
+        ? "Review"
+        : isInProgress
+          ? "Continue"
+          : isEnrolled
+            ? "Start learning"
+            : `View ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`;
+
+    const CtaIcon = isCompleted ? CheckCircle : isInProgress ? Play : BookOpen;
 
     useEffect(() => {
         let isMounted = true;
@@ -138,7 +182,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
         };
     }, [previewImageUrl]);
 
-    const getLevelBadgeVariant = () => {
+    const getLevelBadgeVariant = (): "secondary" | "default" | "destructive" | "outline" => {
         // ... (keep existing switch)
         switch (level_name.toLowerCase()) {
             case "beginner":
@@ -171,18 +215,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
     return (
         <Card className={cn(
-            "course-card group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
-            // Vibrant Styles - Flat Pastel
-            !isCompleted && "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
-            !isCompleted && "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
+            "group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md flex flex-col w-full max-w-full animate-fade-in-up border-border/60 bg-card/50 hover:bg-card",
+            // Vibrant — white card with a top-rail: tenant primary by default,
+            // semantic success once the course is completed (status only)
+            "[.ui-vibrant_&]:border-t-4",
+            isCompleted
+                ? "[.ui-vibrant_&]:border-t-success-400"
+                : "[.ui-vibrant_&]:border-t-primary-300",
 
-            // Completed Styles
-            isCompleted && "[.ui-vibrant_&]:bg-emerald-50 dark:[.ui-vibrant_&]:bg-emerald-950/30",
-            isCompleted && "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30",
-
-            "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md",
-
-            // Play Styles — radius + shadow handled by .ui-play .card rule in play-theme.css
+            // Play Styles
             "[.ui-play_&]:rounded-2xl",
             "[.ui-play_&]:hover:-translate-y-1",
             "[.ui-play_&]:transition-all [.ui-play_&]:duration-200"
@@ -192,7 +233,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
             {/* Image Container — matches the image's natural aspect ratio so the card doesn't letterbox */}
             <div
-                className="relative w-full bg-muted flex items-center justify-center overflow-hidden rounded-t-lg course-card-image border-b"
+                className={cn(
+                    "relative w-full bg-muted flex items-center justify-center overflow-hidden rounded-t-lg border-b",
+                    "[.ui-vibrant_&]:bg-primary-50",
+                    "[.ui-play_&]:rounded-t-2xl"
+                )}
+                // Dynamic: matches the loaded image's natural aspect ratio
                 style={{ aspectRatio: courseImageUrl ? imageAspectRatio : 16 / 9 }}
             >
                 {loadingImage ? (
@@ -238,7 +284,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     </h3>
 
                     <Badge
-                        variant={getLevelBadgeVariant() as any}
+                        variant={getLevelBadgeVariant()}
                         className={cn(
                             "flex-shrink-0 gap-1 px-2.5 py-0.5",
                             getLevelCustomClass(),
@@ -252,12 +298,6 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     >
                         <LevelIcon size={12} className="text-current hidden [.ui-vibrant_&]:block" />
                         {!isDefaultLevel && toTitleCase(level_name)}
-                        {/* If it IS default level, we might want to show text in vibrant mode? 
-                            Original logic: !isDefaultLevel && toTitleCase(level_name). 
-                            If it's default level, text is hidden, only icon was shown in original logic?
-                            Wait, original: `{!isDefaultLevel && toTitleCase(level_name)}`.
-                            So if default level, NO TEXT. Only icon (if vibrant).
-                        */}
                     </Badge>
                 </div>
 
@@ -273,8 +313,8 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 {instructors.length > 0 && (
                     <div className={cn(
                         "flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors duration-200 -mx-2",
-                        // Vibrant Styles
-                        "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:border [.ui-vibrant_&]:border-transparent [.ui-vibrant_&]:hover:border-primary/20"
+                        // Vibrant — primary-50 wash on hover (the one tint family)
+                        "[.ui-vibrant_&]:hover:bg-primary-50 dark:[.ui-vibrant_&]:hover:bg-primary-500/10"
                     )}>
                         <div className="relative flex-shrink-0">
                             {instructor?.image_url ? (
@@ -334,9 +374,15 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-2 py-2 border-t border-border/50 mt-1">
+                    {/* Rating is hidden until the course actually has reviews;
+                        an empty cell keeps the grid alignment intact. */}
                     <div className="flex items-center gap-1.5">
-                        <Star size={14} weight="fill" className="text-yellow-400" />
-                        <span className="text-sm font-semibold">{ratingValue.toFixed(1)}</span>
+                        {ratingValue > 0 && (
+                            <>
+                                <Star size={14} weight="fill" className="text-yellow-400" />
+                                <span className="text-sm font-semibold">{ratingValue.toFixed(1)}</span>
+                            </>
+                        )}
                     </div>
 
                     <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground">
@@ -349,7 +395,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     </div>
                 </div>
 
-                {selectedTab === "PROGRESS" && (
+                {(isInProgress || isCompleted || selectedTab === "PROGRESS") && (
                     <div className="space-y-1.5 pt-1">
                         {cappedPercentageCompleted === 0 ? (
                             <Badge
@@ -359,13 +405,23 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <Clock size={12} />
                                 Not started
                             </Badge>
+                        ) : isCompleted ? (
+                            <div className="flex items-center gap-1.5">
+                                <CheckCircle
+                                    size={16}
+                                    weight="fill"
+                                    className="text-success-600 [.ui-play_&]:text-play-success"
+                                />
+                                <span className="text-caption font-medium text-muted-foreground">
+                                    100% complete
+                                </span>
+                            </div>
                         ) : (
                             <>
-                                {/* Default / Vibrant: linear progress bar */}
-                                <div className="[.ui-play_&]:hidden">
-                                    <div className="flex justify-between text-xs font-medium">
-                                        <span>Progress</span>
-                                        <span>{cappedPercentageCompleted.toFixed(0)}%</span>
+                                {/* Default / Vibrant: slim linear progress bar */}
+                                <div className="space-y-1 [.ui-play_&]:hidden">
+                                    <div className="text-caption font-medium text-muted-foreground">
+                                        {cappedPercentageCompleted.toFixed(0)}% complete
                                     </div>
                                     <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
                                 </div>
@@ -373,23 +429,29 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <div className="hidden [.ui-play_&]:flex items-center gap-3">
                                     <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
                                     <div className="flex flex-col">
-                                        <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% Complete</span>
+                                        <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% complete</span>
                                         <span className="text-caption text-muted-foreground">Keep going!</span>
                                     </div>
                                 </div>
+                                {resume?.slideTitle && (
+                                    <p
+                                        className="truncate text-caption text-muted-foreground"
+                                        title={resume.slideTitle}
+                                    >
+                                        Next: {resume.slideTitle}
+                                    </p>
+                                )}
                             </>
                         )}
                     </div>
                 )}
             </div>
 
-            <CardFooter className="p-4 pt-0 mt-auto">
+            <CardFooter className="p-4 pt-0 mt-auto flex flex-col gap-2">
                 <Button
                     className={cn(
                         "w-full font-semibold shadow-sm group/btn",
-                        // Vibrant Styles - Flat Button
-                        !isCompleted && "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
-                        isCompleted && "[.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:hover:bg-emerald-700 [.ui-vibrant_&]:text-white",
+                        // Vibrant: tenant primary tokens only (default Button styling)
                         "[.ui-vibrant_&]:shadow-md",
                         // Play mode: rounded, 3D press effect
                         "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold",
@@ -397,24 +459,36 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         "[.ui-play_&]:hover:shadow-play-6-primary [.ui-play_&]:hover:-translate-y-0.5",
                         "[.ui-play_&]:active:shadow-play-1-primary [.ui-play_&]:active:translate-y-0.5"
                     )}
-                    onClick={() => handleViewCoureseDetails(courseId)}
+                    onClick={handleCtaClick}
                 >
-                    <BookOpen
+                    <CtaIcon
                         size={16}
+                        weight={isCompleted || isInProgress ? "fill" : "regular"}
                         className="mr-2 transition-transform duration-300 group-hover/btn:scale-110"
                     />
-                    <span>
-                        View{" "}
-                        {getTerminology(
-                            ContentTerms.Course,
-                            SystemTerms.Course
-                        )}
-                    </span>
+                    <span>{ctaLabel}</span>
                     <CaretRight
                         size={16}
                         className="ml-1 transition-transform duration-300 group-hover/btn:translate-x-1"
                     />
                 </Button>
+                {/* Continue resumes straight into the viewer, so give learners
+                    a second door into the course overview (browse new parts). */}
+                {isInProgress && resume && (
+                    <Button
+                        variant="outline"
+                        className={cn(
+                            "w-full font-semibold",
+                            "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:text-play-ink",
+                            "[.ui-play_&]:active:translate-y-0.5"
+                        )}
+                        onClick={() => handleViewCoureseDetails(courseId)}
+                        aria-label={`View ${getTerminology(ContentTerms.Course, SystemTerms.Course)} overview`}
+                    >
+                        <BookOpen size={16} className="mr-1.5" />
+                        Overview
+                    </Button>
+                )}
             </CardFooter>
         </Card>
     );

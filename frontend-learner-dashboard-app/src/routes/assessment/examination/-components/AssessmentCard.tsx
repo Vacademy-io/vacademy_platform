@@ -1,13 +1,6 @@
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
 import { assessmentTypes, Assessment } from "@/types/assessment";
 import {
@@ -25,42 +18,60 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { restartAssessment } from "../-utils.ts/useFetchRestartAssessment";
 import {
   storeAssessmentInfo,
   fetchPreviewData,
 } from "../-utils.ts/useFetchAssessment";
 import { formatDuration } from "@/constants/helper";
-import { toast } from "sonner";
 import {
-  CalendarDots,
-  Timer,
-  ArrowClockwise,
-  Clock,
-  Eye,
-  WarningCircle,
-} from "@phosphor-icons/react";
+  formatCountdown,
+  formatDate,
+  formatDateTime,
+} from "@/lib/format-date";
+import { toast } from "sonner";
+import { Timer, WarningCircle, HourglassMedium } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 // Backend date strings (assessment list API) have no timezone marker but are
 // stored in UTC. Appending "Z" makes Date() interpret them as UTC so the
-// browser's Intl engine converts to the user's local timezone on display.
-function formatAssessmentDate(raw: string | null | undefined): string {
-  if (!raw) return "";
+// canonical formatters render them in the user's local timezone.
+function toUtcDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
   const hasZone = /Z$|[+-]\d{2}:?\d{2}$/i.test(raw);
   const iso = hasZone ? raw : `${raw.replace(" ", "T")}Z`;
   const date = new Date(iso);
-  if (isNaN(date.getTime())) return raw; // fallback: show raw string
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date).replace(",", ","); // keeps "DD/MM/YYYY, HH:MM am/pm"
+  return Number.isNaN(date.getTime()) ? null : date;
 }
+
+// Sentinel "never closes" end date used by the backend.
+const NO_EXPIRY_YEAR = 9999;
+
+function hasNoExpiry(end: Date | null): boolean {
+  return !!end && end.getFullYear() === NO_EXPIRY_YEAR;
+}
+
+/** Re-render on an interval so countdown chips stay current. */
+function useNow(enabled: boolean, intervalMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(id);
+  }, [enabled, intervalMs]);
+  return now;
+}
+
+const PLAY_MODE_LABELS: Record<string, string> = {
+  EXAM: "Exam",
+  MOCK: "Mock",
+  PRACTICE: "Practice",
+  SURVEY: "Survey",
+  MANUAL_UPLOAD_EXAM: "Offline exam",
+};
+
+const playModeLabel = (mode: string) => PLAY_MODE_LABELS[mode] ?? mode;
 
 interface AssessmentProps {
   assessmentInfo: Assessment;
@@ -68,40 +79,7 @@ interface AssessmentProps {
   assessment_types: string;
 }
 
-// Map play modes to semantic colors/styles
-const getPlayModeStyles = (mode: string) => {
-  switch (mode) {
-    case "EXAM":
-      return "bg-green-100 text-green-700 border-green-200 hover:bg-green-200/80";
-    case "MOCK":
-      return "bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200/80";
-    case "PRACTICE":
-      return "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200/80";
-    case "SURVEY":
-      return "bg-rose-100 text-rose-700 border-rose-200 hover:bg-rose-200/80";
-    case "MANUAL_UPLOAD_EXAM":
-      return "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200/80";
-    default:
-      return "bg-muted text-muted-foreground border-border hover:bg-muted/80";
-  }
-};
-
-const getCardBorderColor = (mode: string) => {
-  switch (mode) {
-    case "EXAM":
-      return "border-l-green-500";
-    case "MANUAL_UPLOAD_EXAM":
-      return "border-l-amber-500";
-    case "MOCK":
-      return "border-l-purple-500";
-    case "PRACTICE":
-      return "border-l-blue-500";
-    case "SURVEY":
-      return "border-l-rose-500";
-    default:
-      return "border-l-border";
-  }
-};
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export const AssessmentCard = ({
   assessmentInfo,
@@ -221,248 +199,284 @@ export const AssessmentCard = ({
     }
   };
 
-  // Determine button label
-  const getButtonLabel = () => {
-    if (
-      ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")
-    ) {
-      return "Resume";
-    }
-
-    const isEndedOrNull =
-      assessmentInfo.recent_attempt_status === "ENDED" ||
-      assessmentInfo.recent_attempt_status === null;
-    if (isEndedOrNull) {
-      const maxAttempts =
-        assessmentInfo.user_attempts !== null && assessmentInfo.user_attempts !== 0
-          ? assessmentInfo.user_attempts
-          : (assessmentInfo.assessment_attempts ?? 1);
-      const usedAttempts = assessmentInfo.created_attempts ?? 0;
-      console.log('[AssessmentCard] attempts debug:', {
-        name: assessmentInfo.name,
-        user_attempts: assessmentInfo.user_attempts,
-        assessment_attempts: assessmentInfo.assessment_attempts,
-        created_attempts: assessmentInfo.created_attempts,
-        recent_attempt_status: assessmentInfo.recent_attempt_status,
-        maxAttempts,
-        usedAttempts,
-      });
-
-      if (maxAttempts > usedAttempts) {
-        return "Join Assessment";
-      } else {
-        return "Ended";
-      }
-    }
-    return "Join Assessment";
-  };
-
-  const isButtonDisabled = () => {
-    return getButtonLabel() === "Ended";
-  };
-
-  const buttonLabel = getButtonLabel();
   const isResume = ["LIVE", "PREVIEW"].includes(
     assessmentInfo?.recent_attempt_status ?? "",
   );
+
+  const attemptsExhausted = (() => {
+    if (isResume) return false;
+    const isEndedOrNull =
+      assessmentInfo.recent_attempt_status === "ENDED" ||
+      assessmentInfo.recent_attempt_status === null;
+    if (!isEndedOrNull) return false;
+    const maxAttempts =
+      assessmentInfo.user_attempts !== null && assessmentInfo.user_attempts !== 0
+        ? assessmentInfo.user_attempts
+        : (assessmentInfo.assessment_attempts ?? 1);
+    const usedAttempts = assessmentInfo.created_attempts ?? 0;
+    return maxAttempts <= usedAttempts;
+  })();
+
+  // Determine button label
+  const getButtonLabel = () => {
+    if (isResume) return "Resume";
+    if (attemptsExhausted) return "Ended";
+    if (assessmentInfo.play_mode === "SURVEY") return "Start survey";
+    if (["PRACTICE", "MOCK"].includes(assessmentInfo.play_mode)) return "Start";
+    return "Join now";
+  };
+
+  const buttonLabel = getButtonLabel();
+  const isButtonDisabled = () => attemptsExhausted;
+
+  const isPractice = assessmentInfo.play_mode === "PRACTICE";
+  const isMock = assessmentInfo.play_mode === "MOCK";
+  const isLive = assessmentType === assessmentTypes.LIVE;
+  const isUpcoming = assessmentType === assessmentTypes.UPCOMING;
+  const isPast = assessmentType === assessmentTypes.PAST;
+  // Loud "live" treatment only for scheduled modes; practice and mocks stay quiet.
+  const isLoudLive = isLive && !isPractice && !isMock;
+
+  const startDate = toUtcDate(assessmentInfo.bound_start_time);
+  const endDate = toUtcDate(assessmentInfo.bound_end_time);
+  const noExpiry = hasNoExpiry(endDate);
+
+  const now = useNow((isLoudLive && !noExpiry) || isUpcoming);
+  const msToClose = endDate ? endDate.getTime() - now : null;
+  const msToStart = startDate ? startDate.getTime() - now : null;
+  const showCloseCountdown =
+    isLoudLive && !noExpiry && msToClose !== null && msToClose > 0;
+  const showStartCountdown =
+    isUpcoming && msToStart !== null && msToStart > 0 && msToStart < ONE_DAY_MS;
+
+  const usedAttempts = assessmentInfo.created_attempts ?? 0;
+  const maxAttempts = assessmentInfo.assessment_attempts ?? 0;
+
+  const showPlayModeChip = assessment_types === "ASSESSMENT";
+
+  // One quiet metadata line per card instead of a grid of colored info tiles.
+  const metaParts: string[] = [];
+  if (isUpcoming && startDate) {
+    metaParts.push(`Starts ${formatDateTime(startDate)}`);
+  }
+  if (isLoudLive && !noExpiry && endDate) {
+    metaParts.push(`Closes ${formatDateTime(endDate)}`);
+  }
+  if (isMock) {
+    metaParts.push(
+      noExpiry || !endDate
+        ? "No expiry"
+        : `Valid till ${formatDateTime(endDate)}`,
+    );
+  }
+  if (assessmentInfo.duration && assessmentInfo.play_mode !== "SURVEY") {
+    metaParts.push(formatDuration(assessmentInfo.duration * 60));
+  }
+  if (isLive && maxAttempts > 0) {
+    metaParts.push(`Attempt ${usedAttempts} of ${maxAttempts}`);
+  }
+
+  const canShowReport =
+    isPast &&
+    usedAttempts > 0 &&
+    (assessmentInfo.result_type !== "MANUAL" ||
+      assessmentInfo.report_release_status === "RELEASED");
+  const resultsPending =
+    isPast &&
+    usedAttempts > 0 &&
+    assessmentInfo.result_type === "MANUAL" &&
+    assessmentInfo.report_release_status !== "RELEASED";
 
   return (
     <>
       <Card
         className={cn(
-          "w-full transition-all duration-200 border-l-[6px] overflow-hidden hover:shadow-md cursor-default",
-          getCardBorderColor(assessmentInfo.play_mode),
+          "w-full overflow-hidden transition-shadow duration-200",
+          "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+          isLoudLive
+            ? cn(
+                "border-danger-200 shadow-sm hover:shadow-md",
+                "[.ui-play_&]:border-play-danger",
+                "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+              )
+            : "hover:shadow-sm",
+          isPast && "shadow-none",
         )}
       >
-        <CardHeader className="pb-3 pt-5 px-5 sm:px-6">
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex flex-col gap-2">
-              {assessment_types === "ASSESSMENT" && (
-                <div className="flex">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "px-2.5 py-0.5 text-xs font-semibold tracking-wider border",
-                      getPlayModeStyles(assessmentInfo.play_mode),
-                    )}
-                  >
-                    {assessmentInfo.play_mode}
-                  </Badge>
-                </div>
-              )}
-              <CardTitle className="text-lg sm:text-xl font-bold leading-snug line-clamp-2 text-foreground">
+        {/* ---------- PAST: collapsed row ---------- */}
+        {isPast ? (
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div className="min-w-0">
+              <p className="line-clamp-1 text-body font-semibold text-foreground">
                 {assessmentInfo.name}
-              </CardTitle>
+              </p>
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                {showPlayModeChip && `${playModeLabel(assessmentInfo.play_mode)} · `}
+                {endDate && !noExpiry
+                  ? `Ended ${formatDate(endDate)}`
+                  : "Ended"}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+              {canShowReport && (
+                <>
+                  <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate({
+                        to: `/assessment/reports/comparison`,
+                        search: {
+                          assessmentId: assessmentInfo.assessment_id,
+                          attemptId: assessmentInfo.last_attempt_id ?? "",
+                        },
+                        state: {
+                          assessmentName: assessmentInfo.name,
+                        } as any,
+                      });
+                    }}
+                  >
+                    Show Report
+                  </MyButton>
+                  <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate({
+                        to: `/assessment/reports/ai-report`,
+                        search: {
+                          assessmentId: assessmentInfo.assessment_id,
+                          assessmentName: assessmentInfo.name ?? "",
+                        },
+                      });
+                    }}
+                  >
+                    Show AI Report
+                  </MyButton>
+                </>
+              )}
+              {resultsPending && (
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warning-200 bg-warning-50 px-2.5 py-1 text-caption font-medium text-warning-700">
+                  <HourglassMedium size={14} aria-hidden="true" />
+                  Results pending
+                </span>
+              )}
             </div>
           </div>
-        </CardHeader>
-
-        <Separator className="opacity-50" />
-
-        <CardContent className="pt-5 pb-5 px-5 sm:px-6">
-          {assessmentInfo.play_mode !== "PRACTICE" && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-6 gap-x-4">
-              {/* Start Time */}
-              {assessmentInfo.play_mode !== "MOCK" && (
-                <InfoItem
-                  icon={<CalendarDots className="w-4 h-4 text-blue-600" />}
-                  bgClass="bg-blue-50"
-                  label="Starts"
-                  value={formatAssessmentDate(assessmentInfo.bound_start_time)}
-                />
+        ) : (
+          /* ---------- LIVE / UPCOMING / PRACTICE / MOCK ---------- */
+          <div className="flex flex-col gap-3 p-4 sm:p-5">
+            {(isLoudLive || showStartCountdown || showPlayModeChip) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {isLoudLive && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-danger-200 bg-danger-50 px-2.5 py-0.5 text-caption font-semibold text-danger-600 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-danger [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-white">
+                  <span className="relative flex size-2" aria-hidden="true">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger-400 opacity-75 [.ui-play_&]:bg-white/70" />
+                    <span className="relative inline-flex size-2 rounded-full bg-danger-500 [.ui-play_&]:bg-white" />
+                  </span>
+                  Live now
+                </span>
               )}
-
-              {/* End Time */}
-              <InfoItem
-                icon={<Clock className="w-4 h-4 text-purple-600" />}
-                bgClass="bg-purple-50"
-                label={
-                  assessmentInfo.play_mode === "MOCK" ? "Valid Till" : "Ends"
-                }
-                value={
-                  new Date(`${(assessmentInfo.bound_end_time ?? "").replace(" ", "T")}Z`).getFullYear() === 9999
-                    ? "No Expiry"
-                    : formatAssessmentDate(assessmentInfo.bound_end_time)
-                }
-              />
-
-              {/* Duration */}
-              {assessmentInfo.duration &&
-                assessmentInfo.play_mode !== "SURVEY" && (
-                  <InfoItem
-                    icon={<Timer className="w-4 h-4 text-orange-600" />}
-                    bgClass="bg-orange-50"
-                    label="Duration"
-                    value={formatDuration(assessmentInfo.duration * 60)}
-                  />
-                )}
-
-              {/* Preview Time */}
-              {assessmentInfo.preview_time > 0 && (
-                <InfoItem
-                  icon={<Eye className="w-4 h-4 text-teal-600" />}
-                  bgClass="bg-teal-50"
-                  label="Preview"
-                  value={formatDuration(assessmentInfo.preview_time * 60)}
-                />
+              {showCloseCountdown && msToClose !== null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-danger-50 px-2.5 py-0.5 text-caption font-medium tabular-nums text-danger-600">
+                  <Timer size={14} aria-hidden="true" />
+                  Closes in {formatCountdown(msToClose)}
+                </span>
               )}
-
-              {/* Attempts */}
-              <InfoItem
-                icon={<ArrowClockwise className="w-4 h-4 text-green-600" />}
-                bgClass="bg-green-50"
-                label="Attempts"
-                value={`${assessmentInfo.created_attempts ?? 0} / ${assessmentInfo.assessment_attempts ?? 0}`}
-              />
+              {showStartCountdown && msToStart !== null && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-0.5 text-caption font-medium tabular-nums text-primary-500 [.ui-play_&]:bg-play-highlight [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink">
+                  <Timer size={14} aria-hidden="true" />
+                  Starts in {formatCountdown(msToStart)}
+                </span>
+              )}
+              {showPlayModeChip && !isLoudLive && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-caption font-medium text-muted-foreground",
+                    "[.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink",
+                    isPractice &&
+                      "[.ui-play_&]:border-transparent [.ui-play_&]:bg-play-highlight",
+                  )}
+                >
+                  {playModeLabel(assessmentInfo.play_mode)}
+                </span>
+              )}
+              {showPlayModeChip && isLoudLive && (
+                <span
+                  className={cn(
+                    "ml-auto inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-caption font-medium text-muted-foreground",
+                    "[.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink",
+                  )}
+                >
+                  {playModeLabel(assessmentInfo.play_mode)}
+                </span>
+              )}
             </div>
-          )}
-        </CardContent>
+            )}
 
-        <CardFooter className="bg-muted/30 py-4 px-5 sm:px-6 flex justify-end gap-3 border-t">
-          {assessmentType !== assessmentTypes.UPCOMING &&
-            assessmentType !== assessmentTypes.PAST && (
-              <Button
+            <div className="min-w-0">
+              <h3
                 className={cn(
-                  "w-full sm:w-auto min-w-36 font-semibold transition-all",
+                  "line-clamp-2 font-semibold leading-snug text-foreground",
+                  isLoudLive ? "text-title" : "text-subtitle",
                 )}
-                variant={
-                  isResume
-                    ? "default"
-                    : buttonLabel === "Ended"
-                      ? "secondary"
-                      : "default"
-                }
-                disabled={isButtonDisabled()}
+              >
+                {assessmentInfo.name}
+              </h3>
+              {metaParts.length > 0 && (
+                <p className="mt-1 text-caption text-muted-foreground">
+                  {metaParts.join(" · ")}
+                </p>
+              )}
+            </div>
+
+            {isLive && (
+              <MyButton
+                buttonType={isLoudLive ? "primary" : "secondary"}
+                scale="medium"
+                disable={isButtonDisabled()}
+                className={cn(
+                  "min-h-11 w-full font-semibold sm:w-auto sm:self-end",
+                  // Play mode: the live Join CTA SHOUTS — press grammar on danger.
+                  isLoudLive &&
+                    !attemptsExhausted &&
+                    cn(
+                      "[.ui-play_&]:min-h-12 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
+                      "[.ui-play_&]:bg-play-danger [.ui-play_&]:hover:bg-play-danger",
+                      "[.ui-play_&]:text-body [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-white",
+                      "[.ui-play_&]:shadow-play-2d-danger [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
+                    ),
+                )}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleAction();
                 }}
               >
                 {buttonLabel}
-              </Button>
+              </MyButton>
             )}
-
-          {/* upcoming state button (disabled or specific action) */}
-          {assessmentType === assessmentTypes.UPCOMING && (
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto min-w-36 cursor-not-allowed text-muted-foreground"
-              disabled
-            >
-              Upcoming
-            </Button>
-          )}
-
-          {assessmentType === assessmentTypes.PAST &&
-            (assessmentInfo.created_attempts ?? 0) > 0 &&
-            (assessmentInfo.result_type !== 'MANUAL' ||
-              assessmentInfo.report_release_status === 'RELEASED') && (
-              <>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto min-w-36 text-primary hover:text-primary hover:bg-primary/5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate({
-                      to: `/assessment/reports/comparison`,
-                      search: {
-                        assessmentId: assessmentInfo.assessment_id,
-                        attemptId: assessmentInfo.last_attempt_id ?? "",
-                      },
-                      state: {
-                        assessmentName: assessmentInfo.name,
-                      } as any,
-                    });
-                  }}
-                >
-                  Show Report
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto min-w-36 text-primary hover:text-primary hover:bg-primary/5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate({
-                      to: `/assessment/reports/ai-report`,
-                      search: {
-                        assessmentId: assessmentInfo.assessment_id,
-                        assessmentName: assessmentInfo.name ?? "",
-                      },
-                    });
-                  }}
-                >
-                  Show AI Report
-                </Button>
-              </>
-            )}
-          {assessmentType === assessmentTypes.PAST &&
-            (assessmentInfo.created_attempts ?? 0) > 0 &&
-            assessmentInfo.result_type === 'MANUAL' &&
-            assessmentInfo.report_release_status !== 'RELEASED' && (
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto min-w-36 cursor-not-allowed text-muted-foreground"
-                disabled
-              >
-                Results Pending
-              </Button>
-            )}
-        </CardFooter>
+          </div>
+        )}
       </Card>
 
       {/* Pop-up for Upcoming Tests */}
       <Dialog open={showPopup} onOpenChange={handleClosePopup}>
         <DialogContent className="max-w-sm rounded-lg p-6">
           <DialogHeader>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-2 bg-yellow-100 rounded-full">
-                <WarningCircle className="w-5 h-5 text-yellow-600" />
+            <div className="mb-2 flex items-center gap-2">
+              <div className="rounded-full bg-warning-50 p-2">
+                <WarningCircle className="size-5 text-warning-600" />
               </div>
               <DialogTitle className="text-lg font-semibold">
                 Assessment Unavailable
               </DialogTitle>
             </div>
-            <DialogDescription className="text-muted-foreground pt-1">
+            <DialogDescription className="pt-1 text-muted-foreground">
               The assessment is not live currently. You can appear for the
               assessment when it goes live.
             </DialogDescription>
@@ -520,32 +534,5 @@ export const AssessmentCard = ({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-};
-
-// Reusable Sub-component for Info Items
-const InfoItem = ({
-  icon,
-  bgClass,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  bgClass: string;
-  label: string;
-  value: string | number;
-}) => {
-  return (
-    <div className="flex items-start gap-3">
-      <div className={cn("p-2 rounded-lg shrink-0", bgClass)}>{icon}</div>
-      <div className="flex flex-col">
-        <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
-          {label}
-        </span>
-        <span className="text-sm font-medium text-foreground leading-tight mt-0.5">
-          {value}
-        </span>
-      </div>
-    </div>
   );
 };

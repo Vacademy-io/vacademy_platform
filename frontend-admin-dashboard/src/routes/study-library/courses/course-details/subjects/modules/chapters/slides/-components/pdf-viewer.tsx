@@ -27,10 +27,15 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
     const { jumpToPage } = pageNavigationPluginInstance;
 
     // Per-role enforcement: hide Download/Print for roles an admin has blocked
-    // (admins keep them by default).
-    const { canDownload } = useSlideDownloadAccess();
+    // (admins keep them by default). We must wait for `isResolved` before
+    // mounting the Viewer — its toolbar is built once at mount and won't rebuild
+    // when the transform changes, so mounting before the setting loads would
+    // bake in the default-allow value and never hide the buttons for a blocked
+    // role (e.g. a teacher).
+    const { canDownload, canPrintPdf, isResolved } = useSlideDownloadAccess();
     const allowDownload = canDownload('DOCUMENT_PDF');
-    const allowPrint = canDownload('DOCUMENT_PDF_PRINT');
+    // Print inherits the download permission unless explicitly configured.
+    const allowPrint = canPrintPdf();
 
     const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
         ...slot,
@@ -82,10 +87,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
     return (
         <Worker workerUrl={PDF_WORKER_URL}>
             <div className="size-full">
-                <Viewer
-                    fileUrl={pdfUrl}
-                    plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
-                />
+                {isResolved ? (
+                    <Viewer
+                        fileUrl={pdfUrl}
+                        plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
+                    />
+                ) : (
+                    <div className="flex size-full items-center justify-center text-sm text-neutral-400">
+                        Loading…
+                    </div>
+                )}
             </div>
         </Worker>
     );

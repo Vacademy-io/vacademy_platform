@@ -14,8 +14,12 @@ export const useDoubtTable = () => {
         error,
     } = useGetDoubtList({ filter: filters, pageNo: currentPage, pageSize: 10 });
 
-    const userIds = doubts?.content.map((doubt) => doubt.user_id);
-    const { data: userDetails } = useGetUserBasicDetails(userIds || []);
+    // Guest queries have a null user_id — drop falsy ids (and dedupe) so we never POST nulls to
+    // auth_service (findAllById forbids null elements) or pollute the query cache key.
+    const userIds = [
+        ...new Set((doubts?.content ?? []).map((doubt) => doubt.user_id).filter(Boolean)),
+    ];
+    const { data: userDetails } = useGetUserBasicDetails(userIds);
     const userDetailsRecord: Record<string, UserBasicDetails> =
         userDetails?.reduce(
             (acc, curr) => {

@@ -170,18 +170,6 @@ public class WorkflowEngineService {
                     continue;
                 }
 
-                // Sentry log when a notification node is about to execute
-                if ("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType)) {
-                    SentryLogger.logInfo("Executing notification node in workflow", Map.of(
-                            "workflow.id", workflowId,
-                            "node.id", currentNodeId,
-                            "node.type", nodeType,
-                            "institute.id", String.valueOf(ctx.get("instituteId")),
-                            "execution.id", String.valueOf(ctx.get("executionId")),
-                            "operation", "WorkflowEngine.notificationNodeExecute"
-                    ));
-                }
-
                 // Use registry for O(1) lookup
                 NodeHandler handler = nodeHandlerRegistry.getHandler(nodeType);
                 if (handler != null) {

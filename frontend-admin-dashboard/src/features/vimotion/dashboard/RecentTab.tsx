@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
@@ -106,9 +106,15 @@ export function RecentTab() {
     const instituteId = getInstituteId();
     const apiKey = useVimotionApiKey(instituteId);
 
-    const history = useQuery({
+    const history = useInfiniteQuery({
         queryKey: ['vimotion-history', instituteId, apiKey.data],
-        queryFn: () => getRemoteHistory(apiKey.data!, PAGE_SIZE, 0),
+        queryFn: ({ pageParam }) => getRemoteHistory(apiKey.data!, PAGE_SIZE, pageParam),
+        initialPageParam: 0,
+        // The backend returns a bare list (no total count), so "there's more"
+        // is inferred from a full page. A page shorter than PAGE_SIZE means
+        // we've hit the end.
+        getNextPageParam: (lastPage, allPages) =>
+            lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
         enabled: !!apiKey.data,
         staleTime: 30_000,
         // Thumbnails arrive ~mid-render in a background job. Keep polling
@@ -116,13 +122,29 @@ export function RecentTab() {
         // state is final (a completed video with no thumbnails means the
         // batch failed — no amount of polling will fill it in).
         refetchInterval: (q) => {
-            const items = (q.state.data as HistoryItem[] | undefined) ?? [];
-            const anyInFlight = items.some(
-                (it) => it.status !== 'completed' && it.status !== 'failed'
-            );
+            const pages = q.state.data?.pages ?? [];
+            const anyInFlight = pages
+                .flat()
+                .some((it) => it.status !== 'completed' && it.status !== 'failed');
             return anyInFlight ? 10_000 : false;
         },
     });
+
+    // Flatten pages, deduping by id: offset pagination shifts when a new
+    // video lands between fetches, so an item can appear at the end of one
+    // page and the start of the next — which would crash React's keyed list.
+    const items = useMemo(() => {
+        const seen = new Set<string>();
+        const flat: HistoryItem[] = [];
+        for (const page of history.data?.pages ?? []) {
+            for (const item of page) {
+                if (seen.has(item.id)) continue;
+                seen.add(item.id);
+                flat.push(item);
+            }
+        }
+        return flat;
+    }, [history.data]);
 
     // Shared key with OnboardingBanner — react-query dedupes the network call.
     const brandKitQuery = useQuery<BrandKit | null>({
@@ -143,11 +165,11 @@ export function RecentTab() {
     // worth the complexity for this edge case.
     const prevStatusesRef = useRef<Map<string, HistoryItem['status']>>(new Map());
     useEffect(() => {
-        if (!history.data) return;
+        if (items.length === 0) return;
         const prev = prevStatusesRef.current;
-        const next = new Map(history.data.map((it) => [it.id, it.status]));
+        const next = new Map(items.map((it) => [it.id, it.status]));
         if (prev.size > 0) {
-            for (const item of history.data) {
+            for (const item of items) {
                 const prevStatus = prev.get(item.id);
                 if (!prevStatus) continue; // brand-new item, not a transition
                 const wasInFlight = prevStatus !== 'completed' && prevStatus !== 'failed';
@@ -158,7 +180,7 @@ export function RecentTab() {
             }
         }
         prevStatusesRef.current = next;
-    }, [history.data]);
+    }, [items]);
 
     if (apiKey.isError) {
         return (
@@ -184,17 +206,32 @@ export function RecentTab() {
         );
     }
 
-    const items = history.data ?? [];
-
     if (items.length === 0) {
         return <EmptyState />;
     }
 
     return (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-                <HistoryCard key={item.id} item={item} brandKit={brandKit} />
-            ))}
+        <div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {items.map((item) => (
+                    <HistoryCard key={item.id} item={item} brandKit={brandKit} />
+                ))}
+            </div>
+            {history.hasNextPage && (
+                <div className="mt-6 flex justify-center">
+                    <button
+                        type="button"
+                        onClick={() => history.fetchNextPage()}
+                        disabled={history.isFetchingNextPage}
+                        className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <RefreshCw
+                            className={cn('size-4', history.isFetchingNextPage && 'animate-spin')}
+                        />
+                        {history.isFetchingNextPage ? 'Loading…' : 'Load older videos'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

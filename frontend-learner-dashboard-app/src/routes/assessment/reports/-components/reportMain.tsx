@@ -1,29 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { format } from "date-fns";
+import { Card, CardContent } from "@/components/ui/card";
 import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   STUDENT_REPORT_DETAIL_URL,
   STUDENT_REPORT_URL,
 } from "@/constants/urls";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "@tanstack/react-router";
 import { Report } from "@/types/assessments/assessment-data-type";
 import { formatDuration, getSubjectNameById } from "@/constants/helper";
+import { formatDateTime } from "@/lib/format-date";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { PlayMode } from "@/components/design-system/chips";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from "@/components/design-system/states";
+import { FileText } from "@phosphor-icons/react";
 
-const playModeStyles: { [key: string]: string } = {
-  EXAM: "bg-green-100 text-green-700 hover:bg-green-200 border-green-200",
-  MOCK: "bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200",
-  PRACTICE: "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200",
-  SURVEY: "bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-200",
+const PLAY_MODE_LABELS: Record<string, string> = {
+  EXAM: "Exam",
+  MOCK: "Mock",
+  PRACTICE: "Practice",
+  SURVEY: "Survey",
+  MANUAL_UPLOAD_EXAM: "Offline exam",
 };
 
 export const viewStudentReport = async (
@@ -215,8 +216,12 @@ const AssessmentReportList = ({
 
   if (error && reports.length === 0) {
     return (
-      <div className="text-center py-4 text-destructive">
-        <p>{error}</p>
+      <div className="p-4 md:p-6 lg:p-8">
+        <ErrorState
+          title="Could not load reports"
+          message={error}
+          onRetry={() => fetchReports()}
+        />
       </div>
     );
   }
@@ -310,47 +315,64 @@ const AssessmentReportList = ({
                         : "Awaiting evaluation"}
                     </span>
                   </div>
+                  {metaParts.length > 0 && (
+                    <p className="mt-1 text-caption text-muted-foreground">
+                      {metaParts.join(" · ")}
+                    </p>
+                  )}
                 </div>
 
-                <div className="w-full md:w-auto mt-2 md:mt-0  flex flex-col md:flex-row gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   <MyButton
-                    className="w-full md:w-auto min-w-32"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
                     onClick={() => handleViewAIReport(report)}
                     disable={!isReportReleased(report)}
                   >
                     View AI Report
                   </MyButton>
-                  <Button
-                    variant="outline"
-                    className="w-full md:w-auto min-w-32"
+                  <MyButton
+                    buttonType="secondary"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
                     onClick={() => handleViewComparison(report)}
                     disabled={!isReportReleased(report)}
                   >
                     Report
-                  </Button>
+                  </MyButton>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ))}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })}
 
       {loading && (
-        <div className="flex justify-center p-4" ref={loadingRef}>
-          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
+        <div ref={loadingRef}>
+          <LoadingState variant="list" count={3} />
         </div>
       )}
 
       {!hasMore && reports.length > 0 && (
-        <p className="text-center text-sm text-muted-foreground py-4">
+        <p className="text-center text-caption text-muted-foreground py-4">
           No more reports to load
         </p>
       )}
 
       {reports.length === 0 && !loading && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground text-sm">No reports found</p>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No reports yet"
+          description="Reports appear here once you finish a test and its results are released."
+          action={{
+            label: assessment_types === "HOMEWORK" ? "Go to homework" : "Go to tests",
+            onClick: () =>
+              navigate({
+                to:
+                  assessment_types === "HOMEWORK"
+                    ? "/homework/list"
+                    : "/assessment/examination",
+              }),
+          }}
+        />
       )}
     </div>
   );

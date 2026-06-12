@@ -133,6 +133,8 @@ class HostAvatarPlan(BaseModel):
     # the request side and the runtime plan side cannot drift.
     avatar_model: AvatarModelLiteral = "fal-ai/kling-video/ai-avatar/v2/standard"
     quality: Literal["480p", "720p"] = "480p"
+    # Output FPS for models that expose it (LTX 2.3). None → model default (24).
+    avatar_fps: Optional[int] = None
 
 
 class HostRawPlan(BaseModel):

@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.counsellor_workbench.repository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.counsellor_workbench.dto.LeadTransferDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchLeadDTO;
 
 import java.util.Collection;
@@ -204,6 +205,58 @@ public class WorkbenchLeadRepository {
                 .sourceType(rs.getString("source_type"))
                 .build(),
                 instituteId, counsellorUserId, offset, limit);
+    }
+
+    /**
+     * Current assignee for a lead in this institute, or {@code null} when
+     * the lead has never been assigned. Throws Spring's
+     * {@code EmptyResultDataAccessException} when the lead doesn't exist in
+     * the institute (caller maps to a 404 / Optional.empty).
+     */
+    public String currentAssigneeForLead(String instituteId, String leadUserId) {
+        return jdbc.queryForObject(
+                "SELECT assigned_counselor_id FROM user_lead_profile " +
+                        "WHERE institute_id = ? AND user_id = ?",
+                String.class, instituteId, leadUserId);
+    }
+
+    /**
+     * Counsellor assignment chain for one lead, oldest → newest. Each row is
+     * a {@code COUNSELOR_ASSIGNED} timeline event whose metadata carries the
+     * previous (reassigned_from) and new (counselor_id) counsellor ids plus
+     * the trigger tag. Names are NOT joined here — the service layer
+     * hydrates them via auth_service (separate Postgres DB on stage/prod).
+     */
+    public List<LeadTransferDTO> findTransfersForLead(String leadUserId) {
+        // type_id on USER_LEAD_PROFILE events is the lead's user_id.
+        // action_type is the enum NAME ('COUNSELOR_ASSIGNED'), see
+        // TimelineEventService.logJourneyEvent which calls actionType.name().
+        final String sql =
+            "SELECT te.id, te.created_at, te.actor_id, te.actor_name, " +
+            "       te.metadata_json::jsonb ->> 'reassigned_from' AS from_user_id, " +
+            "       te.metadata_json::jsonb ->> 'counselor_id'     AS to_user_id, " +
+            "       te.metadata_json::jsonb ->> 'counselor_name'   AS to_name_hint, " +
+            "       te.metadata_json::jsonb ->> 'trigger'          AS trigger, " +
+            "       te.metadata_json::jsonb ->> 'mode'             AS mode " +
+            "FROM timeline_event te " +
+            "WHERE te.type = 'USER_LEAD_PROFILE' " +
+            "  AND te.type_id = ? " +
+            "  AND te.action_type = 'COUNSELOR_ASSIGNED' " +
+            "ORDER BY te.created_at ASC";
+
+        return jdbc.query(sql, (rs, rowNum) -> LeadTransferDTO.builder()
+                        .fromUserId(rs.getString("from_user_id"))
+                        .toUserId(rs.getString("to_user_id"))
+                        // Best-effort name from metadata; service.hydrate
+                        // replaces this with the canonical auth_service name.
+                        .toName(rs.getString("to_name_hint"))
+                        .actorId(rs.getString("actor_id"))
+                        .actorName(rs.getString("actor_name"))
+                        .trigger(rs.getString("trigger"))
+                        .mode(rs.getString("mode"))
+                        .at(rs.getTimestamp("created_at"))
+                        .build(),
+                leadUserId);
     }
 
     private Object[] buildArgs(String instituteId,

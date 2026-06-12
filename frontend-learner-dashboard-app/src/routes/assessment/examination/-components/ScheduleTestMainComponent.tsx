@@ -5,8 +5,9 @@ import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore
 import { assessmentTypes, Assessment } from "@/types/assessment";
 import { fetchAssessmentData } from "../-utils.ts/useFetchAssessment";
 import { AssessmentCard } from "../-components/AssessmentCard";
-import { EmptyAssessment } from "@/svgs";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { EmptyState } from "@/components/design-system/states";
+import { Exam } from "@phosphor-icons/react";
 
 export const ScheduleTestMainComponent = ({
   assessment_types,
@@ -196,10 +197,31 @@ export const ScheduleTestMainComponent = ({
               );
             })
           ) : (
-            <div className="flex min-h-screen-40 sm:h-screen-60 flex-col items-center justify-center px-4 text-center space-y-4">
-              <EmptyAssessment />
-              <span className="text-muted-foreground text-lg">No tests found.</span>
-            </div>
+            <EmptyState
+              icon={Exam}
+              title={
+                selectedTab === assessmentTypes.LIVE
+                  ? "Nothing live right now"
+                  : selectedTab === assessmentTypes.UPCOMING
+                    ? "Nothing scheduled yet"
+                    : "No past attempts yet"
+              }
+              description={
+                selectedTab === assessmentTypes.LIVE
+                  ? "When a test opens for your batch, it appears here with a Join button."
+                  : selectedTab === assessmentTypes.UPCOMING
+                    ? "Tests scheduled by your institute will show up here with their start time."
+                    : "Once a test you attempted closes, it appears here with its report."
+              }
+              action={
+                selectedTab === assessmentTypes.LIVE
+                  ? {
+                      label: "See upcoming",
+                      onClick: () => setSelectedTab(assessmentTypes.UPCOMING),
+                    }
+                  : undefined
+              }
+            />
           )}
 
           {loading && (

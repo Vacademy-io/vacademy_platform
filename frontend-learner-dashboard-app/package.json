@@ -27,7 +27,6 @@
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.19.0",
-    "@zoom/meetingsdk": "^6.0.0",
     "@capacitor-community/electron": "^5.0.1",
     "@capacitor-community/privacy-screen": "^6.0.0",
     "@capacitor-firebase/messaging": "^7.3.0",
@@ -113,6 +112,7 @@
     "@vimeo/player": "^2.30.3",
     "@visx/visx": "^3.12.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "@zoom/meetingsdk": "^6.0.0",
     "axios": "^1.7.9",
     "boring-avatars": "^2.0.4",
     "canvas-confetti": "^1.9.3",
@@ -139,6 +139,7 @@
     "jspdf": "^3.0.0",
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.19",
+    "libphonenumber-js": "^1.13.6",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.469.0",
     "mathquill4quill": "^2.4.0",

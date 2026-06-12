@@ -29,8 +29,12 @@ export interface DoubtFilter {
     sources: string[];
     source_ids: string[];
     status: string[];
+    /** Configurable query type keys (DOUBT, TECHNICAL, PAYMENT, ...). Empty ⇒ all types. */
+    types?: string[];
     sort_columns: {
         [key: string]: 'ASC' | 'DESC';
     };
     batch_ids?: string[];
+    /** Scopes the admin inbox to one institute; required so general (batchless) queries are visible. */
+    institute_id?: string;
 }

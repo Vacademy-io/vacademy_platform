@@ -130,6 +130,10 @@ module.exports = {
             fontWeight: "500",
           },
         ],
+        // Display tier — exactly ONE display-size element per screen (hero
+        // number/title). Pair with `tabular-nums` for figures.
+        display: ["40px", { lineHeight: "44px", fontWeight: "700" }],
+        "display-sm": ["32px", { lineHeight: "38px", fontWeight: "700" }],
         // Micro text sizes below the caption (12px) floor — for dense badges/labels/metadata.
         "2xs": ["11px", { lineHeight: "16px" }],
         "3xs": ["10px", { lineHeight: "14px" }],
@@ -282,7 +286,9 @@ module.exports = {
           "gold-deep": "var(--play-c-gold-deep)",
           navy: "var(--play-c-navy)",
           "navy-deep": "var(--play-c-navy-deep)",
-          ink: "var(--play-c-ink)",
+          // rgb form so Tailwind alpha modifiers work (text-play-ink/80);
+          // plain var() colors silently drop the /N modifier.
+          ink: "rgb(60 60 60 / <alpha-value>)",
         },
       },
       // Named layout dimensions that can't use the spacing scale (viewport math, fixed art heights).
@@ -414,6 +420,11 @@ module.exports = {
         "play-4d-navy": "0 4px 0 var(--play-c-navy-deep)",
         "play-2d-gold": "0 2px 0 var(--play-c-gold-deep)",
         "play-3d-gold": "0 3px 0 var(--play-c-gold-deep)",
+        "play-4d-gold": "0 4px 0 var(--play-c-gold-deep)",
+        "play-2d-warn": "0 2px 0 var(--play-c-warn-deep)",
+        "play-2d-info": "0 2px 0 var(--play-c-info-deep)",
+        "play-2d-accent": "0 2px 0 var(--play-c-accent-deep)",
+        "play-2d-navy": "0 2px 0 var(--play-c-navy-deep)",
         "play-soft": "0 2px 8px rgba(0,0,0,0.12)",
         "play-glow-info": "0 1px 2px rgba(24,153,214,0.22),0 16px 32px -12px rgba(28,176,246,0.45)",
         "play-glow-success-lg": "0 1px 2px rgba(70,163,2,0.22),0 16px 32px -12px rgba(88,204,2,0.45)",

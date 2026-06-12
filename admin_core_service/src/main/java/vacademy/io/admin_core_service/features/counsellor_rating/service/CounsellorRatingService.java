@@ -119,9 +119,28 @@ public class CounsellorRatingService {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Manual override (STATIC strategy)
+    // Per-counsellor admin-set rating value
     // ────────────────────────────────────────────────────────────────
 
+    /**
+     * Persist the per-counsellor admin-set score. Semantics depend on the
+     * institute's current rating strategy:
+     *
+     * <ul>
+     *   <li><b>STATIC</b>: value IS the counsellor's score. Always wins.</li>
+     *   <li><b>STRATEGY_BASED</b>: value is the counsellor's INITIAL score —
+     *       used by the compute service as the cold-start fallback before
+     *       the counsellor has enough leads in window to earn a real
+     *       computed score. Once they cross min_sample_size, the computed
+     *       score takes over and the override is "remembered" for the next
+     *       strategy flip / cold start.</li>
+     * </ul>
+     *
+     * Either way, we recompute the counsellor's score immediately so the
+     * UI reflects the change in one round-trip (admins were saving and
+     * seeing no change because the STRATEGY_BASED path used to write only
+     * manual_override and leave score untouched).
+     */
     @Transactional
     public RatingDTO setManualOverride(String instituteId, String counsellorUserId, BigDecimal score) {
         if (score == null) throw new VacademyException("score is required");
@@ -136,18 +155,22 @@ public class CounsellorRatingService {
                         .score(BigDecimal.ZERO)
                         .build());
         r.setManualOverride(score);
-        // Manual override always wins for STATIC strategies; if the institute
-        // is on STRATEGY_BASED, the override is remembered but doesn't
-        // influence the live score until they switch back.
         String strategy = settingService.get(instituteId).getStrategyType();
         if (strategy == null || RatingStrategyType.STATIC.name().equals(strategy)) {
+            // STATIC: override IS the live score, no compute needed.
             r.setStrategyType(RatingStrategyType.STATIC.name());
             r.setScore(score);
             r.setConversionRatioScore(null);
             r.setVelocityScore(null);
+            r.setLastComputedAt(new Timestamp(System.currentTimeMillis()));
+            return settingService.upsertCounsellorRating(instituteId, counsellorUserId, r);
         }
-        r.setLastComputedAt(new Timestamp(System.currentTimeMillis()));
-        return settingService.upsertCounsellorRating(instituteId, counsellorUserId, r);
+
+        // STRATEGY_BASED: stash the override, then recompute so the live
+        // score reflects either (a) the override for cold-start counsellors
+        // or (b) the computed score for mature ones.
+        settingService.upsertCounsellorRating(instituteId, counsellorUserId, r);
+        return computeService.recompute(instituteId, counsellorUserId);
     }
 
     // ────────────────────────────────────────────────────────────────

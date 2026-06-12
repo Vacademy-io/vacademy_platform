@@ -14,7 +14,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
   value,
   size = 48,
   strokeWidth = 4,
-  color = "hsl(var(--play-green))",
+  color = "var(--play-c-success)",
   bgColor = "hsl(var(--primary-100))",
   className = "",
   showLabel = true,
@@ -53,6 +53,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
       {showLabel && (
         <span
           className="absolute text-xs font-bold"
+          // dynamic: color comes from the caller-supplied prop, font size is computed from the ring size
           style={{ color, fontSize: size * 0.22 }}
         >
           {Math.round(clamped)}%

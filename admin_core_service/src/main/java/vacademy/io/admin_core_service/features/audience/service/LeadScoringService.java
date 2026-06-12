@@ -31,7 +31,8 @@ import java.util.*;
  * Calculates raw_score (0-100) immediately on every lead event.
  * Percentile ranks are recalculated in batch every 15 minutes.
  *
- * Scoring factors:
+ * Scoring factors (default weights — per-institute overrides come from
+ * LEAD_SETTING.data.scoringWeights via {@link LeadScoringSettingService}):
  * 1. SOURCE_QUALITY (25%): Source type credibility
  * 2. PROFILE_COMPLETENESS (30%): How many key fields are filled
  * 3. RECENCY (25%): Time decay — newer leads score higher
@@ -41,13 +42,6 @@ import java.util.*;
 public class LeadScoringService {
 
     private static final Logger logger = LoggerFactory.getLogger(LeadScoringService.class);
-
-    // Default weights (can be overridden per institute via settingJson)
-    private static final int DEFAULT_SOURCE_WEIGHT = 25;
-    private static final int DEFAULT_COMPLETENESS_WEIGHT = 30;
-    private static final int DEFAULT_RECENCY_WEIGHT = 25;
-    private static final int DEFAULT_ENGAGEMENT_WEIGHT = 20;
-    private static final int DEFAULT_DECAY_DAYS = 30;
 
     // Default source quality scores
     private static final Map<String, Integer> DEFAULT_SOURCE_SCORES = Map.of(
@@ -82,6 +76,9 @@ public class LeadScoringService {
 
     @Autowired
     private UserLeadProfileService userLeadProfileService;
+
+    @Autowired
+    private LeadScoringSettingService leadScoringSettingService;
 
     // @Lazy breaks cycle: LeadScoringService → TimelineEventService → UserLeadProfileService → (lazy) LeadScoringService
     @Autowired
@@ -122,6 +119,9 @@ public class LeadScoringService {
                     : responseForScoring.getUserId();
         }
 
+        // Per-institute weights + recency decay (LEAD_SETTING.data, cached 5 min)
+        LeadScoringSettingService.ScoringConfig cfg = leadScoringSettingService.get(instituteId);
+
         // Factor 1: Source Quality (0-100)
         int sourceScore = calculateSourceScore(sourceType);
 
@@ -129,16 +129,16 @@ public class LeadScoringService {
         int completenessScore = calculateCompletenessScore(audienceResponseId, enquiryId);
 
         // Factor 3: Recency (0-100)
-        int recencyScore = calculateRecencyScore(audienceResponseId);
+        int recencyScore = calculateRecencyScore(audienceResponseId, cfg.decayDays());
 
         // Factor 4: Engagement (0-100)
         int engagementScore = calculateEngagementScore(enquiryId, audienceResponseId, userIdForEngagement);
 
         // Weighted sum (single division avoids rounding errors in the final score)
-        int baseScore = (sourceScore * DEFAULT_SOURCE_WEIGHT
-                + completenessScore * DEFAULT_COMPLETENESS_WEIGHT
-                + recencyScore * DEFAULT_RECENCY_WEIGHT
-                + engagementScore * DEFAULT_ENGAGEMENT_WEIGHT) / 100;
+        int baseScore = (sourceScore * cfg.sourceWeight()
+                + completenessScore * cfg.completenessWeight()
+                + recencyScore * cfg.recencyWeight()
+                + engagementScore * cfg.engagementWeight()) / 100;
 
         // Clamp to 0-100
         baseScore = Math.max(0, Math.min(100, baseScore));
@@ -150,7 +150,7 @@ public class LeadScoringService {
 
         // Distribute baseScore exactly across factors using largest-remainder so contributions always sum to baseScore.
         int[] scores  = { sourceScore, completenessScore, recencyScore, engagementScore };
-        int[] weights = { DEFAULT_SOURCE_WEIGHT, DEFAULT_COMPLETENESS_WEIGHT, DEFAULT_RECENCY_WEIGHT, DEFAULT_ENGAGEMENT_WEIGHT };
+        int[] weights = { cfg.sourceWeight(), cfg.completenessWeight(), cfg.recencyWeight(), cfg.engagementWeight() };
         int[] contributions = new int[4];
         double[] remainders = new double[4];
         int floorSum = 0;
@@ -170,13 +170,13 @@ public class LeadScoringService {
 
         // Build scoring factors breakdown for UI
         Map<String, Object> factors = new LinkedHashMap<>();
-        factors.put("source_quality", Map.of("score", sourceScore, "weight", DEFAULT_SOURCE_WEIGHT,
+        factors.put("source_quality", Map.of("score", sourceScore, "weight", cfg.sourceWeight(),
                 "contribution", contributions[0]));
-        factors.put("profile_completeness", Map.of("score", completenessScore, "weight", DEFAULT_COMPLETENESS_WEIGHT,
+        factors.put("profile_completeness", Map.of("score", completenessScore, "weight", cfg.completenessWeight(),
                 "contribution", contributions[1]));
-        factors.put("recency", Map.of("score", recencyScore, "weight", DEFAULT_RECENCY_WEIGHT,
+        factors.put("recency", Map.of("score", recencyScore, "weight", cfg.recencyWeight(),
                 "contribution", contributions[2]));
-        factors.put("engagement", Map.of("score", engagementScore, "weight", DEFAULT_ENGAGEMENT_WEIGHT,
+        factors.put("engagement", Map.of("score", engagementScore, "weight", cfg.engagementWeight(),
                 "contribution", contributions[3]));
         if (initialScore != null) {
             factors.put("initial_score", Map.of("value", initialScore));
@@ -370,9 +370,11 @@ public class LeadScoringService {
 
     /**
      * Factor 3: Recency (0-100)
-     * Linear decay over DEFAULT_DECAY_DAYS days. Brand new = 100, 30+ days old = 0.
+     * Linear decay over the institute's configured decay window
+     * (LEAD_SETTING.data.recencyDecayDays, default 30).
+     * Brand new = 100, decayDays+ old = 0.
      */
-    private int calculateRecencyScore(String audienceResponseId) {
+    private int calculateRecencyScore(String audienceResponseId, int decayDays) {
         AudienceResponse response = audienceResponseRepository.findById(audienceResponseId).orElse(null);
         if (response == null || response.getSubmittedAt() == null) return 50;
 
@@ -381,9 +383,9 @@ public class LeadScoringService {
                 Instant.now());
 
         if (daysSinceSubmission <= 0) return 100;
-        if (daysSinceSubmission >= DEFAULT_DECAY_DAYS) return 0;
+        if (daysSinceSubmission >= decayDays) return 0;
 
-        return (int) ((DEFAULT_DECAY_DAYS - daysSinceSubmission) * 100L / DEFAULT_DECAY_DAYS);
+        return (int) ((decayDays - daysSinceSubmission) * 100L / decayDays);
     }
 
     /**

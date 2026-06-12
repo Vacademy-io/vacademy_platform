@@ -28,7 +28,7 @@ import {
     useSlidesMutations,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
 import { toast } from 'sonner';
-import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk } from '@phosphor-icons/react';
+import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk, LinkSimple } from '@phosphor-icons/react';
 import { AlertCircle } from 'lucide-react';
 import {
     converDataToAssignmentFormat,
@@ -38,6 +38,9 @@ import {
 import { StudyLibraryQuestionsPreview } from './questions-preview';
 import StudyLibraryAssignmentPreview from './assignment-preview';
 import VideoSlidePreview from './video-slide-preview';
+import { MyDialog } from '@/components/design-system/dialog';
+import { AddVimeoDialog } from './slides-sidebar/add-vimeo-dialog';
+import { AddVideoDialog } from './slides-sidebar/add-video-dialog';
 import AudioSlidePreview from './audio-slide-preview';
 import { handlePublishSlide } from './slide-operations/handlePublishSlide';
 import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
@@ -287,6 +290,7 @@ export const SlideMaterial = ({
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
+    const [isEditLinkDialogOpen, setIsEditLinkDialogOpen] = useState(false);
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { setOpen: setSidebarOpen } = useSidebar();
 
@@ -1353,7 +1357,14 @@ export const SlideMaterial = ({
                     />
                 );
             } else {
-                setContent(<VideoSlidePreview key={activeItem.id} activeItem={activeItem} />);
+                // Key on the URL too so editing the external link remounts the
+                // player (YouTube/Vimeo) and the new link renders immediately.
+                setContent(
+                    <VideoSlidePreview
+                        key={`${activeItem.id}-${activeItem.video_slide?.url ?? ''}`}
+                        activeItem={activeItem}
+                    />
+                );
             }
 
             return;
@@ -2632,6 +2643,9 @@ export const SlideMaterial = ({
         activeItem?.source_type,
         activeItem?.document_slide?.type,
         activeItem?.status,
+        // Re-render the video preview when an external link is edited in place.
+        activeItem?.video_slide?.url,
+        activeItem?.video_slide?.published_url,
     ]);
 
     // Update the refs whenever these functions change
@@ -2640,6 +2654,14 @@ export const SlideMaterial = ({
         setGetCurrentEditorHTMLContent(getCurrentEditorHTMLContent);
         setSaveDraft(SaveDraft);
     }, [editor]);
+
+    // External-link video slides (YouTube / Vimeo) support editing the link.
+    // Uploaded files (FILE_ID), AI videos (HTML_VIDEO) and split-screen are excluded.
+    const editableVideoSourceType = activeItem?.video_slide?.source_type;
+    const isExternalVideoLink =
+        activeItem?.source_type === 'VIDEO' &&
+        (editableVideoSourceType === 'VIDEO' || editableVideoSourceType === 'VIMEO') &&
+        !activeItem?.splitScreenMode;
 
     return (
         <div
@@ -2716,6 +2738,18 @@ export const SlideMaterial = ({
                                     )}
 
                                 <ActivityStatsSidebar />
+
+                                {isExternalVideoLink && (
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        layoutVariant="default"
+                                        onClick={() => setIsEditLinkDialogOpen(true)}
+                                    >
+                                        <LinkSimple size={18} />
+                                        <span className="hidden md:inline">Edit Link</span>
+                                    </MyButton>
+                                )}
 
                                 {(!hidePublishButtons || // Show for admin users OR
                                     (hidePublishButtons && // Show for non-admin users if it's an editable slide type
@@ -2859,6 +2893,40 @@ export const SlideMaterial = ({
                                             }
                                         }}
                                     />
+                                )}
+
+                                {isExternalVideoLink && (
+                                    <MyDialog
+                                        trigger={<></>}
+                                        heading={
+                                            editableVideoSourceType === 'VIMEO'
+                                                ? 'Edit Vimeo Link'
+                                                : 'Edit YouTube Link'
+                                        }
+                                        dialogWidth="w-full max-w-md"
+                                        open={isEditLinkDialogOpen}
+                                        onOpenChange={setIsEditLinkDialogOpen}
+                                    >
+                                        <div className="duration-300 animate-in fade-in slide-in-from-bottom-4">
+                                            {editableVideoSourceType === 'VIMEO' ? (
+                                                <AddVimeoDialog
+                                                    key={activeItem.id}
+                                                    editSlide={activeItem}
+                                                    openState={(open) =>
+                                                        !open && setIsEditLinkDialogOpen(false)
+                                                    }
+                                                />
+                                            ) : (
+                                                <AddVideoDialog
+                                                    key={activeItem.id}
+                                                    editSlide={activeItem}
+                                                    openState={(open) =>
+                                                        !open && setIsEditLinkDialogOpen(false)
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+                                    </MyDialog>
                                 )}
                             </div>
 

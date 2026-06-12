@@ -610,13 +610,22 @@ class VideoGenerationService:
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
                         logger.error(f"[VideoGenService] Error event received: {event.get('message', 'Unknown error')}")
-                        # Refund all credits charged for this failed video
-                        if institute_id and db_session:
+                        # Refund all credits charged for this failed video.
+                        # FRESH session — by the time a late-stage error lands
+                        # here the request-scoped `db_session` connection is
+                        # often dead (idle-in-tx kill during the long run),
+                        # which made refunds silently fail. TokenUsageService
+                        # doesn't commit; the context-manager exit does.
+                        if institute_id:
                             try:
                                 from .token_usage_service import TokenUsageService
-                                TokenUsageService(db_session).refund_video_credits(video_id, institute_id)
+                                with _fresh_db_session() as _refund_db:
+                                    TokenUsageService(_refund_db).refund_video_credits(video_id, institute_id)
                             except Exception as refund_err:
-                                logger.error(f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}")
+                                logger.error(
+                                    f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}",
+                                    exc_info=True,
+                                )
                         yield event
                         return
                     yield event
@@ -646,13 +655,19 @@ class VideoGenerationService:
                     video_id=video_id,
                     error_message=error_msg
                 )
-                # Refund all credits charged for this failed video
-                if institute_id and db_session:
+                # Refund all credits charged for this failed video.
+                # FRESH session — same reasoning as the error-event refund
+                # above: the request-scoped session is usually stale here.
+                if institute_id:
                     try:
                         from .token_usage_service import TokenUsageService
-                        TokenUsageService(db_session).refund_video_credits(video_id, institute_id)
+                        with _fresh_db_session() as _refund_db:
+                            TokenUsageService(_refund_db).refund_video_credits(video_id, institute_id)
                     except Exception as refund_err:
-                        logger.error(f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}")
+                        logger.error(
+                            f"[VideoGenService] Failed to refund credits for video {video_id}: {refund_err}",
+                            exc_info=True,
+                        )
                 yield {
                     "type": "error",
                     "message": f"Generation failed: {error_msg}",
@@ -1920,6 +1935,35 @@ class VideoGenerationService:
                     stop_event=stop_event,
                 )
 
+                # Release the request-scoped DB connection before the long
+                # pipeline run. SQLAlchemy auto-begins a transaction on the
+                # session's first read (model routing / institute settings /
+                # input assets above) and would hold the connection
+                # idle-in-transaction for the entire LLM/TTS/render run —
+                # PgBouncer/Postgres kills it, and every later touch of this
+                # session (refunds, host credits, the router's exit commit)
+                # then dies with psycopg ProtocolViolation "server conn
+                # crashed?". Committing here returns the connection to the
+                # pool; the session's next use checks out a fresh, pre-pinged
+                # one.
+                if db_session is not None:
+                    try:
+                        db_session.commit()
+                    except Exception:
+                        logger.warning(
+                            f"[VideoGenService] Could not release DB connection "
+                            f"before stage {stage_pipeline_name}; rolling back",
+                            exc_info=True,
+                        )
+                        try:
+                            db_session.rollback()
+                        except Exception:
+                            logger.warning(
+                                "[VideoGenService] Rollback after failed "
+                                "pre-stage release also failed; continuing",
+                                exc_info=True,
+                            )
+
                 # Run pipeline in thread while draining the progress queue in the
                 # async event loop so sub-stage events reach the SSE client in real time.
                 _LIVE_FLUSH_INTERVAL_S = 5.0
@@ -2192,14 +2236,19 @@ class VideoGenerationService:
                         _usage = outputs["token_usage"]
                         if _usage.get("total_tokens", 0) > 0:
                             from datetime import datetime as _dt
-                            _est_cost = _estimate_video_cost_usd(
-                                db_session,
-                                _usage.get("model"),
-                                _usage.get("prompt_tokens", 0),
-                                _usage.get("completion_tokens", 0),
-                                _usage.get("image_count", 0),
-                                _usage.get("tts_character_count", 0),
-                            )
+                            # Fresh session — `db_session` has been idle across
+                            # the multi-minute stage run and its connection may
+                            # be dead (idle-in-tx kill); a stale read here lost
+                            # the cost estimate on every long run.
+                            with _fresh_db_session() as _est_db:
+                                _est_cost = _estimate_video_cost_usd(
+                                    _est_db,
+                                    _usage.get("model"),
+                                    _usage.get("prompt_tokens", 0),
+                                    _usage.get("completion_tokens", 0),
+                                    _usage.get("image_count", 0),
+                                    _usage.get("tts_character_count", 0),
+                                )
                             _video_rec = self.repository.get_by_video_id(video_id)
                             _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
                             _existing_meta["token_usage"] = {
@@ -2288,7 +2337,15 @@ class VideoGenerationService:
                                             "in a prior run — skipping (resume idempotency)."
                                         )
                                     else:
-                                        _ts = TokenUsageService(db_session)
+                                      # Fresh session — `db_session` has been idle
+                                      # across the html render and its connection
+                                      # is often dead by now (idle-in-tx kill),
+                                      # which silently dropped host-credit
+                                      # deductions on long runs. TokenUsageService
+                                      # doesn't commit; the context-manager exit
+                                      # commit persists these writes.
+                                      with _fresh_db_session() as _host_db:
+                                        _ts = TokenUsageService(_host_db)
                                         _now_iso = _dt_dh.utcnow().isoformat()
 
                                         # Per-shot Seedream identity image

@@ -15,6 +15,7 @@ import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand l
 import { Lock } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { isValidPhoneValue } from "@/lib/phone-validation";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
 import {
   GET_PAYMENT_GATEWAY_DETAILS_URL,
@@ -166,11 +167,8 @@ export const EnrollmentPaymentDialog: React.FC<
     return emailRegex.test(email);
   };
 
-  const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^(\+\d{1,3})?\d{7,14}$/;
-    const cleaned = phone.replace(/[\s-]/g, "");
-    return phoneRegex.test(cleaned);
-  };
+  // Country-aware validity for the number the user typed (dial code embedded).
+  const validatePhone = (phone: string): boolean => isValidPhoneValue(phone);
 
   const handleEmailChange = (value: string) => {
     setEmail(value);

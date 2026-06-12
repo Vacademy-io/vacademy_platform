@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 import { YooptaEditorWrapper } from './YooptaEditorWrapper';
 
 interface YooptaEditorWrapperSafeProps {
@@ -37,6 +38,10 @@ export class YooptaEditorWrapperSafe extends Component<YooptaEditorWrapperSafePr
 
     componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
         console.error('YooptaEditorWrapper error:', error, errorInfo);
+        Sentry.captureException(error, {
+            tags: { boundary: 'YooptaEditorWrapperSafe' },
+            extra: { componentStack: errorInfo.componentStack },
+        });
     }
 
     render(): ReactNode {

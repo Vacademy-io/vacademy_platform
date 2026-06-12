@@ -12,6 +12,8 @@ import {
 } from "@/utils/timezone";
 import { cn } from "@/lib/utils";
 import { playIllustrations } from "@/assets/play-illustrations";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface UpcomingLiveClassesWidgetProps {
   liveSessions: SessionDetails[];
@@ -126,17 +128,18 @@ export function UpcomingLiveClassesWidget({
     <Card
       className={cn(
         "relative overflow-hidden transition-shadow hover:shadow-md",
-        "[.ui-vibrant_&]:border-violet-200 dark:[.ui-vibrant_&]:border-violet-800/50",
-        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-violet-50/50",
-        "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20",
-        // Play Styles — bg/shadow handled by .upcoming-live-card rule in play-theme.css
-        "upcoming-live-card",
+        // Vibrant: white card with a tenant-primary top rail (no fixed hues)
+        "[.ui-vibrant_&]:border-primary-100",
+        "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+        // Play: premium solid navy card with press shadow
+        "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
+        "[.ui-play_&]:shadow-play-4d-navy [.ui-play_&]:hover:shadow-play-4d-navy",
         "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
-        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
+        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:items-stretch"
       )}
     >
-      {/* Play SVG: side on mobile, top on desktop */}
-      <div className="hidden [.ui-play_&]:!flex order-2 md:order-first w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0">
+      {/* Play SVG: compact side element at all breakpoints */}
+      <div className="hidden [.ui-play_&]:!flex order-2 w-28 md:w-40 shrink-0 items-center justify-center self-center p-2">
         <playIllustrations.LiveClass className="h-24 md:h-28 w-auto text-white" />
       </div>
       <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
@@ -145,7 +148,10 @@ export function UpcomingLiveClassesWidget({
           <div
             className={cn(
               "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400",
-              "[.ui-vibrant_&]:bg-violet-200/70 dark:[.ui-vibrant_&]:bg-violet-800/40",
+              // Vibrant: primary icon chip (dark-prefixed too so the default
+              // dark: violet classes can't out-rank it in dark mode)
+              "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
+              "dark:[.ui-vibrant_&]:bg-primary-100 dark:[.ui-vibrant_&]:text-primary-500",
               // Play icon
               "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
             )}
@@ -153,18 +159,37 @@ export function UpcomingLiveClassesWidget({
             <VideoCamera size={18} />
           </div>
           <div>
-            <CardTitle className="text-base font-semibold">
-              Upcoming Live Classes
+            <CardTitle
+              className={cn(
+                "text-base font-semibold",
+                "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+              )}
+            >
+              Upcoming{" "}
+              {getTerminologyPlural(
+                ContentTerms.LiveSession,
+                SystemTerms.LiveSession
+              )}
             </CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {totalCount} class{totalCount !== 1 ? "es" : ""} in next 24h
+            <p
+              className={cn(
+                "text-xs text-muted-foreground mt-0.5",
+                "[.ui-play_&]:text-white/80 [.ui-play_&]:font-medium"
+              )}
+            >
+              {totalCount} {totalCount === 1 ? "class" : "classes"} in next 24h
             </p>
           </div>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          className="text-xs"
+          className={cn(
+            "text-xs",
+            "[.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white",
+            "[.ui-play_&]:hover:bg-white/10",
+            "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-white/70"
+          )}
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
           View All <CaretRight size={14} className="ml-1" />
@@ -176,17 +201,35 @@ export function UpcomingLiveClassesWidget({
         {live.map((session, index) => (
           <div
             key={`live-${session.session_id}-${index}`}
-            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg bg-green-50/60 dark:bg-green-900/10 border-green-200 dark:border-green-900/50"
+            className={cn(
+              "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg bg-green-50/60 dark:bg-green-900/10 border-green-200 dark:border-green-900/50",
+              "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
+            )}
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0">
+              <div
+                className={cn(
+                  "p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0",
+                  "[.ui-play_&]:bg-white/15 [.ui-play_&]:text-white/80 [.ui-play_&]:rounded-xl"
+                )}
+              >
                 <VideoCamera size={16} />
               </div>
               <div className="min-w-0">
-                <h4 className="font-medium text-sm truncate">
+                <h4
+                  className={cn(
+                    "font-medium text-sm truncate",
+                    "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                  )}
+                >
                   {session.title}
                 </h4>
-                <p className="text-xs text-muted-foreground">
+                <p
+                  className={cn(
+                    "text-xs text-muted-foreground",
+                    "[.ui-play_&]:text-white/90"
+                  )}
+                >
                   {formatSessionTimeInUserTimezone(
                     session.meeting_date,
                     session.start_time,
@@ -198,11 +241,30 @@ export function UpcomingLiveClassesWidget({
             <div className="flex items-center gap-2 shrink-0">
               <Badge
                 variant="default"
-                className="bg-green-600 hover:bg-green-700 text-xs"
+                className={cn(
+                  "bg-green-600 hover:bg-green-700 text-xs",
+                  "[.ui-play_&]:bg-play-danger [.ui-play_&]:hover:bg-play-danger",
+                  "[.ui-play_&]:text-white [.ui-play_&]:border-0",
+                  "[.ui-play_&]:shadow-play-2d-danger"
+                )}
               >
+                <span
+                  aria-hidden="true"
+                  className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse mr-1"
+                />
                 Live Now
               </Badge>
-              <Button size="sm" onClick={() => onJoinSession(session)}>
+              <Button
+                size="sm"
+                onClick={() => onJoinSession(session)}
+                className={cn(
+                  "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-deep",
+                  "[.ui-play_&]:hover:bg-white/90 [.ui-play_&]:font-bold",
+                  "[.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-navy",
+                  "[.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
+                  "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-white/70"
+                )}
+              >
                 Join
               </Button>
             </div>
@@ -220,17 +282,35 @@ export function UpcomingLiveClassesWidget({
           return (
             <div
               key={`upcoming-${session.session_id}-${index}`}
-              className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg hover:bg-muted/30 transition-colors"
+              className={cn(
+                "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg",
+                "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
+              )}
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400 shrink-0">
+                <div
+                  className={cn(
+                    "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400 shrink-0",
+                    "[.ui-play_&]:bg-white/15 [.ui-play_&]:text-white/80 [.ui-play_&]:rounded-xl"
+                  )}
+                >
                   <Calendar weight="duotone" size={16} />
                 </div>
                 <div className="min-w-0">
-                  <h4 className="font-medium text-sm truncate">
+                  <h4
+                    className={cn(
+                      "font-medium text-sm truncate",
+                      "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                    )}
+                  >
                     {session.title}
                   </h4>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 text-xs text-muted-foreground",
+                      "[.ui-play_&]:text-white/90"
+                    )}
+                  >
                     <Clock weight="duotone" size={12} />
                     <span>
                       {formatSessionTimeInUserTimezone(
@@ -240,7 +320,12 @@ export function UpcomingLiveClassesWidget({
                       )}
                     </span>
                     {relTime && (
-                      <span className="text-violet-600 dark:text-violet-400 font-medium">
+                      <span
+                        className={cn(
+                          "text-violet-600 dark:text-violet-400 font-medium",
+                          "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                        )}
+                      >
                         ({relTime})
                       </span>
                     )}
@@ -249,7 +334,10 @@ export function UpcomingLiveClassesWidget({
               </div>
               <Badge
                 variant="secondary"
-                className="bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800 text-xs shrink-0"
+                className={cn(
+                  "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800 text-xs shrink-0",
+                  "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:border-white/20"
+                )}
               >
                 Upcoming
               </Badge>

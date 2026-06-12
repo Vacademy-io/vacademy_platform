@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
+import * as Sentry from '@sentry/react';
 import { Warning, ArrowClockwise } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { useTheme } from '@/providers/theme/theme-provider';
@@ -25,6 +26,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
     public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         console.error('ErrorBoundary caught an error:', error, errorInfo);
+        Sentry.captureException(error, {
+            tags: { boundary: 'ErrorBoundary' },
+            extra: { componentStack: errorInfo.componentStack },
+        });
     }
 
     private handleReset = () => {

@@ -33,6 +33,7 @@ import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/
 import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { LockedBadge } from "@/components/drip-conditions";
 import { playIllustrations } from "@/assets/play-illustrations";
+import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -65,7 +66,7 @@ export const getSlideStatus = (percentage: number | null | undefined) => {
   if (percentage === null || percentage === undefined || percentage === 0) {
     return "not-started";
   }
-  if (percentage >= 90) {
+  if (percentage >= SLIDE_COMPLETION_THRESHOLD) {
     return "completed";
   }
   return "in-progress";
@@ -397,7 +398,7 @@ const SlideItem = ({
   const typeColors = getTypeColorClasses(slide, mediaKind || undefined);
   const statusDetails = getStatusDetails(slide.percentage_completed);
   const StatusIcon = statusDetails.icon;
-  const isCompleted = slide.percentage_completed >= 80;
+  const isCompleted = slide.percentage_completed >= SLIDE_COMPLETION_THRESHOLD;
 
   const getSlideTitle = () => {
     return (

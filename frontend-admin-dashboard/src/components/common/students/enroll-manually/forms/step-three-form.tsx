@@ -73,7 +73,10 @@ export const StepThreeForm = ({
     const inviteList: InviteItem[] = (inviteListData?.content || []).filter(
         (inv: InviteItem) => {
             const tag = (inv.tag ?? '').trim().toUpperCase();
-            return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+            // Hide only the bare SUB_ORG admin/scoped invites — enrolling a learner
+            // through those makes them a ROOT_ADMIN (postProcessSubOrgEnrollment).
+            // SUBORG_LEARNER (the sub-org learner invite) stays selectable.
+            return tag !== 'SUB_ORG';
         }
     );
 

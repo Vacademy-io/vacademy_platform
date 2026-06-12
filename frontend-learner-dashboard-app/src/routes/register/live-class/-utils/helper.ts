@@ -82,6 +82,11 @@ export const transformToGuestRegistrationDTO = (
   return dto;
 };
 
+// Normalize a label/key for loose comparison: lowercase, trim, and collapse
+// runs of spaces/hyphens into single underscores (so "Full Name" -> "full_name").
+const normalizeKey = (s: string): string =>
+  s.toLowerCase().trim().replace(/[\s-]+/g, "_");
+
 const extractFieldValue = (
   formValues: RegistrationFormValues,
   customFields: CustomField[],
@@ -92,11 +97,20 @@ const extractFieldValue = (
     const val = formValues[key];
     if (val && String(val) !== "undefined") return String(val);
   }
-  // Fallback: search custom fields by key or name
+  // Fallback: match a custom field by key or (normalized) name, then read its value.
+  // The backend generates fieldKey as e.g. "full_name_inst_<instituteId>", and
+  // fieldName may be a human label like "Full Name", so match loosely rather than
+  // requiring an exact "full_name"/"name" equality.
   for (const key of keys) {
-    const field = customFields.find(
-      (f) => f.fieldKey === key || f.fieldName.toLowerCase() === key
-    );
+    const field = customFields.find((f) => {
+      const fieldKey = f.fieldKey ?? "";
+      const fieldName = normalizeKey(f.fieldName ?? "");
+      return (
+        fieldKey === key ||
+        fieldKey.startsWith(`${key}_`) ||
+        fieldName === key
+      );
+    });
     if (field) {
       const val = formValues[field.fieldKey];
       if (val && String(val) !== "undefined") return String(val);

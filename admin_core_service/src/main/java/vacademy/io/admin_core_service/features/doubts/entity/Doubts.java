@@ -31,6 +31,31 @@ public class Doubts {
     @Column(name = "source_id")
     private String sourceId;
 
+    /**
+     * Configurable query type key (e.g. DOUBT, TECHNICAL, PAYMENT). Defaults to DOUBT for legacy
+     * rows. The label/order/routing for each key lives in DOUBT_MANAGEMENT_SETTING.queryTypes.
+     */
+    @Column(name = "type")
+    private String type;
+
+    /**
+     * Owning institute. For SLIDE doubts this is derivable from package_session_id, but GENERAL
+     * queries may have no batch — so the institute is stored directly to scope the admin inbox and
+     * resolve notification/routing settings.
+     */
+    @Column(name = "institute_id")
+    private String instituteId;
+
+    /**
+     * Contact for logged-out ("guest") queries — set only when user_id is null. Reply/resolved
+     * notifications are emailed directly to guest_email (guests have no auth_service account).
+     */
+    @Column(name = "guest_name")
+    private String guestName;
+
+    @Column(name = "guest_email")
+    private String guestEmail;
+
     @Column(name = "raised_time")
     private Date raisedTime;
 

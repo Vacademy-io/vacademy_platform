@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.payments.dto.RazorpayCustomerDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.RazorpayRequestDTO;
@@ -99,6 +100,12 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             }
 
         } catch (RazorpayException | RuntimeException e) {
+            // A gateway failure here falls back to creating a new customer; surface it so
+            // duplicate-customer creation isn't silently masking Razorpay outages.
+            SentryLogger.logWarning(e, "Razorpay customer lookup by email failed", Map.of(
+                    "payment.gateway", "RAZORPAY",
+                    "operation", "findCustomerByEmail"
+            ));
             return null;
         }
     }

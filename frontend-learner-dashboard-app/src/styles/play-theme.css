@@ -6,28 +6,18 @@
 
 /* ── Play Color Tokens ────────────────────────────────────────────── */
 .ui-play {
+  /* LEGACY HSL set — used only by remaining CSS-shell overrides below
+     (course tags, chips, notification card, progressbars). New work uses
+     the canonical --play-c-* palette; migrate these then delete. */
   --play-gold: 45 100% 50%;       /* #FFD700 — XP / points */
-  --play-fire: 14 100% 57%;       /* #FF4B1F — streaks (bolder red-orange) */
   --play-green: 87 97% 40%;       /* #58CC02 — progress / Duolingo-bright */
   --play-green-deep: 87 97% 30%;  /* #46a302 — paired darker tone */
   --play-purple: 271 76% 53%;     /* #8E44AD — achievements */
   --play-blue: 217 89% 61%;       /* #5B9BD5 — info / levels */
-  --play-pink: 340 82% 52%;       /* #E91E63 — hearts / accents */
-  --play-dark: 220 26% 14%;       /* #1A1D2E — dark card backgrounds */
+  --play-pink: 340 82% 52%;       /* #E91E63 — legacy; live-class borders only */
   --play-radius-card: 20px;
   --play-radius-btn: 14px;
   --play-radius-badge: 999px;
-
-  /* Gamification surface + 3D press-shadow pairs (promoted from hardcoded hex).
-     Kept as hex to preserve exact gamified shades; referenced via var() in widgets. */
-  --play-xp-bg: #FFB800;
-  --play-xp-shadow: #CC9300;
-  --play-streak-bg: #FF6B35;
-  --play-streak-shadow: #CC4A1A;
-  --play-streak-bg-idle: #FF8C42;
-  --play-streak-shadow-idle: #CC6A2A;
-  --play-achievement-bg: #8E44AD;
-  --play-achievement-shadow: #6C3483;
 
   /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
      scattered arbitrary hex; exposed to Tailwind as the `play-*` color + shadow tokens. */
@@ -50,6 +40,9 @@
   --play-c-navy: #235390;
   --play-c-navy-deep: #1a3d6d;
   --play-c-ink: #3c3c3c;
+  /* Deeper press shades for cards whose SURFACE is already the -deep tone. */
+  --play-c-info-deeper: #11719f;
+  --play-c-accent-deeper: #7d4d99;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -116,9 +109,7 @@
 
   /* Badges: always pill, solid */
   .ui-play .badge,
-  .ui-play .Badge,
-  .ui-play .level-badge,
-  .ui-play .course-tag {
+  .ui-play .Badge {
     border-radius: var(--play-radius-badge) !important;
     font-weight: 700;
     border-width: 1px !important;
@@ -143,9 +134,9 @@
   }
 
   /* ── Buttons: 3D press effect (Duolingo style) ──────────────────── */
-  .ui-play button.bg-primary-500,
-  .ui-play .btn,
-  .ui-play .my-button {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]),
+  .ui-play .btn:not([class*="shadow-play"]),
+  .ui-play .my-button:not([class*="shadow-play"]) {
     border-radius: var(--play-radius-btn) !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
@@ -154,31 +145,22 @@
     transition: transform 100ms ease, box-shadow 100ms ease;
   }
 
-  .ui-play button.bg-primary-500:hover,
-  .ui-play .btn:hover,
-  .ui-play .my-button:hover {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]):hover,
+  .ui-play .btn:not([class*="shadow-play"]):hover,
+  .ui-play .my-button:not([class*="shadow-play"]):hover {
     transform: translateY(-1px);
     box-shadow: 0 5px 0 hsl(var(--primary-400)) !important;
   }
 
-  .ui-play button.bg-primary-500:active,
-  .ui-play .btn:active,
-  .ui-play .my-button:active {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]):active,
+  .ui-play .btn:not([class*="shadow-play"]):active,
+  .ui-play .my-button:not([class*="shadow-play"]):active {
     transform: translateY(3px);
     box-shadow: 0 1px 0 hsl(var(--primary-400)) !important;
   }
 
-  /* ── Navbar ─────────────────────────────────────────────────────── */
-  .ui-play .navbar {
-    border-bottom: 1px solid hsl(var(--primary-100)) !important;
-    background: white !important;
-    box-shadow: 0 1px 0 hsl(var(--primary-100) / 0.6);
-  }
-
-  .ui-play .navbar .text-base {
-    font-weight: 800;
-    letter-spacing: 0.3px;
-  }
+  /* (Play navbar shell + heading nudge removed 2026-06-11: the navbar
+     self-styles via [.ui-play_&] variants in navbar.tsx.) */
 
   /* Sidebar: basic container only (detailed overrides are OUTSIDE @layer below) */
   .ui-play .sidebar-content {
@@ -191,112 +173,73 @@
     box-shadow: none !important;
   }
 
-  /* ── Dashboard Stat Cards: SOLID colored backgrounds ────────────── */
-  .ui-play .stat-card-inner {
-    border-radius: var(--play-radius-card) !important;
-    border: none !important;
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.06),
-      0 14px 28px -12px rgba(0, 0, 0, 0.22) !important;
-    color: white !important;
-    transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
-  }
-
-  .ui-play .stat-card-inner:hover {
-    transform: translateY(-3px);
-    box-shadow:
-      0 2px 4px rgba(0, 0, 0, 0.08),
-      0 24px 40px -12px rgba(0, 0, 0, 0.28) !important;
-  }
-
-  .ui-play .stat-card-inner .text-gray-900,
-  .ui-play .stat-card-inner .text-gray-800,
-  .ui-play .stat-card-inner .text-gray-700,
-  .ui-play .stat-card-inner .text-gray-600,
-  .ui-play .stat-card-inner .text-foreground {
-    color: white !important;
-  }
-
-  .ui-play .stat-card-inner .text-muted-foreground {
-    color: rgba(255, 255, 255, 0.8) !important;
-  }
-
-  /* Per-category stat cards — semantic classes added to dashboard JSX.
-     Shadow inherited from .ui-play .card; bg-color set per category. */
+  /* ── Dashboard Stat Cards: SOLID colored backgrounds ──────────────
+     Surfaces use the canonical deep --play-c-* shades (white text from
+     the JSX [.ui-play_&]:text-white classes) and the Duolingo press
+     shadow grammar. The old .stat-card-inner rules were dead CSS — no
+     JSX emits that class; only the category classes below are real.
+     :hover/:active re-assert the press shadow so the generic
+     .ui-play .card:hover glow cannot replace it. */
   .ui-play .stat-card-courses {
-    background-color: hsl(var(--play-blue)) !important;
+    background-color: var(--play-c-info-deep) !important;
     border-color: transparent !important;
+    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
   }
 
   .ui-play .stat-card-live {
-    background-color: hsl(var(--play-pink)) !important;
+    background-color: var(--play-c-navy) !important;
     border-color: transparent !important;
+    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
   }
 
   .ui-play .stat-card-assessments {
-    background-color: hsl(var(--play-purple)) !important;
+    background-color: var(--play-c-accent-deep) !important;
     border-color: transparent !important;
+    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
   }
 
-  /* Stat card icon: white circle on solid bg */
-  .ui-play .stat-card--courses .stat-card-icon,
-  .ui-play .stat-card--assignments .stat-card-icon,
-  .ui-play .stat-card--evaluations .stat-card-icon,
-  .ui-play .stat-card--attendance .stat-card-icon,
-  .ui-play .stat-card--live .stat-card-icon {
-    background-color: rgba(255, 255, 255, 0.25) !important;
-    color: white !important;
-    border-radius: 50% !important;
+  .ui-play .stat-card-courses:hover {
+    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
   }
 
-  /* Stat card title: no decorative shape, just bold */
-  .ui-play .stat-card-title {
-    font-weight: 800 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    font-size: 0.75rem !important;
+  .ui-play .stat-card-live:hover {
+    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
   }
 
-  .ui-play .stat-card-title::before {
-    display: none !important;
+  .ui-play .stat-card-assessments:hover {
+    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
   }
+
+  .ui-play .stat-card-courses:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 var(--play-c-info-deeper) !important;
+  }
+
+  .ui-play .stat-card-live:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 var(--play-c-navy-deep) !important;
+  }
+
+  .ui-play .stat-card-assessments:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 var(--play-c-accent-deeper) !important;
+  }
+
+  /* (Dead .stat-card-icon / .stat-card-title / .stat-card--* rules removed:
+     no JSX emits those classes; icon chips and label styling live in
+     DashboardStatCard.tsx.) */
 
   /* ── Continue Learning Card ─────────────────────────────────────── */
   /* No `color: white !important` here — that would cascade into the
      CTA button and make its text invisible. Per-element [.ui-play_&]:text-white
      classes in the JSX handle text color where needed. */
-  .ui-play .continue-learning-card {
-    background-color: hsl(var(--play-blue)) !important;
-    border-color: transparent !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-blue) / 0.18),
-      0 16px 32px -12px hsl(var(--play-blue) / 0.4) !important;
-  }
+  /* (Continue Learning play shell removed 2026-06-11: navy surface +
+     foregrounds now live in DashboardContinueLearningCard.tsx JSX.
+     The vibrant rules in index.css and App.css touch-target rules stay.) */
 
-  .ui-play .continue-learning-card:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--play-blue) / 0.22),
-      0 24px 44px -14px hsl(var(--play-blue) / 0.5) !important;
-  }
-
-  /* Upcoming Live Classes widget: solid pink hero */
-  .ui-play .upcoming-live-card {
-    background-color: hsl(var(--play-pink)) !important;
-    border-color: transparent !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-pink) / 0.22),
-      0 16px 32px -12px hsl(var(--play-pink) / 0.45) !important;
-  }
-
-  .ui-play .upcoming-live-card:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--play-pink) / 0.28),
-      0 22px 40px -14px hsl(var(--play-pink) / 0.55) !important;
-  }
+  /* Upcoming Live Classes widget: navy skin now lives in the JSX
+     ([.ui-play_&]:bg-play-navy + shadow-play-4d-navy in
+     UpcomingLiveClassesWidget.tsx); the old pink shell override is gone. */
 
   /* Notification card (new state): solid blue hero */
   .ui-play .notification-card-new {
@@ -315,39 +258,11 @@
       0 18px 36px -12px hsl(var(--play-blue) / 0.5) !important;
   }
 
-  /* Continue Learning empty state — green hero. Text color set on
-     individual elements (heading/paragraph) via [.ui-play_&]:text-white
-     so the CTA button can still use its own colors. */
-  .ui-play .continue-learning-card-empty {
-    background-color: hsl(var(--play-green)) !important;
-    border-color: transparent !important;
-    border-style: solid !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-green-deep) / 0.22),
-      0 16px 32px -12px hsl(var(--play-green) / 0.4) !important;
-  }
+  /* (Continue Learning empty-state shell + text overrides removed
+     2026-06-11: success surface + ink text now live in the JSX.) */
 
-  .ui-play .continue-learning-card .text-muted-foreground {
-    color: rgba(255, 255, 255, 0.8) !important;
-  }
-
-  .ui-play .continue-learning-card .text-foreground {
-    color: white !important;
-  }
-
-  /* ── Course Cards ───────────────────────────────────────────────── */
-  .ui-play .course-card-image {
-    border-radius: var(--play-radius-card) var(--play-radius-card) 0 0 !important;
-  }
-
-  .ui-play .level-badge {
-    border-width: 1px !important;
-    border-radius: var(--play-radius-badge) !important;
-    font-weight: 800;
-    text-transform: uppercase;
-    font-size: 0.65rem;
-  }
+  /* (Orphaned play course-card hooks removed 2026-06-11: course-card-image/
+     level-badge have zero JSX consumers — play card styling lives in CourseCards.tsx.) */
 
   .ui-play .course-stats {
     background: hsl(var(--primary-50));
@@ -475,14 +390,9 @@
       0 12px 28px -10px hsl(var(--primary-400) / 0.2);
   }
 
-  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"] {
-    border-radius: var(--play-radius-btn) !important;
-  }
-
-  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"]:hover {
-    transform: scale(1.01);
-    background-color: hsl(var(--primary-50)) !important;
-  }
+  /* (Generic border+rounded-lg+hover:bg-accent interception removed 2026-06-11:
+     the Outline triggers it targeted are play-self-sufficient in JSX; the one
+     other match, parent-portal accordions, falls back to clean defaults.) */
 
   .ui-play .course-enrollment,
   .ui-play [class*="enrollment"] {
@@ -514,12 +424,8 @@
     transition: all 150ms ease !important;
   }
 
-  .ui-play [role="tab"][data-state="active"],
-  .ui-play [role="tab"][aria-selected="true"] {
-    background: hsl(var(--primary-400)) !important;
-    color: white !important;
-    box-shadow: 0 2px 6px hsl(var(--primary-400) / 0.4) !important;
-  }
+  /* (Active-tab primary-400 paint removed 2026-06-11: active tabs are
+     styled in JSX (navy + white on play); shape-only [role="tab"] rule stays.) */
 
   /* ── Inputs & Select (forms across all pages) ───────────────────── */
   .ui-play input[type="text"],
@@ -617,17 +523,10 @@
     background: hsl(var(--primary-100)) !important;
   }
 
-  /* ── Progress bars (everywhere) ─────────────────────────────────── */
-  .ui-play [role="progressbar"] {
-    border-radius: var(--play-radius-badge) !important;
-    height: 12px !important;
-    background: hsl(var(--primary-100)) !important;
-  }
-
-  .ui-play [role="progressbar"] > div {
-    border-radius: var(--play-radius-badge) !important;
-    background: hsl(var(--play-green)) !important;
-  }
+  /* (Global progressbar interception removed 2026-06-11: it force-painted
+     every play progress bar 12px primary-100/green, fighting the
+     self-sufficient bars in attendance/sidebar/ratings. Bars now style
+     themselves; unmigrated ones fall back to their own clean defaults.) */
 
   /* ── Accordion / Collapsible (course content, FAQ, etc.) ────────── */
   .ui-play [data-state="open"] > [role="button"],
@@ -786,106 +685,11 @@
      ATTENDANCE PAGE
      ══════════════════════════════════════════════════════════════════ */
 
-  /* Attendance dashboard widget — bright green hero with soft elevation.
-     Targets the semantic class added to AttendanceWidget Card (the old
-     :has([class*="ChartBar"]) selector didn't match phosphor's rendered
-     icon classes). */
-  .ui-play .attendance-widget-card {
-    background-color: hsl(var(--play-green)) !important;
-    border-color: transparent !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-green-deep) / 0.25),
-      0 18px 36px -14px hsl(var(--play-green) / 0.45) !important;
-  }
-
-  .ui-play .attendance-widget-card:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--play-green-deep) / 0.3),
-      0 24px 44px -14px hsl(var(--play-green) / 0.55) !important;
-  }
-
-  /* Attendance dashboard widget: force all text to white on green bg */
-  .ui-play .attendance-widget-card .text-foreground,
-  .ui-play .attendance-widget-card .text-2xl,
-  .ui-play .attendance-widget-card .text-muted-foreground,
-  .ui-play .attendance-widget-card .text-emerald-600,
-  .ui-play .attendance-widget-card .text-red-600,
-  .ui-play .attendance-widget-card .text-orange-500,
-  .ui-play .attendance-widget-card .text-slate-300,
-  .ui-play .attendance-widget-card [class*="text-"] {
-    color: white !important;
-  }
-
-  /* Attendance period buttons: white pill on green */
-  .ui-play .attendance-widget-card button {
-    color: rgba(255, 255, 255, 0.7) !important;
-    background: transparent !important;
-  }
-
-  .ui-play .attendance-widget-card button[class*="bg-emerald"] {
-    color: white !important;
-    background: rgba(255, 255, 255, 0.2) !important;
-    border-radius: var(--play-radius-badge) !important;
-  }
-
-  /* Attendance weekly day dots: uniform translucent white pills so
-     red/slate variants don't clash with the green hero bg. Status is
-     still readable via the glyph (✓ ✕ ? • –). */
-  .ui-play .attendance-widget-card .bg-emerald-100,
-  .ui-play .attendance-widget-card .bg-red-100,
-  .ui-play .attendance-widget-card .bg-slate-100,
-  .ui-play .attendance-widget-card .bg-slate-50 {
-    background-color: rgba(255, 255, 255, 0.22) !important;
-  }
-
-  .ui-play .attendance-widget-card [class*="ring-emerald"],
-  .ui-play .attendance-widget-card [class*="ring-red"],
-  .ui-play .attendance-widget-card [class*="ring-slate"] {
-    --tw-ring-color: rgba(255, 255, 255, 0.35) !important;
-  }
-
-  .ui-play .attendance-widget-card .text-emerald-700,
-  .ui-play .attendance-widget-card .text-red-700,
-  .ui-play .attendance-widget-card .text-slate-400,
-  .ui-play .attendance-widget-card .text-slate-300 {
-    color: white !important;
-  }
-
-  /* Inner icon container (ChartBar pill at top): more visible */
-  .ui-play .attendance-widget-card .bg-emerald-100.p-1\.5 {
-    background-color: rgba(255, 255, 255, 0.28) !important;
-  }
-
-  /* Progress bar inside attendance card: thicker, white-tinted track */
-  .ui-play .attendance-widget-card .bg-slate-100.rounded-full {
-    background-color: rgba(255, 255, 255, 0.2) !important;
-    height: 0.5rem !important;
-  }
-
-  .ui-play .attendance-widget-card [class*="bg-emerald-500"],
-  .ui-play .attendance-widget-card [class*="bg-amber-500"],
-  .ui-play .attendance-widget-card [class*="bg-red-500"] {
-    background-color: white !important;
-  }
-
-  /* Attendance status dots */
-  .ui-play [class*="attendance"] [class*="PRESENT"],
-  .ui-play [class*="attendance"] [class*="present"] {
-    background-color: hsl(var(--play-green)) !important;
-    color: white !important;
-    border-radius: var(--play-radius-badge) !important;
-    font-weight: 700 !important;
-  }
-
-  .ui-play [class*="attendance"] [class*="ABSENT"],
-  .ui-play [class*="attendance"] [class*="absent"] {
-    background-color: hsl(var(--play-fire)) !important;
-    color: white !important;
-    border-radius: var(--play-radius-badge) !important;
-    font-weight: 700 !important;
-  }
+  /* Attendance dashboard widget: the play skin now lives entirely in the
+     JSX ([.ui-play_&]: variants in AttendanceWidget.tsx — green hero,
+     white stat chips, semantic DayDot states, threshold progress fills).
+     The old force-white "[class*=text-]" bleach cascade destroyed the
+     present/absent/unmarked semantics and is gone. */
 
   /* Calendar date pickers */
   .ui-play [class*="calendar"],
@@ -1005,90 +809,6 @@
 
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SIDEBAR OVERRIDES — Outside @layer for higher specificity than CVA
-   ══════════════════════════════════════════════════════════════════════ */
-
-/* All sidebar menu buttons: rounded, taller, bolder */
-.ui-play [data-sidebar="menu-button"] {
-  border-radius: 14px !important;
-  font-weight: 700 !important;
-  min-height: 46px !important;
-  margin: 3px 4px !important;
-  padding: 8px 14px !important;
-  transition: all 150ms ease !important;
-}
-
-/* Bigger icons */
-.ui-play [data-sidebar="menu-button"] svg {
-  width: 22px !important;
-  height: 22px !important;
-}
-
-/* Hover */
-.ui-play [data-sidebar="menu-button"]:hover {
-  background-color: hsl(var(--primary-50)) !important;
-  transform: scale(1.02);
-}
-
-/* Active: SOLID primary bg, white text, soft elevated shadow */
-.ui-play [data-sidebar="menu-button"][data-active="true"] {
-  background-color: hsl(var(--primary-400)) !important;
-  color: white !important;
-  font-weight: 800 !important;
-  border-radius: 14px !important;
-  box-shadow:
-    0 1px 2px hsl(var(--primary-500) / 0.18),
-    0 8px 20px -6px hsl(var(--primary-400) / 0.45) !important;
-}
-
-.ui-play [data-sidebar="menu-button"][data-active="true"]:hover {
-  background-color: hsl(var(--primary-400)) !important;
-  transform: translateY(-1px);
-  box-shadow:
-    0 2px 4px hsl(var(--primary-500) / 0.22),
-    0 12px 24px -8px hsl(var(--primary-400) / 0.55) !important;
-}
-
-.ui-play [data-sidebar="menu-button"][data-active="true"] svg {
-  color: white !important;
-}
-
-/* Sub-menu items */
-.ui-play [data-sidebar="menu-sub-button"] {
-  border-radius: 10px !important;
-  font-weight: 600 !important;
-  min-height: 36px !important;
-  transition: all 150ms ease !important;
-}
-
-.ui-play [data-sidebar="menu-sub-button"]:hover {
-  background-color: hsl(var(--primary-50)) !important;
-}
-
-.ui-play [data-sidebar="menu-sub-button"][data-active="true"] {
-  background-color: hsl(var(--primary-100)) !important;
-  color: hsl(var(--primary-500)) !important;
-  font-weight: 700 !important;
-}
-
-/* Logo area */
-.ui-play [data-sidebar="header"] [data-sidebar="menu-button"] {
-  border-radius: 16px !important;
-  background-color: hsl(var(--primary-50)) !important;
-  border: 1px solid hsl(var(--primary-100)) !important;
-  box-shadow: 0 2px 8px hsl(var(--primary-300) / 0.1) !important;
-  margin: 8px !important;
-  padding: 12px !important;
-  min-height: auto !important;
-}
-
-.ui-play [data-sidebar="header"] [data-sidebar="menu-button"]:hover {
-  background-color: hsl(var(--primary-100)) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px hsl(var(--primary-300) / 0.18) !important;
-}
-
-.ui-play [data-sidebar="footer"] {
-  padding: 8px !important;
-}
+/* (SIDEBAR OVERRIDES block removed 2026-06-11: its !important rules MASKED
+   the redesigned sidebar's [.ui-play_&] JSX styling. Custom route sidebars
+   fall back to the quiet CVA baseline.) */

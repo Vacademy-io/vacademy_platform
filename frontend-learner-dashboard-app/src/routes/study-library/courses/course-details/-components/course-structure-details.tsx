@@ -18,10 +18,13 @@ import {
 import {
   CaretDown,
   CaretRight,
+  CheckCircle,
+  Circle,
+  CircleHalf,
   Folder,
-  FileText,
-  PresentationChart,
   FolderOpen,
+  Lock,
+  PresentationChart,
 } from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
 import { format, parseISO } from "date-fns";
@@ -50,13 +53,13 @@ import {
   TabType,
   tabs,
 } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
+import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
 import {
   getIcon,
   getSlideTypeDisplay,
 } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { CourseDetailsFormValues } from "./course-details-schema";
 import { getSubjectDetails } from "@/routes/courses/course-details/-utils/helper";
-import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useRouter } from "@tanstack/react-router";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
@@ -70,11 +73,9 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 import { PackageSessionMessages } from "@/components/announcements";
-import {
-  calculateOverallCompletion,
-  getStatusDetails,
-} from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
+import { calculateOverallCompletion } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getFilePublicUrlQuery } from "@/services/file-url-cache";
+import { getLatestResume } from "@/services/resume-thread";
 
 export interface Chapter {
   id: string;
@@ -217,23 +218,9 @@ export const CourseStructureDetails = ({
     [formatDuration]
   );
 
-  // Helper: neutral badge classes for slide type with inverted text (professional look)
-  const getTypeBadgeClasses = (slide: Slide): string => {
-    // All types use neutral tones for subdued UI; you can reintroduce brand hues if needed
-    if (slide.video_slide) return "bg-neutral-700 text-white";
-    if (slide.document_slide) return "bg-neutral-700 text-white";
-    if (slide.question_slide) return "bg-neutral-700 text-white";
-    if (slide.assignment_slide) return "bg-neutral-700 text-white";
-    return "bg-neutral-600 text-white";
-  };
-
-  // (unused) Helper retained for potential future UI badges
-  // const getChapterProgressStatus = (chapterId: string) => {
-  //     const progress = calculateChapterProgress(chapterId);
-  //     if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
-  //     if (progress >= 80) return { status: 'completed', color: 'text-primary', bgColor: 'bg-green-100' };
-  //     return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
-  // };
+  // Single quiet chip style for slide type/meta info (one status language)
+  const quietBadgeClasses =
+    "border border-border bg-transparent font-normal text-muted-foreground";
 
   // Helper: calculate module progress from chapters
   const calculateModuleProgress = (moduleChapters: Chapter[]): number => {
@@ -246,12 +233,13 @@ export const CourseStructureDetails = ({
     return Math.round(totalProgress / moduleChapters.length);
   };
 
-  // const getModuleProgressStatus = (moduleChapters: Chapter[]) => {
-  //     const progress = calculateModuleProgress(moduleChapters);
-  //     if (progress === 0) return { status: 'not-started', color: 'text-neutral-400', bgColor: 'bg-neutral-100' };
-  //     if (progress >= 80) return { status: 'completed', color: 'text-primary', bgColor: 'bg-green-100' };
-  //     return { status: 'in-progress', color: 'text-primary-600', bgColor: 'bg-primary-100' };
-  // };
+  // Helper: subject progress aggregated across all its chapters
+  const calculateSubjectProgress = (subjectId: string): number => {
+    const chapters = (subjectModulesMap[subjectId] ?? []).flatMap(
+      (mod) => mod.chapters ?? []
+    );
+    return calculateModuleProgress(chapters);
+  };
 
   // Helper: render progress bar
   const renderProgressBar = (percentage: number, size: "sm" | "md" = "sm") => {
@@ -263,27 +251,62 @@ export const CourseStructureDetails = ({
         className={`w-full ${height} bg-neutral-200 ${radius} overflow-hidden`}
       >
         <div
-          className={`${height} bg-primary-600 ${radius} transition-all duration-300 ease-in-out`}
+          className={`${height} bg-primary-500 [.ui-play_&]:bg-play-success ${radius} transition-all duration-300 ease-in-out`}
           style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
         />
       </div>
     );
   };
 
-  // Helper: render completion badge
-  const renderCompletionBadge = (percentage: number) => {
-    if (percentage === 0) return null;
+  // Single status rail: one left icon per row tells the whole story
+  // (complete / in progress / not started / locked).
+  const renderStatusIcon = (
+    percentage: number,
+    options?: { locked?: boolean; size?: number }
+  ) => {
+    const size = options?.size ?? 16;
+    if (options?.locked) {
+      return <Lock size={size} className="shrink-0 text-neutral-400" />;
+    }
+    if (percentage >= SLIDE_COMPLETION_THRESHOLD) {
+      return (
+        <CheckCircle
+          size={size}
+          weight="fill"
+          className="shrink-0 text-success-500"
+        />
+      );
+    }
+    if (percentage > 0) {
+      return (
+        <CircleHalf
+          size={size}
+          weight="fill"
+          className="shrink-0 text-primary-500"
+        />
+      );
+    }
+    return <Circle size={size} className="shrink-0 text-neutral-300" />;
+  };
 
-    const isCompleted = percentage >= 80;
-    const bgColor = isCompleted ? "bg-green-100" : "bg-primary-100";
-    const textColor = isCompleted ? "text-primary" : "text-primary-700";
-    const icon = isCompleted ? "✓" : `${Math.round(percentage)}%`;
+  // Helper: quiet completion text (status itself lives in the left icon).
+  // Play contrast rule: ink on light surfaces, white on dark (navy) surfaces.
+  const renderCompletionBadge = (
+    percentage: number,
+    options?: { onDark?: boolean }
+  ) => {
+    if (percentage === 0) return null;
 
     return (
       <span
-        className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${bgColor} ${textColor}`}
+        className={cn(
+          "shrink-0 text-xs font-medium tabular-nums text-muted-foreground",
+          options?.onDark
+            ? "[.ui-play_&]:text-white/90"
+            : "[.ui-play_&]:text-play-ink"
+        )}
       >
-        {icon}
+        {Math.round(percentage)}%
       </span>
     );
   };
@@ -316,6 +339,11 @@ export const CourseStructureDetails = ({
       }
     };
 
+    // Tabs whose content is still a "coming soon" placeholder. Keep them out
+    // of the tab list until they render real content (their tabContent
+    // entries below are intentionally retained for when they go live).
+    const placeholderTabs: string[] = [TabType.TEACHERS, TabType.ASSESSMENT];
+
     getStudentDisplaySettings(false).then((settings) => {
       const tabsSetting = settings?.courseDetails?.tabs || [];
       const ordered = tabsSetting
@@ -327,7 +355,8 @@ export const CourseStructureDetails = ({
             tabs.find((x) => x.value === mapSettingIdToValue(t.id))?.label ||
             t.id,
           value: mapSettingIdToValue(t.id),
-        }));
+        }))
+        .filter((t) => !placeholderTabs.includes(t.value));
 
       // Check if course discussion should be shown based on student display settings
       const shouldShowCourseDiscussion =
@@ -792,9 +821,9 @@ export const CourseStructureDetails = ({
   const getSlideStyling = (textSize: "xs" | "sm" = "xs") => {
     const sizeClass = textSize === "sm" ? "text-sm" : "text-xs";
     if (isSlideClickable()) {
-      return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-500 rounded hover:bg-amber-50/60 hover:border-amber-200/40 border border-transparent transition-all duration-200`;
+      return `group flex cursor-pointer items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-600 rounded hover:bg-muted/60 transition-colors`;
     } else {
-      return `group flex items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-400 rounded bg-neutral-50/50 border border-transparent`;
+      return `group flex items-center gap-1.5 px-2 py-1 ${sizeClass} text-neutral-400 rounded bg-muted/40`;
     }
   };
 
@@ -924,11 +953,39 @@ export const CourseStructureDetails = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [onlyIncomplete, setOnlyIncomplete] = useState<boolean>(false);
 
+  // Resume thread: when the learner's latest resume point is in this course,
+  // auto-expand the chain to "you are here" and mark that slide row.
+  const resumeEntry = useMemo(() => {
+    const latest = getLatestResume();
+    if (
+      !latest ||
+      !searchParams.courseId ||
+      latest.courseId !== searchParams.courseId
+    ) {
+      return null;
+    }
+    return latest;
+  }, [searchParams.courseId]);
+  const resumeEntryRef = useRef(resumeEntry);
+  useEffect(() => {
+    resumeEntryRef.current = resumeEntry;
+  }, [resumeEntry]);
+
+  // Quiet "Continue" chip on the resume slide row
+  const renderContinueChip = (slideId: string) => {
+    if (!resumeEntry || resumeEntry.slideId !== slideId) return null;
+    return (
+      <span className="ml-1 shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500">
+        Continue
+      </span>
+    );
+  };
+
   const filterSlides = useCallback(
     (slides: Slide[]): Slide[] => {
       const q = searchQuery.trim().toLowerCase();
       return (slides || []).filter((sl) => {
-        if (onlyIncomplete && (sl.percentage_completed || 0) >= 80)
+        if (onlyIncomplete && (sl.percentage_completed || 0) >= SLIDE_COMPLETION_THRESHOLD)
           return false;
         if (!q) return true;
         const title = (sl.title || "").toLowerCase();
@@ -1007,12 +1064,15 @@ export const CourseStructureDetails = ({
     );
 
   const tabContent: Record<TabType, React.ReactNode> = {
+    // All modes share ONE outline structure (owner decision 2026-06-11:
+    // no mode-specific core views — play differs by color only). The
+    // Duolingo path experiment lives unused in ./play/ChapterPathView.tsx.
     [TabType.OUTLINE]: (
       <div className="space-y-3">
         {/* Expand/Collapse Controls */}
         <div className="flex items-center justify-between border-b border-neutral-200 pb-2 gap-3 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
-            <Steps size={18} className="text-primary-600 shrink-0" />
+            <Steps size={18} className="text-primary-500 shrink-0" />
             <span className="text-sm font-medium text-neutral-700 truncate">
               {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
               Structure
@@ -1110,7 +1170,7 @@ export const CourseStructureDetails = ({
                 >
                   <CollapsibleTrigger
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       // Vibrant Styles
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
@@ -1124,22 +1184,18 @@ export const CourseStructureDetails = ({
                         <CaretDown
                           size={18}
                           weight="bold"
-                          className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                          className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90"
                         />
                       ) : (
                         <CaretRight
                           size={18}
                           weight="bold"
-                          className="shrink-0 text-neutral-500 group-hover:text-primary-600 transition-colors"
+                          className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90"
                         />
                       )}
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
-                        {isSubjectOpen ? (
-                          <FolderOpen size={12} />
-                        ) : (
-                          <Folder size={12} />
-                        )}
-                      </div>
+                      {renderStatusIcon(calculateSubjectProgress(subject.id), {
+                        size: 18,
+                      })}
                       {thumbUrlById[`subject:${subject.id}`] && (
                         <img
                           src={thumbUrlById[`subject:${subject.id}`]}
@@ -1159,7 +1215,7 @@ export const CourseStructureDetails = ({
                         </span>
                       )}
                       <span
-                        className="break-words font-medium group-hover:text-primary-700 transition-colors"
+                        className="break-words font-medium"
                         title={toTitleCase(subject.subject_name)}
                       >
                         {toTitleCase(subject.subject_name)}
@@ -1169,8 +1225,7 @@ export const CourseStructureDetails = ({
                   <CollapsibleContent
                     className={`pb-1 pt-2 ${subjectContentIndent}`}
                   >
-                    <div className="space-y-1 border-l-2 border-primary-200/60 pl-1 sm:pl-3 relative">
-                      <div className="absolute left-0 top-0 w-0.5 h-full bg-primary-300/50"></div>
+                    <div className="space-y-1 border-l border-border pl-1 sm:pl-3 relative">
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
@@ -1183,28 +1238,28 @@ export const CourseStructureDetails = ({
                             >
                               <CollapsibleTrigger
                                 className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                                   // Vibrant Styles
                                   "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
-                                  // Play Styles — solid, bold, Duolingo-style
-                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-info [.ui-play_&]:hover:text-white"
+                                  // Play Styles — quiet hover, ink text
+                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
                                       size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                      className="shrink-0 text-neutral-500"
                                     />
                                   ) : (
                                     <CaretRight
                                       size={16}
-                                      className="shrink-0 text-neutral-500 group-hover:text-blue-600 transition-colors"
+                                      className="shrink-0 text-neutral-500"
                                     />
                                   )}
-                                  <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
-                                    <FileText size={12} />
-                                  </div>
+                                  {renderStatusIcon(
+                                    calculateModuleProgress(mod.chapters || [])
+                                  )}
                                   {thumbUrlById[`module:${mod.module.id}`] && (
                                     <img
                                       src={
@@ -1228,7 +1283,7 @@ export const CourseStructureDetails = ({
                                     </span>
                                   )}
                                   <span
-                                    className="break-words group-hover:text-blue-700 transition-colors"
+                                    className="break-words"
                                     title={mod.module.module_name}
                                   >
                                     {mod.module.module_name}
@@ -1239,7 +1294,6 @@ export const CourseStructureDetails = ({
                                       const progress = calculateModuleProgress(
                                         mod.chapters || []
                                       );
-                                      // const progressStatus = getModuleProgressStatus(mod.chapters || []);
                                       return (
                                         <>
                                           <div className="w-14 sm:w-16 hidden sm:block">
@@ -1256,8 +1310,7 @@ export const CourseStructureDetails = ({
                               <CollapsibleContent
                                 className={`py-1 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-1 sm:pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
+                                <div className="space-y-0.5 border-l border-border pl-1 sm:pl-2.5 relative">
                                   {(mod.chapters ?? []).map((ch, chIdx) => {
                                     const isChapterOpen = openChapters.has(
                                       ch.id
@@ -1291,34 +1344,35 @@ export const CourseStructureDetails = ({
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
                                           className={cn(
-                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                               isChapterLocked
                                                 ? "cursor-not-allowed opacity-60"
-                                                : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                                : "hover:bg-muted/60 cursor-pointer"
                                             }`,
                                             // Vibrant Styles
                                             !isChapterLocked &&
                                               "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
-                                            // Play Styles — solid, bold, Duolingo-style
+                                            // Play Styles — quiet hover; open chapter gets a calm navy edge marker
                                             !isChapterLocked &&
-                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink"
+                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
                                           )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
                                               <CaretDown
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
+                                                className="shrink-0 text-neutral-500"
                                               />
                                             ) : (
                                               <CaretRight
                                                 size={14}
-                                                className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
+                                                className="shrink-0 text-neutral-500"
                                               />
                                             )}
-                                            <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
-                                              <PresentationChart size={10} />
-                                            </div>
+                                            {renderStatusIcon(
+                                              calculateChapterProgress(ch.id),
+                                              { locked: isChapterLocked }
+                                            )}
                                             {thumbUrlById[
                                               `chapter:${ch.id}`
                                             ] && (
@@ -1348,7 +1402,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                              className="break-words text-base font-semibold text-neutral-800"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1371,14 +1425,14 @@ export const CourseStructureDetails = ({
                                                   calculateChapterProgress(
                                                     ch.id
                                                   );
-                                                // const progressStatus = getChapterProgressStatus(ch.id);
                                                 const slidesForChapter =
                                                   slidesMap[ch.id] || [];
                                                 const completedSlides =
                                                   slidesForChapter.filter(
                                                     (slide) =>
                                                       (slide.percentage_completed ||
-                                                        0) >= 80
+                                                        0) >=
+                                                      SLIDE_COMPLETION_THRESHOLD
                                                   ).length;
                                                 const totalSlides =
                                                   slidesForChapter.length;
@@ -1393,7 +1447,7 @@ export const CourseStructureDetails = ({
                                                     </div>
                                                     {slidesMap[ch.id] !==
                                                       undefined && (
-                                                      <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                      <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
                                                         {completedSlides}/
                                                         {totalSlides}
                                                       </span>
@@ -1484,9 +1538,9 @@ export const CourseStructureDetails = ({
                                                         getSlideStyling() +
                                                           " rounded-md",
                                                         // Vibrant Styles
-                                                        "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:border-primary/20 [.ui-vibrant_&]:transition-colors",
+                                                        "[.ui-vibrant_&]:hover:bg-primary/5",
                                                         // Play Styles — solid, bold, Duolingo-style
-                                                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors"
                                                       )}
                                                       onClick={
                                                         isSlideClickable() &&
@@ -1507,15 +1561,32 @@ export const CourseStructureDetails = ({
                                                           S{sIdx + 1}
                                                         </span>
                                                       )}
-                                                      <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                        {getIcon(slide, "3")}
-                                                      </div>
                                                       <span
-                                                        className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
+                                                        className="shrink-0"
+                                                        title={
+                                                          getSlideTypeDisplay(
+                                                            slide
+                                                          ) || undefined
+                                                        }
+                                                      >
+                                                        {renderStatusIcon(
+                                                          slide.percentage_completed ||
+                                                            0,
+                                                          {
+                                                            locked:
+                                                              !!isSlideLocked,
+                                                          }
+                                                        )}
+                                                      </span>
+                                                      <span
+                                                        className="break-words text-sm font-normal text-neutral-700"
                                                         title={slide.title}
                                                       >
                                                         {slide.title}
                                                       </span>
+                                                      {renderContinueChip(
+                                                        slide.id
+                                                      )}
                                                       {/* Show locked badge if slide is locked */}
                                                       {isSlideLocked && (
                                                         <LockedBadge
@@ -1525,34 +1596,9 @@ export const CourseStructureDetails = ({
                                                           }
                                                         />
                                                       )}
-                                                      {(() => {
-                                                        const sd =
-                                                          getStatusDetails(
-                                                            slide.percentage_completed ||
-                                                              0
-                                                          );
-                                                        const badgeClass =
-                                                          sd.badge === "done"
-                                                            ? "bg-neutral-800 text-white"
-                                                            : sd.badge ===
-                                                              "active"
-                                                            ? "bg-neutral-700 text-white"
-                                                            : "bg-neutral-600 text-white";
-                                                        return (
-                                                          <Badge
-                                                            variant="secondary"
-                                                            className={`ml-2 hidden sm:inline align-middle text-caption font-medium ${badgeClass}`}
-                                                          >
-                                                            {sd.label}
-                                                          </Badge>
-                                                        );
-                                                      })()}
                                                       {/* Slide Meta Row */}
-                                                      <div className="flex flex-wrap items-center gap-2 ml-auto shrink-0 text-xs text-neutral-600 w-full sm:w-auto sm:ml-auto">
+                                                      <div className="flex flex-wrap items-center gap-2 ml-auto shrink-0 text-xs text-muted-foreground w-full sm:w-auto sm:ml-auto">
                                                         {(() => {
-                                                          const progress =
-                                                            slide.percentage_completed ||
-                                                            0;
                                                           const meta =
                                                             getSlideMetaText(
                                                               slide
@@ -1566,29 +1612,19 @@ export const CourseStructureDetails = ({
                                                             <>
                                                               {typeLabel && (
                                                                 <Badge
-                                                                  variant="secondary"
-                                                                  className={`${getTypeBadgeClasses(
-                                                                    slide
-                                                                  )}`}
+                                                                  variant="outline"
+                                                                  className={
+                                                                    quietBadgeClasses
+                                                                  }
                                                                 >
                                                                   {typeLabel}
                                                                 </Badge>
                                                               )}
                                                               {meta && (
-                                                                <Badge
-                                                                  variant="secondary"
-                                                                  className="bg-neutral-600 text-white"
-                                                                >
+                                                                <span className="text-xs text-muted-foreground">
                                                                   {meta}
-                                                                </Badge>
+                                                                </span>
                                                               )}
-                                                              <div className="w-16">
-                                                                {renderProgressBar(
-                                                                  progress,
-                                                                  "sm"
-                                                                )}
-                                                              </div>
-                                                              {/* compact status dot removed for cleaner UI */}
                                                             </>
                                                           );
                                                         })()}
@@ -1634,7 +1670,7 @@ export const CourseStructureDetails = ({
                   >
                     <CollapsibleTrigger
                       className={cn(
-                        "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                        "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                         "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
                         "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
@@ -1642,13 +1678,14 @@ export const CourseStructureDetails = ({
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
                         {isModuleOpen ? (
-                          <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                          <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
                         ) : (
-                          <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                          <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
                         )}
-                        <div className="flex items-center justify-center w-6 h-6 rounded-md bg-blue-600 text-white text-xs font-bold shrink-0">
-                          <FileText size={12} />
-                        </div>
+                        {renderStatusIcon(
+                          calculateModuleProgress(mod.chapters || []),
+                          { size: 18 }
+                        )}
                         {showContentPrefixes && (
                           <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
                             M{globalIdx + 1}
@@ -1666,7 +1703,9 @@ export const CourseStructureDetails = ({
                                 <div className="w-16 hidden sm:block">
                                   {renderProgressBar(progress, "sm")}
                                 </div>
-                                {renderCompletionBadge(progress)}
+                                {renderCompletionBadge(progress, {
+                                  onDark: true,
+                                })}
                               </>
                             );
                           })()}
@@ -1674,7 +1713,7 @@ export const CourseStructureDetails = ({
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="pb-1 pt-2">
-                      <div className="space-y-0.5 relative pl-3 border-l-2 border-blue-200/60">
+                      <div className="space-y-0.5 relative pl-3 border-l border-border">
                         {(mod.chapters ?? []).map((ch, chIdx) => {
                           const isChapterOpen = openChapters.has(ch.id);
                           const chapterEval = chapterEvaluations[ch.id];
@@ -1694,29 +1733,29 @@ export const CourseStructureDetails = ({
                               <CollapsibleTrigger
                                 disabled={isChapterLocked}
                                 className={cn(
-                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                     isChapterLocked
                                       ? "cursor-not-allowed opacity-60"
-                                      : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                      : "hover:bg-muted/60 cursor-pointer"
                                   }`,
-                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink"
+                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                   {isChapterOpen ? (
-                                    <CaretDown size={14} className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors" />
+                                    <CaretDown size={14} className="shrink-0 text-neutral-500" />
                                   ) : (
-                                    <CaretRight size={14} className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors" />
+                                    <CaretRight size={14} className="shrink-0 text-neutral-500" />
                                   )}
-                                  <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
-                                    <PresentationChart size={10} />
-                                  </div>
+                                  {renderStatusIcon(calculateChapterProgress(ch.id), {
+                                    locked: !!isChapterLocked,
+                                  })}
                                   {showContentPrefixes && (
                                     <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                       C{chIdx + 1}
                                     </span>
                                   )}
-                                  <span className="break-words group-hover:text-primary transition-colors text-xs" title={toTitleCase(ch.chapter_name)}>
+                                  <span className="break-words text-xs" title={toTitleCase(ch.chapter_name)}>
                                     {toTitleCase(ch.chapter_name)}
                                   </span>
                                   {isChapterLocked && (
@@ -1726,7 +1765,7 @@ export const CourseStructureDetails = ({
                                     {(() => {
                                       const progress = calculateChapterProgress(ch.id);
                                       const slidesForChapter = slidesMap[ch.id] || [];
-                                      const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= 80).length;
+                                      const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= SLIDE_COMPLETION_THRESHOLD).length;
                                       const totalSlides = slidesForChapter.length;
                                       return (
                                         <>
@@ -1734,7 +1773,7 @@ export const CourseStructureDetails = ({
                                             {renderProgressBar(progress, "sm")}
                                           </div>
                                           {slidesMap[ch.id] !== undefined && (
-                                            <span className="text-xs text-neutral-500 hidden sm:inline">
+                                            <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
                                               {completedSlides}/{totalSlides}
                                             </span>
                                           )}
@@ -1746,8 +1785,7 @@ export const CourseStructureDetails = ({
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent>
-                                <div className="space-y-px ml-1 sm:ml-5 border-l border-border/50 py-1 pl-1 sm:pl-2 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-border"></div>
+                                <div className="space-y-px ml-1 sm:ml-5 border-l border-border py-1 pl-1 sm:pl-2 relative">
                                   {(() => {
                                     const status = slidesLoadingStatus[ch.id] || "idle";
                                     const filtered = filterSlides(slidesMap[ch.id] ?? []);
@@ -1778,7 +1816,7 @@ export const CourseStructureDetails = ({
                                         key={slide.id}
                                         className={cn(
                                           getSlideStyling() + " rounded-md",
-                                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors"
                                         )}
                                         onClick={
                                           isSlideClickable()
@@ -1791,47 +1829,27 @@ export const CourseStructureDetails = ({
                                             S{sIdx + 1}
                                           </span>
                                         )}
-                                        <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                          {getIcon(slide, "3")}
-                                        </div>
-                                        <span className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors" title={slide.title}>
+                                        <span
+                                          className="shrink-0"
+                                          title={getSlideTypeDisplay(slide) || undefined}
+                                        >
+                                          {renderStatusIcon(slide.percentage_completed || 0)}
+                                        </span>
+                                        <span className="break-words text-sm font-normal text-neutral-700" title={slide.title}>
                                           {slide.title}
                                         </span>
-                                        {(() => {
-                                          const sd = getStatusDetails(slide.percentage_completed || 0);
-                                          const badgeClass =
-                                            sd.badge === "done"
-                                              ? "bg-primary/10 text-primary border-border"
-                                              : sd.badge === "active"
-                                              ? "bg-primary-50 text-primary-700 border-primary-200"
-                                              : "bg-neutral-50 text-neutral-600 border-neutral-200";
-                                          return (
-                                            <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}>
-                                              {sd.label}
-                                            </Badge>
-                                          );
-                                        })()}
+                                        {renderContinueChip(slide.id)}
                                         <div className="flex items-center gap-1.5 ml-auto shrink-0">
                                           {getSlideTypeDisplay(slide) && (
-                                            <Badge variant="secondary" className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                            <Badge variant="outline" className={`hidden sm:inline text-caption ${quietBadgeClasses}`}>
                                               {getSlideTypeDisplay(slide)}
                                             </Badge>
                                           )}
                                           {getSlideMetaText(slide) && (
-                                            <Badge variant="outline" className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                            <span className="hidden sm:inline text-xs text-muted-foreground">
                                               {getSlideMetaText(slide)}
-                                            </Badge>
+                                            </span>
                                           )}
-                                          <div className="w-7 sm:w-8 hidden sm:block">
-                                            {renderProgressBar(slide.percentage_completed || 0, "sm")}
-                                          </div>
-                                          <div className={`w-2 h-2 rounded-full ${
-                                            (slide.percentage_completed || 0) >= 80
-                                              ? "bg-primary/100"
-                                              : (slide.percentage_completed || 0) > 0
-                                              ? "bg-primary-500"
-                                              : "bg-neutral-300"
-                                          }`} />
                                         </div>
                                       </div>
                                     ));
@@ -1893,34 +1911,35 @@ export const CourseStructureDetails = ({
                                     >
                                       <CollapsibleTrigger
                                         disabled={isChapterLocked}
-                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                           isChapterLocked
                                             ? "cursor-not-allowed opacity-60"
-                                            : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                            : "hover:bg-muted/60 cursor-pointer"
                                         }`}
                                       >
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown
                                               size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
+                                              className="shrink-0 text-neutral-500"
                                             />
                                           ) : (
                                             <CaretRight
                                               size={14}
-                                              className="shrink-0 text-neutral-500 group-hover:text-primary transition-colors"
+                                              className="shrink-0 text-neutral-500"
                                             />
                                           )}
-                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
-                                            <PresentationChart size={10} />
-                                          </div>
+                                          {renderStatusIcon(
+                                            calculateChapterProgress(ch.id),
+                                            { locked: !!isChapterLocked }
+                                          )}
                                           {showContentPrefixes && (
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
                                             </span>
                                           )}
                                           <span
-                                            className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                            className="break-words text-base font-semibold text-neutral-800"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -1945,7 +1964,8 @@ export const CourseStructureDetails = ({
                                                 slidesForChapter.filter(
                                                   (slide) =>
                                                     (slide.percentage_completed ||
-                                                      0) >= 80
+                                                      0) >=
+                                                    SLIDE_COMPLETION_THRESHOLD
                                                 ).length;
                                               const totalSlides =
                                                 slidesForChapter.length;
@@ -1960,7 +1980,7 @@ export const CourseStructureDetails = ({
                                                   </div>
                                                   {slidesMap[ch.id] !==
                                                     undefined && (
-                                                    <span className="text-xs text-neutral-500 hidden sm:inline">
+                                                    <span className="text-xs text-neutral-500 hidden sm:inline [.ui-play_&]:text-play-ink">
                                                       {completedSlides}/
                                                       {totalSlides}
                                                     </span>
@@ -1975,8 +1995,7 @@ export const CourseStructureDetails = ({
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-border/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-border/50"></div>
+                                        <div className="space-y-px ml-5 border-l border-border py-1 pl-2 relative">
                                           {(() => {
                                             const status =
                                               slidesLoadingStatus[ch.id] ||
@@ -2040,45 +2059,34 @@ export const CourseStructureDetails = ({
                                                       S{sIdx + 1}
                                                     </span>
                                                   )}
-                                                  <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                    {getIcon(slide, "3")}
-                                                  </div>
                                                   <span
-                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
+                                                    className="shrink-0"
+                                                    title={
+                                                      getSlideTypeDisplay(
+                                                        slide
+                                                      ) || undefined
+                                                    }
+                                                  >
+                                                    {renderStatusIcon(
+                                                      slide.percentage_completed ||
+                                                        0
+                                                    )}
+                                                  </span>
+                                                  <span
+                                                    className="truncate text-sm font-normal text-neutral-700"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
                                                   </span>
-                                                  {(() => {
-                                                    const sd = getStatusDetails(
-                                                      slide.percentage_completed ||
-                                                        0
-                                                    );
-                                                    const badgeClass =
-                                                      sd.badge === "done"
-                                                        ? "bg-primary/10 text-primary border-border"
-                                                        : sd.badge === "active"
-                                                        ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                        : "bg-neutral-50 text-neutral-600 border-neutral-200";
-                                                    return (
-                                                      <Badge
-                                                        variant="secondary"
-                                                        className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}
-                                                      >
-                                                        {sd.label}
-                                                      </Badge>
-                                                    );
-                                                  })()}
-                                                  {/* Slide Progress and Meta */}
+                                                  {renderContinueChip(slide.id)}
+                                                  {/* Slide Meta */}
                                                   <div className="flex items-center gap-1.5 ml-auto shrink-0">
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (
                                                       <Badge
-                                                        variant="secondary"
-                                                        className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(
-                                                          slide
-                                                        )}`}
+                                                        variant="outline"
+                                                        className={`hidden sm:inline text-caption ${quietBadgeClasses}`}
                                                       >
                                                         {getSlideTypeDisplay(
                                                           slide
@@ -2088,33 +2096,12 @@ export const CourseStructureDetails = ({
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                      >
+                                                      <span className="hidden sm:inline text-xs text-muted-foreground">
                                                         {getSlideMetaText(
                                                           slide
                                                         )}
-                                                      </Badge>
+                                                      </span>
                                                     )}
-                                                    <div className="w-7 sm:w-8 hidden sm:block">
-                                                      {renderProgressBar(
-                                                        slide.percentage_completed ||
-                                                          0,
-                                                        "sm"
-                                                      )}
-                                                    </div>
-                                                    <div
-                                                      className={`w-2 h-2 rounded-full ${
-                                                        (slide.percentage_completed ||
-                                                          0) >= 80
-                                                          ? "bg-primary/100"
-                                                          : (slide.percentage_completed ||
-                                                              0) > 0
-                                                          ? "bg-primary-500"
-                                                          : "bg-neutral-300"
-                                                      }`}
-                                                    />
                                                   </div>
                                                 </div>
                                               )
@@ -2140,7 +2127,7 @@ export const CourseStructureDetails = ({
                 >
                   <CollapsibleTrigger
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                       // Play Styles — solid, bold, Duolingo-style
                       "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
@@ -2149,13 +2136,13 @@ export const CourseStructureDetails = ({
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {isSubjectOpen ? (
-                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                        <CaretDown size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
                       ) : (
-                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500" />
+                        <CaretRight size={18} weight="bold" className="shrink-0 text-neutral-500 [.ui-play_&]:text-white/90" />
                       )}
-                      <div className="flex items-center justify-center w-6 h-6 rounded-md bg-primary-600 text-white text-xs font-bold shrink-0">
-                        <Folder size={12} />
-                      </div>
+                      {renderStatusIcon(calculateSubjectProgress(subject.id), {
+                        size: 18,
+                      })}
                       {showContentPrefixes && (
                         <span className="w-7 shrink-0 text-center font-mono text-xs font-semibold text-neutral-500 bg-neutral-100 rounded px-1 py-0.5">
                           S{idx + 1}
@@ -2167,7 +2154,7 @@ export const CourseStructureDetails = ({
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative pl-3 border-l-2 border-primary-200/60">
+                    <div className="space-y-1 relative pl-3 border-l border-border">
                       {(subjectModulesMap[subject.id] ?? []).map((mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
                         return (
@@ -2176,16 +2163,16 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-info [.ui-play_&]:hover:text-white")}>
+                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink")}>
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown size={16} className="shrink-0 text-neutral-500" />
                                 ) : (
                                   <CaretRight size={16} className="shrink-0 text-neutral-500" />
                                 )}
-                                <div className="flex items-center justify-center w-5 h-5 rounded bg-blue-600 text-white">
-                                  <FileText size={12} />
-                                </div>
+                                {renderStatusIcon(
+                                  calculateModuleProgress(mod.chapters || [])
+                                )}
                                 {showContentPrefixes && (
                                   <span className="w-6 shrink-0 text-center font-mono text-xs text-neutral-500 bg-neutral-100 rounded px-1">
                                     M{modIdx + 1}
@@ -2197,7 +2184,7 @@ export const CourseStructureDetails = ({
                               </div>
                             </CollapsibleTrigger>
                             <CollapsibleContent className={`py-1 pl-2`}>
-                              <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5">
+                              <div className="space-y-0.5 border-l border-border pl-2.5">
                                 {(mod.chapters ?? []).map((ch, chIdx) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
@@ -2210,16 +2197,16 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink")}>
+                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink")}>
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown size={14} className="shrink-0 text-neutral-500" />
                                           ) : (
                                             <CaretRight size={14} className="shrink-0 text-neutral-500" />
                                           )}
-                                          <div className="flex items-center justify-center w-4 h-4 rounded bg-primary text-primary-foreground">
-                                            <PresentationChart size={10} />
-                                          </div>
+                                          {renderStatusIcon(
+                                            calculateChapterProgress(ch.id)
+                                          )}
                                           {showContentPrefixes && (
                                             <span className="text-xs w-5 shrink-0 text-center font-mono text-neutral-500 bg-neutral-100 rounded px-0.5">
                                               C{chIdx + 1}
@@ -2244,7 +2231,7 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className={cn(
                                                     getSlideStyling("sm"),
-                                                    "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                                    "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:transition-colors"
                                                   )}
                                                   onClick={() => {
                                                     handleSlideNavigation(
@@ -2260,45 +2247,34 @@ export const CourseStructureDetails = ({
                                                       S{sIdx + 1}
                                                     </span>
                                                   )}
-                                                  <div className="shrink-0 group-hover:scale-110 transition-transform">
-                                                    {getIcon(slide, "3")}
-                                                  </div>
                                                   <span
-                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
+                                                    className="shrink-0"
+                                                    title={
+                                                      getSlideTypeDisplay(
+                                                        slide
+                                                      ) || undefined
+                                                    }
+                                                  >
+                                                    {renderStatusIcon(
+                                                      slide.percentage_completed ||
+                                                        0
+                                                    )}
+                                                  </span>
+                                                  <span
+                                                    className="truncate text-sm font-normal text-neutral-700"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
                                                   </span>
-                                                  {(() => {
-                                                    const sd = getStatusDetails(
-                                                      slide.percentage_completed ||
-                                                        0
-                                                    );
-                                                    const badgeClass =
-                                                      sd.badge === "done"
-                                                        ? "bg-primary/10 text-primary border-border"
-                                                        : sd.badge === "active"
-                                                        ? "bg-primary-50 text-primary-700 border-primary-200"
-                                                        : "bg-neutral-50 text-neutral-600 border-neutral-200";
-                                                    return (
-                                                      <Badge
-                                                        variant="secondary"
-                                                        className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}
-                                                      >
-                                                        {sd.label}
-                                                      </Badge>
-                                                    );
-                                                  })()}
-                                                  {/* Slide Progress and Meta */}
+                                                  {renderContinueChip(slide.id)}
+                                                  {/* Slide Meta */}
                                                   <div className="flex items-center gap-1.5 ml-auto shrink-0">
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (
                                                       <Badge
-                                                        variant="secondary"
-                                                        className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(
-                                                          slide
-                                                        )}`}
+                                                        variant="outline"
+                                                        className={`hidden sm:inline text-caption ${quietBadgeClasses}`}
                                                       >
                                                         {getSlideTypeDisplay(
                                                           slide
@@ -2308,25 +2284,12 @@ export const CourseStructureDetails = ({
                                                     {getSlideMetaText(
                                                       slide
                                                     ) && (
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
-                                                      >
+                                                      <span className="hidden sm:inline text-xs text-muted-foreground">
                                                         {getSlideMetaText(
                                                           slide
                                                         )}
-                                                      </Badge>
+                                                      </span>
                                                     )}
-                                                    <div className="w-8 hidden sm:block">
-                                                      {renderProgressBar(
-                                                        slide.percentage_completed ||
-                                                          0,
-                                                        "sm"
-                                                      )}
-                                                    </div>
-                                                    {/* compact status dot removed for cleaner UI */}
-                                                    {/* compact status dot removed for cleaner UI */}
-                                                    {/* compact status dot removed for cleaner UI */}
                                                   </div>
                                                 </div>
                                               )
@@ -2749,11 +2712,11 @@ export const CourseStructureDetails = ({
             <span className="text-white text-xs font-bold">T</span>
           </div>
           <span className="font-medium text-neutral-700">
-            {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
+            {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
           </span>
         </div>
         <p className="text-neutral-500">
-          {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s content
+          {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)} content
           coming soon.
         </p>
       </div>
@@ -2901,42 +2864,60 @@ export const CourseStructureDetails = ({
         setSubjectModulesMap(modulesMap);
         lastFetchedKeyRef.current = fetchKey;
 
-        // Auto-expand only the first item in each level
-        const firstSubjectId = subjects[0]?.id;
+        // Auto-expand to "you are here": when the latest resume point lives
+        // in this course, open the subject/module/chapter chain holding it.
+        // Otherwise fall back to expanding the first item in each level.
+        const resume = resumeEntryRef.current;
+        const resumeModule = resume
+          ? (modulesMap[resume.subjectId] || []).find(
+              (m) => m.module.id === resume.moduleId
+            )
+          : undefined;
+        const resumeChapterExists =
+          !!resume &&
+          !!resumeModule?.chapters?.some((ch) => ch.id === resume.chapterId);
 
-        if (firstSubjectId) {
-          const firstSubjectModules = modulesMap[firstSubjectId] || [];
-          const firstModuleId = firstSubjectModules[0]?.module.id;
-          const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
+        if (resume && resumeModule && resumeChapterExists) {
+          setOpenSubjects(new Set<string>([resume.subjectId]));
+          setOpenModules(new Set<string>([resume.moduleId]));
+          setOpenChapters(new Set<string>([resume.chapterId]));
+        } else {
+          const firstSubjectId = subjects[0]?.id;
 
-          const openSubjectsSet = new Set<string>([firstSubjectId]);
-          const openModulesSet = new Set<string>();
-          const openChaptersSet = new Set<string>();
+          if (firstSubjectId) {
+            const firstSubjectModules = modulesMap[firstSubjectId] || [];
+            const firstModuleId = firstSubjectModules[0]?.module.id;
+            const firstChapterId = firstSubjectModules[0]?.chapters[0]?.id;
 
-          if (firstModuleId) {
-            openModulesSet.add(firstModuleId);
+            const openSubjectsSet = new Set<string>([firstSubjectId]);
+            const openModulesSet = new Set<string>();
+            const openChaptersSet = new Set<string>();
+
+            if (firstModuleId) {
+              openModulesSet.add(firstModuleId);
+            }
+            if (firstChapterId) {
+              openChaptersSet.add(firstChapterId);
+            }
+
+            setOpenSubjects(openSubjectsSet);
+            setOpenModules(openModulesSet);
+            setOpenChapters(openChaptersSet);
           }
-          if (firstChapterId) {
-            openChaptersSet.add(firstChapterId);
-          }
+        }
 
-          setOpenSubjects(openSubjectsSet);
-          setOpenModules(openModulesSet);
-          setOpenChapters(openChaptersSet);
-
-          // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page)
-          const allChapterIds: string[] = [];
-          Object.values(modulesMap).forEach((mods) => {
-            mods.forEach((m) => {
-              (m.chapters ?? []).forEach((ch) => {
-                if (ch?.id) allChapterIds.push(ch.id);
-              });
+        // Load slides for ALL chapters so the slide list shows when any chapter is expanded (course-details page)
+        const allChapterIds: string[] = [];
+        Object.values(modulesMap).forEach((mods) => {
+          mods.forEach((m) => {
+            (m.chapters ?? []).forEach((ch) => {
+              if (ch?.id) allChapterIds.push(ch.id);
             });
           });
-          allChapterIds.forEach((chapterId) => {
-            getSlidesWithChapterIdRef.current(chapterId);
-          });
-        }
+        });
+        allChapterIds.forEach((chapterId) => {
+          getSlidesWithChapterIdRef.current(chapterId);
+        });
 
         // Update module stats for parent component
         if (updateModuleStatsRef.current) {
@@ -3204,10 +3185,17 @@ export const CourseStructureDetails = ({
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
-                    className={`inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap
+                    className={cn(
+                      `inline-flex items-center data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-3 whitespace-nowrap
                                     py-2 text-sm font-medium transition-all duration-200
                                     hover:bg-primary-50/60 focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1
-                                    data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`}
+                                    data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-primary-50/30 data-[state=inactive]:text-neutral-500 data-[state=inactive]:hover:rounded-t-lg`,
+                      // Play Styles — self-sufficient: navy active tab (white text),
+                      // quiet highlight hover on inactive tabs
+                      "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold",
+                      "[.ui-play_&]:data-[state=inactive]:hover:bg-play-highlight [.ui-play_&]:data-[state=inactive]:hover:text-play-ink",
+                      "[.ui-play_&]:data-[state=active]:bg-play-navy [.ui-play_&]:data-[state=active]:text-white [.ui-play_&]:data-[state=active]:border-play-navy"
+                    )}
                   >
                     {tab.label}
                   </TabsTrigger>

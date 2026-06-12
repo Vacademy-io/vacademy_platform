@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Layers, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { Stack as Layers, WarningCircle as AlertCircle, CheckCircle as CheckCircle2, Clock } from "@phosphor-icons/react";
 import { CpoInstallmentDue } from "../-services/enroll-invite-services";
 import { getCurrencySymbol } from "./payment-selection-step";
 

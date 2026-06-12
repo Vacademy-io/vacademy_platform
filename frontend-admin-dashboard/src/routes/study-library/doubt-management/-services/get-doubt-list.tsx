@@ -22,6 +22,8 @@ export const useGetDoubtList = ({
             );
             return response.data;
         },
-        enabled: !!filter,
+        // Require institute_id before firing — an unscoped admin query returns an empty page, so
+        // wait until the institute is known rather than wasting a request and flashing empty.
+        enabled: !!filter?.institute_id,
     });
 };

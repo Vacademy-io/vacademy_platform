@@ -33,20 +33,32 @@ export const BatchFilter = () => {
 
     const [selectedBatch, setSelectedBatch] = useState<FilterType[]>([AllBatchOption]);
 
-    const handleBatchChange = (batch: FilterType[]) => {
-        if (batch.length > 0) setSelectedBatch(batch);
+    const handleBatchChange = (next: FilterType[]) => {
+        if (next.length === 0) {
+            setSelectedBatch([AllBatchOption]);
+            return;
+        }
+        const hadAll = selectedBatch.some((b) => b.value === '');
+        const hasAll = next.some((b) => b.value === '');
+        // Picking "All" collapses to All; picking a specific batch drops "All" so the selection
+        // isn't silently swallowed.
+        if (hasAll && !hadAll) {
+            setSelectedBatch([AllBatchOption]);
+        } else if (hasAll && next.length > 1) {
+            setSelectedBatch(next.filter((b) => b.value !== ''));
+        } else {
+            setSelectedBatch(next);
+        }
     };
 
     useEffect(() => {
-        if (selectedBatch.includes(AllBatchOption)) {
-            updateFilters({
-                batch_ids: instituteDetails?.batches_for_sessions.map((batch) => batch.id) || [],
-            });
-        } else {
-            updateFilters({
-                batch_ids: selectedBatch.map((batch) => batch.value),
-            });
-        }
+        // "All" (value '') → no batch filter. The inbox is already scoped by institute_id, so an
+        // empty batch list returns every doubt in the institute — including general (batchless)
+        // queries that wouldn't match an enumerated batch list.
+        const isAll = selectedBatch.some((b) => b.value === '');
+        updateFilters({
+            batch_ids: isAll ? [] : selectedBatch.map((batch) => batch.value),
+        });
     }, [selectedBatch]);
 
     return (

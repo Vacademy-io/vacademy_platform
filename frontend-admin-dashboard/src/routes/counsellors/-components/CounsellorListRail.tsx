@@ -71,8 +71,16 @@ function CounsellorCard({
         mutationFn: (next: 'ACTIVE' | 'INACTIVE') =>
             setCounsellorStatus(counsellor.user_id, instituteId, next),
         onSuccess: (data, next) => {
+            // Both lists need to refetch — the paginated display AND the
+            // size=500 candidates query that gates the reassign dropdown
+            // on `is_active`. See index.lazy setActiveMutation for the
+            // same fix; the bug surfaced as "marked active, but still
+            // filtered out of the reassign target list".
             queryClient.invalidateQueries({
                 queryKey: ['workbench-counsellors', instituteId],
+            });
+            queryClient.invalidateQueries({
+                queryKey: ['workbench-counsellors-candidates', instituteId],
             });
             if (next === 'INACTIVE' && data.open_leads.length > 0) {
                 onMarkedInactive(data);

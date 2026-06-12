@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
-import { X } from "@phosphor-icons/react";
 
 import { Student } from "@/types/user/user-detail";
 import { MyButton } from "@/components/design-system/button";
@@ -15,12 +14,15 @@ import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { HOLISTIC_INSTITUTE_ID, GET_DASHBOARD_DATA } from "@/constants/urls";
 import { getTerminology } from "../layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useSystemFieldVisibility } from "@/hooks/use-system-field-visibility";
 import ProgressStats from "./progress-stats";
+import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { formatDate } from "@/lib/format-date";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { FileText } from "@phosphor-icons/react";
+import { playIllustrations } from "@/assets/play-illustrations";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -29,6 +31,42 @@ interface CourseDetails {
   startDate: string;
   status: string;
 }
+
+// Treats empty strings and legacy "N/A" placeholders as missing so detail rows
+// are hidden instead of printing a bold "N/A".
+const hasValue = (value: string | null | undefined): value is string => {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return trimmed !== "" && trimmed.toUpperCase() !== "N/A";
+};
+
+// Initials for the avatar: first letters of the first and last words.
+const getInitials = (name: string | null | undefined): string => {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  const first = words[0]?.charAt(0) ?? "";
+  const last = words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? "") : "";
+  return `${first}${last}`.toUpperCase();
+};
+
+// Token class pairs for the initials avatar, picked by a stable name hash so a
+// given user always sees the same tone.
+const AVATAR_TONE_CLASSES = [
+  "bg-primary-100 text-primary-500",
+  "bg-secondary-100 text-secondary-500",
+  "bg-tertiary-100 text-tertiary-500",
+];
+
+const getAvatarToneClass = (name: string): string => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash + name.charCodeAt(i)) % 997;
+  }
+  return (
+    AVATAR_TONE_CLASSES[hash % AVATAR_TONE_CLASSES.length] ??
+    AVATAR_TONE_CLASSES[0]!
+  );
+};
 
 export default function ProfilePage() {
   const navigate = useNavigate();
@@ -46,6 +84,12 @@ export default function ProfilePage() {
     useStudentPermissions();
   // Honor the admin's system-field toggles (Settings → Custom Fields). Fails open.
   const { isFieldVisible } = useSystemFieldVisibility();
+  const { setNavHeading } = useNavHeadingStore();
+
+  // Standard navbar heading; replaces the old bespoke sticky header.
+  useEffect(() => {
+    setNavHeading("My Profile");
+  }, [setNavHeading]);
 
   // Redirect if user doesn't have permission to view profile
   useEffect(() => {
@@ -252,7 +296,9 @@ export default function ProfilePage() {
         const packageSessionId = students[0]?.package_session_id;
         if (!instituteId || !packageSessionId) return;
 
-        const packageSessionIds = students.map((s: any) => s.package_session_id).filter((id: any): id is string => !!id);
+        const packageSessionIds = students
+          .map((s: { package_session_id?: string | null }) => s.package_session_id)
+          .filter((id): id is string => !!id);
 
         const response = await authenticatedAxiosInstance({
           method: "POST",
@@ -277,65 +323,88 @@ export default function ProfilePage() {
     navigate({ to: "/user-profile/edit" });
   };
 
-  const handleClose = () => {
-    navigate({ to: "/dashboard" });
-  };
-
   if (isLoading || permissionsLoading) {
     return <DashboardLoader />;
   }
 
+  // Row-level visibility: a detail row only renders when it has a real value.
+  // When every row in a section is empty, the whole section card is hidden.
+  const isHolistic = showForInstitutes([HOLISTIC_INSTITUTE_ID]);
+
+  const showCourse = hasValue(courseDetails?.packageName);
+  const showSession = hasValue(courseDetails?.sessionName);
+  const showLevel = hasValue(courseDetails?.levelName);
+  const showEnrollment =
+    isFieldVisible("INSTITUTE_ENROLLMENT_ID") &&
+    hasValue(studentData?.institute_enrollment_id);
+  const showCollege =
+    !isHolistic &&
+    isFieldVisible("LINKED_INSTITUTE_NAME") &&
+    hasValue(studentData?.linked_institute_name);
+  const showAcademicSection =
+    showCourse || showSession || showLevel || showEnrollment || showCollege;
+
+  const showMobile =
+    isFieldVisible("MOBILE_NUMBER") && hasValue(studentData?.mobile_number);
+  const showEmail = isFieldVisible("EMAIL") && hasValue(studentData?.email);
+  const showCountry = isHolistic && hasValue(studentData?.country);
+  const showAddress = !isHolistic && hasValue(studentData?.address_line);
+  const showCity =
+    !isHolistic && isFieldVisible("CITY") && hasValue(studentData?.city);
+  const showRegion =
+    !isHolistic && isFieldVisible("REGION") && hasValue(studentData?.region);
+  const showPincode = !isHolistic && hasValue(studentData?.pin_code);
+  const showContactSection =
+    showMobile ||
+    showEmail ||
+    showCountry ||
+    showAddress ||
+    showCity ||
+    showRegion ||
+    showPincode;
+  // The location block only needs its top divider when contact rows render above it.
+  const showLocationDivider = showMobile || showEmail;
+
+  const showFather =
+    isFieldVisible("FATHER_NAME") && hasValue(studentData?.father_name);
+  const showMother =
+    isFieldVisible("MOTHER_NAME") && hasValue(studentData?.mother_name);
+  const showParentsEmail =
+    isFieldVisible("PARENTS_EMAIL") && hasValue(studentData?.parents_email);
+  const showParentsMobile =
+    isFieldVisible("PARENTS_MOBILE_NUMBER") &&
+    hasValue(studentData?.parents_mobile_number);
+  const showGuardianSection =
+    !isHolistic &&
+    (showFather || showMother || showParentsEmail || showParentsMobile);
+
   return (
     <div className="min-h-screen bg-gray-50/50 pb-24 md:pb-8">
-      {/* Header Section */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="w-full py-4 px-4">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleClose}
-                className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground md:hidden"
-              >
-                <X size={24} />
-              </button>
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">
-                My Profile
-              </h1>
-            </div>
-            <div className="hidden md:flex gap-3">
-              <MyButton
-                type="button"
-                scale="medium"
-                buttonType="secondary"
-                layoutVariant="default"
-                onClick={handleClose}
-              >
-                Back to Dashboard
-              </MyButton>
-              {permissions.canEditProfile && (
-                <MyButton
-                  type="button"
-                  scale="medium"
-                  buttonType="primary"
-                  layoutVariant="default"
-                  onClick={handleEditProfile}
-                >
-                  Edit Profile
-                </MyButton>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="w-full py-6 md:py-8 px-4">
+      {/* Main Content. The page heading lives in the standard navbar
+          (useNavHeadingStore), so content starts with the identity band.
+          The inner wrapper mirrors the LayoutContainer content contract
+          because the route opts out of it to keep this full-bleed
+          background. */}
+      <div className="mx-auto w-full max-w-screen-xl px-4 py-6 sm:px-6 md:py-8 lg:px-8">
         <div className="w-full">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
             {/* Left Column - Profile Summary */}
             <div className="lg:col-span-4 xl:col-span-3 space-y-4 md:space-y-6">
-              {/* Profile Card */}
-              <div className="bg-card rounded-xl border shadow overflow-hidden">
+              {/* Profile Card. Play mode turns the identity band into a gold
+                  celebration surface (highlight band, gold avatar ring,
+                  mascot in the corner); vibrant gets the primary-50 wash +
+                  top rail. Default rendering is unchanged. */}
+              <div
+                className={cn(
+                  "bg-card rounded-xl border shadow overflow-hidden relative",
+                  "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+                  "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
+                )}
+              >
+                <playIllustrations.FeelingHappy
+                  className="pointer-events-none absolute right-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
+                  aria-hidden="true"
+                />
                 <div className="p-6 flex flex-col items-center">
                   {/* Profile Image */}
                   <div className="mb-4">
@@ -343,10 +412,21 @@ export default function ProfilePage() {
                       <img
                         src={imageUrl}
                         alt="Profile"
-                        className="h-32 w-32 rounded-full object-cover shadow-lg border-4 border-border"
+                        className="h-32 w-32 rounded-full object-cover shadow-lg border-4 border-border [.ui-play_&]:ring-4 [.ui-play_&]:ring-play-gold"
                       />
+                    ) : getInitials(studentData?.full_name) ? (
+                      <div
+                        className={cn(
+                          "h-32 w-32 rounded-full flex items-center justify-center shadow-lg border-4 border-border text-4xl font-semibold",
+                          "[.ui-play_&]:ring-4 [.ui-play_&]:ring-play-gold",
+                          getAvatarToneClass(studentData?.full_name ?? "")
+                        )}
+                        aria-label="Profile initials"
+                      >
+                        {getInitials(studentData?.full_name)}
+                      </div>
                     ) : (
-                      <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center shadow-lg border-4 border-gray-200 text-muted-foreground">
+                      <div className="h-32 w-32 rounded-full bg-muted flex items-center justify-center shadow-lg border-4 border-gray-200 text-muted-foreground [.ui-play_&]:ring-4 [.ui-play_&]:ring-play-gold">
                         <User size={48} />
                       </div>
                     )}
@@ -354,23 +434,37 @@ export default function ProfilePage() {
 
                   {/* User Info */}
                   <div className="text-center w-full">
-                    <h2 className="text-xl font-bold text-foreground">
+                    <h2 className="text-xl font-bold text-foreground [.ui-play_&]:text-h2 [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
                       {studentData?.full_name || "Student Name"}
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-muted-foreground mt-1 [.ui-play_&]:font-medium [.ui-play_&]:text-play-ink/70">
                       @{studentData?.username || "username"}
                     </p>
 
                     <div className="mt-4 flex flex-wrap justify-center gap-2">
-                      <div className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200">
+                      <div className="px-3 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium border border-primary-200 [.ui-play_&]:border-transparent [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink">
                         Student
                       </div>
                       {studentData?.gender && isFieldVisible("GENDER") && (
-                        <div className="px-3 py-1 bg-gray-50 text-muted-foreground rounded-full text-xs font-medium border border-gray-200">
+                        <div className="px-3 py-1 bg-gray-50 text-muted-foreground rounded-full text-xs font-medium border border-gray-200 [.ui-play_&]:border-transparent [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink">
                           {studentData.gender}
                         </div>
                       )}
                     </div>
+
+                    {/* Desktop edit action; mobile uses the fixed bottom bar. */}
+                    {permissions.canEditProfile && (
+                      <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="primary"
+                        layoutVariant="default"
+                        className="mt-5 hidden md:inline-flex"
+                        onClick={handleEditProfile}
+                      >
+                        Edit Profile
+                      </MyButton>
+                    )}
                   </div>
                 </div>
               </div>
@@ -388,198 +482,217 @@ export default function ProfilePage() {
             {/* Right Column - Details */}
             <div className="lg:col-span-8 xl:col-span-9 space-y-4 md:space-y-6">
               {/* Academic Journey Card */}
-              <div className="bg-card rounded-xl border shadow p-6 md:p-8">
-                <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                  <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
-                  Academic Journey
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      {getTerminology(ContentTerms.Course, SystemTerms.Course)}
-                    </p>
-                    <p className="text-base font-medium text-foreground">
-                      {toTitleCase(courseDetails?.packageName || "N/A")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      {getTerminology(
-                        ContentTerms.Session,
-                        SystemTerms.Session
-                      )}
-                    </p>
-                    <p className="text-base font-medium text-foreground">
-                      {toTitleCase(courseDetails?.sessionName || "N/A")}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      {getTerminology(ContentTerms.Level, SystemTerms.Level)}
-                    </p>
-                    <p className="text-base font-medium text-foreground">
-                      {toTitleCase(courseDetails?.levelName || "N/A")}
-                    </p>
-                  </div>
-                  {isFieldVisible("INSTITUTE_ENROLLMENT_ID") && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        Enrollment No.
-                      </p>
-                      <p className="text-base font-medium text-foreground">
-                        {studentData?.institute_enrollment_id || "N/A"}
-                      </p>
-                    </div>
-                  )}
-                  {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&
-                    isFieldVisible("LINKED_INSTITUTE_NAME") && (
+              {showAcademicSection && (
+                <div className="bg-card rounded-xl border shadow p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
+                    Academic Journey
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {showCourse && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          {getTerminology(
+                            ContentTerms.Course,
+                            SystemTerms.Course
+                          )}
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {toTitleCase(courseDetails?.packageName ?? "")}
+                        </p>
+                      </div>
+                    )}
+                    {showSession && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          {getTerminology(
+                            ContentTerms.Session,
+                            SystemTerms.Session
+                          )}
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {toTitleCase(courseDetails?.sessionName ?? "")}
+                        </p>
+                      </div>
+                    )}
+                    {showLevel && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          {getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {toTitleCase(courseDetails?.levelName ?? "")}
+                        </p>
+                      </div>
+                    )}
+                    {showEnrollment && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Enrollment No.
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.institute_enrollment_id}
+                        </p>
+                      </div>
+                    )}
+                    {showCollege && (
                       <div className="sm:col-span-2">
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                           College/School Name
                         </p>
                         <p className="text-base font-medium text-foreground">
-                          {studentData?.linked_institute_name || "N/A"}
+                          {studentData?.linked_institute_name}
                         </p>
                       </div>
                     )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Contact & Location Card */}
-              <div className="bg-card rounded-xl border shadow p-6 md:p-8">
-                <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                  <span className="w-1 h-6 bg-secondary-500 rounded-full"></span>
-                  Contact & Location
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {isFieldVisible("MOBILE_NUMBER") && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        Mobile Number
-                      </p>
-                      <p className="text-base font-medium text-foreground">
-                        {studentData?.mobile_number || "N/A"}
-                      </p>
-                    </div>
-                  )}
-                  {isFieldVisible("EMAIL") && (
-                    <div className="sm:col-span-2 xl:col-span-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        Email Address
-                      </p>
-                      <p className="text-base font-medium text-foreground break-words">
-                        {studentData?.email || "N/A"}
-                      </p>
-                    </div>
-                  )}
+              {showContactSection && (
+                <div className="bg-card rounded-xl border shadow p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-secondary-500 rounded-full"></span>
+                    Contact & Location
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {showMobile && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Mobile Number
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.mobile_number}
+                        </p>
+                      </div>
+                    )}
+                    {showEmail && (
+                      <div className="sm:col-span-2 xl:col-span-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Email Address
+                        </p>
+                        <p className="text-base font-medium text-foreground break-words">
+                          {studentData?.email}
+                        </p>
+                      </div>
+                    )}
 
-                  {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
-                    <div className="sm:col-span-2 pt-6 border-t border-border">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        Country
-                      </p>
-                      <p className="text-base font-medium text-foreground">
-                        {studentData?.country || "N/A"}
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="sm:col-span-2 xl:col-span-3 pt-6 border-t border-border">
+                    {showCountry && (
+                      <div
+                        className={cn(
+                          "sm:col-span-2",
+                          showLocationDivider && "pt-6 border-t border-border"
+                        )}
+                      >
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Country
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.country}
+                        </p>
+                      </div>
+                    )}
+                    {showAddress && (
+                      <div
+                        className={cn(
+                          "sm:col-span-2 xl:col-span-3",
+                          showLocationDivider && "pt-6 border-t border-border"
+                        )}
+                      >
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                           Address
                         </p>
                         <p className="text-base font-medium text-foreground">
-                          {studentData?.address_line || "N/A"}
+                          {studentData?.address_line}
                         </p>
                       </div>
-                      {isFieldVisible("CITY") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            City/Village
-                          </p>
-                          <p className="text-base font-medium text-foreground">
-                            {studentData?.city || "N/A"}
-                          </p>
-                        </div>
-                      )}
-                      {isFieldVisible("REGION") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            State
-                          </p>
-                          <p className="text-base font-medium text-foreground">
-                            {studentData?.region || "N/A"}
-                          </p>
-                        </div>
-                      )}
+                    )}
+                    {showCity && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          City/Village
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.city}
+                        </p>
+                      </div>
+                    )}
+                    {showRegion && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          State
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.region}
+                        </p>
+                      </div>
+                    )}
+                    {showPincode && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                           Pincode
                         </p>
                         <p className="text-base font-medium text-foreground">
-                          {studentData?.pin_code || "N/A"}
+                          {studentData?.pin_code}
                         </p>
                       </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Guardian Info Card — hidden entirely when every guardian field is toggled off */}
-              {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&
-                (isFieldVisible("FATHER_NAME") ||
-                  isFieldVisible("MOTHER_NAME") ||
-                  isFieldVisible("PARENTS_EMAIL") ||
-                  isFieldVisible("PARENTS_MOBILE_NUMBER")) && (
-                  <div className="bg-card rounded-xl border shadow p-6 md:p-8">
-                    <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                      <span className="w-1 h-6 bg-tertiary-500 rounded-full"></span>
-                      Guardian Details
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                      {isFieldVisible("FATHER_NAME") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Father/Male Guardian
-                          </p>
-                          <p className="text-base font-medium text-foreground">
-                            {studentData?.father_name || "N/A"}
-                          </p>
-                        </div>
-                      )}
-                      {isFieldVisible("MOTHER_NAME") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Mother/Female Guardian
-                          </p>
-                          <p className="text-base font-medium text-foreground">
-                            {studentData?.mother_name || "N/A"}
-                          </p>
-                        </div>
-                      )}
-                      {isFieldVisible("PARENTS_EMAIL") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Guardian's Email
-                          </p>
-                          <p className="text-base font-medium text-foreground break-words">
-                            {studentData?.parents_email || "N/A"}
-                          </p>
-                        </div>
-                      )}
-                      {isFieldVisible("PARENTS_MOBILE_NUMBER") && (
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Guardian's Mobile
-                          </p>
-                          <p className="text-base font-medium text-foreground">
-                            {studentData?.parents_mobile_number || "N/A"}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Guardian Info Card — hidden entirely when every guardian field is toggled off or empty */}
+              {showGuardianSection && (
+                <div className="bg-card rounded-xl border shadow p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-tertiary-500 rounded-full"></span>
+                    Guardian Details
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {showFather && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Father/Male Guardian
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.father_name}
+                        </p>
+                      </div>
+                    )}
+                    {showMother && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Mother/Female Guardian
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.mother_name}
+                        </p>
+                      </div>
+                    )}
+                    {showParentsEmail && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Guardian's Email
+                        </p>
+                        <p className="text-base font-medium text-foreground break-words">
+                          {studentData?.parents_email}
+                        </p>
+                      </div>
+                    )}
+                    {showParentsMobile && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                          Guardian's Mobile
+                        </p>
+                        <p className="text-base font-medium text-foreground">
+                          {studentData?.parents_mobile_number}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Terms & Conditions Card — only shown when TnC is enabled for the institute */}
               {(tncAccepted || tncFileUrl) && (
@@ -611,7 +724,7 @@ export default function ProfilePage() {
                           Signed On
                         </p>
                         <p className="text-base font-medium text-foreground">
-                          {new Date(tncAcceptedDate).toLocaleDateString()}
+                          {formatDate(tncAcceptedDate)}
                         </p>
                       </div>
                     )}

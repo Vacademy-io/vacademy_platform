@@ -13,6 +13,29 @@ import { toast } from "sonner";
 
 let isHandlingSessionTermination = false;
 
+// ── Sentry: auth-path captures, throttled per message so a burst of parallel
+// requests during a single outage doesn't fan out into dozens of identical
+// events. Stable messages keep grouping clean; specifics go in context. ──
+const AUTH_CAPTURE_THROTTLE_MS = 60 * 1000;
+const lastAuthCaptureAt = new Map<string, number>();
+const captureAuthEvent = (
+  message: string,
+  level: "warning" | "error",
+  extra?: Record<string, unknown>,
+) => {
+  if (import.meta.env.VITE_ENABLE_SENTRY !== "true") return;
+  const now = Date.now();
+  if (now - (lastAuthCaptureAt.get(message) ?? 0) < AUTH_CAPTURE_THROTTLE_MS)
+    return;
+  lastAuthCaptureAt.set(message, now);
+  Sentry.withScope((scope) => {
+    scope.setLevel(level);
+    scope.setTag("feature", "auth");
+    if (extra) scope.setContext("Auth Failure", extra);
+    Sentry.captureMessage(message);
+  });
+};
+
 // ── Session heartbeat: pings auth_service every 5 min to detect terminated sessions ──
 const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 // Seed with the JS-context boot time, NOT 0, so cold-start does not immediately
@@ -71,6 +94,14 @@ const removeTokensAndInstituteId = async () => {
   }
 };
 
+// True only when the refresh endpoint itself rejected the token (4xx).
+// Network failures (status 0) and server errors (5xx) are transient — the
+// session is still valid and must NOT be destroyed for them.
+const isRefreshTokenRejected = (error: unknown): boolean => {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  return typeof status === "number" && status >= 400 && status < 500;
+};
+
 const refreshTokens = async (refreshToken: string): Promise<void> => {
   try {
     const response = await axios.post(REFRESH_TOKEN_URL, { refreshToken });
@@ -90,9 +121,29 @@ const refreshTokens = async (refreshToken: string): Promise<void> => {
       await Preferences.set({ key: "InstituteId", value: instituteId });
     }
   } catch (error) {
-    console.error("[Auth] Failed to refresh tokens:", error);
-    toast.error("Session expired. Please log in again.");
-    removeTokensAndLogout();
+    const status = axios.isAxiosError(error)
+      ? error.response?.status
+      : undefined;
+    if (isRefreshTokenRejected(error)) {
+      console.error("[Auth] Refresh token rejected by server:", error);
+      captureAuthEvent("Forced logout: refresh token rejected", "warning", {
+        refreshStatus: status,
+      });
+      toast.error("Session expired. Please log in again.");
+      await removeTokensAndLogout();
+    } else {
+      // Flaky network / backend blip: keep tokens so the next request can retry
+      console.error("[Auth] Token refresh failed transiently:", error);
+      // The refresh call uses raw axios, so the instance's 5xx capture never
+      // sees it. Only capture backend 5xx — a plain network drop (no status)
+      // is everyday mobile reality, not an actionable error.
+      if (typeof status === "number" && status >= 500) {
+        captureAuthEvent("Token refresh failed with backend error", "error", {
+          refreshStatus: status,
+        });
+      }
+    }
+    throw error;
   }
 };
 
@@ -174,9 +225,18 @@ authenticatedAxiosInstance.interceptors.request.use(
     } else {
       // If the access token is expired, refresh it
       const refreshToken = await getTokenFromStorage(TokenKey.refreshToken);
+      if (!refreshToken) {
+        // An authenticated call with no refresh token means broken auth state
+        // (or a component firing authenticated requests while logged out).
+        captureAuthEvent(
+          "Authenticated request without refresh token",
+          "warning",
+          { requestUrl },
+        );
+        await removeTokensAndInstituteId();
+        return Promise.reject(new Error("Unauthorized"));
+      }
       try {
-        if (!refreshToken) throw new Error("No refresh token found");
-
         // Refresh tokens
         await refreshTokens(refreshToken);
 
@@ -186,12 +246,16 @@ authenticatedAxiosInstance.interceptors.request.use(
         // Serve from client cache for GET when possible
         request = maybeServeFromCache(request);
         return request;
-      } catch {
-        // If token refresh fails, remove tokens and institute ID
-        await removeTokensAndInstituteId();
-
-        // Reject the request with an error indicating that the user is not authenticated
-        return Promise.reject(new Error("Unauthorized"));
+      } catch (error) {
+        if (isRefreshTokenRejected(error)) {
+          // The session is genuinely over — clear auth state
+          await removeTokensAndInstituteId();
+          return Promise.reject(new Error("Unauthorized"));
+        }
+        // Transient refresh failure: fail this request but keep the session
+        return Promise.reject(
+          new Error("Token refresh failed, please retry"),
+        );
       }
     }
   },

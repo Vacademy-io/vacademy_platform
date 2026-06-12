@@ -20,11 +20,13 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
           AND (:sourceIds IS NULL OR d.source_id IN :sourceIds)
+          AND (:types IS NULL OR d.type IN :types)
           AND (:userIds IS NULL OR d.user_id IN :userIds)
           AND (:status IS NULL OR d.status IN :status)
+          AND (:instituteId IS NULL OR d.institute_id = :instituteId)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (:batchIds IS NULL OR d.package_session_id IN :batchIds)
+          AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
         """,
             countQuery = """
         SELECT COUNT(d.*) FROM doubts d
@@ -32,19 +34,24 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
           AND (:sourceIds IS NULL OR d.source_id IN :sourceIds)
+          AND (:types IS NULL OR d.type IN :types)
           AND (:userIds IS NULL OR d.user_id IN :userIds)
           AND (:status IS NULL OR d.status IN :status)
+          AND (:instituteId IS NULL OR d.institute_id = :instituteId)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
-          AND (d.package_session_id IN :batchIds)
+          AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
         """,nativeQuery = true)
     Page<Doubts> findDoubtsWithFilter(@Param("contentPositions") List<String> contentPositions,
                                       @Param("contentTypes") List<String> contentTypes,
                                       @Param("sources") List<String> sources,
                                       @Param("sourceIds") List<String> sourceIds,
+                                      @Param("types") List<String> types,
                                       @Param("userIds") List<String> userIds,
                                       @Param("status") List<String> status,
+                                      @Param("instituteId") String instituteId,
                                       @Param("batchIds") List<String> batchIds,
+                                      @Param("hasBatchIds") boolean hasBatchIds,
                                       @Param("startDate") Date startDate,
                                       @Param("endDate") Date endDate,
                                       Pageable pageable);
@@ -66,8 +73,10 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
           AND (:sourceIds IS NULL OR d.source_id IN :sourceIds)
+          AND (:types IS NULL OR d.type IN :types)
           AND (:userIds IS NULL OR d.user_id IN :userIds)
           AND (:status IS NULL OR d.status IN :status)
+          AND (:instituteId IS NULL OR d.institute_id = :instituteId)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
           AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
@@ -113,8 +122,10 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
           AND (:contentTypes IS NULL OR d.content_type IN :contentTypes)
           AND (:sources IS NULL OR d.source IN :sources)
           AND (:sourceIds IS NULL OR d.source_id IN :sourceIds)
+          AND (:types IS NULL OR d.type IN :types)
           AND (:userIds IS NULL OR d.user_id IN :userIds)
           AND (:status IS NULL OR d.status IN :status)
+          AND (:instituteId IS NULL OR d.institute_id = :instituteId)
           AND (d.raised_time BETWEEN :startDate AND :endDate)
           AND d.parent_id IS NULL
           AND (CAST(:hasBatchIds AS boolean) = false OR d.package_session_id IN :batchIds)
@@ -158,8 +169,10 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
                                                @Param("contentTypes") List<String> contentTypes,
                                                @Param("sources") List<String> sources,
                                                @Param("sourceIds") List<String> sourceIds,
+                                               @Param("types") List<String> types,
                                                @Param("userIds") List<String> userIds,
                                                @Param("status") List<String> status,
+                                               @Param("instituteId") String instituteId,
                                                @Param("batchIds") List<String> batchIds,
                                                @Param("hasBatchIds") boolean hasBatchIds,
                                                @Param("startDate") Date startDate,

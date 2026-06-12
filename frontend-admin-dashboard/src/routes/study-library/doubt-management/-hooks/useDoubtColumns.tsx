@@ -5,6 +5,7 @@ import { DoubtCell } from '../-components/doubt-table/doubt-cell';
 import { MarkAsResolvedCell } from '../-components/doubt-table/mark-as-resolved-cell';
 import { BatchCell } from '../-components/doubt-table/batch-cell';
 import { TypeCell } from '../-components/doubt-table/type-cell';
+import { CategoryCell } from '../-components/doubt-table/category-cell';
 import { AssigneeCell } from '../-components/doubt-table/assignee-cell';
 import { ActionsCell } from '../-components/doubt-table/actions-cell';
 import { NavigateCell } from '../-components/doubt-table/navigate-cell';
@@ -17,7 +18,7 @@ const getInitials = (name?: string) => {
     if (!cleaned) return '?';
     const parts = cleaned.split(/\s+/);
     const first = parts[0]?.[0] ?? '';
-    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
+    const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : '';
     return (first + last).toUpperCase();
 };
 
@@ -47,7 +48,7 @@ const DateStack = ({ iso }: { iso?: string | null }) => {
     return (
         <div className="flex flex-col leading-tight">
             <span className="text-sm font-medium text-neutral-800">{parts.date}</span>
-            <span className="text-[11px] text-neutral-500">{parts.time}</span>
+            <span className="text-caption text-neutral-500">{parts.time}</span>
         </div>
     );
 };
@@ -76,17 +77,33 @@ export const useDoubtTableColumns = () => {
             accessorKey: 'learner',
             header: getTerminology(RoleTerms.Learner, SystemTerms.Learner),
             cell: ({ row }) => {
-                const name = userDetailsRecord[row.original.user_id]?.name ?? 'Unknown';
+                // Logged-out (guest) queries have no user_id — show the contact the guest left.
+                const isGuest = !row.original.user_id && !!row.original.guest_name;
+                const name = isGuest
+                    ? row.original.guest_name!
+                    : userDetailsRecord[row.original.user_id]?.name ?? 'Unknown';
                 return (
                     <div className="flex items-center gap-2">
                         <Avatar className="size-8">
-                            <AvatarFallback className="bg-primary-100 text-[11px] font-semibold text-primary-700">
+                            <AvatarFallback className="bg-primary-100 text-caption font-semibold text-primary-700">
                                 {getInitials(name)}
                             </AvatarFallback>
                         </Avatar>
-                        <span className="truncate text-sm font-medium text-neutral-800">
-                            {name}
-                        </span>
+                        <div className="flex min-w-0 flex-col">
+                            <span className="flex items-center gap-1.5 truncate text-sm font-medium text-neutral-800">
+                                {name}
+                                {isGuest && (
+                                    <span className="shrink-0 rounded-full bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-neutral-500">
+                                        Guest
+                                    </span>
+                                )}
+                            </span>
+                            {isGuest && row.original.guest_email && (
+                                <span className="truncate text-caption text-neutral-500">
+                                    {row.original.guest_email}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 );
             },
@@ -97,8 +114,13 @@ export const useDoubtTableColumns = () => {
             cell: ({ row }) => <BatchCell batch_id={row.original.batch_id} />,
         },
         {
+            accessorKey: 'category',
+            header: 'Category',
+            cell: ({ row }) => <CategoryCell doubt={row.original} />,
+        },
+        {
             accessorKey: 'type',
-            header: 'Type',
+            header: 'Format',
             cell: ({ row }) => <TypeCell doubt={row.original} />,
         },
         {

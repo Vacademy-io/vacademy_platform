@@ -356,7 +356,18 @@ def estimate_video_generation(
                 f"Custom avatar — {avatar_name}" if avatar_name else "Custom avatar"
             )
 
-        host_per_sec = _get_video_second_price(db, host_model)
+        if host_model == "fal-ai/ltx-2.3-quality/audio-to-video":
+            # LTX 2.3 is priced PER-MEGAPIXEL of generated video
+            # (width × height × frames × $0.0024075/MP), not per-second. Derive an
+            # effective per-second from the chosen quality (resolution proxy) × fps
+            # so the estimate stays in the per-second shape the rest of this
+            # function expects. Approximate: the actual output sizes to the host
+            # image's aspect (resolution="auto"); 480p/720p are stand-ins here.
+            _ltx_fps = int(avatar_cfg.get("avatar_fps") or 24)
+            _ltx_w, _ltx_h = (1280, 720) if (avatar_cfg.get("quality") == "720p") else (854, 480)
+            host_per_sec = round(0.0024075 * (_ltx_w * _ltx_h * _ltx_fps) / 1_000_000.0, 6)
+        else:
+            host_per_sec = _get_video_second_price(db, host_model)
         if host_per_sec is not None and approx_seconds > 0:
             host_usd = approx_seconds * host_per_sec
             host_cost_row = {

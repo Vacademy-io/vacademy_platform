@@ -73,6 +73,19 @@ public class CounsellorReassignService {
         List<UserLeadProfile> openLeads = profileRepo
                 .findOpenByInstituteAndCounsellor(req.getInstituteId(), req.getFromUserId());
 
+        // Per-row reassign passes a `lead_ids` whitelist; when present, scope
+        // the operation to JUST those leads. Without this, SINGLE mode would
+        // sweep up every open lead the source counsellor owns and dump them
+        // on the target — clicking "Reassign" on one row would move the
+        // counsellor's whole pipeline. Empty / null means "everything", which
+        // preserves the original mark-inactive flow.
+        if (req.getLeadIds() != null && !req.getLeadIds().isEmpty()) {
+            Set<String> scopeIds = new HashSet<>(req.getLeadIds());
+            openLeads = openLeads.stream()
+                    .filter(l -> scopeIds.contains(l.getId()))
+                    .collect(Collectors.toList());
+        }
+
         boolean shouldMarkInactive = Boolean.TRUE.equals(req.getMarkInactive());
 
         if (openLeads.isEmpty()) {

@@ -3,6 +3,10 @@ export interface DoubtType {
     name: string;
     source: 'video' | string;
     source_id: string;
+    /** Configurable query type key (DOUBT, TECHNICAL, PAYMENT, ...). Absent ⇒ DOUBT. */
+    type?: string;
+    /** Owning institute — required for GENERAL queries that have no batch. */
+    institute_id?: string;
     raised_time: string; // ISO 8601 timestamp
     resolved_time: string | null; // ISO 8601 timestamp
     content_position: string | null; // Format: HH:MM:SS

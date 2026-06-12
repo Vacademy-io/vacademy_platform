@@ -27,7 +27,51 @@ import {
   renderCorrectAnswer,
   type SectionQuestions,
 } from "./question-response-renderer";
-import { Clock } from "@phosphor-icons/react";
+import {
+  ChartBar,
+  ChartLineUp,
+  Clock,
+  ListChecks,
+  Target,
+  Timer,
+  Trophy,
+} from "@phosphor-icons/react";
+import { formatDateTime, formatTime } from "@/lib/format-date";
+import { EmptyState } from "@/components/design-system/states";
+import { cn } from "@/lib/utils";
+import { playIllustrations } from "@/assets/play-illustrations";
+
+// Verdict thresholds mirror getPerformanceLevel in test-report-dialog.tsx.
+// Play-mode variants restate the verdict in play status tokens
+// (success / warn / danger) on top of the default semantic chips.
+function getVerdict(pct: number): {
+  label: string;
+  className: string;
+} {
+  if (pct >= 90)
+    return {
+      label: "Excellent",
+      className:
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+    };
+  if (pct >= 60)
+    return {
+      label: "Good",
+      className:
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+    };
+  if (pct >= 50)
+    return {
+      label: "Average",
+      className:
+        "border-warning-200 bg-warning-50 text-warning-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-warn [.ui-play_&]:font-black [.ui-play_&]:text-play-ink",
+    };
+  return {
+    label: "Low",
+    className:
+      "border-danger-200 bg-danger-50 text-danger-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-danger [.ui-play_&]:font-black [.ui-play_&]:text-white",
+  };
+}
 
 interface ComparisonDashboardProps {
   data: any;
@@ -106,9 +150,11 @@ export function ComparisonDashboard({
 
   if (!data) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        No comparison data available
-      </div>
+      <EmptyState
+        icon={ChartBar}
+        title="No comparison data yet"
+        description="Batch comparison appears here once your attempt has been evaluated and results are released."
+      />
     );
   }
 
@@ -116,6 +162,7 @@ export function ComparisonDashboard({
     student_rank,
     student_percentile,
     student_marks,
+    total_marks,
     total_participants,
     average_marks,
     highest_marks,
@@ -136,23 +183,23 @@ export function ComparisonDashboard({
     ? allSections[selectedSection]
     : undefined;
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return null;
-    try {
-      return new Date(dateStr).toLocaleDateString("en-IN", {
-        day: "numeric", month: "long", year: "numeric",
-      });
-    } catch { return null; }
-  };
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const achieved = student_marks != null ? round1(student_marks) : null;
+  const maxMarks =
+    total_marks != null && total_marks > 0 ? round1(total_marks) : null;
+  const scorePct =
+    achieved != null && maxMarks != null
+      ? Math.round((achieved / maxMarks) * 100)
+      : null;
+  const verdict = scorePct != null ? getVerdict(scorePct) : null;
+  // "Pass" mirrors the success-tier verdicts (Good / Excellent) above.
+  const isPassVerdict = scorePct != null && scorePct >= 60;
 
-  const formatTime = (dateStr: string | null) => {
-    if (!dateStr) return null;
-    try {
-      return new Date(dateStr).toLocaleTimeString("en-IN", {
-        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true,
-      });
-    } catch { return null; }
-  };
+  // One quiet metadata line replaces the old strip of identical clock chips.
+  const metaParts = [
+    start_time ? `Attempted ${formatDateTime(start_time)}` : "",
+    submit_time ? `Submitted ${formatTime(submit_time)}` : "",
+  ].filter(Boolean);
 
   return (
     <div className="w-full space-y-6 p-4 md:p-6 lg:p-8">
@@ -172,112 +219,90 @@ export function ComparisonDashboard({
         />
       </div>
 
-      {/* Attempt Metadata */}
-      {(start_time || submit_time || student_duration) && (() => {
-        const visibleCards = [
-          !!formatDate(start_time),
-          student_duration != null && student_duration > 0,
-          !!formatTime(start_time),
-          !!formatTime(submit_time),
-        ].filter(Boolean).length;
-        const gridCols = visibleCards <= 2 ? "md:grid-cols-2" : visibleCards === 3 ? "md:grid-cols-3" : "md:grid-cols-4";
-        return (
-        <div className={`grid grid-cols-2 ${gridCols} gap-3`}>
-          {formatDate(start_time) && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-white border rounded-lg">
-              <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 text-sm">
-                <Clock size={18} weight="duotone" />
-              </div>
-              <div>
-                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Attempt Date</div>
-                <div className="text-sm font-semibold">{formatDate(start_time)}</div>
-              </div>
-            </div>
-          )}
-          {student_duration != null && student_duration > 0 && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-white border rounded-lg">
-              <div className="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 text-sm">
-                <Clock size={18} weight="duotone" />
-              </div>
-              <div>
-                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Duration</div>
-                <div className="text-sm font-semibold">{formatDuration(student_duration)}</div>
-              </div>
-            </div>
-          )}
-          {formatTime(start_time) && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-white border rounded-lg">
-              <div className="w-9 h-9 rounded-full bg-orange-50 flex items-center justify-center text-orange-500 text-sm">
-                <Clock size={18} weight="duotone" />
-              </div>
-              <div>
-                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Start Time</div>
-                <div className="text-sm font-semibold">{formatTime(start_time)}</div>
-              </div>
-            </div>
-          )}
-          {formatTime(submit_time) && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-white border rounded-lg">
-              <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 text-sm">
-                <Clock size={18} weight="duotone" />
-              </div>
-              <div>
-                <div className="text-3xs text-muted-foreground uppercase tracking-wide">End Time</div>
-                <div className="text-sm font-semibold">{formatTime(submit_time)}</div>
-              </div>
-            </div>
-          )}
-        </div>
-        );
-      })()}
-
-      {/* Score Overview Cards */}
-      <div className={`grid grid-cols-2 ${student_duration != null && student_duration > 0 ? "md:grid-cols-4" : "md:grid-cols-3"} gap-4`}>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="text-3xl font-extrabold text-primary">
-              {student_marks != null ? Math.round(student_marks * 10) / 10 : "-"}
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Marks Obtained
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="text-3xl font-extrabold text-violet-600">
-              #{student_rank || "-"}
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Rank (of {total_participants || "-"})
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <div className="text-3xl font-extrabold text-emerald-600">
-              {student_percentile != null
-                ? Math.round(student_percentile * 10) / 10
-                : "-"}
-              %
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-              Percentile
-            </div>
-          </CardContent>
-        </Card>
-        {student_duration != null && student_duration > 0 && (
-          <Card>
-            <CardContent className="pt-6 text-center">
-              <div className="text-2xl font-extrabold text-blue-600">
-                {formatDuration(student_duration)}
-              </div>
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">
-                Time Taken
-              </div>
-            </CardContent>
-          </Card>
+      {/* Score hero: the result leads, metadata follows as one quiet line.
+          Play mode turns it into a gold celebration band; vibrant gets the
+          primary-50 wash + top rail. Default rendering is unchanged. */}
+      <Card
+        className={cn(
+          "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+          "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
         )}
+      >
+        <CardContent className="flex flex-col gap-4 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-display tabular-nums text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
+                {achieved != null ? achieved : "-"}
+              </span>
+              {maxMarks != null && (
+                <span className="text-title text-muted-foreground tabular-nums [.ui-play_&]:text-play-ink/60">
+                  / {maxMarks}
+                </span>
+              )}
+            </div>
+            {scorePct != null && (
+              <span className="text-subtitle font-semibold tabular-nums text-muted-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink/80">
+                {scorePct}%
+              </span>
+            )}
+            {verdict && (
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-caption font-semibold",
+                  verdict.className
+                )}
+              >
+                {verdict.label}
+              </span>
+            )}
+            {isPassVerdict && (
+              <playIllustrations.Winners
+                className="pointer-events-none ml-auto hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          {metaParts.length > 0 && (
+            <p className="text-caption text-muted-foreground [.ui-play_&]:font-medium [.ui-play_&]:text-play-ink/70">
+              {metaParts.join(" · ")}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Distinct stats: rank, percentile, accuracy, time */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatTile
+          icon={<Trophy size={18} weight="duotone" />}
+          label="Rank"
+          value={student_rank ? `#${student_rank}` : "-"}
+          detail={total_participants ? `of ${total_participants}` : undefined}
+        />
+        <StatTile
+          icon={<ChartLineUp size={18} weight="duotone" />}
+          label="Percentile"
+          value={
+            student_percentile != null ? `${round1(student_percentile)}%` : "-"
+          }
+        />
+        <StatTile
+          icon={<Target size={18} weight="duotone" />}
+          label="Accuracy"
+          value={
+            student_accuracy != null
+              ? `${Math.round(student_accuracy)}%`
+              : "-"
+          }
+        />
+        <StatTile
+          icon={<Timer size={18} weight="duotone" />}
+          label="Time Taken"
+          value={
+            student_duration != null && student_duration > 0
+              ? formatDuration(student_duration)
+              : "-"
+          }
+        />
       </div>
 
       {/* Comparison Bars — horizontal cards */}
@@ -583,14 +608,50 @@ export function ComparisonDashboard({
                   </Card>
                 ))
               ) : (
-                <div className="text-center py-12 text-slate-500">
-                  <p className="text-lg">No questions available for review</p>
-                </div>
+                <EmptyState
+                  compact
+                  icon={ListChecks}
+                  title="No questions in this section"
+                  description="Pick another section tab to review the rest of your answers."
+                />
               )}
             </CardContent>
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+function StatTile({
+  icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="text-3xs uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        <div className="text-body font-semibold tabular-nums text-foreground">
+          {value}
+          {detail && (
+            <span className="ml-1 text-caption font-normal text-muted-foreground">
+              {detail}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -110,6 +110,7 @@ spec:
         - backend-stage.vacademy.io
         - u.vacademy.io
         - u.aanandham.uk
+        - u.readonrent.com
       secretName: vacademy-tls-secret
   rules:
     - host: backend-stage.vacademy.io
@@ -182,6 +183,16 @@ spec:
                 port:
                   number: {{ .Values.services.media_service.port }}
     - host: u.aanandham.uk
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}
+    - host: u.readonrent.com
       http:
         paths:
           - path: /s

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { openInBrowser } from "@/lib/open-in-browser";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   BookOpen,
@@ -45,7 +45,6 @@ import {
   XCircle,
   MinusCircle,
   Hourglass,
-  TrendUp,
   CaretRight,
   Sparkle,
   VideoCamera,
@@ -55,12 +54,12 @@ import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAtt
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
 import { toast } from "sonner";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { useWeeklyAttendanceQuery } from "@/services/attendance/getWeeklyAttendance";
 import type { StudentDashboardWidgetConfig } from "@/types/student-display-settings";
 import { DashboardPinsPanel } from "@/components/announcements";
-import { RecentSystemNotifications } from "./-components/RecentSystemNotifications";
+import { RaiseQueryCard } from "./-components/RaiseQueryCard";
 import { useServerTime } from "@/hooks/use-server-time";
 import {
   convertSessionTimeToUserTimezone,
@@ -68,6 +67,8 @@ import {
 } from "@/utils/timezone";
 import { StatCard } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
+import { DashboardHero } from "./-components/DashboardHero";
+import { PlayDashboardHero } from "./-components/play/PlayDashboardHero";
 import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
@@ -83,7 +84,6 @@ import { computeGamificationData } from "@/services/play-gamification";
 import { fetchLast7DaysProgress } from "./-lib/utils";
 import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
-import { XpHeaderPill } from "./-components/play/XpHeaderPill";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
@@ -101,7 +101,8 @@ export const Route = createFileRoute("/dashboard/")({
 export function DashboardComponent() {
   const [username, setUsername] = useState<string | null>(null);
   const [testAssignedCount, setTestAssignedCount] = useState<number>(0);
-  const [homeworkAssignedCount, setHomeworkAssignedCount] = useState<number>(0);
+  // Count kept in state only because fetchStaticData's signature requires the setter.
+  const [, setHomeworkAssignedCount] = useState<number>(0);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [allBatchIds, setAllBatchIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,6 +135,84 @@ export function DashboardComponent() {
   const [widgetConfigs, setWidgetConfigs] = useState<
     StudentDashboardWidgetConfig[] | null
   >(null);
+
+  // ── Derived view-model for the hero band and header ────────────────────────
+
+  // Hero contract: pass live + upcoming merged; the heroes classify
+  // live vs imminent internally — do not pre-filter here.
+  const mergedLiveSessions = useMemo(
+    () => [
+      ...(liveSessions?.live_sessions ?? []),
+      ...(liveSessions?.upcoming_sessions ?? []),
+    ],
+    [liveSessions]
+  );
+
+  // Sessions whose timezone-aware start falls on today's calendar date.
+  const classesTodayCount = useMemo(() => {
+    const now = new Date();
+    return mergedLiveSessions.filter((session) => {
+      try {
+        const start = session.timezone
+          ? convertSessionTimeToUserTimezone(
+              session.meeting_date,
+              session.start_time,
+              session.timezone
+            )
+          : new Date(`${session.meeting_date}T${session.start_time}`);
+        return (
+          !Number.isNaN(start.getTime()) &&
+          start.getFullYear() === now.getFullYear() &&
+          start.getMonth() === now.getMonth() &&
+          start.getDate() === now.getDate()
+        );
+      } catch {
+        return false;
+      }
+    }).length;
+  }, [mergedLiveSessions]);
+
+  // Consecutive attended class days this week, walking back from the most
+  // recent day. PENDING / NO_CLASS days neither extend nor break the streak.
+  const attendanceStreak = useMemo(() => {
+    const days = weeklyAttendance?.days ?? [];
+    let streak = 0;
+    for (let i = days.length - 1; i >= 0; i--) {
+      const status = days[i]?.status;
+      if (status === "PRESENT") streak += 1;
+      else if (status === "ABSENT" || status === "UNMARKED") break;
+    }
+    return streak;
+  }, [weeklyAttendance]);
+
+  // Any course with progress > 0 — splits first-run from returning learners.
+  const hasAnyProgress = useMemo(
+    () =>
+      (studyLibraryData ?? []).some(
+        (subject) => (subject.percentage_completed ?? 0) > 0
+      ),
+    [studyLibraryData]
+  );
+  // Loaded when the query resolved OR when the page settled without a batch
+  // (zero-enrollment learners must reach the first-run hero, not a forever-skeleton).
+  const studyLibraryLoaded = Boolean(studyLibraryData) || !isLoading;
+
+  const userInitials = useMemo(() => {
+    const words = (username ?? "").trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return "U";
+    const first = words[0]?.charAt(0) ?? "";
+    const last =
+      words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? "") : "";
+    return (first + last).toUpperCase() || "U";
+  }, [username]);
+
+  const greetingText = useMemo(() => {
+    const firstName = (username ?? "").trim().split(/\s+/)[0] ?? "";
+    if (!firstName) return "Welcome back";
+    const hour = new Date().getHours();
+    const period = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+    return `Good ${period}, ${firstName.charAt(0).toUpperCase()}${firstName.slice(1)}`;
+  }, [username]);
 
   // If settings specify a different post-login route, redirect away from dashboard
   useEffect(() => {
@@ -447,6 +526,239 @@ export function DashboardComponent() {
     }
   };
 
+  const liveClassSingular = getTerminology(
+    ContentTerms.LiveSession,
+    SystemTerms.LiveSession
+  );
+  const liveClassPlural = getTerminologyPlural(
+    ContentTerms.LiveSession,
+    SystemTerms.LiveSession
+  );
+  // One useful header fact: classes today, else attendance streak, else none.
+  const headerFact =
+    classesTodayCount > 0
+      ? `${classesTodayCount} ${(classesTodayCount === 1
+          ? liveClassSingular
+          : liveClassPlural
+        ).toLowerCase()} today`
+      : attendanceStreak > 0
+        ? `${attendanceStreak}-day attendance streak`
+        : null;
+
+  const heroProps = {
+    userName: username,
+    liveSessions: mergedLiveSessions,
+    isLoadingLive: isLoadingLiveSessions,
+    hasAnyProgress,
+    studyLibraryLoaded,
+    onJoinSession: handleJoinSession,
+  };
+
+  // ── Curated 2/3 + 1/3 layout ────────────────────────────────────────────────
+  // Column assignment is fixed by the redesign; institutes' saved widget
+  // orders still sort widgets within their column.
+
+  const statCards = [
+    {
+      id: "coursesStat" as const,
+      render: (
+        <StatCard
+          title={getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
+          count={data?.courses}
+          icon={BookOpen}
+          onClick={() => {
+            track("Dashboard Card Clicked", {
+              cardType: "Courses",
+              count: data?.courses || 0,
+            });
+            navigate({ to: "/study-library/courses" });
+          }}
+          isLoading={isLoading}
+          emptyActionLabel={`Browse ${getTerminologyPlural(
+            ContentTerms.Course,
+            SystemTerms.Course
+          )}`}
+          className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+          illustration={playIllustrations.Course}
+        />
+      ),
+    },
+    {
+      id: "liveClasses" as const,
+      render: (
+        <StatCard
+          title={getTerminologyPlural(
+            ContentTerms.LiveSession,
+            SystemTerms.LiveSession
+          )}
+          count={liveSessions?.live_sessions?.length}
+          icon={Play}
+          onClick={() => navigate({ to: "/study-library/live-class" })}
+          isLoading={isLoadingLiveSessions}
+          emptyActionLabel={`View ${getTerminologyPlural(
+            ContentTerms.LiveSession,
+            SystemTerms.LiveSession
+          )}`}
+          className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+          illustration={playIllustrations.LiveClass}
+        />
+      ),
+    },
+    {
+      id: "evaluationStat" as const,
+      render: (
+        <StatCard
+          title="Assessments"
+          count={testAssignedCount}
+          icon={Trophy}
+          onClick={() => {
+            track("Dashboard Card Clicked", {
+              cardType: "Evaluations",
+              count: testAssignedCount,
+            });
+            navigate({ to: "/assessment/examination" });
+          }}
+          isLoading={isLoading}
+          emptyActionLabel="View Assessments"
+          className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
+          illustration={playIllustrations.Certificate}
+        />
+      ),
+    },
+  ]
+    .filter((w) => isWidgetVisible(w.id))
+    .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id));
+
+  // MAIN column (lg:col-span-2): continue learning, stats row, progress
+  // insights, custom widget, commerce. Commerce is hidden for the play
+  // (K-12) audience.
+  const mainColumnWidgets = [
+    {
+      id: "continueLearning" as const,
+      order: getWidgetOrder("continueLearning"),
+      visible: isWidgetVisible("continueLearning"),
+      render: (
+        <ContinueLearningCard
+          data={data}
+          onResumeClick={handleResumeClick}
+          isLoading={isLoading}
+          hasAnyProgress={hasAnyProgress}
+        />
+      ),
+    },
+    {
+      id: "statsRow" as const,
+      order: statCards.length
+        ? Math.min(...statCards.map((w) => getWidgetOrder(w.id)))
+        : Number.MAX_SAFE_INTEGER,
+      visible: statCards.length > 0,
+      render: (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          {statCards.map((w) => (
+            <div key={w.id}>{w.render}</div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "learningAnalytics" as const,
+      order: getWidgetOrder("learningAnalytics"),
+      visible: isWidgetVisible("learningAnalytics"),
+      render: <PastLearningInsights />,
+    },
+    {
+      id: "custom" as const,
+      order: getWidgetOrder("custom"),
+      visible: Boolean(customWidget),
+      render: customWidget ? (
+        <Card
+          className={cn(
+            "transition-shadow",
+            "[.ui-vibrant_&]:border-primary/20",
+            "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
+          )}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">
+              {customWidget.title || "Custom Widget"}
+            </CardTitle>
+            {customWidget.subTitle && (
+              <CardDescription>{customWidget.subTitle}</CardDescription>
+            )}
+          </CardHeader>
+          <CardContent>
+            {customWidget.link && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const link = customWidget.link as string;
+                  if (/^https?:\/\//.test(link)) {
+                    window.open(link, "_blank");
+                  } else {
+                    navigate({ to: link as never });
+                  }
+                }}
+                className="w-full justify-between"
+              >
+                Open <CaretRight size={14} />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : null,
+    },
+    {
+      id: "myMembership" as const,
+      order: getWidgetOrder("myMembership"),
+      visible: !isPlayTheme && isWidgetVisible("myMembership"),
+      render: <MyMembershipWidget />,
+    },
+    {
+      id: "myBooks" as const,
+      order: getWidgetOrder("myBooks"),
+      visible: !isPlayTheme && isWidgetVisible("myBooks"),
+      render: <MyBooksWidget />,
+    },
+    {
+      id: "myOrders" as const,
+      order: getWidgetOrder("myOrders"),
+      visible: !isPlayTheme && isWidgetVisible("myOrders"),
+      render: <MyOrdersWidget />,
+    },
+  ]
+    .filter((w) => w.visible && w.render)
+    .sort((a, b) => a.order - b.order);
+
+  // RAIL column (lg:col-span-1): pins panel renders first (always on),
+  // then the configurable rail widgets.
+  const railWidgets = [
+    {
+      id: "upcomingLiveClasses" as const,
+      order: getWidgetOrder("upcomingLiveClasses"),
+      visible: isWidgetVisible("upcomingLiveClasses"),
+      render: (
+        <UpcomingLiveClassesWidget
+          liveSessions={liveSessions?.live_sessions || []}
+          upcomingSessions={liveSessions?.upcoming_sessions || []}
+          isLoading={isLoadingLiveSessions}
+          onJoinSession={handleJoinSession}
+        />
+      ),
+    },
+    {
+      id: "thisWeekAttendance" as const,
+      order: getWidgetOrder("thisWeekAttendance"),
+      visible: isWidgetVisible("thisWeekAttendance"),
+      render: <AttendanceWidget />,
+    },
+  ]
+    .filter((w) => w.visible)
+    .sort((a, b) => a.order - b.order);
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden w-full dashboard-container smooth-scroll">
       <Helmet>
@@ -477,238 +789,83 @@ export function DashboardComponent() {
       )}
 
       <div className="relative z-10 space-y-4 p-3 sm:p-4 lg:p-6 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
-        {/* Header Section */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
-              <AvatarImage src="" />
-              <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
-                {username?.charAt(0)?.toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <h1 className="text-h2 sm:text-h1 tracking-tight text-foreground">
-                {isLoading ? (
-                  <Skeleton className="h-8 w-48" />
-                ) : (
-                  <span>
-                    {`Welcome, ${username ||
-                      getTerminology(RoleTerms.Learner, SystemTerms.Learner)
-                      }!`}{" "}
-                    <span className="hidden sm:inline-block origin-bottom-right rotate-12">
-                      👋
-                    </span>
-                  </span>
-                )}
-              </h1>
-              <p className="text-muted-foreground mt-1 flex items-center space-x-2">
+        {/* Header — default/vibrant only; the play hero carries its own greeting */}
+        {!isPlayTheme && (
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center space-x-3">
+              <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
+                <AvatarFallback className="bg-primary-100 text-lg font-semibold text-primary-500">
+                  {userInitials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <h1 className="text-h2 sm:text-h1 tracking-tight text-foreground">
+                  {isLoading ? (
+                    <Skeleton className="h-8 w-48" />
+                  ) : (
+                    <span>{greetingText}</span>
+                  )}
+                </h1>
                 {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
-                  <>
+                  <p className="mt-1 flex items-center gap-2 text-muted-foreground">
                     <Sparkle size={16} className="text-primary" />
                     <span>Ready for today's yoga journey?</span>
-                  </>
-                ) : (
-                  <>
-                    <TrendUp size={16} className="text-primary" />
-                    <span>Your learning dashboard overview</span>
-                  </>
-                )}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isPlayTheme && <XpHeaderPill />}
-            <div className="dashboard-date-pill bg-card border rounded-lg px-4 py-2 shadow-sm">
-              <div className="flex items-center text-muted-foreground gap-2">
-                <Calendar weight="duotone" size={16} className="text-primary" />
-                <span className="font-medium text-sm">
-                  {new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </span>
+                  </p>
+                ) : headerFact ? (
+                  <p className="mt-1 text-caption text-muted-foreground">
+                    {headerFact}
+                  </p>
+                ) : null}
               </div>
             </div>
+
+            <p className="text-caption text-muted-foreground">
+              {new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
           </div>
-        </div>
-
-        {/* Dashboard Pins Panel */}
-        <DashboardPinsPanel maxPins={3} />
-
-        {/* Recent System Notifications Widget */}
-        <RecentSystemNotifications />
+        )}
 
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
-            {/* Stats and Widgets Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {[
-                {
-                  id: "coursesStat" as const,
-                  className: "",
-                  render: (
-                    <StatCard
-                      title={`${getTerminology(
-                        ContentTerms.Course,
-                        SystemTerms.Course
-                      )}s`}
-                      count={data?.courses || 0}
-                      icon={BookOpen}
-                      onClick={() => {
-                        track("Dashboard Card Clicked", {
-                          cardType: "Courses",
-                          count: data?.courses || 0,
-                        });
-                        navigate({ to: "/study-library/courses" });
-                      }}
-                      isLoading={isLoading}
-                      className="stat-card-courses [.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:text-white"
-                      iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-                      illustration={playIllustrations.Course}
-                    />
-                  ),
-                },
-                {
-                  id: "liveClasses" as const,
-                  className: "",
-                  render: (
-                    <StatCard
-                      title="Live Classes"
-                      count={liveSessions?.live_sessions?.length || 0}
-                      icon={Play}
-                      onClick={() =>
-                        navigate({ to: "/study-library/live-class" })
-                      }
-                      isLoading={isLoadingLiveSessions}
-                      className="stat-card-live [.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:text-white"
-                      iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-                      illustration={playIllustrations.LiveClass}
-                    />
-                  ),
-                },
-                {
-                  id: "evaluationStat" as const,
-                  className: "",
-                  render: (
-                    <StatCard
-                      title="Assessments"
-                      count={testAssignedCount}
-                      icon={Trophy}
-                      onClick={() => {
-                        track("Dashboard Card Clicked", {
-                          cardType: "Evaluations",
-                          count: testAssignedCount,
-                        });
-                        navigate({ to: "/assessment/examination" });
-                      }}
-                      isLoading={isLoading}
-                      className="stat-card-assessments [.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:text-white"
-                      iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-                      illustration={playIllustrations.Certificate}
-                    />
-                  ),
-                },
-                {
-                  id: "continueLearning" as const,
-                  className: "sm:col-span-2",
-                  render: (
-                    <ContinueLearningCard
-                      data={data}
-                      onResumeClick={handleResumeClick}
-                    />
-                  ),
-                },
-                {
-                  id: "learningAnalytics" as const,
-                  className: "sm:col-span-2 lg:col-span-4",
-                  render: <PastLearningInsights />,
-                },
-                {
-                  id: "thisWeekAttendance" as const,
-                  className: "sm:col-span-2",
-                  render: <AttendanceWidget />,
-                },
-                {
-                  id: "custom" as const,
-                  className: "",
-                  render: customWidget ? (
-                    <Card
-                      className={cn(
-                        "transition-shadow",
-                        "[.ui-vibrant_&]:border-primary/20",
-                        "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5"
-                      )}
-                    >
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">
-                          {customWidget.title || "Custom Widget"}
-                        </CardTitle>
-                        {customWidget.subTitle && (
-                          <CardDescription>
-                            {customWidget.subTitle}
-                          </CardDescription>
-                        )}
-                      </CardHeader>
-                      <CardContent>
-                        {customWidget.link && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const link = customWidget.link as string;
-                              if (/^https?:\/\//.test(link)) {
-                                window.open(link, "_blank");
-                              } else {
-                                navigate({ to: link as never });
-                              }
-                            }}
-                            className="w-full justify-between"
-                          >
-                            Open <CaretRight size={14} />
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ) : null,
-                },
-                {
-                  id: "upcomingLiveClasses" as const,
-                  className: "sm:col-span-2 lg:col-span-4",
-                  render: (
-                    <UpcomingLiveClassesWidget
-                      liveSessions={liveSessions?.live_sessions || []}
-                      upcomingSessions={liveSessions?.upcoming_sessions || []}
-                      isLoading={isLoadingLiveSessions}
-                      onJoinSession={handleJoinSession}
-                    />
-                  ),
-                },
-                {
-                  id: "myMembership" as const,
-                  className: "sm:col-span-2",
-                  render: <MyMembershipWidget />,
-                },
-                {
-                  id: "myBooks" as const,
-                  className: "sm:col-span-2",
-                  render: <MyBooksWidget />,
-                },
-                {
-                  id: "myOrders" as const,
-                  className: "sm:col-span-2 lg:col-span-4",
-                  render: <MyOrdersWidget />,
-                },
-              ]
-                .filter((w) => isWidgetVisible(w.id) && w.render)
-                .sort((a, b) => getWidgetOrder(a.id) - getWidgetOrder(b.id))
-                .map((w, idx) => (
-                  <div key={`${String(w.id)}-${idx}`} className={w.className}>
-                    {w.render}
-                  </div>
+            {/* Hero — owns the live-class banner and resume / first-run band */}
+            {isPlayTheme ? (
+              <PlayDashboardHero {...heroProps} />
+            ) : (
+              <DashboardHero {...heroProps} />
+            )}
+
+            {/* Main 2/3 + 1/3 layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 items-start">
+              <div className="space-y-4 lg:col-span-2 lg:space-y-6">
+                {mainColumnWidgets.map((w) => (
+                  <div key={w.id}>{w.render}</div>
                 ))}
+              </div>
+
+              <div className="space-y-4 lg:col-span-1 lg:space-y-6">
+                {/* Institute announcements pin to the top of the rail */}
+                <DashboardPinsPanel maxPins={3} />
+                {railWidgets.map((w) => (
+                  <div key={w.id}>{w.render}</div>
+                ))}
+              </div>
             </div>
+
+            {/* Play Theme Gamification Widgets — bottom of the main flow */}
+            {isPlayTheme && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                <StreakCounterWidget />
+                <XpDisplayWidget />
+                <AchievementBadgesWidget />
+              </div>
+            )}
+
+            {/* General query intake — only when the institute enabled the dashboard card */}
+            <RaiseQueryCard />
 
             {/* Developer Test Section - Only in development */}
             {process.env.NODE_ENV === "development" && (
@@ -729,26 +886,14 @@ export function DashboardComponent() {
               </Card>
             )}
 
-            {/* Play Theme Gamification Widgets — at bottom */}
-            {isPlayTheme && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                <StreakCounterWidget />
-                <XpDisplayWidget />
-                <AchievementBadgesWidget />
-              </div>
-            )}
-
-            {/* Explore Buttons Section */}
-            {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+            {/* Explore Buttons Section — commerce, hidden for the play (K-12) audience */}
+            {!isPlayTheme && (
               <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
                 {isWidgetVisible("myMembership") && (
                   <Button
                     className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
-                    onClick={async () => {
+                    onClick={() => {
                       sessionStorage.setItem("levelFilter", "rent");
-                      const details = await Preferences.get({ key: "InstituteDetails" });
-                      const themeCode = details.value ? JSON.parse(details.value).institute_theme_code : "";
-                      const tagName = themeCode || "collections";
                       navigate({ to: "/collections" as never });
                     }}
                   >
@@ -759,11 +904,8 @@ export function DashboardComponent() {
                 {isWidgetVisible("myBooks") && (
                   <Button
                     className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm flex items-center gap-2 py-2 px-6 h-9 text-xs font-bold"
-                    onClick={async () => {
+                    onClick={() => {
                       sessionStorage.setItem("levelFilter", "buy");
-                      const details = await Preferences.get({ key: "InstituteDetails" });
-                      const themeCode = details.value ? JSON.parse(details.value).institute_theme_code : "";
-                      const tagName = themeCode || "collections";
                       navigate({ to: "/collections" as never });
                     }}
                   >
@@ -778,6 +920,9 @@ export function DashboardComponent() {
 
         {showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <div className="space-y-6">
+            {/* Institute announcements */}
+            <DashboardPinsPanel maxPins={3} />
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Hero Section */}
               <div className="lg:col-span-8">
@@ -1054,6 +1199,9 @@ export function DashboardComponent() {
                 )}
               </CardContent>
             </Card>
+
+            {/* General query intake — only when the institute enabled the dashboard card */}
+            <RaiseQueryCard />
           </div>
         )}
       </div>

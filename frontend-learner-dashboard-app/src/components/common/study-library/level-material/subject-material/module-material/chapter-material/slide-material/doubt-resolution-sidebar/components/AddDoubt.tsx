@@ -78,6 +78,8 @@ export const AddDoubt = ({
             name: studentDetailsData.full_name,
             source: "SLIDE",
             source_id: activeItem?.id || "",
+            type: "DOUBT",
+            institute_id: studentDetailsData.institute_id,
             raised_time: new Date().toISOString(),
             resolved_time: null,
             content_position: String(progressMarker),

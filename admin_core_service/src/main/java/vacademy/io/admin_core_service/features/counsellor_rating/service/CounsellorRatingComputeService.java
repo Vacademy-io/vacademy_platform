@@ -126,7 +126,17 @@ public class CounsellorRatingComputeService {
 
         int minSample = cfg.getMinSampleSize() != null ? cfg.getMinSampleSize() : 5;
         if (in.assigned < minSample) {
-            rating.setScore(clamp(startingRating));
+            // Cold start: counsellor doesn't have enough leads in window for
+            // a credible computed score. Prefer the per-counsellor
+            // `manual_override` (set from Settings → Workbench team) over the
+            // institute-wide `starting_rating` — admins use the per-row input
+            // to seed individual counsellors with a starting handicap that
+            // reflects their experience. Once the counsellor crosses
+            // min_sample_size, the computed score takes over.
+            BigDecimal coldStart = rating.getManualOverride() != null
+                    ? rating.getManualOverride()
+                    : startingRating;
+            rating.setScore(clamp(coldStart));
             rating.setConversionRatioScore(null);
             rating.setVelocityScore(null);
             return settingService.upsertCounsellorRating(instituteId, counsellorUserId, rating);

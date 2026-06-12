@@ -19,4 +19,6 @@ public final class DoubtNotificationTemplateDefaults {
 
     public static final String RAISED_TEMPLATE_NAME = "Doubt Raised - Teacher Notification";
     public static final String RESOLVED_TEMPLATE_NAME = "Doubt Resolved - Learner Notification";
+    /** Staff reply emailed to a logged-out guest (their only channel). Seeded by V332. */
+    public static final String GUEST_REPLY_TEMPLATE_NAME = "Doubt Reply - Guest Notification";
 }

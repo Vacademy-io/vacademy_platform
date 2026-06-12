@@ -50,10 +50,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
     return (
         <div className={cn(
             "bg-card border border-border rounded-lg shadow-sm p-3 sm:p-4 mb-3 sm:mb-4",
-            // Vibrant Styles - Flat Pastel
-            "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
-            "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
-            "[.ui-vibrant_&]:shadow-sm",
+            // Vibrant — white toolbar; default card styling already matches
             // Play Styles — soft shadow + thin border via play-theme.css fallback
             "[.ui-play_&]:!bg-white [.ui-play_&]:rounded-2xl [.ui-play_&]:border [.ui-play_&]:!border-primary-100",
             "[.ui-play_&]:shadow-play-glow-primary"

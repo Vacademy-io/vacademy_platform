@@ -36,6 +36,17 @@ public class ReassignRequest {
     private List<Assignment> assignments;      // MANUAL mode
 
     /**
+     * Optional: restrict the reassign to JUST these user_lead_profile ids
+     * (the workbench's WorkbenchLeadDTO.lead_id values). When omitted or
+     * empty, the source counsellor's ENTIRE open-leads list is moved —
+     * the original mark-inactive behaviour. The per-row "Reassign" button
+     * on the leads tab passes a single id here so only that lead moves;
+     * the mark-inactive flow passes every open id so the cleared-out
+     * counsellor really is left with nothing.
+     */
+    private List<String> leadIds;
+
+    /**
      * When true the source counsellor's pool memberships are flipped to
      * INACTIVE in the same transaction as the reassignment commit. Powers
      * the reassign-first flow on the workbench — a manager confirms one

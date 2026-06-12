@@ -13,6 +13,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.doubts.dtos.AllDoubtsResponse;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsDto;
 import vacademy.io.admin_core_service.features.doubts.dtos.DoubtsRequestFilter;
+import vacademy.io.admin_core_service.features.doubts.dtos.OpenDoubtConfigResponse;
 import vacademy.io.admin_core_service.features.doubts.entity.DoubtAssignee;
 import vacademy.io.admin_core_service.features.doubts.entity.Doubts;
 import vacademy.io.admin_core_service.features.doubts.enums.DoubtAssigneeSourceEnum;
@@ -73,6 +74,9 @@ public class DoubtsManager {
     /** Role name as configured in auth_service for institute-level admins. */
     private static final String ADMIN_ROLE = "ADMIN";
 
+    /** Default query type key for legacy/untyped doubts (academic, slide-anchored). */
+    private static final String DEFAULT_TYPE = "DOUBT";
+
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
         if(StringUtils.hasText(doubtId)){
             return ResponseEntity.ok(updateDoubt(doubtId, request));
@@ -81,37 +85,194 @@ public class DoubtsManager {
         return ResponseEntity.ok(createNewDoubt(request));
     }
 
+    /** Basic shape check; deliverability is not verified — the reply email just bounces if fake. */
+    private static final java.util.regex.Pattern EMAIL_PATTERN =
+            java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+    private static final int GUEST_TEXT_MAX_CHARS = 5000;
+    private static final int GUEST_CONTACT_MAX_CHARS = 255;
+
+    /**
+     * Public (unauthenticated) view of the query-intake config for the login page. Never throws —
+     * any failure reads as "disabled" so the public endpoint can't 5xx.
+     */
+    public OpenDoubtConfigResponse getOpenDoubtConfig(String instituteId) {
+        try {
+            DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+            if (setting == null || setting.getLearnerQuery() == null
+                    || !Boolean.TRUE.equals(setting.getLearnerQuery().getEnabled())) {
+                return OpenDoubtConfigResponse.disabled();
+            }
+            List<OpenDoubtConfigResponse.QueryTypeOption> types = learnerSelectableTypes(setting).stream()
+                    .map(t -> new OpenDoubtConfigResponse.QueryTypeOption(t.getKey(), t.getLabel()))
+                    .toList();
+            return OpenDoubtConfigResponse.builder()
+                    .learnerQuery(new OpenDoubtConfigResponse.LearnerQueryFlags(
+                            true, Boolean.TRUE.equals(setting.getLearnerQuery().getAllowGuest())))
+                    .queryTypes(types)
+                    .build();
+        } catch (Exception e) {
+            log.warn("Open doubt config lookup failed for institute {}: {}", instituteId, e.getMessage());
+            return OpenDoubtConfigResponse.disabled();
+        }
+    }
+
+    /**
+     * Logged-out guest query creation (open endpoint). Server-side gate: the institute's
+     * allow-guest toggle must be ON regardless of what the client claims; contact + content are
+     * validated and the doubt is forced to a batchless GENERAL shape with no user id.
+     */
+    public String createGuestDoubt(DoubtsDto request) {
+        if (request == null || !StringUtils.hasText(request.getInstituteId())) {
+            throw new VacademyException("instituteId is required");
+        }
+        DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(request.getInstituteId());
+        boolean guestAllowed = setting != null && setting.getLearnerQuery() != null
+                && Boolean.TRUE.equals(setting.getLearnerQuery().getEnabled())
+                && Boolean.TRUE.equals(setting.getLearnerQuery().getAllowGuest());
+        if (!guestAllowed) {
+            throw new VacademyException("Guest queries are not enabled for this institute");
+        }
+        if (!StringUtils.hasText(request.getGuestName())
+                || request.getGuestName().trim().length() > GUEST_CONTACT_MAX_CHARS) {
+            throw new VacademyException("Name is required");
+        }
+        if (!StringUtils.hasText(request.getGuestEmail())
+                || request.getGuestEmail().trim().length() > GUEST_CONTACT_MAX_CHARS
+                || !EMAIL_PATTERN.matcher(request.getGuestEmail().trim()).matches()) {
+            throw new VacademyException("A valid email is required");
+        }
+        if (!StringUtils.hasText(request.getHtmlText())) {
+            throw new VacademyException("Query text is required");
+        }
+        if (request.getHtmlText().length() > GUEST_TEXT_MAX_CHARS) {
+            throw new VacademyException("Query text is too long");
+        }
+        // Match case-insensitively but persist the CONFIGURED key so the admin inbox type filter
+        // (exact d.type IN :types) still matches; uppercasing the raw client echo would diverge.
+        String requestedType = StringUtils.hasText(request.getType()) ? request.getType().trim() : DEFAULT_TYPE;
+        String canonicalKey = learnerSelectableTypes(setting).stream()
+                .filter(t -> requestedType.equalsIgnoreCase(t.getKey()))
+                .map(DoubtManagementSettingDataDto.QueryTypeConfig::getKey)
+                .findFirst()
+                .orElse(null);
+        if (canonicalKey == null) {
+            throw new VacademyException("Unknown query type");
+        }
+
+        DoubtsDto sanitized = DoubtsDto.builder()
+                .source(DoubtsSourceEnum.GENERAL.name())
+                .type(canonicalKey)
+                .instituteId(request.getInstituteId())
+                .guestName(request.getGuestName().trim())
+                .guestEmail(request.getGuestEmail().trim())
+                .htmlText(request.getHtmlText())
+                .build();
+        return createNewDoubt(sanitized);
+    }
+
+    /**
+     * GENERAL queries (the "?" dialog + the unauthenticated guest endpoint) carry PLAIN TEXT from a
+     * textarea — but it lands in the {@code html_text} column that the admin renders with
+     * dangerouslySetInnerHTML. HTML-escape it so a guest can't inject {@code <img onerror=…>}/script
+     * that would execute in an admin's session (stored XSS). Newlines become {@code <br>} so the
+     * escaped text still reads naturally. SLIDE doubts keep their rich editor HTML untouched.
+     */
+    private String sanitizeDoubtHtml(String source, String htmlText) {
+        if (htmlText == null) return null;
+        if (!DoubtsSourceEnum.GENERAL.name().equals(source)) return htmlText;
+        return org.springframework.web.util.HtmlUtils.htmlEscape(htmlText).replace("\n", "<br>");
+    }
+
+    /** Enabled + learner-selectable types; falls back to the built-in DOUBT when none configured. */
+    private List<DoubtManagementSettingDataDto.QueryTypeConfig> learnerSelectableTypes(
+            DoubtManagementSettingDataDto setting) {
+        List<DoubtManagementSettingDataDto.QueryTypeConfig> configured =
+                setting == null || setting.getQueryTypes() == null ? List.of() : setting.getQueryTypes();
+        List<DoubtManagementSettingDataDto.QueryTypeConfig> selectable = configured.stream()
+                .filter(t -> t != null && StringUtils.hasText(t.getKey()))
+                .filter(t -> !Boolean.FALSE.equals(t.getEnabled()))
+                .filter(t -> !Boolean.FALSE.equals(t.getLearnerSelectable()))
+                .toList();
+        if (!selectable.isEmpty()) return selectable;
+        DoubtManagementSettingDataDto.QueryTypeConfig doubtDefault =
+                new DoubtManagementSettingDataDto.QueryTypeConfig();
+        doubtDefault.setKey(DEFAULT_TYPE);
+        doubtDefault.setLabel("Doubt");
+        return List.of(doubtDefault);
+    }
+
     private String createNewDoubt(DoubtsDto request) {
+        boolean isReply = StringUtils.hasText(request.getParentId());
+
+        // Resolve type / institute / batch up-front — needed for per-type routing, the admin
+        // fallback, AND the notification dispatch below.
+        String type;
+        String instituteId;
+        String packageSessionId;
+        Doubts parentDoubt = null;
+        if (isReply) {
+            // A reply belongs to its parent's thread — inherit tenancy/type/batch from the parent so
+            // the row is consistent regardless of what the client echoed back.
+            parentDoubt = doubtService.getDoubtById(request.getParentId()).orElse(null);
+            Doubts parent = parentDoubt;
+            type = (parent != null && StringUtils.hasText(parent.getType())) ? parent.getType() : DEFAULT_TYPE;
+            instituteId = parent != null ? parent.getInstituteId() : request.getInstituteId();
+            packageSessionId = parent != null ? parent.getPackageSessionId() : request.getBatchId();
+            if (!StringUtils.hasText(instituteId) && StringUtils.hasText(packageSessionId)) {
+                instituteId = facultyMappingRepository.findInstituteIdByPackageSessionId(packageSessionId).orElse(null);
+            }
+        } else {
+            type = StringUtils.hasText(request.getType()) ? request.getType() : DEFAULT_TYPE;
+            packageSessionId = request.getBatchId();
+            // When the doubt is on a batch (SLIDE doubts), the batch is the source of truth for
+            // tenancy — derive institute from it FIRST so a learner's stored "home" institute can't
+            // mis-scope a doubt on a cross-institute course. Only batch-less GENERAL queries trust
+            // the request's instituteId.
+            if (StringUtils.hasText(packageSessionId)) {
+                instituteId = facultyMappingRepository.findInstituteIdByPackageSessionId(packageSessionId)
+                        .orElse(StringUtils.hasText(request.getInstituteId()) ? request.getInstituteId() : null);
+            } else {
+                instituteId = StringUtils.hasText(request.getInstituteId()) ? request.getInstituteId() : null;
+            }
+            // A GENERAL query has no batch to fall back on — fail loud rather than silently
+            // orphaning it with a null institute (no routing, no notification, invisible in inbox).
+            if (DoubtsSourceEnum.GENERAL.name().equals(request.getSource())
+                    && !StringUtils.hasText(instituteId)) {
+                throw new VacademyException("instituteId is required for general queries");
+            }
+        }
+
         Doubts doubts = Doubts.builder()
                 .status(DoubtStatusEnum.ACTIVE.name())
                 .userId(request.getUserId())
                 .source(request.getSource())
                 .sourceId(request.getSourceId())
-                .htmlText(request.getHtmlText())
+                .type(type)
+                .instituteId(instituteId)
+                .guestName(request.getGuestName())
+                .guestEmail(request.getGuestEmail())
+                .htmlText(sanitizeDoubtHtml(request.getSource(), request.getHtmlText()))
                 .parentLevel(request.getParentLevel() == null ? 0 : request.getParentLevel())
                 .raisedTime(new Date())
                 .parentId(request.getParentId())
                 .contentPosition(request.getContentPosition())
                 .contentType(request.getContentType())
-                .packageSessionId(request.getBatchId())
+                .packageSessionId(packageSessionId)
                 .build();
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
-        // Resolve the institute up-front — we need it for the admin fallback inside
-        // resolveImplicitAssignees AND for the notification dispatch below.
-        String instituteId = facultyMappingRepository
-                .findInstituteIdByPackageSessionId(savedDoubt.getPackageSessionId())
-                .orElse(null);
         List<String> finalAssigneeIds = new ArrayList<>();
         try {
             if (savedDoubt.getParentId() == null) {
-                // Seed the assignee list with the cascade resolver: subject teacher → batch
-                // teacher → admin. Driven by DOUBT_MANAGEMENT_SETTING.defaultAssigneeSource and
-                // ensures the doubt is never silently dropped — at minimum the institute admin
-                // gets notified so they can re-assign manually.
+                // Seed the assignee list via per-type routing (DOUBT_MANAGEMENT_SETTING.queryTypes):
+                // each type may route to subject/batch teacher, a role, or specific staff. Types with
+                // no config fall back to the global defaultAssigneeSource cascade. In every faculty
+                // path the institute admin is the safety net so the doubt is never silently dropped.
                 String subjectId = resolveSubjectIdForDoubt(savedDoubt);
-                Set<String> assigneeIds = new LinkedHashSet<>(resolveImplicitAssignees(
-                        savedDoubt.getPackageSessionId(), subjectId, instituteId));
+                DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+                Set<String> assigneeIds = new LinkedHashSet<>(resolveAssigneesForDoubt(
+                        savedDoubt, subjectId, instituteId, setting));
                 // Overlay any explicit ids the client asked for (e.g. admin picked someone from
                 // the dropdown at creation time).
                 if (request.getDoubtAssigneeRequestUserIds() != null) {
@@ -133,6 +294,12 @@ public class DoubtsManager {
         // failures are swallowed inside the service and must not affect the doubt creation response.
         if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
             doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
+        }
+
+        // A staff reply on a GUEST doubt (no user account) is emailed to the guest's address —
+        // that email is the guest's only way to receive the answer. Service swallows failures.
+        if (isReply && parentDoubt != null && instituteId != null) {
+            doubtNotificationService.notifyGuestReply(parentDoubt, savedDoubt.getHtmlText(), instituteId);
         }
 
         // Fire the DOUBT_RAISED workflow trigger so admin/team-notification
@@ -166,34 +333,88 @@ public class DoubtsManager {
     }
 
     /**
-     * Returns distinct user ids for users who should be auto-assigned to a newly-created doubt on
-     * the given package session. Behavior is driven by the institute's DOUBT_MANAGEMENT_SETTING:
-     *
-     * <ul>
-     *   <li>{@code SUBJECT_TEACHER}: cascades subject teacher → batch teacher → admin. Subject
-     *       narrowing only applies when a subject is resolvable (i.e. SLIDE-source doubts).</li>
-     *   <li>{@code BATCH_TEACHER} or {@code BOTH} or unconfigured: cascades batch teacher → admin.</li>
-     *   <li>{@code NONE}: skips faculty entirely and assigns directly to admin so doubts never
-     *       go un-notified — the admin can then re-assign manually from the doubt UI.</li>
-     * </ul>
-     *
-     * <p>Admin fallback is the safety net: even if no faculty is mapped to the batch, the
-     * institute's ADMIN-role users will receive the doubt notification and bell alert. Returns
-     * an empty list only when both the faculty lookup AND the admin lookup return nothing —
-     * that means the institute has no users at all who can receive the doubt.
-     *
-     * @param subjectId  may be {@code null} for non-slide doubts; SUBJECT_TEACHER mode then skips
-     *                   the subject step and cascades to batch.
-     * @param instituteId required for the admin fallback lookup. If null, admin step is skipped.
+     * Routes a freshly-created top-level doubt to its default assignees based on its {@code type}.
+     * Looks up the type's config in {@code DOUBT_MANAGEMENT_SETTING.queryTypes}; when present, uses
+     * its per-type {@code assignee} block, otherwise falls back to the institute-wide
+     * {@code defaultAssigneeSource} cascade (legacy behavior). The admin safety net inside the
+     * cascade ensures a doubt is never silently dropped.
      */
-    List<String> resolveImplicitAssignees(String packageSessionId, String subjectId, String instituteId) {
-        if (packageSessionId == null || packageSessionId.isEmpty()) return List.of();
+    private List<String> resolveAssigneesForDoubt(Doubts doubt, String subjectId, String instituteId,
+                                                  DoubtManagementSettingDataDto setting) {
+        String typeKey = StringUtils.hasText(doubt.getType()) ? doubt.getType() : DEFAULT_TYPE;
+        DoubtManagementSettingDataDto.QueryTypeConfig typeConfig = findTypeConfig(setting, typeKey);
+        if (typeConfig != null && typeConfig.getAssignee() != null
+                && StringUtils.hasText(typeConfig.getAssignee().getSource())) {
+            return resolveTypeAssignees(typeConfig.getAssignee(), doubt.getPackageSessionId(),
+                    subjectId, instituteId, setting);
+        }
+        // No per-type routing for this type → institute-wide default cascade.
+        return resolveImplicitAssignees(parseAssigneeSource(setting), doubt.getPackageSessionId(),
+                subjectId, instituteId, setting);
+    }
 
-        DoubtManagementSettingDataDto setting = loadDoubtManagementSetting(packageSessionId);
-        DoubtDefaultAssigneeSourceEnum source = parseAssigneeSource(setting);
+    private DoubtManagementSettingDataDto.QueryTypeConfig findTypeConfig(
+            DoubtManagementSettingDataDto setting, String typeKey) {
+        if (setting == null || setting.getQueryTypes() == null) return null;
+        return setting.getQueryTypes().stream()
+                .filter(t -> t != null && typeKey.equalsIgnoreCase(t.getKey()))
+                .findFirst().orElse(null);
+    }
 
+    /**
+     * Resolves assignees for a type whose {@code assignee.source} is set:
+     *   SPECIFIC_USERS → the configured user ids; ROLE → all users holding that role;
+     *   SUBJECT/BATCH/BOTH → the faculty cascade; NONE → no implicit assignee (manual triage from
+     *   the institute-scoped admin inbox). SPECIFIC_USERS/ROLE fall back to admin when they resolve
+     *   to nobody so the query isn't dropped.
+     */
+    private List<String> resolveTypeAssignees(DoubtManagementSettingDataDto.QueryTypeAssignee assignee,
+                                              String packageSessionId, String subjectId, String instituteId,
+                                              DoubtManagementSettingDataDto setting) {
+        DoubtDefaultAssigneeSourceEnum source = parseSource(assignee.getSource());
+        switch (source) {
+            case SPECIFIC_USERS: {
+                List<String> ids = assignee.getUserIds() == null ? List.of()
+                        : assignee.getUserIds().stream().filter(StringUtils::hasText).distinct().toList();
+                return ids.isEmpty() ? resolveAdminFallback(instituteId) : ids;
+            }
+            case ROLE: {
+                String role = StringUtils.hasText(assignee.getRole()) ? assignee.getRole() : ADMIN_ROLE;
+                List<String> ids = resolveUsersByRole(instituteId, role);
+                return ids.isEmpty() ? resolveAdminFallback(instituteId) : ids;
+            }
+            case NONE:
+                return List.of();
+            default:
+                return resolveImplicitAssignees(source, packageSessionId, subjectId, instituteId, setting);
+        }
+    }
+
+    /**
+     * Faculty cascade for SUBJECT_TEACHER / BATCH_TEACHER / BOTH (cascades teacher → batch → admin).
+     * Reused by both the legacy global-default path and per-type routing — the caller passes the
+     * resolved {@code source} and the loaded {@code setting}. Admin fallback is the safety net: even
+     * with no faculty mapped, the institute's ADMIN users still receive the doubt. Returns empty only
+     * when neither faculty nor admin lookup yields anyone.
+     *
+     * @param subjectId  may be {@code null} (non-slide); SUBJECT_TEACHER then skips the subject step.
+     * @param instituteId required for the admin fallback; if null the admin step is skipped.
+     */
+    List<String> resolveImplicitAssignees(DoubtDefaultAssigneeSourceEnum source, String packageSessionId,
+                                          String subjectId, String instituteId,
+                                          DoubtManagementSettingDataDto setting) {
         // NONE → skip teachers entirely, go straight to admin so the doubt is still routed.
         if (source == DoubtDefaultAssigneeSourceEnum.NONE) {
+            return resolveAdminFallback(instituteId);
+        }
+        // ROLE / SPECIFIC_USERS are only meaningful as a per-type choice, not a global cascade — if
+        // one reaches here, route to admin rather than nobody.
+        if (source == DoubtDefaultAssigneeSourceEnum.ROLE
+                || source == DoubtDefaultAssigneeSourceEnum.SPECIFIC_USERS) {
+            return resolveAdminFallback(instituteId);
+        }
+        // The faculty cascade needs a batch. GENERAL queries (no batch) → admin fallback.
+        if (packageSessionId == null || packageSessionId.isEmpty()) {
             return resolveAdminFallback(instituteId);
         }
 
@@ -229,11 +450,16 @@ public class DoubtsManager {
      * unknown. Failures in auth_service are swallowed by AuthService.getUserIdsByRole.
      */
     private List<String> resolveAdminFallback(String instituteId) {
-        if (instituteId == null || instituteId.isEmpty()) return List.of();
+        return resolveUsersByRole(instituteId, ADMIN_ROLE);
+    }
+
+    /** Returns the user ids holding {@code role} in the institute, or empty on any failure/blank input. */
+    private List<String> resolveUsersByRole(String instituteId, String role) {
+        if (instituteId == null || instituteId.isEmpty() || !StringUtils.hasText(role)) return List.of();
         try {
-            return authService.getUserIdsByRole(instituteId, ADMIN_ROLE);
+            return authService.getUserIdsByRole(instituteId, role);
         } catch (Exception e) {
-            log.warn("Admin fallback lookup failed for institute {}: {}", instituteId, e.getMessage());
+            log.warn("Role lookup failed for institute {} role {}: {}", instituteId, role, e.getMessage());
             return List.of();
         }
     }
@@ -262,18 +488,44 @@ public class DoubtsManager {
         }
     }
 
-    private DoubtManagementSettingDataDto loadDoubtManagementSetting(String packageSessionId) {
-        Optional<String> instituteIdOpt =
-                facultyMappingRepository.findInstituteIdByPackageSessionId(packageSessionId);
-        if (instituteIdOpt.isEmpty()) return null;
+    /**
+     * Parses a per-type {@code assignee.source} string into the enum, tolerating unknown/blank
+     * values (older/newer frontend) by falling back to BATCH_TEACHER rather than throwing.
+     */
+    private DoubtDefaultAssigneeSourceEnum parseSource(String raw) {
+        if (!StringUtils.hasText(raw)) return DoubtDefaultAssigneeSourceEnum.BATCH_TEACHER;
+        try {
+            return DoubtDefaultAssigneeSourceEnum.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown per-type assignee source '{}', falling back to BATCH_TEACHER", raw);
+            return DoubtDefaultAssigneeSourceEnum.BATCH_TEACHER;
+        }
+    }
+
+    /**
+     * Institute for notification dispatch on an existing doubt. Prefers the stored institute_id
+     * (always set for new doubts, and the ONLY source for GENERAL/guest doubts which have no
+     * batch) and falls back to the batch lookup for legacy rows that predate the column.
+     */
+    private String resolveNotificationInstituteId(Doubts doubt) {
+        if (doubt == null) return null;
+        if (StringUtils.hasText(doubt.getInstituteId())) return doubt.getInstituteId();
+        if (!StringUtils.hasText(doubt.getPackageSessionId())) return null;
+        return facultyMappingRepository
+                .findInstituteIdByPackageSessionId(doubt.getPackageSessionId())
+                .orElse(null);
+    }
+
+    private DoubtManagementSettingDataDto loadDoubtManagementSettingByInstitute(String instituteId) {
+        if (instituteId == null || instituteId.isEmpty()) return null;
         try {
             Object raw = instituteSettingService.getSettingByInstituteIdAndKey(
-                    instituteIdOpt.get(), SettingKeyEnums.DOUBT_MANAGEMENT_SETTING.name());
+                    instituteId, SettingKeyEnums.DOUBT_MANAGEMENT_SETTING.name());
             if (raw == null) return null;
             return objectMapper.convertValue(raw, DoubtManagementSettingDataDto.class);
         } catch (Exception e) {
-            log.warn("Failed to read DOUBT_MANAGEMENT_SETTING for packageSessionId={}: {}",
-                    packageSessionId, e.getMessage());
+            log.warn("Failed to read DOUBT_MANAGEMENT_SETTING for institute {}: {}",
+                    instituteId, e.getMessage());
             return null;
         }
     }
@@ -360,9 +612,7 @@ public class DoubtsManager {
         // defence-in-depth.
         if (resolvedDoubtForNotification != null) {
             try {
-                String instituteId = facultyMappingRepository
-                        .findInstituteIdByPackageSessionId(resolvedDoubtForNotification.getPackageSessionId())
-                        .orElse(null);
+                String instituteId = resolveNotificationInstituteId(resolvedDoubtForNotification);
                 if (instituteId != null) {
                     doubtNotificationService.notifyDoubtResolved(resolvedDoubtForNotification, instituteId);
                 }
@@ -375,9 +625,7 @@ public class DoubtsManager {
             // perspective this is the same "please look at this doubt" signal. The channel prefs
             // (push_enabled / email_enabled / email_template_id) under on_doubt_raised apply.
             try {
-                String instituteId = facultyMappingRepository
-                        .findInstituteIdByPackageSessionId(assignedDoubtForNotification.getPackageSessionId())
-                        .orElse(null);
+                String instituteId = resolveNotificationInstituteId(assignedDoubtForNotification);
                 if (instituteId != null) {
                     doubtNotificationService.notifyDoubtRaised(
                             assignedDoubtForNotification, newlyAssignedUserIds, instituteId);
@@ -439,8 +687,8 @@ public class DoubtsManager {
         String viewerUserId = resolveViewerUserId(userDetails);
 
         Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(), filter.getSources(),
-                filter.getSourceIds(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(), filter.getBatchIds(),
-                viewerUserId, pageable);
+                filter.getSourceIds(), filter.getTypes(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(),
+                filter.getBatchIds(), filter.getInstituteId(), viewerUserId, pageable);
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
     }

@@ -11,19 +11,31 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
   const unlocked = badge.unlocked;
   return (
     <div className="flex flex-col items-center gap-1" title={`${badge.name}: ${badge.description}`}>
-      <div className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all ${
-        unlocked ? "bg-white/30 shadow-play-badge" : "bg-white/10 opacity-50"
-      }`}>
-        <Icon weight={unlocked ? "fill" : "regular"} size={22} className={unlocked ? "text-white" : "text-white/40"} />
-        {!unlocked && <Lock weight="fill" size={10} className="absolute -bottom-0.5 -right-0.5 text-white/60 bg-white/20 rounded-full p-0.5" />}
+      <div
+        className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+          unlocked ? "bg-white shadow-play-badge" : "bg-white/30 grayscale"
+        }`}
+      >
+        <Icon
+          weight={unlocked ? "fill" : "regular"}
+          size={22}
+          className={unlocked ? "text-play-accent-deep" : "text-play-ink"}
+        />
+        {!unlocked && (
+          <Lock
+            weight="fill"
+            size={10}
+            className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white p-0.5 text-play-ink"
+          />
+        )}
         {unlocked && badge.unlockedAt && isRecent(badge.unlockedAt) && (
           <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75" />
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-yellow-400 text-play-badge text-purple-900 font-black items-center justify-center">!</span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-play-gold opacity-75" />
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-play-gold text-play-badge text-play-ink font-black items-center justify-center">!</span>
           </span>
         )}
       </div>
-      <span className={`text-play-badge font-bold text-center leading-tight max-w-12 uppercase tracking-wide ${unlocked ? "text-white" : "text-white/40"}`}>
+      <span className="text-3xs font-bold text-play-ink text-center leading-tight max-w-12">
         {badge.name}
       </span>
     </div>
@@ -40,7 +52,7 @@ export const AchievementBadgesWidget: React.FC = () => {
   const unlockedCount = badges.filter((b) => b.unlocked).length;
 
   return (
-    <div className="overflow-hidden rounded-play-card" style={{ backgroundColor: "var(--play-achievement-bg)", boxShadow: "0 5px 0 var(--play-achievement-shadow)" }}>
+    <div className="overflow-hidden rounded-play-card bg-play-accent shadow-play-4d-accent">
       <div className="flex flex-row md:flex-col">
         {/* SVG: right on mobile, top on desktop */}
         <div className="order-2 md:order-1 w-28 md:w-full flex items-center justify-center bg-white/10 p-2 md:px-6 md:pt-5 md:pb-2 flex-shrink-0">
@@ -50,12 +62,16 @@ export const AchievementBadgesWidget: React.FC = () => {
         {/* Content */}
         <div className="order-1 md:order-2 flex-1 p-4 md:pt-3">
           <div className="flex items-center gap-3 mb-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
-              <Trophy weight="fill" size={22} className="text-white" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-play-2d-accent">
+              <Trophy weight="fill" size={22} className="text-play-accent-deep" />
             </div>
             <div>
-              <p className="text-base font-black text-white uppercase tracking-wide">Badges</p>
-              <p className="text-caption font-bold text-white/70">{unlockedCount}/{badges.length} unlocked</p>
+              <p className="text-base font-black text-play-ink uppercase tracking-wide">Badges</p>
+              <p className="text-caption font-bold text-play-ink">
+                {unlockedCount > 0
+                  ? `${unlockedCount}/${badges.length} unlocked`
+                  : "Complete your first lesson to unlock a badge"}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2.5">

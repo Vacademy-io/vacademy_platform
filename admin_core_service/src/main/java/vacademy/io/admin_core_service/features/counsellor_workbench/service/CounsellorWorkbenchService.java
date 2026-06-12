@@ -11,10 +11,13 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.ActivityFeedItemDTO;
+import vacademy.io.admin_core_service.features.counsellor_workbench.dto.LeadTransferDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.StatusChangeResponseDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchCounsellorDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchLeadDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchTeamDTO;
+import vacademy.io.common.exceptions.VacademyException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchActivityRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchLeadRepository;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
@@ -165,12 +168,14 @@ public class CounsellorWorkbenchService {
         List<String> userIds = orgTeamClient.usersInTeams(new ArrayList<>(teamNameById.keySet()));
         if (userIds.isEmpty()) return Page.empty(pageable);
 
-        // RBAC: intersect with the caller's descendants so a manager doesn't
-        // see peers / siblings outside their reporting line. Root admins have
-        // no team mappings (so the descendant set would collapse to {self}
-        // and wipe the whole list); they get the unfiltered view, same as
-        // the caller=null admin path.
-        if (caller != null && !caller.isRootUser()) {
+        // RBAC: every caller (including root admins) sees only themselves +
+        // their downstream in the team hierarchy. A root admin who isn't
+        // mapped into the leads team subtree sees only themselves; if they
+        // need the whole team view, they should be added to the team's
+        // root mapping via Manage Institute → Teams. The caller=null path
+        // (scheduled jobs, admin-internal flows) still gets the unfiltered
+        // view.
+        if (caller != null) {
             Set<String> allowed = new HashSet<>(
                     scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
             userIds = userIds.stream().filter(allowed::contains).toList();
@@ -328,5 +333,88 @@ public class CounsellorWorkbenchService {
         if (to == null) to = new Timestamp(System.currentTimeMillis() + 60_000); // small future buffer
         int safeLimit = Math.max(1, Math.min(limit, 200));
         return activityRepo.fetchFeed(counsellorUserId, instituteId, from, to, safeLimit);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Per-lead transfer chain
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Counsellor-assignment chain for one lead. RBAC: the lead's current
+     * assignee must sit inside the caller's descendant set — a manager can't
+     * peek at a peer team's lead just by knowing its user_id.
+     *
+     * Names on both sides of each transfer are hydrated through auth_service
+     * in one batched call (admin_core and auth_service own separate Postgres
+     * DBs on stage/prod, so we cannot JOIN to the users table directly).
+     */
+    public List<LeadTransferDTO> leadTransfers(String instituteId, String leadUserId, CustomUserDetails caller) {
+        // Confirm the lead exists in this institute and grab its current
+        // assignee for the RBAC check.
+        Optional<String> currentAssignee = findCurrentAssignee(instituteId, leadUserId);
+        if (currentAssignee.isEmpty()) {
+            throw new VacademyException("Lead not found in this institute");
+        }
+        if (caller != null && !caller.isRootUser()) {
+            Set<String> allowed = new HashSet<>(
+                    scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
+            String assignee = currentAssignee.get();
+            if (assignee != null && !allowed.contains(assignee)) {
+                throw new VacademyException(
+                        "You don't have access to this lead's transfer history");
+            }
+        }
+
+        List<LeadTransferDTO> rows = leadRepo.findTransfersForLead(leadUserId);
+        if (rows.isEmpty()) return rows;
+
+        // Hydrate display names for every distinct user_id surfaced in the
+        // chain (both sides of every transfer + the actor). One auth_service
+        // batch call instead of one per row.
+        Set<String> ids = new HashSet<>();
+        for (LeadTransferDTO r : rows) {
+            if (r.getFromUserId() != null) ids.add(r.getFromUserId());
+            if (r.getToUserId() != null) ids.add(r.getToUserId());
+            if (r.getActorId() != null) ids.add(r.getActorId());
+        }
+        Map<String, UserDTO> byId = new HashMap<>();
+        try {
+            for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(ids))) {
+                if (u != null && u.getId() != null) byId.put(u.getId(), u);
+            }
+        } catch (Exception e) {
+            log.warn("Transfer-chain name hydration failed for lead {}: {}", leadUserId, e.getMessage());
+        }
+        for (LeadTransferDTO r : rows) {
+            if (r.getFromUserId() != null) {
+                UserDTO u = byId.get(r.getFromUserId());
+                if (u != null) r.setFromName(u.getFullName());
+            }
+            if (r.getToUserId() != null) {
+                UserDTO u = byId.get(r.getToUserId());
+                // Prefer the live name over the timeline-event snapshot —
+                // counsellor display names may have changed since the
+                // assignment was logged.
+                if (u != null) r.setToName(u.getFullName());
+            }
+            if (r.getActorId() != null && (r.getActorName() == null || r.getActorName().isBlank())) {
+                UserDTO u = byId.get(r.getActorId());
+                if (u != null) r.setActorName(u.getFullName());
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * Returns the current assigned_counselor_id for a lead in this institute,
+     * empty when the lead doesn't exist. Inlined to avoid creating a one-off
+     * UserLeadProfileService dependency just for the RBAC check.
+     */
+    private Optional<String> findCurrentAssignee(String instituteId, String leadUserId) {
+        try {
+            return Optional.ofNullable(leadRepo.currentAssigneeForLead(instituteId, leadUserId));
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
     }
 }

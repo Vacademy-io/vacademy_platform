@@ -5,11 +5,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { Form, FormControl, FormField, FormItem } from '@/components/ui/form';
-import { useSlidesMutations } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
+import {
+    useSlidesMutations,
+    type Slide,
+    type VideoSlide,
+} from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
 import { toast } from 'sonner';
 import { Route } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/index';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { VideoCamera, CheckCircle, PlayCircle } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
@@ -37,7 +41,14 @@ const extractVimeoId = (url: string): string => {
     return match && match[1] ? match[1] : '';
 };
 
-export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => void }) => {
+export const AddVimeoDialog = ({
+    openState,
+    editSlide,
+}: {
+    openState?: (open: boolean) => void;
+    // When provided, the dialog edits this slide's link instead of creating a new slide.
+    editSlide?: Slide;
+}) => {
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } = Route.useSearch();
     const { addUpdateVideoSlide, updateSlideOrder } = useSlidesMutations(
@@ -51,20 +62,32 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
         }) || ''
     );
     const { setActiveItem, getSlideById, items } = useContentStore();
-    const [isValidUrl, setIsValidUrl] = useState(false);
+    const initialUrl =
+        editSlide?.video_slide?.url || editSlide?.video_slide?.published_url || '';
+    const [isValidUrl, setIsValidUrl] = useState(!!extractVimeoId(initialUrl));
     const [videoPreview, setVideoPreview] = useState<{ title: string; thumbnail: string } | null>(
         null
     );
-    const [videoDuration, setVideoDuration] = useState<number>(0);
+    const [videoDuration, setVideoDuration] = useState<number>(
+        editSlide?.video_slide?.video_length_in_millis || 0
+    );
     const [isVideoUploading, setIsVideoUploading] = useState(false);
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
         defaultValues: {
-            videoUrl: '',
-            videoName: '',
+            videoUrl: initialUrl,
+            videoName: editSlide?.video_slide?.title || editSlide?.title || '',
         },
     });
+
+    // In edit mode, hydrate the preview + duration from the current link on open.
+    useEffect(() => {
+        if (editSlide && initialUrl) {
+            handleUrlChange(initialUrl);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleUrlChange = (url: string) => {
         const videoId = extractVimeoId(url);
@@ -115,6 +138,47 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
 
         setIsVideoUploading(true);
         try {
+            // Edit mode: update the existing slide's link in place (no reorder, keep id/questions).
+            if (editSlide) {
+                const slideStatus = editSlide.status;
+                const response: string = await addUpdateVideoSlide({
+                    id: editSlide.id,
+                    title: data.videoName || editSlide.title || 'Vimeo Video',
+                    description: editSlide.description ?? null,
+                    image_file_id: editSlide.image_file_id ?? null,
+                    slide_order: editSlide.slide_order ?? null,
+                    video_slide: {
+                        id: editSlide.video_slide?.id || crypto.randomUUID(),
+                        description: editSlide.video_slide?.description || '',
+                        url: data.videoUrl,
+                        title: data.videoName || 'Vimeo Video',
+                        video_length_in_millis: videoDuration,
+                        published_url:
+                            slideStatus === 'PUBLISHED'
+                                ? data.videoUrl
+                                : editSlide.video_slide?.published_url ?? null,
+                        published_video_length_in_millis:
+                            slideStatus === 'PUBLISHED'
+                                ? videoDuration
+                                : editSlide.video_slide?.published_video_length_in_millis || 0,
+                        source_type: 'VIMEO',
+                        embedded_type: editSlide.video_slide?.embedded_type,
+                        embedded_data: editSlide.video_slide?.embedded_data,
+                        questions: editSlide.video_slide?.questions || [],
+                    },
+                    status: slideStatus,
+                    new_slide: false,
+                    notify: false,
+                });
+
+                if (response) {
+                    refreshActiveSlideAfterEdit(data.videoUrl, videoDuration);
+                    openState?.(false);
+                    toast.success('Vimeo link updated successfully!');
+                }
+                return;
+            }
+
             const slideId = crypto.randomUUID();
             const slideStatus = getSlideStatusForUser();
             const response: string = await addUpdateVideoSlide({
@@ -144,10 +208,40 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
                 toast.success('Vimeo video added successfully!');
             }
         } catch (error) {
-            toast.error('Failed to add video');
+            toast.error(editSlide ? 'Failed to update link' : 'Failed to add video');
         } finally {
             setIsVideoUploading(false);
         }
+    };
+
+    // Optimistically reflect the new link in the open preview, then reconcile
+    // with the server copy once the slides query has refetched.
+    const refreshActiveSlideAfterEdit = (newUrl: string, duration: number) => {
+        if (!editSlide) return;
+        const slideStatus = editSlide.status;
+        const updatedSlide: Slide = {
+            ...editSlide,
+            title: form.getValues('videoName') || editSlide.title,
+            video_slide: {
+                ...(editSlide.video_slide as VideoSlide),
+                url: newUrl,
+                title: form.getValues('videoName') || editSlide.video_slide?.title || '',
+                video_length_in_millis: duration,
+                published_url:
+                    slideStatus === 'PUBLISHED'
+                        ? newUrl
+                        : editSlide.video_slide?.published_url || '',
+                published_video_length_in_millis:
+                    slideStatus === 'PUBLISHED'
+                        ? duration
+                        : editSlide.video_slide?.published_video_length_in_millis || 0,
+            },
+        };
+        setActiveItem(updatedSlide);
+        setTimeout(() => {
+            const fresh = getSlideById(editSlide.id);
+            if (fresh) setActiveItem(fresh);
+        }, 800);
     };
 
     const reorderSlidesAfterNewSlide = async (newSlideId: string) => {
@@ -252,12 +346,12 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
                         {isVideoUploading ? (
                             <div className="flex items-center justify-center gap-2">
                                 <div className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                                Adding Video...
+                                {editSlide ? 'Updating Link...' : 'Adding Video...'}
                             </div>
                         ) : (
                             <div className="flex items-center justify-center gap-2">
                                 <VideoCamera className="size-4" />
-                                Add Vimeo Video
+                                {editSlide ? 'Update Vimeo Link' : 'Add Vimeo Video'}
                             </div>
                         )}
                     </MyButton>

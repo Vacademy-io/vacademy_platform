@@ -5,6 +5,7 @@ import { getInstituteDetails } from "@/services/signup-api";
 import { getDecodedAccessTokenFromStorage } from "@/lib/auth/sessionUtility";
 import {
   canDownloadSlideType,
+  canPrintPdfSlide,
   SLIDE_DOWNLOAD_PERMISSION_SETTING_KEY,
   type SlideDownloadPermissionData,
 } from "@/constants/slide-download-permission";
@@ -97,7 +98,7 @@ export function useSlideDownloadPermission() {
     };
   }, []);
 
-  const { data: freshDetails } = useQuery({
+  const { data: freshDetails, isFetched } = useQuery({
     queryKey: ["slide-download-institute-setting", instituteId],
     queryFn: () => getInstituteDetails(instituteId as string),
     enabled: !!instituteId,
@@ -116,5 +117,13 @@ export function useSlideDownloadPermission() {
     [data, roles]
   );
 
-  return { canDownload, isResolved: identityResolved };
+  const canPrintPdf = useCallback(() => canPrintPdfSlide(data, roles), [data, roles]);
+
+  // Resolved once roles are known AND the setting has actually been read (the
+  // fresh fetch settled, or there is no institute to fetch for). Consumers that
+  // build a fixed UI (the PDF toolbar) must wait for this, otherwise they bake
+  // in the default value and never reflect an admin "enable".
+  const settingReady = !instituteId || isFetched;
+
+  return { canDownload, canPrintPdf, isResolved: identityResolved && settingReady };
 }

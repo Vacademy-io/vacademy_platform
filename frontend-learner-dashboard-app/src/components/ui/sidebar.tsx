@@ -17,8 +17,10 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "20rem";
-const SIDEBAR_WIDTH_MOBILE = "20rem";
+// 17rem: 16rem clipped longer item labels ("Assessment Centre") once the
+// play variant's larger icons land; still far slimmer than the old 320px.
+const SIDEBAR_WIDTH = "17rem";
+const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "5rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -167,6 +169,7 @@ const Sidebar = React.forwardRef<
       collapsible = "offcanvas",
       className,
       children,
+      style,
       ...props
     },
     ref
@@ -216,6 +219,9 @@ const Sidebar = React.forwardRef<
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        // style on the OUTER wrapper so a per-instance --sidebar-width
+        // override reaches BOTH the gap spacer and the fixed panel.
+        style={style}
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div

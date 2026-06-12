@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
+import { isValidPhoneValue } from "@/lib/phone-validation";
 import { BulkUploadModal } from './BulkUploadModal';
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { FieldRenderType, getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
@@ -334,14 +335,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     return emailRegex.test(email);
   };
 
-  const validatePhoneNumber = (phone: string): boolean => {
-    // Allow international format with + and various country codes
-    // Accepts formats like: +1234567890, +44 123 456 7890, +91-9876543210, +1 (234) 567-8901
-    // Basic validation: starts with +, followed by digits, spaces, dashes, dots, parentheses
-    const cleanPhone = phone.replace(/[\s\-\.\(\)]/g, ''); // Remove spaces, dashes, dots, parentheses
-    const phoneRegex = /^\+[1-9]\d{6,14}$/; // + followed by 7-15 digits (country code + number)
-    return phoneRegex.test(cleanPhone);
-  };
+  // Country-aware validity for the selected country (dial code embedded in value).
+  const validatePhoneNumber = (phone: string): boolean => isValidPhoneValue(phone);
 
   const validateUsername = (username: string): boolean => {
     // Username must be lowercase only (no capital letters)

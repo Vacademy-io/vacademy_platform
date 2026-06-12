@@ -6,7 +6,12 @@ existing FE flow → a media fileId, then ask media_service for a presigned URL
 to hand to the transcription / MathPix pipelines.
 
 Endpoint: GET /media-service/internal/get-url/id?fileId=&expiryDays= → URL (plain
-string body). It's an internal endpoint (network/gateway gated), no user auth.
+string body). media_service gates every URI containing "internal" with
+InternalAuthFilter, which requires the same client-auth headers the Java callers
+send via InternalClientUtils.makeHmacRequest: clientName + Signature. We resolve
+those via internal_auth.internal_auth_headers() — which reuses the trusted
+admin_core_service credentials from the shared DB. Without them the call bounces
+back as a 401.
 """
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ from typing import Optional
 import httpx
 
 from ..config import get_settings
+from .internal_auth import internal_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,11 @@ async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> 
     url = f"{base}/media-service/internal/get-url/id"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, params={"fileId": file_id, "expiryDays": expiry_days})
+            resp = await client.get(
+                url,
+                params={"fileId": file_id, "expiryDays": expiry_days},
+                headers=await internal_auth_headers(),
+            )
             resp.raise_for_status()
             file_url: Optional[str] = resp.text
             if not file_url:

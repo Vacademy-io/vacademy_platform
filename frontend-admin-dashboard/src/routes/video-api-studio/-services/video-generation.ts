@@ -284,7 +284,8 @@ export type AvatarModel =
     | 'fal-ai/kling-video/ai-avatar/v2/pro'
     | 'fal-ai/heygen/avatar4/image-to-video'
     | 'veed/fabric-1.0'
-    | 'fal-ai/flashtalk';
+    | 'fal-ai/flashtalk'
+    | 'fal-ai/ltx-2.3-quality/audio-to-video';
 
 export type AvatarQuality = '480p' | '720p';
 
@@ -306,6 +307,12 @@ export interface HostAvatarConfig {
     avatar_model?: AvatarModel;
     /** Avatar video resolution. Same per-second price for both. */
     quality?: AvatarQuality;
+    /**
+     * Output frames-per-second (1–60). Only used by audio-to-video models that
+     * expose it (LTX 2.3); ignored by the dedicated lip-sync avatars
+     * (Kling/HeyGen/Fabric/FlashTalk). Omit → model default (24).
+     */
+    avatar_fps?: number;
     /**
      * Vimotion studio_avatar.id — when set, server resolves the saved row and
      * overrides face_image_url / provider / voice metadata. Vim's host picker
@@ -362,6 +369,15 @@ export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecond
         value: 'fal-ai/kling-video/ai-avatar/v2/pro',
         label: 'Kling AI Avatar v2 (Pro)',
         perSecondUsd: 0.115,
+    },
+    {
+        // LTX 2.3 audio-to-video. General audio-driven generator with a tunable
+        // FPS, NOT a dedicated lip-sync avatar. Priced PER-MEGAPIXEL on fal; the
+        // value below is a representative per-second at 480p · 24fps
+        // (854×480×24 × $0.0024075/MP) — actual cost scales with resolution × fps.
+        value: 'fal-ai/ltx-2.3-quality/audio-to-video',
+        label: 'LTX 2.3 (audio-to-video)',
+        perSecondUsd: 0.0237,
     },
 ];
 

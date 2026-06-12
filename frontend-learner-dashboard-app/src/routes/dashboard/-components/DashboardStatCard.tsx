@@ -29,6 +29,7 @@ export const StatCard = ({
     className,
     iconClassName,
     illustration,
+    emptyActionLabel,
 }: {
     title: string;
     count: number | undefined;
@@ -39,26 +40,37 @@ export const StatCard = ({
     className?: string;
     iconClassName?: string;
     illustration?: React.FC<React.SVGProps<SVGSVGElement>>;
+    /** Shown instead of the title when the count is genuinely 0, turning the
+     *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
+    emptyActionLabel?: string;
 }) => {
     const isPlay = usePlayTheme();
 
+    // Skeleton while loading — covers the count-not-yet-known (undefined/null) case
     if (isLoading) return <StatCardSkeleton />;
+
+    const isEmpty = (count ?? 0) === 0;
+    const showAction = isEmpty && !!emptyActionLabel;
+    const subtitleText = showAction ? emptyActionLabel : title;
 
     return (
         <Card
             onClick={onClick}
             className={cn(
                 "group relative overflow-hidden cursor-pointer transition-all duration-base ease-out-soft hover:shadow-md hover:border-primary/20 h-full",
-                // Vibrant Mode Styles
-                "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
-                "[.ui-vibrant_&]:border-slate-200 dark:[.ui-vibrant_&]:border-slate-700",
+                // Vibrant: card stays white unless the caller passes the
+                // primary-50 wash + top-rail via className (tenant grammar)
                 // Play Mode Styles
-                "[.ui-play_&]:border-0 [.ui-play_&]:hover:-translate-y-1",
+                "[.ui-play_&]:border-0 [.ui-play_&]:hover:-translate-y-1 [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
                 className
             )}
             tabIndex={0}
             role="button"
-            aria-label={`View ${title} - ${count} items`}
+            aria-label={
+                showAction
+                    ? `${title} - ${emptyActionLabel}`
+                    : `View ${title} - ${count ?? 0} items`
+            }
             onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
@@ -66,11 +78,11 @@ export const StatCard = ({
                 }
             }}
         >
-            {/* Play mode: flex layout with SVG side panel */}
+            {/* Play mode: compact layout, content left + illustration right rail at all breakpoints */}
             {isPlay && illustration ? (
-                <div className="flex flex-row md:flex-col h-full">
-                    {/* Content: left on mobile, bottom on desktop */}
-                    <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between relative z-10 order-1 md:order-2">
+                <div className="flex flex-row h-full">
+                    {/* Content: left */}
+                    <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between relative z-10">
                         <div className="flex items-center justify-between mb-3">
                             <div className={cn(
                                 "p-2 rounded-md transition-colors",
@@ -78,20 +90,20 @@ export const StatCard = ({
                             )}>
                                 <Icon size={20} weight="fill" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <CaretRight size={16} className="text-white/60 group-hover:text-white" />
+                            <CaretRight size={16} className="text-white/90 group-hover:text-white" />
                         </div>
                         <div className="space-y-1">
-                            <div className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                            <div className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                                 {(count ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs font-bold text-white/80 uppercase tracking-wide">
-                                {title}
+                            <div className="text-caption font-bold text-white/90 uppercase tracking-wide">
+                                {subtitleText}
                             </div>
                         </div>
                     </div>
-                    {/* SVG: right on mobile, top on desktop */}
-                    <div className="order-2 md:order-1 w-28 md:w-full flex items-center justify-center bg-white/10 p-2 md:px-4 md:pt-4 md:pb-2 flex-shrink-0">
-                        {React.createElement(illustration, { className: "h-24 md:h-20 w-auto text-white" })}
+                    {/* Illustration: right rail */}
+                    <div className="w-24 sm:w-28 flex items-center justify-center bg-white/10 p-2 flex-shrink-0">
+                        {React.createElement(illustration, { className: "h-20 w-auto text-white" })}
                     </div>
                 </div>
             ) : (
@@ -101,8 +113,7 @@ export const StatCard = ({
                         <div className="flex items-center justify-between mb-3">
                             <div className={cn(
                                 "p-2 bg-primary/10 rounded-md text-primary ring-1 ring-primary/20 transition-colors group-hover:bg-primary/20",
-                                "[.ui-vibrant_&]:ring-0 [.ui-vibrant_&]:text-slate-700",
-                                "[.ui-vibrant_&]:dark:bg-slate-800 [.ui-vibrant_&]:dark:text-slate-300",
+                                "[.ui-vibrant_&]:ring-0",
                                 iconClassName
                             )}>
                                 <Icon size={20} weight="duotone" className="w-5 h-5 sm:w-6 sm:h-6" />
@@ -117,9 +128,10 @@ export const StatCard = ({
                             </div>
                             <div className={cn(
                                 "text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors line-clamp-1",
-                                "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:group-hover:text-primary"
+                                "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:group-hover:text-primary",
+                                showAction && "text-primary font-semibold group-hover:text-primary"
                             )}>
-                                {title}
+                                {subtitleText}
                             </div>
                         </div>
                     </CardContent>

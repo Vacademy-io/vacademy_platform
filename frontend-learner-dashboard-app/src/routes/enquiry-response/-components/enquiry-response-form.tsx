@@ -9,6 +9,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetPublicInstituteDetails } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
+import { phoneSchema } from "@/lib/phone-validation";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import {
@@ -135,7 +136,7 @@ const AudienceResponseForm = ({
   // Create dynamic schema and extend it with additional fields
   const baseSchema = getDynamicSchema(formFields);
   const zodSchema = baseSchema.extend({
-    parentMobile: z.string().min(1, "Mobile number is required"),
+    parentMobile: phoneSchema({ required: true, label: "Mobile number" }),
     gender: z.string().optional(),
     parentRelationWithChild: z.string().min(1, "Relation with child is required"),
     packageSessionId: z.string().min(1, "Class is required"),

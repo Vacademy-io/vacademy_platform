@@ -42,6 +42,7 @@ import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
+import { Route as CenterManagementIndexRouteImport } from "./routes/center-management/index"
 import { Route as AuthTransferIndexRouteImport } from "./routes/auth-transfer/index"
 import { Route as AssessmentIndexRouteImport } from "./routes/assessment/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
@@ -51,6 +52,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
@@ -414,6 +416,13 @@ const ChallengeAnalyticsIndexRoute = ChallengeAnalyticsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/challenge-analytics/index.lazy").then((d) => d.Route),
 )
+const CenterManagementIndexRoute = CenterManagementIndexRouteImport.update({
+  id: "/center-management/",
+  path: "/center-management/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/center-management/index.lazy").then((d) => d.Route),
+)
 const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
   id: "/auth-transfer/",
   path: "/auth-transfer/",
@@ -472,6 +481,13 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const CounsellorsUserIdRoute = CounsellorsUserIdRouteImport.update({
+  id: "/counsellors/$userId",
+  path: "/counsellors/$userId",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/counsellors/$userId.lazy").then((d) => d.Route),
+)
 const WorkflowListIndexRoute = WorkflowListIndexRouteImport.update({
   id: "/workflow/list/",
   path: "/workflow/list/",
@@ -1571,6 +1587,7 @@ export interface FileRoutesByFullPath {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1580,6 +1597,7 @@ export interface FileRoutesByFullPath {
   "/ai-center/": typeof AiCenterIndexRoute
   "/assessment/": typeof AssessmentIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
+  "/center-management/": typeof CenterManagementIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
@@ -1749,6 +1767,7 @@ export interface FileRoutesByTo {
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1758,6 +1777,7 @@ export interface FileRoutesByTo {
   "/ai-center": typeof AiCenterIndexRoute
   "/assessment": typeof AssessmentIndexRoute
   "/auth-transfer": typeof AuthTransferIndexRoute
+  "/center-management": typeof CenterManagementIndexRoute
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
@@ -1929,6 +1949,7 @@ export interface FileRoutesById {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/counsellors/$userId": typeof CounsellorsUserIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1938,6 +1959,7 @@ export interface FileRoutesById {
   "/ai-center/": typeof AiCenterIndexRoute
   "/assessment/": typeof AssessmentIndexRoute
   "/auth-transfer/": typeof AuthTransferIndexRoute
+  "/center-management/": typeof CenterManagementIndexRoute
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
@@ -2110,6 +2132,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2119,6 +2142,7 @@ export interface FileRouteTypes {
     | "/ai-center/"
     | "/assessment/"
     | "/auth-transfer/"
+    | "/center-management/"
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
@@ -2288,6 +2312,7 @@ export interface FileRouteTypes {
     | "/explore-ai"
     | "/landing"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2297,6 +2322,7 @@ export interface FileRouteTypes {
     | "/ai-center"
     | "/assessment"
     | "/auth-transfer"
+    | "/center-management"
     | "/challenge-analytics"
     | "/community"
     | "/connector-center-details"
@@ -2467,6 +2493,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/counsellors/$userId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2476,6 +2503,7 @@ export interface FileRouteTypes {
     | "/ai-center/"
     | "/assessment/"
     | "/auth-transfer/"
+    | "/center-management/"
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
@@ -2647,6 +2675,7 @@ export interface RootRouteChildren {
   LandingLazyRoute: typeof LandingLazyRoute
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
   PricingLazyRoute: typeof PricingLazyRoute
+  CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -2656,6 +2685,7 @@ export interface RootRouteChildren {
   AiCenterIndexRoute: typeof AiCenterIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
+  CenterManagementIndexRoute: typeof CenterManagementIndexRoute
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
@@ -3065,6 +3095,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ChallengeAnalyticsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/center-management/": {
+      id: "/center-management/"
+      path: "/center-management"
+      fullPath: "/center-management/"
+      preLoaderRoute: typeof CenterManagementIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/auth-transfer/": {
       id: "/auth-transfer/"
       path: "/auth-transfer"
@@ -3126,6 +3163,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/counsellors/$userId": {
+      id: "/counsellors/$userId"
+      path: "/counsellors/$userId"
+      fullPath: "/counsellors/$userId"
+      preLoaderRoute: typeof CounsellorsUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/workflow/list/": {
@@ -4081,6 +4125,7 @@ const rootRouteChildren: RootRouteChildren = {
   LandingLazyRoute: LandingLazyRoute,
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
   PricingLazyRoute: PricingLazyRoute,
+  CounsellorsUserIdRoute: CounsellorsUserIdRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4090,6 +4135,7 @@ const rootRouteChildren: RootRouteChildren = {
   AiCenterIndexRoute: AiCenterIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
+  CenterManagementIndexRoute: CenterManagementIndexRoute,
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,

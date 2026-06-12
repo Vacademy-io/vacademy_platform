@@ -1,10 +1,17 @@
 """
-Service for generating text embeddings using Gemini or OpenRouter.
+Service for generating text embeddings.
+
+Uses gemini-embedding-001 in both paths so all vectors live in one embedding
+space, compatible with the existing content_embeddings rows:
+1. OpenRouter (primary) — pay-per-token, no free-tier daily quota
+2. Google Gemini API direct (fallback)
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import List, Optional
+from collections import OrderedDict
+from typing import Dict, List, Optional, Tuple
 import httpx
 
 from ..services.api_key_resolver import ApiKeyResolver
@@ -14,6 +21,25 @@ logger = logging.getLogger(__name__)
 # Chunk size ~500 tokens (~2000 chars) with 200 char overlap
 CHUNK_SIZE = 2000
 CHUNK_OVERLAP = 200
+
+OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
+OPENROUTER_EMBED_MODEL = "google/gemini-embedding-001"
+GEMINI_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001"
+EMBEDDING_DIM = 768
+# Gemini batchEmbedContents accepts at most 100 requests per call
+BATCH_LIMIT = 100
+MAX_RETRIES = 3
+MAX_RETRY_DELAY_SECONDS = 30.0
+
+# (gemini taskType, openrouter input_type)
+TASK_TYPES = {
+    "document": ("RETRIEVAL_DOCUMENT", "search_document"),
+    "query": ("RETRIEVAL_QUERY", "search_query"),
+}
+
+# Module-level so the cache survives per-request EmbeddingService instances.
+QUERY_CACHE_SIZE = 256
+_query_cache: "OrderedDict[Tuple[str, str], List[float]]" = OrderedDict()
 
 
 class EmbeddingService:
@@ -45,62 +71,121 @@ class EmbeddingService:
             start = end - CHUNK_OVERLAP
         return [c for c in chunks if c]
 
-    async def embed_text(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
-        """Generate embedding for a single text using Gemini embedding API."""
-        _, gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
+    async def _post_with_retry(self, url: str, payload: Dict, headers: Dict) -> Dict:
+        """
+        POST with backoff on 429/5xx, honoring Retry-After.
+
+        API keys go in headers, never the URL — httpx logs full request URLs
+        at INFO level, so a ?key= query param leaks the key into logs.
+        """
+        for attempt in range(MAX_RETRIES + 1):
+            response = await self.http_client.post(url, json=payload, headers=headers)
+            if (response.status_code == 429 or response.status_code >= 500) and attempt < MAX_RETRIES:
+                try:
+                    delay = float(response.headers.get("retry-after", ""))
+                except ValueError:
+                    delay = float(2 ** attempt)
+                delay = min(delay, MAX_RETRY_DELAY_SECONDS)
+                logger.warning(
+                    f"Embedding API at {url} returned {response.status_code}, "
+                    f"retrying in {delay:.0f}s (attempt {attempt + 1}/{MAX_RETRIES})"
+                )
+                await asyncio.sleep(delay)
+                continue
+            response.raise_for_status()
+            return response.json()
+        raise RuntimeError("unreachable")
+
+    async def _embed_openrouter(self, texts: List[str], input_type: str, api_key: str) -> List[List[float]]:
+        """Embed texts via OpenRouter's OpenAI-compatible embeddings endpoint."""
+        payload = {
+            "model": OPENROUTER_EMBED_MODEL,
+            "input": texts,
+            "dimensions": EMBEDDING_DIM,
+            "input_type": input_type,
+        }
+        headers = {"Authorization": f"Bearer {api_key}"}
+        data = await self._post_with_retry(OPENROUTER_EMBEDDINGS_URL, payload, headers)
+        items = sorted(data["data"], key=lambda d: d["index"])
+        if len(items) != len(texts):
+            raise ValueError(f"OpenRouter returned {len(items)} embeddings for {len(texts)} inputs")
+        embeddings = [item["embedding"] for item in items]
+        # If the provider ignored `dimensions`, raising here triggers the
+        # Gemini fallback instead of inserting vectors pgvector will reject.
+        if embeddings and len(embeddings[0]) != EMBEDDING_DIM:
+            raise ValueError(f"OpenRouter returned {len(embeddings[0])}-dim embeddings, expected {EMBEDDING_DIM}")
+        return embeddings
+
+    async def _embed_gemini(self, texts: List[str], task_type: str, api_key: str) -> List[List[float]]:
+        """Embed texts via the Gemini API directly (batchEmbedContents)."""
+        payload = {
+            "requests": [
+                {
+                    "model": "models/gemini-embedding-001",
+                    "content": {"parts": [{"text": t}]},
+                    "taskType": task_type,
+                    "outputDimensionality": EMBEDDING_DIM,
+                }
+                for t in texts
+            ]
+        }
+        headers = {"x-goog-api-key": api_key}
+        data = await self._post_with_retry(f"{GEMINI_MODEL_URL}:batchEmbedContents", payload, headers)
+        return [e["values"] for e in data["embeddings"]]
+
+    async def _embed_with_providers(
+        self, texts: List[str], task: str, institute_id: str
+    ) -> List[Optional[List[float]]]:
+        """Embed up to BATCH_LIMIT texts, trying OpenRouter then Gemini direct."""
+        openrouter_key, gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
+        gemini_task, openrouter_input_type = TASK_TYPES[task]
+
+        if openrouter_key:
+            try:
+                return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key)
+            except Exception as e:
+                logger.warning(f"OpenRouter embedding failed, falling back to Gemini: {e}")
 
         if gemini_key:
             try:
-                return await self._embed_gemini(text, gemini_key)
+                return await self._embed_gemini(texts, gemini_task, gemini_key)
             except Exception as e:
                 logger.warning(f"Gemini embedding failed: {e}")
 
-        logger.error("No embedding provider available")
-        return None
+        if not openrouter_key and not gemini_key:
+            logger.error("No embedding provider available")
+        return [None] * len(texts)
+
+    async def embed_text(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
+        """Generate embedding for a single document text."""
+        results = await self._embed_with_providers([text], "document", institute_id)
+        return results[0]
 
     async def embed_batch(self, texts: List[str], institute_id: str = "default") -> List[Optional[List[float]]]:
-        """Generate embeddings for multiple texts."""
-        results = []
-        for text in texts:
-            emb = await self.embed_text(text, institute_id)
-            results.append(emb)
+        """Generate embeddings for multiple texts in batched API calls."""
+        results: List[Optional[List[float]]] = []
+        for start in range(0, len(texts), BATCH_LIMIT):
+            batch = texts[start:start + BATCH_LIMIT]
+            results.extend(await self._embed_with_providers(batch, "document", institute_id))
         return results
 
-    async def _embed_gemini(self, text: str, api_key: str) -> List[float]:
-        """Generate embedding using Gemini gemini-embedding-001."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
-        payload = {
-            "model": "models/gemini-embedding-001",
-            "content": {"parts": [{"text": text}]},
-            "taskType": "RETRIEVAL_DOCUMENT",
-            "outputDimensionality": 768,
-        }
-        response = await self.http_client.post(url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        return data["embedding"]["values"]
-
     async def embed_query(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
-        """Generate embedding for a search query (uses RETRIEVAL_QUERY task type)."""
-        _, gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
+        """Generate embedding for a search query (uses retrieval-query task type)."""
+        cache_key = (institute_id, text)
+        cached = _query_cache.get(cache_key)
+        if cached is not None:
+            _query_cache.move_to_end(cache_key)
+            return cached
 
-        if gemini_key:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={gemini_key}"
-                payload = {
-                    "model": "models/gemini-embedding-001",
-                    "content": {"parts": [{"text": text}]},
-                    "taskType": "RETRIEVAL_QUERY",
-                    "outputDimensionality": 768,
-                }
-                response = await self.http_client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                return data["embedding"]["values"]
-            except Exception as e:
-                logger.warning(f"Gemini query embedding failed: {e}")
+        results = await self._embed_with_providers([text], "query", institute_id)
+        embedding = results[0]
+        if embedding is None:
+            return None
 
-        return None
+        _query_cache[cache_key] = embedding
+        if len(_query_cache) > QUERY_CACHE_SIZE:
+            _query_cache.popitem(last=False)
+        return embedding
 
     async def close(self):
         await self.http_client.aclose()

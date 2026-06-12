@@ -1,12 +1,18 @@
 import React from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Bell, CaretRight, Clock, Trash } from '@phosphor-icons/react';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { isAfter, subDays } from 'date-fns';
-import { formatLocalDateTime } from '@/helpers/formatISOTime';
+import { parseApiDate } from '@/helpers/formatISOTime';
 import type { UserMessage } from '@/types/announcement';
+import {
+  formatNotificationDate,
+  groupNotifications,
+  type GroupedNotification,
+} from '@/lib/notifications';
 import { cn } from "@/lib/utils";
 import { playIllustrations } from "@/assets/play-illustrations";
 import {
@@ -28,24 +34,27 @@ interface RecentSystemNotificationsProps {
 export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps> = ({
   className = ''
 }) => {
+  const navigate = useNavigate();
   const { alerts, loading, error, isEnabled, isLoadingSettings, dismissAll } = useSystemAlerts({
     enablePolling: false, // Don't poll in dashboard widget
     autoMarkAsRead: false, // Don't auto-mark as read in dashboard
   });
 
-  // Filter notifications from last 7 days and limit to 5
-  const getRecentNotifications = (): UserMessage[] => {
-    const sevenDaysAgo = subDays(new Date(), 7);
-
-    return alerts
-      .filter(alert => {
-        const createdAt = new Date(alert.createdAt);
-        return isAfter(createdAt, sevenDaysAgo) && !alert.isDismissed;
-      })
-      .slice(0, 5); // Limit to max 5 notifications
+  const goToInbox = () => {
+    navigate({ to: '/dashboard/notifications' });
   };
 
-  const recentNotifications = getRecentNotifications();
+  // Filter notifications from last 7 days, dedupe identical ones, limit to 5 rows
+  const recentNotifications = React.useMemo((): GroupedNotification[] => {
+    const sevenDaysAgo = subDays(new Date(), 7);
+
+    const recent = alerts.filter(alert => {
+      const createdAt = parseApiDate(alert.createdAt);
+      return !!createdAt && isAfter(createdAt, sevenDaysAgo) && !alert.isDismissed;
+    });
+
+    return groupNotifications(recent).slice(0, 5); // Limit to max 5 rows
+  }, [alerts]);
 
   // Don't render if not enabled, loading settings, or no recent notifications
   if (isLoadingSettings || !isEnabled || recentNotifications.length === 0) {
@@ -116,44 +125,9 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
             <Bell className="h-5 w-5 text-primary flex-shrink-0" />
             <span className="truncate">Recent System Notifications</span>
           </CardTitle>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Badge variant="secondary" className="text-xs">
-              {recentNotifications.length} recent
-            </Badge>
-            {alerts.length > 0 && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    disabled={loading}
-                  >
-                    <Trash className="h-4 w-4 mr-1" />
-                    Clear All
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="z-50">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}?
-                      This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={dismissAll}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
-                      Clear All
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
-          </div>
+          <Badge variant="secondary" className="text-xs flex-shrink-0">
+            {recentNotifications.length} recent
+          </Badge>
         </div>
       </CardHeader>
 
@@ -182,33 +156,48 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
         ) : (
           <>
             <div className="space-y-3">
-              {recentNotifications.map((alert) => (
+              {recentNotifications.map(({ alert, count, isRead }) => (
                 <div
                   key={alert.messageId}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Open notifications inbox"
+                  onClick={goToInbox}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      goToInbox();
+                    }
+                  }}
                   className={cn(
                     "p-3 border rounded-lg transition-all hover:shadow-sm cursor-pointer group",
-                    !alert.isRead
+                    !isRead
                       ? "border-l-4 border-l-primary bg-primary/5 [.ui-vibrant_&]:bg-fuchsia-100/30 dark:[.ui-vibrant_&]:bg-fuchsia-900/20"
                       : "border-border hover:border-primary/50",
                     // Vibrant Styles - Flat Pastel
                     "[.ui-vibrant_&]:hover:bg-fuchsia-100/40 [.ui-vibrant_&]:hover:border-fuchsia-200/60 dark:[.ui-vibrant_&]:hover:bg-fuchsia-900/30",
                     // Play Styles - Solid Bold Duolingo
                     "[.ui-play_&]:bg-white/20 [.ui-play_&]:border-2 [.ui-play_&]:border-white/30 [.ui-play_&]:rounded-xl [.ui-play_&]:hover:bg-white/30",
-                    !alert.isRead && "[.ui-play_&]:border-l-4 [.ui-play_&]:border-l-white [.ui-play_&]:bg-white/25"
+                    !isRead && "[.ui-play_&]:border-l-4 [.ui-play_&]:border-l-white [.ui-play_&]:bg-white/25"
                   )}
                 >
                   <div className="flex items-start gap-3">
                     {/* Unread indicator */}
-                    <div className={`w-2 h-2 rounded-full mt-2 ${!alert.isRead ? 'bg-primary' : 'bg-muted'
+                    <div className={`w-2 h-2 rounded-full mt-2 ${!isRead ? 'bg-primary' : 'bg-muted'
                       }`} />
 
                     <div className="flex-1 min-w-0">
-                      {/* Title and Priority */}
+                      {/* Title, count, and priority */}
                       <div className="flex items-center gap-2 mb-1">
                         {alert.title && (
                           <h4 className="font-medium text-foreground text-sm truncate">
                             {alert.title}
                           </h4>
+                        )}
+                        {count > 1 && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0.5 flex-shrink-0">
+                            ×{count}
+                          </Badge>
                         )}
                         {alert.priority && (
                           <Badge
@@ -230,7 +219,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>
-                            {formatLocalDateTime(alert.createdAt)}
+                            {formatNotificationDate(alert.createdAt)}
                           </span>
                           {alert.createdByName && (
                             <>
@@ -249,12 +238,48 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
               ))}
             </div>
 
-            {/* View All Button */}
-            <div className="pt-2 border-t border-border">
+            {/* Footer: quiet clear-all + view all */}
+            <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
+              {alerts.length > 0 ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      disabled={loading}
+                    >
+                      <Trash className="h-3.5 w-3.5 mr-1" />
+                      Clear all
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="z-50">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to dismiss all {alerts.length} notification{alerts.length === 1 ? '' : 's'}?
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={dismissAll}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Clear All
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : (
+                <span />
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-sm text-primary hover:text-primary hover:bg-primary/10"
+                onClick={goToInbox}
+                className="text-sm text-primary hover:text-primary hover:bg-primary/10"
               >
                 View All Notifications
                 <CaretRight className="h-4 w-4 ml-1" />

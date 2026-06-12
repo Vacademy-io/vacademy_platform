@@ -20,4 +20,6 @@ public interface UserToFileRepository extends JpaRepository<UserToFile, String> 
                                                     @Param("status") String status);
 
     Optional<UserToFile> findByUserIdAndFileIdAndStatus(String userId, String fileId, String status);
+
+    List<UserToFile> findByFileId(String fileId);
 }

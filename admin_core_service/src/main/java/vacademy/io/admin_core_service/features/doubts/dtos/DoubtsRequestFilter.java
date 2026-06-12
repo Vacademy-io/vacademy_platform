@@ -28,5 +28,12 @@ public class DoubtsRequestFilter {
     private List<String> sourceIds;
     private List<String> status;
     private List<String> batchIds;
+    /** Filter by configurable query type key(s) (DOUBT, TECHNICAL, PAYMENT, ...). */
+    private List<String> types;
+    /**
+     * Scopes the admin inbox to one institute. Admin (unscoped) callers must pass this so the
+     * inbox no longer requires at least one batch — GENERAL queries have no batch.
+     */
+    private String instituteId;
     Map<String, String> sortColumns;
 }

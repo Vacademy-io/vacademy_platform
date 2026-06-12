@@ -424,7 +424,11 @@ public class SalesDashboardService {
                 "FROM audience a " +
                 "LEFT JOIN audience_response ar ON ar.audience_id = a.id AND ar.created_at >= ? " +
                 "LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id " +
-                "WHERE a.institute_id = ? " +
+                // Exclude soft-deleted campaigns (AudienceService.deleteCampaign
+                // sets status='DELETED' per CampaignStatusEnum). Without this
+                // filter the dashboard surfaces ghost cards for campaigns the
+                // admin already deleted in /audience.
+                "WHERE a.institute_id = ? AND (a.status IS NULL OR a.status <> 'DELETED') " +
                 "GROUP BY a.id, a.campaign_name, a.campaign_type " +
                 "ORDER BY leads_in_window DESC " +
                 "LIMIT 20",

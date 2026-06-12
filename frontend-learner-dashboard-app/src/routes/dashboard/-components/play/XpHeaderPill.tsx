@@ -8,19 +8,13 @@ export const XpHeaderPill: React.FC = () => {
   const totalXp = data?.totalXp ?? 0;
 
   return (
-    <div
-      className="flex items-center gap-2 rounded-full px-4 py-2"
-      style={{
-        backgroundColor: "var(--play-xp-bg)",
-        boxShadow: "0 3px 0 var(--play-xp-shadow)",
-      }}
-    >
-      <Star weight="fill" size={18} className="text-white" />
-      <span className="text-sm font-black text-white uppercase tracking-wide">
+    <div className="flex items-center gap-2 rounded-full bg-play-gold px-4 py-2 shadow-play-2d-gold">
+      <Star weight="fill" size={18} className="text-play-ink" />
+      <span className="text-sm font-black text-play-ink uppercase tracking-wide">
         Lvl {level}
       </span>
-      <span className="text-white/50 font-bold">|</span>
-      <span className="text-sm font-black text-white">
+      <span aria-hidden="true" className="h-4 w-px bg-play-gold-deep" />
+      <span className="text-sm font-black text-play-ink">
         {totalXp.toLocaleString()} XP
       </span>
     </div>

@@ -347,13 +347,29 @@ public interface StudentSessionInstituteGroupMappingRepository
 
   /**
    * Count active learner members in a sub-organization for a specific package session.
-   * Excludes ROOT_ADMIN from the count — only SUBORG_LEARNER seats are validated.
+   * Excludes ROOT_ADMIN from the count — only learner seats are validated.
+   *
+   * Membership mirrors {@link #findActiveSubOrgRoster(String)}: a learner counts if EITHER
+   * their mapping is stamped with this sub_org_id (add-member / auto-link path) OR their
+   * user_plan was created from one of the sub-org's invites (enroll_invite.sub_org_id).
+   * The second arm is essential because SUBORG_LEARNER self-enrollment does NOT stamp
+   * ssigm.sub_org_id — without it those learners wouldn't count against the seat cap.
    */
-  @Query("SELECT COUNT(s) FROM StudentSessionInstituteGroupMapping s " +
-      "WHERE s.subOrg.id = :subOrgId " +
-      "AND s.packageSession.id = :packageSessionId " +
-      "AND s.status = :status " +
-      "AND (s.commaSeparatedOrgRoles IS NULL OR s.commaSeparatedOrgRoles NOT LIKE '%ROOT_ADMIN%')")
+  @Query(value = """
+      SELECT COUNT(*)
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      WHERE ssigm.package_session_id = :packageSessionId
+        AND ssigm.status = :status
+        AND (ssigm.comma_separated_org_roles IS NULL
+             OR ssigm.comma_separated_org_roles NOT LIKE '%ROOT_ADMIN%')
+        AND (
+              ssigm.sub_org_id = :subOrgId
+              OR up.enroll_invite_id IN (
+                  SELECT ei.id FROM enroll_invite ei WHERE ei.sub_org_id = :subOrgId
+              )
+            )
+      """, nativeQuery = true)
   long countBySubOrgIdAndPackageSessionIdAndStatus(
       @Param("subOrgId") String subOrgId,
       @Param("packageSessionId") String packageSessionId,
@@ -396,6 +412,15 @@ public interface StudentSessionInstituteGroupMappingRepository
    * fields the panel needs (no FETCH joins so payload stays small). Includes both admins
    * and learners; caller branches by comma_separated_org_roles.
    *
+   * Membership is the UNION of two definitions so the roster captures EVERY person tied to
+   * the sub-org, regardless of which enrollment path they came through:
+   *   1. {@code ssigm.sub_org_id = :subOrgId} — admins + add-member/auto-linked learners
+   *      (these flows stamp sub_org_id directly).
+   *   2. {@code user_plan.enroll_invite_id} points at one of the sub-org's invites
+   *      (enroll_invite.sub_org_id = :subOrgId) — learners who self-enrolled (or were
+   *      enrolled by an institute admin) through a SUBORG_LEARNER / scoped SUB_ORG invite.
+   *      That path does NOT stamp ssigm.sub_org_id, so condition (1) alone misses them.
+   *
    * Order: [mapping_id, user_id, package_session_id, user_plan_id,
    *         comma_separated_org_roles, enrolled_date, full_name]
    */
@@ -409,8 +434,14 @@ public interface StudentSessionInstituteGroupMappingRepository
              s.full_name
       FROM student_session_institute_group_mapping ssigm
       LEFT JOIN student s ON s.user_id = ssigm.user_id
-      WHERE ssigm.sub_org_id = :subOrgId
-        AND ssigm.status = 'ACTIVE'
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      WHERE ssigm.status = 'ACTIVE'
+        AND (
+              ssigm.sub_org_id = :subOrgId
+              OR up.enroll_invite_id IN (
+                  SELECT ei.id FROM enroll_invite ei WHERE ei.sub_org_id = :subOrgId
+              )
+            )
       """, nativeQuery = true)
   List<Object[]> findActiveSubOrgRoster(@Param("subOrgId") String subOrgId);
 

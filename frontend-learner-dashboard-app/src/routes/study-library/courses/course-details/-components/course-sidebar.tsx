@@ -120,6 +120,11 @@ export const CourseSidebar = ({
   const capitalizeFirst = (text: string): string => text;
 
   const safeEnrolledSessions = enrolledSessions || [];
+  // Enrolled in THIS course at all (any batch/level) — an Enroll CTA is
+  // meaningless for an already-enrolled learner, so it must never render.
+  const isEnrolledInCourse = safeEnrolledSessions.some(
+    (enrolledSession) => enrolledSession.package_dto.id === courseId,
+  );
   const isAlreadyEnrolled = safeEnrolledSessions.some((enrolledSession) => {
     // Original trio match — works when session/level resolve to real UUIDs.
     if (
@@ -349,17 +354,17 @@ export const CourseSidebar = ({
             </div>
           )}
 
-          {/* Action Button */}
+          {/* Action Button — hidden entirely for learners already enrolled in this course */}
           {selectedTab === "ALL" &&
             selectedSession &&
             selectedLevel &&
+            !isEnrolledInCourse &&
             !isAlreadyEnrolled && (
               <div className="pt-2">
                 <Button
                   className={cn(
                     "w-full font-semibold",
-                    // Vibrant Styles - Flat Button
-                    "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
+                    // Vibrant — default Button already renders the tenant-primary CTA
                     "[.ui-vibrant_&]:shadow-md",
                     // Play Styles — solid, bold, Duolingo-style
                     "[.ui-play_&]:bg-play-success [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
@@ -380,42 +385,50 @@ export const CourseSidebar = ({
           <Card
             className={cn(
               "animate-fade-in-up border-border/60 hover:shadow-md transition-all",
-              // Vibrant Styles - Flat Pastel
+              // Vibrant — white card with a top-rail: success once complete
+              // (status), tenant primary while in progress
+              "[.ui-vibrant_&]:border-t-4",
               percentageCompleted === 100
-                ? "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30"
-                : "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20 [.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
+                ? "[.ui-vibrant_&]:border-t-success-400"
+                : "[.ui-vibrant_&]:border-t-primary-300",
               "[.ui-vibrant_&]:shadow-md",
-              // Play Styles — solid hero card with soft layered shadow
-              "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-transparent [.ui-play_&]:font-bold",
-              percentageCompleted === 100
-                ? "[.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:shadow-play-glow-success-lg"
-                : "[.ui-play_&]:bg-play-info [.ui-play_&]:text-white [.ui-play_&]:shadow-play-glow-info",
+              // Play Styles — quiet white rail card (one rail language)
+              "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+              "[.ui-play_&]:bg-white [.ui-play_&]:text-play-ink [.ui-play_&]:shadow-none [.ui-play_&]:hover:shadow-none",
             )}
           >
             <CardHeader
               className={cn(
                 "p-3 pb-2 border-b bg-muted/40",
-                "[.ui-vibrant_&]:bg-transparent [.ui-vibrant_&]:border-black/5 dark:[.ui-vibrant_&]:border-white/5",
                 // Play Styles
-                "[.ui-play_&]:bg-transparent [.ui-play_&]:border-white/20",
+                "[.ui-play_&]:bg-transparent [.ui-play_&]:border-play-surface",
               )}
             >
               <div className="flex items-center space-x-2">
                 <div
                   className={cn(
                     "p-1 bg-green-100 dark:bg-green-900/30 rounded-md",
-                    "[.ui-vibrant_&]:bg-green-500/20",
-                    // Play Styles
-                    "[.ui-play_&]:bg-white/20 [.ui-play_&]:rounded-xl",
+                    // Vibrant — semantic success chip (progress status)
+                    "[.ui-vibrant_&]:bg-success-100",
+                    // Play Styles — neutral chip, success icon (progress role)
+                    "[.ui-play_&]:bg-play-surface [.ui-play_&]:rounded-xl",
                   )}
                 >
                   <TrendUp
                     size={14}
-                    className="text-green-600 dark:text-green-400"
+                    className={cn(
+                      "text-green-600 dark:text-green-400",
+                      "[.ui-play_&]:text-play-success-deep",
+                    )}
                     weight="duotone"
                   />
                 </div>
-                <CardTitle className="text-base font-bold">
+                <CardTitle
+                  className={cn(
+                    "text-base font-bold",
+                    "[.ui-play_&]:text-play-ink",
+                  )}
+                >
                   {getTerminology(ContentTerms.Course, SystemTerms.Course)}{" "}
                   Progress
                 </CardTitle>
@@ -424,20 +437,47 @@ export const CourseSidebar = ({
             <CardContent className="p-3 pt-2.5 space-y-2.5">
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-muted-foreground">
+                  <span
+                    className={cn(
+                      "font-medium text-muted-foreground",
+                      "[.ui-play_&]:text-play-muted-deep [.ui-play_&]:font-bold",
+                    )}
+                  >
                     Completion
                   </span>
-                  <span className="font-bold text-green-600 dark:text-green-400">
+                  <span
+                    className={cn(
+                      "font-bold text-green-600 dark:text-green-400",
+                      // Play — completion % is the big number of this card
+                      "[.ui-play_&]:text-display-sm [.ui-play_&]:tabular-nums [.ui-play_&]:text-play-ink",
+                    )}
+                  >
                     {Math.min(percentageCompleted, 100).toFixed(0)}%
                   </span>
                 </div>
                 <ProgressBar
                   value={Math.min(percentageCompleted, 100)}
-                  className="h-2.5"
+                  className={cn(
+                    "h-2.5",
+                    // Play — success fill on neutral surface track
+                    "[.ui-play_&]:h-3 [.ui-play_&]:rounded-full [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-surface",
+                    "[.ui-play_&]:[&>div]:bg-play-success",
+                  )}
                 />
               </div>
-              <div className="p-2 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800">
-                <p className="text-xs text-amber-700 dark:text-amber-400 font-medium text-center">
+              <div
+                className={cn(
+                  "p-2 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800",
+                  // Play — quiet highlight chip
+                  "[.ui-play_&]:bg-play-highlight [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
+                )}
+              >
+                <p
+                  className={cn(
+                    "text-xs text-amber-700 dark:text-amber-400 font-medium text-center",
+                    "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                  )}
+                >
                   Certificate will be generated upon completion
                 </p>
               </div>

@@ -19,6 +19,7 @@ import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTime
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
+import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
 import YouTube, {
   type YouTubeEvent,
   type YouTubePlayer,
@@ -104,6 +105,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   concentrationSettings,
 }) => {
   const { activeItem } = useContentStore();
+  // When Slide Content Protection is on, block right-click on the player (the
+  // iframe is pointer-events-none with custom controls, so the contextmenu fires
+  // on our container — preventing it here also covers the YouTube embed area).
+  const { protectionEnabled } = useSlideContentProtection();
   // Subscribe only to addActivity to avoid re-render on every trackingData update
   const addActivity = useTrackingStore((state) => state.addActivity);
   const activityId = useRef(uuidv4());
@@ -2013,6 +2018,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         onMouseEnter={handleMouseMoveOnVideo}
         onDoubleClick={handleDoubleClick}
         onClick={handleSingleClick}
+        onContextMenu={(e) => {
+          if (protectionEnabled) e.preventDefault();
+        }}
       >
         {/* Verification overlay - only shown in fullscreen */}
         {/* Verification overlay - Fullscreen */}

@@ -5,8 +5,9 @@ import { getActiveFields, resolveInitialSelection } from '../-utils/custom-field
 import { submitProductPageForm } from '../-services/product-page-service';
 import { pushTnCAccepted } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
-import { getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
+import { FieldRenderType, getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { parseDropdownOptions } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
+import { validatePhoneField } from '@/lib/phone-validation';
 import { ArrowLeft, ArrowRight, SpinnerGap } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings, FieldValue, PageJson } from '../-types/product-page-types';
 
@@ -28,11 +29,15 @@ interface MultiEnrollFormProps {
 
 export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => { // design-lint-ignore: page-builder default color
     const {
-        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams,
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams, finalPrice,
     } = useProductPageStore();
 
     const currency = pageData.currency || 'INR';
     const currencySymbol = currency === 'INR' ? '₹' : currency;
+
+    // When the total payable is zero, the payment step auto-skips, so this button
+    // just advances to the (instant) enrollment — label it "Next" rather than "Continue to Payment".
+    const isFreeTotal = finalPrice() <= 0;
 
     // Only the courses from the URL (or DB-preselected) — shown in "Enrolling for"
     const primaryIds = useMemo(
@@ -79,7 +84,16 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
         const newErrors: Record<string, string> = {};
         for (const af of activeAggregatedFields) {
             const cf = af.field.custom_field;
-            if (cf.isMandatory && !formValues[cf.fieldKey]?.trim()) {
+            if (getFieldRenderType(cf.fieldKey, cf.fieldType) === FieldRenderType.PHONE) {
+                // The phone widget pre-fills the country dial code, so the value is
+                // never empty — a "required + non-empty" check always passes. Check
+                // national digits + country-aware format instead.
+                const phoneError = validatePhoneField(formValues[cf.fieldKey], {
+                    required: cf.isMandatory,
+                    label: cf.fieldName,
+                });
+                if (phoneError) newErrors[cf.fieldKey] = phoneError;
+            } else if (cf.isMandatory && !formValues[cf.fieldKey]?.trim()) {
                 newErrors[cf.fieldKey] = `${cf.fieldName} is required`;
             }
         }
@@ -342,7 +356,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                                 </>
                             ) : (
                                 <>
-                                    Continue to Payment
+                                    {isFreeTotal ? 'Next' : 'Continue to Payment'}
                                     <ArrowRight className="size-4" />
                                 </>
                             )}

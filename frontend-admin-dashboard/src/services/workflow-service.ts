@@ -196,6 +196,24 @@ export const createWorkflow = async (
     return response.data;
 };
 
+/**
+ * Update an existing workflow IN PLACE (reuses the same workflow id — not a clone).
+ * Use this when saving edits from the visual builder; createWorkflow always inserts a new workflow.
+ */
+export const updateWorkflow = async (
+    workflowId: string,
+    dto: WorkflowBuilderDTO,
+    userId: string
+): Promise<WorkflowBuilderDTO> => {
+    const response = await authenticatedAxiosInstance<WorkflowBuilderDTO>({
+        method: 'PUT',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}`,
+        params: { userId },
+        data: dto,
+    });
+    return response.data;
+};
+
 export const getWorkflowForEditing = async (
     workflowId: string
 ): Promise<WorkflowBuilderDTO> => {
@@ -536,3 +554,75 @@ export function getTemplatesByTypeQuery(instituteId: string, type: string) {
         enabled: !!instituteId,
     });
 }
+
+// ─── Raw node-config editor (workflow detail "Configuration" tab) ───
+// Loss-less view + in-place update of a workflow's node templates. Unlike the visual builder
+// (GET /edit + POST, which strips routing and clones the workflow), these endpoints expose each
+// node's raw config_json (routing included) and update the existing node_template row in place.
+
+export interface WorkflowRawNode {
+    mapping_id: string;
+    node_template_id: string;
+    node_name: string;
+    node_type: string;
+    status: string;
+    version: number;
+    /** Raw config JSON string, exactly as persisted — routing lives inside this. */
+    config_json: string;
+    retry_config: string | null;
+    node_order: number;
+    is_start_node: boolean | null;
+    is_end_node: boolean | null;
+}
+
+export interface WorkflowRaw {
+    id: string;
+    name: string;
+    description: string;
+    status: string;
+    workflow_type: string;
+    institute_id: string;
+    created_at: string | null;
+    updated_at: string | null;
+    nodes: WorkflowRawNode[];
+}
+
+/** Partial update — only the fields you set are applied. */
+export interface NodeTemplateUpdate {
+    config_json?: string;
+    node_name?: string;
+    node_type?: string;
+    status?: string;
+    retry_config?: string | null;
+    is_start_node?: boolean;
+    is_end_node?: boolean;
+}
+
+export const fetchWorkflowRaw = async (workflowId: string): Promise<WorkflowRaw> => {
+    const response = await authenticatedAxiosInstance<WorkflowRaw>({
+        method: 'GET',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}/raw`,
+    });
+    return response.data;
+};
+
+export const getWorkflowRawQuery = (workflowId: string) =>
+    queryOptions({
+        queryKey: ['WORKFLOW_RAW', workflowId],
+        queryFn: () => fetchWorkflowRaw(workflowId),
+        staleTime: 0, // always fetch fresh — this is an editor surface
+        enabled: !!workflowId,
+    });
+
+export const updateNodeTemplate = async (
+    workflowId: string,
+    nodeTemplateId: string,
+    update: NodeTemplateUpdate
+): Promise<WorkflowRawNode> => {
+    const response = await authenticatedAxiosInstance<WorkflowRawNode>({
+        method: 'PUT',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}/node-template/${nodeTemplateId}`,
+        data: update,
+    });
+    return response.data;
+};

@@ -25,9 +25,23 @@ export function WorkflowEditor({ workflowId }: Props) {
         setSetupComplete,
     } = useWorkflowBuilderStore();
 
+    // Mark this as an EDIT (Save/Test Run update in place via PUT instead of cloning via POST), and
+    // CRITICALLY clear it on unmount so navigating to the create page can't accidentally PUT-update
+    // this workflow. Keyed on workflowId so it sets immediately on mount, before data loads.
+    useEffect(() => {
+        useWorkflowBuilderStore.getState().setEditingWorkflowId(workflowId);
+        return () => {
+            useWorkflowBuilderStore.getState().setEditingWorkflowId(null);
+            useWorkflowBuilderStore.getState().setEditingWorkflowStatus(null);
+        };
+    }, [workflowId]);
+
     // Load workflow data into the builder store once fetched
     useEffect(() => {
         if (!data) return;
+
+        // Remember the persisted status so Test Run doesn't downgrade a live workflow to DRAFT.
+        useWorkflowBuilderStore.getState().setEditingWorkflowStatus(data.status ?? null);
 
         setWorkflowName(data.name ?? '');
         setWorkflowDescription(data.description ?? '');

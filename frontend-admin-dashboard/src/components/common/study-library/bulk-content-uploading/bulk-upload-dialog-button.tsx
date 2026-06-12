@@ -7,6 +7,7 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { useBulkContentUploadingStore } from './use-bulk-content-uploading-store';
 import { BulkContentUploadingWizard } from './bulk-content-uploading-wizard';
+import { isBulkContentUploadEnabled } from './feature-gate';
 import type { BulkUploadContext } from './types';
 
 interface BulkUploadDialogButtonProps {
@@ -17,6 +18,9 @@ interface BulkUploadDialogButtonProps {
 export const BulkUploadDialogButton = ({ context, onCompleted }: BulkUploadDialogButtonProps) => {
     const [open, setOpen] = useState(false);
     const phase = useBulkContentUploadingStore((state) => state.phase);
+
+    // Feature is hidden by default for all institutes (see feature-gate.ts).
+    if (!isBulkContentUploadEnabled()) return null;
 
     const handleOpenChange = (next: boolean) => {
         // Don't silently kill an in-flight run on outside-click/Escape.

@@ -34,4 +34,6 @@ public interface StudentReportDto {
 
     String getPlayMode();
 
+    String getReportReleaseStatus();
+
 }

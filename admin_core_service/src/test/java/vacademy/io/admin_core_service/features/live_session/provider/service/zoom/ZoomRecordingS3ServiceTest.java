@@ -8,7 +8,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.ZoomAccount;
-import vacademy.io.common.media.service.FileService;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
 import java.time.Instant;
@@ -29,11 +30,15 @@ class ZoomRecordingS3ServiceTest {
     @Mock private ZoomAccountStore zoomAccountStore;
     @Mock private ZoomAccessTokenService accessTokenService;
     @Mock private ZoomRecordingService zoomRecordingService;
-    @Mock private FileService fileService;
+    @Mock private MediaService mediaService;
 
     private ZoomRecordingS3Service newSpyService() {
         return spy(new ZoomRecordingS3Service(
-                zoomAccountStore, accessTokenService, zoomRecordingService, fileService));
+                zoomAccountStore, accessTokenService, zoomRecordingService, mediaService));
+    }
+
+    private static FileDetailsDTO uploaded(String id, String url) {
+        return FileDetailsDTO.builder().id(id).url(url).build();
     }
 
     private SessionSchedule schedule() {
@@ -58,7 +63,8 @@ class ZoomRecordingS3ServiceTest {
         when(zoomRecordingService.getStoredRecordings(any())).thenReturn(recordings);
         when(accessTokenService.getAccessToken(any())).thenReturn("tok");
         doReturn(new byte[]{1, 2, 3}).when(service).downloadBytes(anyString(), anyString());
-        when(fileService.uploadDataToS3(any())).thenReturn("file-xyz");
+        when(mediaService.uploadFileV2(any()))
+                .thenReturn(uploaded("file-xyz", "https://pub-bucket.s3.amazonaws.com/zoom-recording-r1.mp4"));
 
         int mirrored = service.mirrorToS3(schedule(), false, 0);
 
@@ -66,6 +72,10 @@ class ZoomRecordingS3ServiceTest {
         assertEquals("file-xyz", cloud.getFileId());
         assertEquals("S3", cloud.getRecordingStorage());
         assertNull(cloud.getExpiresAt()); // cleared — on our storage now
+        // Provider (Zoom) URLs repointed to our permanent public-S3 copy so the
+        // recording survives Zoom's auto-delete.
+        assertEquals("https://pub-bucket.s3.amazonaws.com/zoom-recording-r1.mp4", cloud.getDownloadUrl());
+        assertEquals("https://pub-bucket.s3.amazonaws.com/zoom-recording-r1.mp4", cloud.getPlaybackUrl());
         assertEquals("existing-file", already.getFileId()); // untouched
         verify(zoomRecordingService, times(1)).replaceRecordings(any(), eq(recordings));
         verify(service, times(1)).downloadBytes(anyString(), anyString()); // only the un-mirrored one
@@ -97,13 +107,38 @@ class ZoomRecordingS3ServiceTest {
                 .thenReturn(new ArrayList<>(List.of(far, soon)));
         when(accessTokenService.getAccessToken(any())).thenReturn("tok");
         doReturn(new byte[]{9}).when(service).downloadBytes(anyString(), anyString());
-        when(fileService.uploadDataToS3(any())).thenReturn("file-soon");
+        when(mediaService.uploadFileV2(any()))
+                .thenReturn(uploaded("file-soon", "https://pub-bucket.s3.amazonaws.com/zoom-recording-r2.mp4"));
 
         int mirrored = service.mirrorToS3(schedule(), true, 5); // rescue window 5 days
 
         assertEquals(1, mirrored);
         assertNull(far.getFileId());           // 20d out — not rescued
         assertEquals("file-soon", soon.getFileId()); // 2d out — rescued
+    }
+
+    @Test
+    void reMirrorsLegacyUrlAsFileId() throws Exception {
+        // A row from the old buggy mirror stored the S3 URL in the fileId field.
+        // It must be treated as un-mirrored and repaired on re-run.
+        ZoomRecordingS3Service service = newSpyService();
+        MeetingRecordingDTO legacy = rec("r1",
+                "https://pub-bucket.s3.amazonaws.com/old.mp4", // URL-as-fileId (legacy bug)
+                "https://zoom/dl1", "S3", null);
+        List<MeetingRecordingDTO> recordings = new ArrayList<>(List.of(legacy));
+
+        when(zoomAccountStore.findById("acct-1")).thenReturn(Optional.of(mock(ZoomAccount.class)));
+        when(zoomRecordingService.getStoredRecordings(any())).thenReturn(recordings);
+        when(accessTokenService.getAccessToken(any())).thenReturn("tok");
+        doReturn(new byte[]{1}).when(service).downloadBytes(anyString(), anyString());
+        when(mediaService.uploadFileV2(any()))
+                .thenReturn(uploaded("real-id", "https://pub-bucket.s3.amazonaws.com/new.mp4"));
+
+        int mirrored = service.mirrorToS3(schedule(), false, 0);
+
+        assertEquals(1, mirrored);
+        assertEquals("real-id", legacy.getFileId());                                  // repaired to a real id
+        assertEquals("https://pub-bucket.s3.amazonaws.com/new.mp4", legacy.getDownloadUrl()); // repointed to S3
     }
 
     @Test

@@ -1,36 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { format } from "date-fns";
 import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   STUDENT_REPORT_DETAIL_URL,
   STUDENT_REPORT_URL,
 } from "@/constants/urls";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "@tanstack/react-router";
 import { Report } from "@/types/assessments/assessment-data-type";
 import { formatDuration, getSubjectNameById } from "@/constants/helper";
-import { formatDateTime } from "@/lib/format-date";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
+import { PlayMode } from "@/components/design-system/chips";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from "@/components/design-system/states";
-import { FileText } from "@phosphor-icons/react";
 
-const PLAY_MODE_LABELS: Record<string, string> = {
-  EXAM: "Exam",
-  MOCK: "Mock",
-  PRACTICE: "Practice",
-  SURVEY: "Survey",
-  MANUAL_UPLOAD_EXAM: "Offline exam",
+const playModeStyles: { [key: string]: string } = {
+  EXAM: "bg-green-100 text-green-700 hover:bg-green-200 border-green-200",
+  MOCK: "bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200",
+  PRACTICE: "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200",
+  SURVEY: "bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-200",
 };
 
 export const viewStudentReport = async (
   assessmentId: string,
   attemptId: string,
-  instituteId: string | null
+  instituteId: string | null,
 ) => {
   const response = await authenticatedAxiosInstance({
     method: "GET",
@@ -137,9 +136,7 @@ const AssessmentReportList = ({
         {
           name: "",
           status: ["ENDED"],
-          // Include PENDING so submitted-but-not-yet-evaluated attempts also show
-          // (as "Pending evaluation"). Marks/report stay gated until RELEASED.
-          release_result_status: ["RELEASED", "PENDING"],
+          release_result_status: ["RELEASED"],
           assessment_type: [assessment_types],
           sort_columns: {},
         },
@@ -150,12 +147,12 @@ const AssessmentReportList = ({
             pageNo,
             pageSize,
           },
-        }
+        },
       );
 
       const newReports = response.data.content;
       setReports((prev) =>
-        pageNo === 0 ? newReports : [...prev, ...newReports]
+        pageNo === 0 ? newReports : [...prev, ...newReports],
       );
       setHasMore(!response.data.last);
     } catch (err) {
@@ -179,12 +176,12 @@ const AssessmentReportList = ({
             setPageNo((prevPageNo) => prevPageNo + 1);
           }
         },
-        { threshold: 0.5 }
+        { threshold: 0.5 },
       );
 
       if (node) observer.current.observe(node);
     },
-    [loading, hasMore]
+    [loading, hasMore],
   );
 
   // Load initial data
@@ -201,10 +198,6 @@ const AssessmentReportList = ({
     };
   }, []);
 
-  // Legacy rows (no status field) are treated as released to preserve old behavior.
-  const isReportReleased = (report: Report) =>
-    report.report_release_status !== "PENDING";
-
   const formatDateTime = (dateString: string) => {
     try {
       return format(new Date(dateString), "dd/MM/yyyy hh:mm a");
@@ -216,12 +209,8 @@ const AssessmentReportList = ({
 
   if (error && reports.length === 0) {
     return (
-      <div className="p-4 md:p-6 lg:p-8">
-        <ErrorState
-          title="Could not load reports"
-          message={error}
-          onRetry={() => fetchReports()}
-        />
+      <div className="text-center py-4 text-destructive">
+        <p>{error}</p>
       </div>
     );
   }
@@ -239,38 +228,17 @@ const AssessmentReportList = ({
                 <CardTitle className="text-base sm:text-lg font-semibold text-foreground">
                   {report.assessment_name}
                 </CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  {report.evaluation_type && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs font-semibold px-2.5 py-0.5 border bg-slate-100 text-slate-700 border-slate-200"
-                    >
-                      {report.evaluation_type === "MANUAL" ? "Manual" : "Auto"}
-                    </Badge>
-                  )}
+                {assessment_types !== "HOMEWORK" && (
                   <Badge
                     variant="outline"
                     className={cn(
                       "text-xs font-semibold px-2.5 py-0.5 border",
-                      isReportReleased(report)
-                        ? "bg-green-100 text-green-700 border-green-200"
-                        : "bg-amber-100 text-amber-700 border-amber-200"
+                      playModeStyles[report.play_mode as PlayMode],
                     )}
                   >
-                    {isReportReleased(report) ? "Released" : "Pending evaluation"}
+                    {report.play_mode}
                   </Badge>
-                  {assessment_types !== "HOMEWORK" && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs font-semibold px-2.5 py-0.5 border",
-                        playModeStyles[report.play_mode as PlayMode]
-                      )}
-                    >
-                      {report.play_mode}
-                    </Badge>
-                  )}
-                </div>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -286,14 +254,14 @@ const AssessmentReportList = ({
                     <span className="font-medium text-foreground">
                       {getTerminology(
                         ContentTerms.Subjects,
-                        SystemTerms.Subjects
+                        SystemTerms.Subjects,
                       )}
                       :
                     </span>
                     <span>
                       {getSubjectNameById(
                         instituteDetails?.subjects || [],
-                        report?.subject_id
+                        report?.subject_id,
                       ) || "-"}
                     </span>
                   </div>
@@ -309,70 +277,47 @@ const AssessmentReportList = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-foreground">Marks:</span>
-                    <span>
-                      {isReportReleased(report)
-                        ? report.total_marks
-                        : "Awaiting evaluation"}
-                    </span>
+                    <span>{report.total_marks}</span>
                   </div>
-                  {metaParts.length > 0 && (
-                    <p className="mt-1 text-caption text-muted-foreground">
-                      {metaParts.join(" · ")}
-                    </p>
-                  )}
                 </div>
 
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div className="w-full md:w-auto mt-2 md:mt-0  flex flex-col md:flex-row gap-2">
                   <MyButton
-                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                    className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewAIReport(report)}
-                    disable={!isReportReleased(report)}
                   >
                     View AI Report
                   </MyButton>
-                  <MyButton
-                    buttonType="secondary"
-                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                  <Button
+                    variant="outline"
+                    className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewComparison(report)}
-                    disabled={!isReportReleased(report)}
                   >
                     Report
-                  </MyButton>
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-      })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ))}
 
       {loading && (
-        <div ref={loadingRef}>
-          <LoadingState variant="list" count={3} />
+        <div className="flex justify-center p-4" ref={loadingRef}>
+          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
         </div>
       )}
 
       {!hasMore && reports.length > 0 && (
-        <p className="text-center text-caption text-muted-foreground py-4">
+        <p className="text-center text-sm text-muted-foreground py-4">
           No more reports to load
         </p>
       )}
 
       {reports.length === 0 && !loading && (
-        <EmptyState
-          icon={FileText}
-          title="No reports yet"
-          description="Reports appear here once you finish a test and its results are released."
-          action={{
-            label: assessment_types === "HOMEWORK" ? "Go to homework" : "Go to tests",
-            onClick: () =>
-              navigate({
-                to:
-                  assessment_types === "HOMEWORK"
-                    ? "/homework/list"
-                    : "/assessment/examination",
-              }),
-          }}
-        />
+        <div className="text-center py-8">
+          <p className="text-muted-foreground text-sm">No reports found</p>
+        </div>
       )}
     </div>
   );

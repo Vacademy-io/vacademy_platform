@@ -6,7 +6,8 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.ZoomAccount;
 import vacademy.io.admin_core_service.features.live_session.provider.support.ByteArrayMultipartFile;
-import vacademy.io.common.media.service.FileService;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
 import java.net.HttpURLConnection;
@@ -19,11 +20,18 @@ import java.util.List;
  * Mirrors Zoom cloud recordings to Vacademy S3 (via the media service) so they
  * survive Zoom's ~30-day auto-delete. For each not-yet-mirrored recording it
  * downloads the bytes (authenticated with the account's S2S access token) and
- * uploads them through {@link FileService#uploadDataToS3}, then flips the
- * recording to {@code S3}: sets {@code fileId}, {@code recordingStorage=S3} and
- * clears {@code expiresAt} (no longer provider-expiring).
+ * uploads them through {@link MediaService#uploadFileV2}, then makes the S3 copy
+ * the recording's primary source: sets the real {@code fileId}, repoints
+ * {@code downloadUrl}/{@code playbackUrl} to our permanent public-S3 URL, marks
+ * {@code recordingStorage=S3}, clears {@code expiresAt} (no longer provider-expiring)
+ * and clears the now-irrelevant Zoom {@code passcode}. After this the recording
+ * plays/downloads/transcribes from our storage even once Zoom deletes its copy.
  *
- * Idempotent — recordings that already have a {@code fileId} are skipped, so it's
+ * <p>Uses {@code uploadFileV2} (not the legacy {@code uploadDataToS3}, which returned
+ * the S3 URL <em>as</em> the fileId) so the stored fileId is a real media-service id
+ * that {@code getPublicUrlForFileId} can resolve.
+ *
+ * Idempotent — recordings already on our S3 (real fileId) are skipped, so it's
  * safe to re-run (manual button + scheduled near-expiry rescue share this path).
  * Graceful — a per-recording failure leaves that recording untouched on Zoom Cloud
  * and the others proceed.
@@ -36,7 +44,7 @@ public class ZoomRecordingS3Service {
     private final ZoomAccountStore zoomAccountStore;
     private final ZoomAccessTokenService accessTokenService;
     private final ZoomRecordingService zoomRecordingService;
-    private final FileService fileService;
+    private final MediaService mediaService;
 
     /**
      * @param onlyNearExpiry when true, only mirror recordings expiring within
@@ -62,8 +70,8 @@ public class ZoomRecordingS3Service {
         long nearExpiryCutoff = Instant.now().plus(withinDays, ChronoUnit.DAYS).toEpochMilli();
 
         for (MeetingRecordingDTO rec : recordings) {
-            if (rec.getFileId() != null && !rec.getFileId().isBlank()) {
-                continue; // already on S3
+            if (isMirroredToS3(rec)) {
+                continue; // already on our S3
             }
             if (rec.getDownloadUrl() == null || rec.getDownloadUrl().isBlank()) {
                 continue; // nothing to download
@@ -82,8 +90,13 @@ public class ZoomRecordingS3Service {
                     continue;
                 }
                 String filename = buildFilename(schedule, rec);
-                String fileId = fileService.uploadDataToS3(
+                // uploadFileV2 returns a real media-service id AND the public-bucket URL.
+                // (The legacy uploadDataToS3 returned the URL *as* the id, so the stored
+                // "fileId" couldn't be resolved by getPublicUrlForFileId — the bug this fixes.)
+                FileDetailsDTO uploaded = mediaService.uploadFileV2(
                         new ByteArrayMultipartFile(bytes, filename, "video/mp4"));
+                String fileId = uploaded != null ? uploaded.getId() : null;
+                String s3Url = uploaded != null ? uploaded.getUrl() : null;
                 if (fileId == null || fileId.isBlank()) {
                     log.warn("zoom.s3.mirror upload returned no fileId recordingId={}", rec.getRecordingId());
                     continue;
@@ -91,6 +104,15 @@ public class ZoomRecordingS3Service {
                 rec.setFileId(fileId);
                 rec.setRecordingStorage("S3");
                 rec.setExpiresAt(null); // on our storage now — no provider auto-delete
+                // Replace the Zoom cloud URLs with our permanent public-S3 URL so the
+                // recording keeps playing/downloading (and transcribes) after Zoom's
+                // ~30-day auto-delete. The Zoom recording passcode no longer applies to
+                // an S3 URL, so clear it.
+                if (s3Url != null && !s3Url.isBlank()) {
+                    rec.setDownloadUrl(s3Url);
+                    rec.setPlaybackUrl(s3Url);
+                    rec.setPasscode(null);
+                }
                 mirrored++;
                 log.info("zoom.s3.mirror ok scheduleId={} recordingId={} fileId={} bytes={}",
                         schedule.getId(), rec.getRecordingId(), fileId, bytes.length);
@@ -105,6 +127,17 @@ public class ZoomRecordingS3Service {
             zoomRecordingService.replaceRecordings(schedule, recordings);
         }
         return mirrored;
+    }
+
+    /**
+     * A recording counts as "on our S3" only when it carries a real media-service
+     * fileId. Guards against a legacy bug where the upload helper stored the S3
+     * <em>URL</em> in the fileId field (an "http..." value that getPublicUrlForFileId
+     * can't resolve): such rows are treated as un-mirrored so a re-run repairs them.
+     */
+    private static boolean isMirroredToS3(MeetingRecordingDTO rec) {
+        String fileId = rec.getFileId();
+        return fileId != null && !fileId.isBlank() && !fileId.startsWith("http");
     }
 
     private static boolean isExpiringWithin(MeetingRecordingDTO rec, long cutoffEpochMillis) {

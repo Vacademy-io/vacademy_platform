@@ -19,4 +19,6 @@ export interface myDropDownProps {
     onValidation?: (isValid: boolean) => void;
     disable?: boolean;
     className?: string;
+    /** Extra classes for the dropdown menu panel (e.g. max-h-72 overflow-y-auto for long lists). */
+    contentClassName?: string;
 }

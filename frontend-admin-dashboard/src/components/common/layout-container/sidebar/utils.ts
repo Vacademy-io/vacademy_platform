@@ -450,6 +450,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/study-library/ai-copilot',
                 subItemId: 'create-course-ai',
             },
+            {
+                subItem: 'Bulk Content Upload',
+                subItemLink: '/study-library/bulk-content-uploading',
+                subItemId: 'bulk-content-uploading',
+            },
         ],
     },
     {

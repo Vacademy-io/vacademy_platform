@@ -136,7 +136,9 @@ const AssessmentReportList = ({
         {
           name: "",
           status: ["ENDED"],
-          release_result_status: ["RELEASED"],
+          // Include PENDING so submitted-but-not-yet-evaluated attempts also show
+          // (as "Pending evaluation"). Marks/report stay gated until RELEASED.
+          release_result_status: ["RELEASED", "PENDING"],
           assessment_type: [assessment_types],
           sort_columns: {},
         },
@@ -198,6 +200,10 @@ const AssessmentReportList = ({
     };
   }, []);
 
+  // Legacy rows (no status field) are treated as released to preserve old behavior.
+  const isReportReleased = (report: Report) =>
+    report.report_release_status !== "PENDING";
+
   const formatDateTime = (dateString: string) => {
     try {
       return format(new Date(dateString), "dd/MM/yyyy hh:mm a");
@@ -228,17 +234,38 @@ const AssessmentReportList = ({
                 <CardTitle className="text-base sm:text-lg font-semibold text-foreground">
                   {report.assessment_name}
                 </CardTitle>
-                {assessment_types !== "HOMEWORK" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {report.evaluation_type && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs font-semibold px-2.5 py-0.5 border bg-slate-100 text-slate-700 border-slate-200"
+                    >
+                      {report.evaluation_type === "MANUAL" ? "Manual" : "Auto"}
+                    </Badge>
+                  )}
                   <Badge
                     variant="outline"
                     className={cn(
                       "text-xs font-semibold px-2.5 py-0.5 border",
-                      playModeStyles[report.play_mode as PlayMode]
+                      isReportReleased(report)
+                        ? "bg-green-100 text-green-700 border-green-200"
+                        : "bg-amber-100 text-amber-700 border-amber-200"
                     )}
                   >
-                    {report.play_mode}
+                    {isReportReleased(report) ? "Released" : "Pending evaluation"}
                   </Badge>
-                )}
+                  {assessment_types !== "HOMEWORK" && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-xs font-semibold px-2.5 py-0.5 border",
+                        playModeStyles[report.play_mode as PlayMode]
+                      )}
+                    >
+                      {report.play_mode}
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -277,7 +304,11 @@ const AssessmentReportList = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-foreground">Marks:</span>
-                    <span>{report.total_marks}</span>
+                    <span>
+                      {isReportReleased(report)
+                        ? report.total_marks
+                        : "Awaiting evaluation"}
+                    </span>
                   </div>
                 </div>
 
@@ -285,6 +316,7 @@ const AssessmentReportList = ({
                   <MyButton
                     className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewAIReport(report)}
+                    disable={!isReportReleased(report)}
                   >
                     View AI Report
                   </MyButton>
@@ -292,6 +324,7 @@ const AssessmentReportList = ({
                     variant="outline"
                     className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewComparison(report)}
+                    disabled={!isReportReleased(report)}
                   >
                     Report
                   </Button>

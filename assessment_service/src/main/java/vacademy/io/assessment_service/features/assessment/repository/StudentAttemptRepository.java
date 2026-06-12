@@ -282,7 +282,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 CASE
                     WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
                     ELSE 'LIVE'
-                END AS assessmentStatus
+                END AS assessmentStatus,
+                sa.report_release_status AS reportReleaseStatus
             FROM public.assessment a
             LEFT JOIN public.assessment_institute_mapping aim
                 ON a.id = aim.assessment_id
@@ -351,7 +352,8 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 CASE
                     WHEN a.bound_end_time < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') THEN 'ENDED'
                     ELSE 'LIVE'
-                END AS assessmentStatus
+                END AS assessmentStatus,
+                sa.report_release_status AS reportReleaseStatus
             FROM public.assessment a
             LEFT JOIN public.assessment_institute_mapping aim
                 ON a.id = aim.assessment_id

@@ -6,6 +6,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { WorkflowDiagramSimple } from './workflow-diagram-simple';
 import { ExecutionHistoryTab } from './execution-history-tab';
 import { ExecutionFlowViewer } from './execution-flow-viewer';
+import { WorkflowConfigTab } from './workflow-config-tab';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, PencilSimple, Trash, Eye, Play, Warning } from '@phosphor-icons/react';
@@ -290,6 +291,7 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="mb-4">
                     <TabsTrigger value="diagram">Diagram</TabsTrigger>
+                    <TabsTrigger value="configuration">Configuration</TabsTrigger>
                     <TabsTrigger value="executions">Executions</TabsTrigger>
                     <TabsTrigger value="debug">
                         Debug
@@ -309,6 +311,10 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                     ) : (
                         <div className="flex items-center justify-center py-12 text-sm text-gray-400">No diagram data available</div>
                     )}
+                </TabsContent>
+
+                <TabsContent value="configuration">
+                    <WorkflowConfigTab workflowId={workflowId} />
                 </TabsContent>
 
                 <TabsContent value="executions">

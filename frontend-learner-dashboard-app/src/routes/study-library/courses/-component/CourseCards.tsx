@@ -447,10 +447,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
             </div>
 
-            <CardFooter className="p-4 pt-0 mt-auto flex gap-2">
+            <CardFooter className="p-4 pt-0 mt-auto flex flex-col gap-2">
                 <Button
                     className={cn(
-                        "flex-1 font-semibold shadow-sm group/btn",
+                        "w-full font-semibold shadow-sm group/btn",
                         // Vibrant: tenant primary tokens only (default Button styling)
                         "[.ui-vibrant_&]:shadow-md",
                         // Play mode: rounded, 3D press effect
@@ -478,7 +478,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     <Button
                         variant="outline"
                         className={cn(
-                            "shrink-0 font-semibold",
+                            "w-full font-semibold",
                             "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:text-play-ink",
                             "[.ui-play_&]:active:translate-y-0.5"
                         )}

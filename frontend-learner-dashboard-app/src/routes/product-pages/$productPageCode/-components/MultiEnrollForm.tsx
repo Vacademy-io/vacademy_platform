@@ -28,11 +28,15 @@ interface MultiEnrollFormProps {
 
 export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => { // design-lint-ignore: page-builder default color
     const {
-        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams,
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams, finalPrice,
     } = useProductPageStore();
 
     const currency = pageData.currency || 'INR';
     const currencySymbol = currency === 'INR' ? '₹' : currency;
+
+    // When the total payable is zero, the payment step auto-skips, so this button
+    // just advances to the (instant) enrollment — label it "Next" rather than "Continue to Payment".
+    const isFreeTotal = finalPrice() <= 0;
 
     // Only the courses from the URL (or DB-preselected) — shown in "Enrolling for"
     const primaryIds = useMemo(
@@ -342,7 +346,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                                 </>
                             ) : (
                                 <>
-                                    Continue to Payment
+                                    {isFreeTotal ? 'Next' : 'Continue to Payment'}
                                     <ArrowRight className="size-4" />
                                 </>
                             )}

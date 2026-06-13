@@ -33,6 +33,10 @@ export interface WorkflowBuilderState {
     nodes: Node[];
     edges: Edge[];
     selectedNodeId: string | null;
+    /** Set when editing an existing workflow — drives in-place update (PUT) vs create (POST). */
+    editingWorkflowId: string | null;
+    /** The persisted status of the workflow being edited — preserved so Test Run doesn't downgrade it to DRAFT. */
+    editingWorkflowStatus: string | null;
     workflowName: string;
     workflowDescription: string;
     workflowType: 'SCHEDULED' | 'EVENT_DRIVEN';
@@ -55,6 +59,8 @@ export interface WorkflowBuilderState {
     updateNodeName: (nodeId: string, name: string) => void;
     setWorkflowName: (name: string) => void;
     setWorkflowDescription: (description: string) => void;
+    setEditingWorkflowId: (id: string | null) => void;
+    setEditingWorkflowStatus: (status: string | null) => void;
     setWorkflowType: (type: 'SCHEDULED' | 'EVENT_DRIVEN') => void;
     setScheduleConfig: (config: Partial<ScheduleConfig>) => void;
     setTriggerConfig: (config: Partial<TriggerConfig>) => void;
@@ -82,6 +88,8 @@ const initialState = {
     nodes: [] as Node[],
     edges: [] as Edge[],
     selectedNodeId: null as string | null,
+    editingWorkflowId: null as string | null,
+    editingWorkflowStatus: null as string | null,
     workflowName: '',
     workflowDescription: '',
     workflowType: 'SCHEDULED' as const,
@@ -184,6 +192,8 @@ export const useWorkflowBuilderStore = create<WorkflowBuilderState>((set, get) =
     setWorkflowName: (name) => set({ workflowName: name, isDirty: true }),
     setWorkflowDescription: (description) =>
         set({ workflowDescription: description, isDirty: true }),
+    setEditingWorkflowId: (id) => set({ editingWorkflowId: id }),
+    setEditingWorkflowStatus: (status) => set({ editingWorkflowStatus: status }),
     setWorkflowType: (type) => set({ workflowType: type, isDirty: true }),
     setScheduleConfig: (config) =>
         set((state) => ({ scheduleConfig: { ...state.scheduleConfig, ...config }, isDirty: true })),

@@ -12,6 +12,13 @@ public interface WorkflowNodeMappingRepository extends JpaRepository<WorkflowNod
 
     List<WorkflowNodeMapping> findByWorkflowIdOrderByNodeOrderAsc(String workflowId);
 
+    /**
+     * Locate the mapping that links a workflow to one of its node templates. Used by the in-place
+     * node-config editor to scope updates (and toggle start/end flags) to the right workflow.
+     * Returns a list to be defensive, though createWorkflow gives each node its own template (1:1).
+     */
+    List<WorkflowNodeMapping> findByWorkflowIdAndNodeTemplateId(String workflowId, String nodeTemplateId);
+
     // ✅ Fetch workflow mapping along with nodeTemplate configJson
     @Query("SELECT w.nodeTemplateId, n.configJson " +
             "FROM WorkflowNodeMapping w JOIN NodeTemplate n ON w.nodeTemplateId = n.id " +

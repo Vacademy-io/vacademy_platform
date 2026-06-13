@@ -115,6 +115,7 @@ import {
 import { useCopyCourseContent } from '@/services/study-library/course-operations/copy-course-content';
 import { handleGetSlideCountDetails } from '../-services/get-slides-count';
 import { CopyContentLineageBadge } from './CopyContentLineageBadge';
+import { BulkUploadDialogButton } from '@/components/common/study-library/bulk-content-uploading/bulk-upload-dialog-button';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -1427,6 +1428,36 @@ export const CourseStructureDetails = ({
                             <CopyContentLineageBadge packageSessionId={batchPackageSessionId} />
                         </div>
                         <div className="flex items-center gap-2">
+                            {!readOnly && canEditStructure && !!packageSessionIds && (
+                                <BulkUploadDialogButton
+                                    context={{
+                                        courseId,
+                                        sessionId: selectedSession || '',
+                                        levelId,
+                                        packageSessionId: packageSessionIds,
+                                        courseDepth: courseStructure,
+                                        instituteId:
+                                            (tokenData &&
+                                                Object.keys(tokenData.authorities)[0]) ||
+                                            '',
+                                    }}
+                                    onCompleted={async () => {
+                                        const updatedSubjects = getCourseSubjects(
+                                            courseId,
+                                            selectedSession || '',
+                                            levelId
+                                        );
+                                        setSubjects(updatedSubjects);
+                                        if (updatedSubjects.length > 0 && packageSessionIds) {
+                                            const updatedModulesMap = await fetchModules({
+                                                subjects: updatedSubjects,
+                                                packageSessionIds,
+                                            });
+                                            setSubjectModulesMap(updatedModulesMap);
+                                        }
+                                    }}
+                                />
+                            )}
                             {!readOnly && canCopyContent && (
                                 <MyButton
                                     buttonType="secondary"

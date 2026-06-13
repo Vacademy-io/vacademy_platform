@@ -201,10 +201,25 @@ public class LearnerEnrollRequestService {
                     PaymentOption earlyPaymentOption = paymentOptionService.findById(enrollDTO.getPaymentOptionId());
                     if (earlyPaymentOption != null
                             && !PaymentOptionType.FREE.name().equals(earlyPaymentOption.getType())) {
-                        log.info(
-                                "Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
-                                earlyPaymentOption.getType());
-                        sendCredentials = false;
+                        // CPO "enroll without upfront payment" (no paymentInitiationRequest) creates an
+                        // ACTIVE UserPlan immediately — see createUserPlan(), where CPO is only
+                        // PENDING_FOR_PAYMENT when a payment request is present. Such a learner already
+                        // has course access, so they need their login credentials now; the SCHOOL payment
+                        // webhook (handleSchoolPayment) settles installments but never sends credentials.
+                        // Only suppress when access is genuinely gated on payment (plan -> PENDING_FOR_PAYMENT).
+                        boolean cpoActiveOnEnroll =
+                                PaymentOptionType.CPO.name().equals(earlyPaymentOption.getType())
+                                        && enrollDTO.getPaymentInitiationRequest() == null;
+                        if (!cpoActiveOnEnroll) {
+                            log.info(
+                                    "Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
+                                    earlyPaymentOption.getType());
+                            sendCredentials = false;
+                        } else {
+                            log.info(
+                                    "CPO enroll-without-payment (plan active on enroll). Sending credentials now "
+                                            + "instead of deferring to the payment webhook.");
+                        }
                     }
                 } catch (Exception e) {
                     log.warn("Could not determine payment type for credential email suppression: {}", e.getMessage());

@@ -15,7 +15,7 @@ import {
     ReassignmentVolumeWidget,
 } from './-components/TimeSeriesWidgets';
 import { CampaignCardsRow } from './-components/CampaignCardsRow';
-import { TeamPicker } from './-components/TeamPicker';
+import { TeamPicker } from '@/components/shared/crm/TeamPicker';
 import { ConversionBySourceWidget } from './-components/ConversionBySourceWidget';
 import { CallsPerDayWidget } from './-components/CallsPerDayWidget';
 import { InsightsStrip } from './-components/InsightsStrip';

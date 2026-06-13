@@ -212,7 +212,24 @@ Other read endpoints: `GET /v1/audience/lead/{responseId}` (single, fully hydrat
 | `GET /v1/reports/leads/summary?instituteId&fromDate&toDate[&teamId&counsellorUserId&audienceId&sourceType]` | Totals (leads / converted / lost / active / conversion rate / responded / avg response minutes / TAT-met % / overdue), `by_status`, `by_source`, `by_tier`, `trend_by_day` |
 | `GET /v1/reports/counselor-performance?instituteId&fromDate&toDate[&teamId&counsellorUserId&audienceId&sourceType]` | Per-counsellor rows: assigned, responded, conversions, conversion %, avg response time, TAT met %, open, overdue + summary |
 
-Since 2026-06-12 both endpoints are **RBAC-scoped** (mirroring `SalesDashboardService.scopedUsers`): a plain counsellor sees only their own numbers, a team head their subtree, an admin outside the leads team the leads-team scope (or unscoped when no leads team is configured). Explicit `counsellorUserId` outside a scoped caller's descendants returns 403. The per-lead counsellor identity is `COALESCE(linked_users.user_id, ulp.assigned_counselor_id)` across all seven report queries; an empty resolved scope yields a zeroed report, never a silent widening.
+Since 2026-06-12 both endpoints are **RBAC-scoped** (mirroring `SalesDashboardService.scopedUsers`): a plain counsellor sees only their own numbers, a team head their subtree, an admin outside the leads team the leads-team scope (or unscoped when no leads team is configured). Explicit `counsellorUserId` outside a scoped caller's descendants returns 403. The per-lead counsellor identity is `COALESCE(linked_users.user_id, ulp.assigned_counselor_id)` across all seven report queries; an empty resolved scope yields a zeroed report, never a silent widening. Scope resolution lives in [`ReportScopeResolver`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/ReportScopeResolver.java) (shared by all report services).
+
+**Wave 1 report endpoints (2026-06-12)** — same params (`instituteId`, `fromDate?`, `toDate?`, `teamId?`, `counsellorUserId?`), same RBAC, JdbcTemplate SQL in [`PipelineReportService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/PipelineReportService.java) + [`CallingReportService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/CallingReportService.java):
+
+| Path | Report |
+|---|---|
+| `GET /v1/reports/source-performance` | per-source leads / connected / interested / won / conv% (connected & interested sets are institute-configurable, see [LEADS_SETTINGS.md](LEADS_SETTINGS.md)) |
+| `GET /v1/reports/dispositions` | counsellor × status-change matrix (`lead_status_history.changed_by`) + per-counsellor call outcomes |
+| `GET /v1/reports/funnel-velocity` | stage entered / stock / median days-in-stage / advanced% / regressed (window functions over `lead_status_history`) |
+| `GET /v1/reports/calls-daily` | per-day + per-counsellor dials / connected / connect% / talk time |
+| `GET /v1/reports/calls-heatmap` | day-of-week × hour dials/connected, institute timezone |
+| `GET /v1/reports/followup-aging` | open-followup aging buckets per counsellor + 30d closure reasons |
+| `GET /v1/reports/activity-timeline` | per-counsellor activity volume (notes / calls / status changes / followups created+closed / total) + daily total series ([`ActivityReportService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/ActivityReportService.java)) |
+| `GET /v1/reports/team-rollup` | per-team aggregate for manager team-vs-team comparison ([`ManagerReportService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/ManagerReportService.java)); reuses `LeadReportService.getCounselorPerformance` per team, sums `counselor_pool_member.monthly_target` for attainment. The org-team model is **flat**, so "teams" = all institute teams (or the picked `teamId`), RBAC-narrowed to the caller |
+
+Day/hour bucketing uses the institute report timezone (`LEAD_SETTING.data.reports.timezone`, default Asia/Kolkata) via `AT TIME ZONE` — timestamps are stored UTC.
+
+> **Not built (deferred):** Revenue Report + Revenue Forecasting — both need a monetary value per won lead (payment-amount join / per-program price / manual entry); the product decision was to skip the revenue wave for now.
 
 There is also `POST /v1/audience/center-heatmap` (`AudienceAnalyticsController`) for engagement-by-center heatmaps, and internal endpoints under `/admin-core-service/internal` (converted-users-per-campaign for notification service, user-by-phone search, opt-out handling).
 

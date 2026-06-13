@@ -2,7 +2,6 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -14,22 +13,15 @@ import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
-import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
-import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
 import vacademy.io.common.auth.dto.UserDTO;
-import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
-import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -37,9 +29,9 @@ import java.util.stream.Collectors;
  * and per-counsellor performance. Pure aggregation over existing tables — never writes anything,
  * so it can never break any business rule. Date range defaults to the last 30 days when omitted.
  *
- * Every report is RBAC-scoped to the caller via {@link CounsellorScopeService} (same rules as
- * the sales dashboard — see {@link #resolveScopeUserIds}), and optionally narrowed by team,
- * counsellor, audience/campaign and source-type dimensions.
+ * Every report is RBAC-scoped to the caller via {@link ReportScopeResolver} (same rules as
+ * the sales dashboard), and optionally narrowed by team, counsellor, audience/campaign and
+ * source-type dimensions.
  */
 @Slf4j
 @Service
@@ -50,8 +42,7 @@ public class LeadReportService {
     private final LeadStatusRepository leadStatusRepository;
     private final LeadSlaConfigService leadSlaConfigService;
     private final AuthService authService;
-    private final CounsellorScopeService counsellorScopeService;
-    private final OrganizationTeamAuthClient orgTeamClient;
+    private final ReportScopeResolver reportScopeResolver;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
 
@@ -68,8 +59,8 @@ public class LeadReportService {
         Integer tatHours = resolveTatHours(instituteId); // null when TAT disabled
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
-        String scopeCsv = toScopeCsv(resolveScopeUserIds(
-                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId)));
+        String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
         String audienceFilter = trimToNull(audienceId);
         String sourceFilter = trimToNull(sourceType);
 
@@ -178,8 +169,8 @@ public class LeadReportService {
         Integer tatHours = resolveTatHours(instituteId);
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
-        String scopeCsv = toScopeCsv(resolveScopeUserIds(
-                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId)));
+        String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
 
         List<LeadReportProjections.CounselorRowProjection> raw = audienceResponseRepository
                 .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam,
@@ -249,81 +240,12 @@ public class LeadReportService {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // RBAC scope resolution
+    // Helpers
     // ─────────────────────────────────────────────────────────────────────
-
-    /**
-     * Resolve the counsellor-user whitelist this report should aggregate over.
-     * Mirrors SalesDashboardService.scopedUsers, with explicit narrowing on top.
-     *
-     * Priority:
-     *   1. Explicit {@code counsellorUserId} → that single counsellor. When the
-     *      caller is themselves inside the leads subtree, the target must sit
-     *      inside their RBAC descendants — 403 otherwise.
-     *   2. Explicit {@code teamId} → all users across that team's subtree,
-     *      intersected with the caller's RBAC scope when the caller is scoped.
-     *   3. Caller inside the leads subtree → their RBAC descendants. A leaf
-     *      counsellor resolves to just themselves — self-scoped reports are the
-     *      chosen product behavior.
-     *   4. Admin outside the leads subtree → everyone under the leads root.
-     *   5. Leads team not configured → null = institute-wide (admin setup mode).
-     *
-     * Returns null for "no scope filter". A non-empty list MUST be applied; an
-     * EMPTY list means "scoped to nothing" — the report comes back zeroed rather
-     * than silently widening back to institute-wide.
-     */
-    private List<String> resolveScopeUserIds(String instituteId, String callerUserId,
-                                             String teamId, String counsellorUserId) {
-        boolean callerScoped = counsellorScopeService.isCallerInLeadsSubtree(instituteId, callerUserId);
-        List<String> callerScope = callerScoped
-                ? counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId)
-                : Collections.emptyList();
-
-        if (counsellorUserId != null) {
-            if (callerScoped && !callerScope.contains(counsellorUserId)) {
-                throw new VacademyException(HttpStatus.FORBIDDEN,
-                        "You are not allowed to view reports for this counsellor.");
-            }
-            return List.of(counsellorUserId);
-        }
-
-        if (teamId != null) {
-            List<String> subtreeTeamIds = orgTeamClient.getSubtreeIncludingSelf(teamId).stream()
-                    .map(OrgTeamDTO::getId).collect(Collectors.toList());
-            List<String> teamUsers = counsellorScopeService.usersInTeams(subtreeTeamIds);
-            if (callerScoped) {
-                Set<String> allowed = new HashSet<>(callerScope);
-                teamUsers = teamUsers.stream().filter(allowed::contains).collect(Collectors.toList());
-            }
-            return teamUsers; // possibly empty → zeroed report, never silently unscoped
-        }
-
-        if (callerScoped && !callerScope.isEmpty()) {
-            return callerScope;
-        }
-
-        List<String> leadsTeamIds = counsellorScopeService.allTeamIdsUnderLeadsRoot(instituteId);
-        if (leadsTeamIds.isEmpty()) return null; // admin setup mode — no scope filter
-        List<String> users = counsellorScopeService.usersInTeams(leadsTeamIds);
-        return users.isEmpty() ? null : users;
-    }
-
-    /**
-     * null scope → null bind (no filter). EMPTY scope → "" — STRING_TO_ARRAY('', ',')
-     * is the empty array, so every row fails the scope predicate and the report comes
-     * back zeroed through the normal query path.
-     */
-    private static String toScopeCsv(List<String> scope) {
-        return scope == null ? null : String.join(",", scope);
-    }
 
     private static String trimToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────────────
 
     /** Read tat_hours when TAT is enabled; null otherwise (drives "is TAT shown?" downstream). */
     private Integer resolveTatHours(String instituteId) {

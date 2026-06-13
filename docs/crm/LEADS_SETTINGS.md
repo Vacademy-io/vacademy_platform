@@ -101,9 +101,16 @@ Stored under `institute.setting → LEAD_SETTING → data`. Read/written via `GE
       "min_sample_size": 5
     }
   }
+  "reports": {                                 // Reports Center config (2026-06-12)
+    "timezone": "Asia/Kolkata",                // day/hour bucketing TZ for all report SQL
+    "connected_call_statuses": ["COMPLETED"],  // which CallStatus values count as "connected"
+    "interested_status_keys": ["INTERESTED"]   // which lead statuses count as "interested" in the Source report
+  }
   // sibling sub-trees under LEAD_SETTING.data owned by other features (tat legacy, doubts query_types, …)
 }
 ```
+
+The `reports` subtree is edited via the **Reports card** in Lead Settings → Config ([`LeadReportSettings.tsx`](../../frontend-admin-dashboard/src/routes/settings/-components/LeadReportSettings.tsx) — read-modify-write merge, never clobbers siblings) and read by [`LeadReportSettingService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadReportSettingService.java) (5-min Caffeine cache; invalid/empty values fall back to the defaults shown).
 
 Frontend hook: [`use-lead-settings.ts`](../../frontend-admin-dashboard/src/hooks/use-lead-settings.ts) (query key `['lead-settings-config']`) with client-side defaults when the institute has never saved the setting.
 

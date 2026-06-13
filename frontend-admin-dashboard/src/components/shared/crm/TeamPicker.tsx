@@ -21,12 +21,13 @@ interface TeamPickerProps {
 }
 
 /**
- * Compact team-scope picker for the Sales Dashboard header.
+ * Compact team-scope picker shared by the CRM analytics surfaces
+ * (Sales Dashboard header, Reports Center filter bar).
  *
  * Resolves the caller's home team in the leads subtree via
  * GET /v1/counsellor-workbench/me/team. When that call fails (caller isn't
  * in the leads team — e.g. a plain admin) the picker hides entirely and the
- * dashboard keeps its current behavior (teamId = undefined).
+ * consuming page keeps its current behavior (teamId = undefined).
  *
  * Team names for the caller's descendant teams come from the org-team list
  * endpoint; descendants whose names can't be resolved (e.g. the caller lacks

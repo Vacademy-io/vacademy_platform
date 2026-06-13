@@ -30,6 +30,12 @@ export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';
 export { usePlaceCall } from './use-place-call';
 export {
+    openPostCallDisposition,
+    isPostCallAutoOpenDisabled,
+    type PostCallDispositionPayload,
+    type PostCallTerminalStatus,
+} from './post-call-disposition-sheet';
+export {
     LeadCallHistory,
     CallStatusPill,
     CallRecordingPlayButton,

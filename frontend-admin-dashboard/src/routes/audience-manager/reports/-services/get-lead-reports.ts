@@ -59,10 +59,12 @@ export interface LeadReportSummary {
 export async function fetchLeadReportSummary(
     instituteId: string,
     fromDate?: string,
-    toDate?: string
+    toDate?: string,
+    teamId?: string,
+    counsellorUserId?: string
 ): Promise<LeadReportSummary> {
     const { data } = await authenticatedAxiosInstance.get(GET_LEAD_REPORT_SUMMARY, {
-        params: { instituteId, fromDate, toDate },
+        params: { instituteId, fromDate, toDate, teamId, counsellorUserId },
     });
     return data;
 }
@@ -98,10 +100,12 @@ export interface CounselorPerformance {
 export async function fetchCounselorPerformance(
     instituteId: string,
     fromDate?: string,
-    toDate?: string
+    toDate?: string,
+    teamId?: string,
+    counsellorUserId?: string
 ): Promise<CounselorPerformance> {
     const { data } = await authenticatedAxiosInstance.get(GET_COUNSELOR_PERFORMANCE, {
-        params: { instituteId, fromDate, toDate },
+        params: { instituteId, fromDate, toDate, teamId, counsellorUserId },
     });
     return data;
 }

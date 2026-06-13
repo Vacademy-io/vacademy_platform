@@ -34,6 +34,8 @@ public class CommunityApplicationSecurityConfig {
             "/community-service/webjars/swagger-ui/**", "/community-service/api-docs/**",
             // Diagnostics endpoints - open for health dashboard
             "/community-service/diagnostics/**",
+            // Public status-page incidents - open for health dashboard
+            "/community-service/public/v1/status/**",
             // BBB server health check & management
             "/community-service/bbb/**" };
 

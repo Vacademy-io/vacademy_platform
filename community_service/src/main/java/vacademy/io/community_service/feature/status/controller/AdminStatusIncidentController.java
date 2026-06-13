@@ -1,11 +1,15 @@
 package vacademy.io.community_service.feature.status.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.community_service.feature.status.dto.AddIncidentUpdateRequest;
 import vacademy.io.community_service.feature.status.dto.CreateIncidentRequest;
 import vacademy.io.community_service.feature.status.dto.StatusIncidentDto;
@@ -13,20 +17,24 @@ import vacademy.io.community_service.feature.status.dto.UpdateIncidentRequest;
 import vacademy.io.community_service.feature.status.service.StatusIncidentService;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Admin management of status-page incidents. Restricted to users carrying the
- * "ADMIN" authority. The request is already authenticated by the JWT filter
- * (these paths are not in the security ALLOWED_PATHS allow-list).
+ * "ADMIN" role. The request is already authenticated by the JWT filter (these
+ * paths are not in the security ALLOWED_PATHS allow-list).
  */
 @RestController
 @RequestMapping("/community-service/admin/v1/status")
 public class AdminStatusIncidentController {
 
-    private static final String ADMIN_AUTHORITY = "ADMIN";
+    private static final String ADMIN_ROLE = "ADMIN";
 
     @Autowired
     private StatusIncidentService statusIncidentService;
+
+    @Autowired
+    private JwtService jwtService;
 
     @GetMapping("/incidents")
     public ResponseEntity<List<StatusIncidentDto>> getIncidents(@RequestAttribute("user") CustomUserDetails user) {
@@ -63,14 +71,66 @@ public class AdminStatusIncidentController {
         return ResponseEntity.noContent().build();
     }
 
+    // ---------------------------------------------------------------------
+
     private void requireAdmin(CustomUserDetails user) {
-        if (user == null || user.getAuthorities() == null) {
+        if (user == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
         }
-        boolean isAdmin = user.getAuthorities().stream()
-                .anyMatch(authority -> ADMIN_AUTHORITY.equalsIgnoreCase(authority.getAuthority()));
-        if (!isAdmin) {
+        if (!hasAdminRole(user)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ADMIN role required");
         }
+    }
+
+    /**
+     * The flat {@code getAuthorities()} list is only populated when the request's
+     * {@code clientId} header matches the user's institute. The status dashboard is a
+     * global tool and may not send a clientId, so we fall back to reading the role
+     * straight from the JWT's nested {@code authorities} claim (any institute).
+     */
+    private boolean hasAdminRole(CustomUserDetails user) {
+        if (user.getAuthorities() != null && user.getAuthorities().stream()
+                .anyMatch(a -> ADMIN_ROLE.equalsIgnoreCase(a.getAuthority()))) {
+            return true;
+        }
+        return jwtGrantsAdminInAnyInstitute();
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean jwtGrantsAdminInAnyInstitute() {
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) {
+                return false;
+            }
+            HttpServletRequest request = attrs.getRequest();
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return false;
+            }
+            String jwt = authHeader.substring(7);
+
+            // Claim shape: { "<instituteId>": { "permissions": [...], "roles": ["ADMIN", ...] }, ... }
+            Map<String, Object> authorities = jwtService.extractClaim(jwt,
+                    claims -> (Map<String, Object>) claims.get("authorities"));
+            if (authorities == null) {
+                return false;
+            }
+            for (Object instituteAuth : authorities.values()) {
+                if (instituteAuth instanceof Map) {
+                    Object roles = ((Map<String, Object>) instituteAuth).get("roles");
+                    if (roles instanceof List) {
+                        for (Object role : (List<Object>) roles) {
+                            if (role != null && ADMIN_ROLE.equalsIgnoreCase(role.toString())) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Treat any parsing failure as "not admin".
+        }
+        return false;
     }
 }

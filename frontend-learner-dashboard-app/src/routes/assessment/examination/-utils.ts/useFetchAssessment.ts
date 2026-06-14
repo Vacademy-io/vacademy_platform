@@ -16,7 +16,10 @@ import {
 } from "@/types/assessment";
 import { Storage } from "@capacitor/storage";
 import { safeJsonParse } from "@/utils/safe-json-parse";
-import { getAllSessionListFromStorage } from "@/services/studentDetails";
+import {
+  getAllSessionListFromStorage,
+  getEnrolledBatchIds,
+} from "@/services/studentDetails";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 
 export const getStoredDetails = async () => {
@@ -88,12 +91,14 @@ export const fetchAssessmentData = async (
 ) => {
   try {
     const { student, institute } = await getStoredDetails();
-    const sessions = await getAllSessionListFromStorage();
-    const batchIds = sessions?.map((session) => session.id) || [];
     if (!student || !institute) {
       toast.error("Missing student or institute details.");
       return;
     }
+    // Source batch_ids from a LIVE /details fetch (every enrolled batch) instead
+    // of the cached `sessionList`, which collapses to a single primary batch for
+    // multi-batch learners and hides assessments on their other batches.
+    const batchIds = await getEnrolledBatchIds(institute.id, student.user_id);
 
     const requestBody = {
       name: "",

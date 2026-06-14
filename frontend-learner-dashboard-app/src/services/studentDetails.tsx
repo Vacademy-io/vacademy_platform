@@ -417,3 +417,45 @@ export const getAllSessionListFromStorage = async (): Promise<
     return null;
   }
 };
+
+// 🎯 Resolve the learner's enrolled batch (package_session) IDs from a LIVE
+// /details fetch — the authoritative list of every active enrollment.
+//
+// Why not just read the cached `sessionList`? That cache is built at login by
+// intersecting the learner's enrollments with `institute.batches_for_sessions`.
+// But institutes now hydrate from `…/institute/v1/details-non-batches`, which
+// returns `batches_for_sessions: null`, so the intersection yields nothing and
+// callers fall back to `student.package_session_id` — a SINGLE primary batch.
+// A learner enrolled in several batches then only ever queries that one batch,
+// hiding assessments/content that live on their other batches (and re-login
+// can't fix it because the cache derivation itself is the bug). Sourcing batch
+// IDs straight from `/details` sidesteps the cache entirely. Falls back to the
+// cached session list (then []) so a transient/offline failure degrades
+// gracefully instead of showing nothing.
+export const getEnrolledBatchIds = async (
+  instituteId: string,
+  userId: string
+): Promise<string[]> => {
+  try {
+    const response = await fetchStudentDetails(instituteId, userId);
+    const records: Student[] = Array.isArray(response?.data)
+      ? response.data
+      : [];
+    const ids = records
+      .map((r) => r.package_session_id)
+      .filter((id): id is string => Boolean(id));
+    if (ids.length > 0) return Array.from(new Set(ids));
+  } catch (error) {
+    console.warn(
+      "⚠️ Live /details fetch for batch IDs failed, falling back to cached session list:",
+      error
+    );
+  }
+
+  const sessions = await getAllSessionListFromStorage();
+  return (
+    (sessions
+      ?.map((s) => s.id)
+      .filter((id): id is string => Boolean(id)) as string[]) || []
+  );
+};

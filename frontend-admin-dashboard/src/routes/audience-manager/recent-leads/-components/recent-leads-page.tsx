@@ -424,7 +424,14 @@ const RecentLeadsContent = () => {
         [setSelectedStudent, updateTier, placeCall]
     );
 
-    const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+    // The backend mirrors a per-response status change onto the user's profile
+    // conversion_status, so the side-view agrees. Invalidate the profile/batch caches too
+    // (not just the list) or the side-view could still serve a stale cached profile.
+    const handleStatusUpdated = () => {
+        queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+        queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+    };
 
     const toggleColumn = (id: string) =>
         setHiddenColumns((prev) => {

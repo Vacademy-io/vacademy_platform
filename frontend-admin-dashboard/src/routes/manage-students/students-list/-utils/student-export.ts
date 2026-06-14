@@ -257,6 +257,10 @@ export const getStudentExportColumns = (): ExportColumn[] => {
     ];
 
     // Append a column per institute custom field, formatted the same way the table does.
+    // Mirror the learner-list table exactly: it includes EVERY institute custom field
+    // (see generateCustomFieldColumns / getAllCustomFieldsForLearnerList) and
+    // intentionally ignores the institute-wide `visibility.learnersList` flag — so the
+    // export must too, otherwise a field shown in the table is silently dropped here.
     const cache = getCustomFieldSettingsFromCache();
     if (cache) {
         const seen = new Set<string>();
@@ -267,14 +271,12 @@ export const getStudentExportColumns = (): ExportColumn[] => {
         ];
         for (const field of customFields) {
             if (!field.id || !field.name || seen.has(field.id)) continue;
-            // Skip custom fields the institute hid from the learner list.
-            if (field.visibility && field.visibility.learnersList === false) continue;
             seen.add(field.id);
             columns.push({
                 id: `custom_${field.id}`,
                 label: convertToUpperCase(field.name),
                 group: 'Custom Fields',
-                defaultSelected: false,
+                defaultSelected: true,
                 getValue: (s) =>
                     formatCustomFieldValue(str(s.custom_fields?.[field.id]), field.type),
             });

@@ -12,11 +12,13 @@ import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
+import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
@@ -52,6 +54,7 @@ public class UserLeadProfileService {
     private final AudienceResponseRepository audienceResponseRepository;
     private final AudienceRepository audienceRepository;
     private final LeadScoreRepository leadScoreRepository;
+    private final LeadStatusRepository leadStatusRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final TimelineEventRepository timelineEventRepository;
     private final WorkflowTriggerService workflowTriggerService;
@@ -202,8 +205,86 @@ public class UserLeadProfileService {
         // counsellor) — status changes by admins don't count toward TAT.
 
         UserLeadProfile saved = userLeadProfileRepository.save(profile);
+
+        // Mirror onto the user's audience_response.lead_status_id so the leads list — which
+        // resolves its status as COALESCE(lead_status_id -> key, conversion_status), i.e.
+        // prefers the per-response id — reflects this side-view change. Best-effort: a
+        // cascade failure must never break the status update the admin actually requested.
+        try {
+            syncResponsesLeadStatus(userId, instituteId, status);
+        } catch (Exception e) {
+            log.warn("Failed to mirror conversion_status onto audience responses for user={} institute={}",
+                    userId, instituteId, e);
+        }
+
         emitStatusChanged(saved, "CONVERSION_STATUS", oldStatus, status);
         return saved;
+    }
+
+    /**
+     * Mirror a per-response lead-status change (made from the leads list, which writes
+     * audience_response.lead_status_id) onto the user's profile conversion_status, so the
+     * side-view — which reads conversion_status — shows the same value.
+     *
+     * <p>Update-only: never creates a profile. A lead shown in the list has already been
+     * scored, so its profile exists; if it somehow doesn't, the list still renders the
+     * per-response key and the profile gets created by the next score event. Update-only
+     * also avoids the cross-institute INSERT that the global unique on user_lead_profile.user_id
+     * would reject.</p>
+     *
+     * <p>Does NOT emit LEAD_STATUS_CHANGED — the caller (LeadStatusService.changeLeadStatus)
+     * already emits it at the response grain, so emitting here would double-fire.</p>
+     */
+    @Transactional
+    public void mirrorConversionStatusFromLead(String userId, String instituteId, String statusKey) {
+        if (userId == null || instituteId == null || statusKey == null) return;
+        userLeadProfileRepository.findByUserIdAndInstituteId(userId, instituteId).ifPresent(profile -> {
+            if (Objects.equals(profile.getConversionStatus(), statusKey)) return; // no-op
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            profile.setConversionStatus(statusKey);
+            profile.setConvertedAt("CONVERTED".equals(statusKey) ? now : null);
+            profile.setUpdatedAt(now);
+            userLeadProfileRepository.save(profile);
+        });
+    }
+
+    /**
+     * Push the user's chosen conversion status down onto every audience_response they own
+     * within the institute, by resolving the matching lead_status catalog row and stamping
+     * its id on audience_response.lead_status_id. This is what keeps the leads list (which
+     * reads lead_status_id first) in sync with a side-view status change.
+     *
+     * <p>Sets the field directly rather than routing through LeadStatusService.changeLeadStatus
+     * so we don't re-emit per-response triggers/history — the profile-level LEAD_STATUS_CHANGED
+     * and the journey timeline event already record this change. No catalog row for the key
+     * (shouldn't happen — the side-view only offers catalog statuses) → leave lead_status_id as-is.</p>
+     */
+    private void syncResponsesLeadStatus(String userId, String instituteId, String statusKey) {
+        LeadStatus target = leadStatusRepository.findByInstituteIdAndStatusKey(instituteId, statusKey).orElse(null);
+        if (target == null) return;
+
+        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+        if (responses.isEmpty()) return;
+
+        // Responses carry audienceId, not instituteId — resolve the institute per response so
+        // we only touch rows belonging to THIS institute (a user can be a lead in several).
+        Set<String> audienceIds = responses.stream()
+                .map(AudienceResponse::getAudienceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<String, String> audienceToInstitute = audienceIds.isEmpty() ? Collections.emptyMap()
+                : audienceRepository.findAllById(audienceIds).stream()
+                        .collect(Collectors.toMap(Audience::getId, Audience::getInstituteId, (a, b) -> a));
+
+        List<AudienceResponse> toUpdate = responses.stream()
+                .filter(r -> instituteId.equals(audienceToInstitute.get(r.getAudienceId())))
+                .filter(r -> !target.getId().equals(r.getLeadStatusId()))
+                .collect(Collectors.toList());
+
+        if (!toUpdate.isEmpty()) {
+            toUpdate.forEach(r -> r.setLeadStatusId(target.getId()));
+            audienceResponseRepository.saveAll(toUpdate);
+        }
     }
 
     /**

@@ -234,6 +234,38 @@ function Slides() {
   const { setOpen: setAppSidebarOpen } = useSidebar();
   const navigate = useNavigate();
 
+  // Tracks the URL slideId the slide-selection effect last resolved against, so
+  // a re-run can tell "the learner navigated (slideId changed)" apart from "the
+  // slides cache just refreshed (slideId unchanged)". Prev/Next move the active
+  // slide through the store WITHOUT touching the URL, so on a plain refetch the
+  // effect must keep the store's slide instead of snapping back to the stale
+  // URL slideId. Seeded to a sentinel so the very first run always resolves.
+  const lastResolvedSlideIdRef = useRef<string | undefined>(undefined);
+  const hasResolvedOnceRef = useRef(false);
+
+  // Mirror the active slide into the URL when the learner uses Prev/Next, so the
+  // course-tree sidebar (highlights by URL slideId) and a browser refresh track
+  // the current slide. The search updater preserves every other param; replace
+  // keeps slide stepping out of the back-button history.
+  const handleNavigateToSlide = useCallback(
+    (newSlideId: string) => {
+      navigate({
+        to: "/study-library/courses/course-details/subjects/modules/chapters/slides",
+        search: {
+          courseId,
+          levelId,
+          subjectId,
+          moduleId,
+          chapterId,
+          slideId: newSlideId,
+          sessionId,
+        },
+        replace: true,
+      });
+    },
+    [navigate, courseId, levelId, subjectId, moduleId, chapterId, sessionId]
+  );
+
   const { data: packageSessionIdFromStore } = useQuery({
     queryKey: ["packageSessionId"],
     queryFn: async () => {
@@ -464,13 +496,22 @@ function Slides() {
 
       const completion = calculateOverallCompletion(accessibleSlides);
 
-      // Priority 1: If course is 100% completed AND the user hasn't explicitly
-      // asked for a specific slide via URL. The !slideId gate matters because
-      // this effect re-runs on every slideId change — without the gate, every
-      // Next / Previous / sidebar click on a completed chapter would re-route
-      // back to the first slide (or feedback), making the chapter feel locked.
+      // Did this run start because the learner navigated (URL slideId changed)
+      // or because the slides cache just refreshed (slideId unchanged)? Compare
+      // against the last resolved value, then record the current one for the
+      // next run. The first run for this component always counts as "changed".
+      const slideIdChanged =
+        !hasResolvedOnceRef.current || lastResolvedSlideIdRef.current !== slideId;
+      hasResolvedOnceRef.current = true;
+      lastResolvedSlideIdRef.current = slideId;
+
+      // Priority 1: First-time chapter completion auto-opens the feedback slide
+      // exactly once. This is the only auto-route allowed to override the slide
+      // the learner is currently on. Returning visitors (feedback already seen)
+      // intentionally fall through to the preserve-current-slide guard below
+      // instead of being reset to the first slide on every refetch. The
+      // !slideId gate keeps explicit deep links / sidebar navigation in control.
       if (completion === 100 && !slideId) {
-        // Check if user has already seen feedback for this course
         const feedbackSeenKey = `feedback_seen_${courseId}_${chapterId}`;
         const hasSeenFeedback = localStorage.getItem(feedbackSeenKey);
 
@@ -479,10 +520,28 @@ function Slides() {
           localStorage.setItem(feedbackSeenKey, "true");
           setActiveItem(feedbackSlide);
           return;
-        } else {
-          // User returning to completed course - show first slide for better UX
-          setActiveItem(slidesWithFeedback[0]);
-          return;
+        }
+      }
+
+      // Preserve the learner's current position across slides-cache refreshes.
+      // When the URL slideId did NOT change, this run was triggered by a slides
+      // refetch (progress heartbeats write to ["slides", chapterId] every few
+      // seconds), NOT by navigation. Prev/Next and the default sidebar move the
+      // active slide through the store without updating the URL, so re-resolving
+      // here would snap the learner back to the stale URL slideId — the
+      // bounce-back. If they already have a valid, unlocked slide selected, keep
+      // it. When slideId DID change (deep link, play-theme sidebar), fall
+      // through so Priority 2 honors the explicit navigation.
+      if (!slideIdChanged) {
+        const currentItem = useContentStore.getState().activeItem;
+        if (currentItem) {
+          const stillPresent = slidesWithFeedback.some(
+            (s) => s.id === currentItem.id
+          );
+          const currentLocked =
+            !!evaluations[currentItem.id] &&
+            isItemLocked(evaluations[currentItem.id]);
+          if (stillPresent && !currentLocked) return;
         }
       }
 
@@ -595,7 +654,9 @@ function Slides() {
         }
       }
 
-      // Priority 3: Default to first slide
+      // Default: first slide. Reached on initial load / chapter change, or when
+      // the previously active slide is no longer in the list. The preserve-
+      // current-slide guard above already short-circuits plain cache refreshes.
       setActiveItem(slidesWithFeedback[0]);
     }
   }, [
@@ -1589,7 +1650,7 @@ function Slides() {
             {activeItem?.id === "feedback-slide" ? (
               <FeedbackPage />
             ) : (
-              <SlideMaterial />
+              <SlideMaterial onNavigateToSlide={handleNavigateToSlide} />
             )}
           </SidebarProvider>
         </ModulesWithChaptersProvider>

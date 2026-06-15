@@ -153,7 +153,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     }
 
     if (!formData.comma_separated_org_roles) {
-      toast.error('At least one organization role is required');
+      toast.error('At least one practice role is required');
       return;
     }
 
@@ -561,7 +561,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
 
                 {/* Organization Roles - Always shown */}
                 <div>
-                  <Label htmlFor="roles">Organization Roles *</Label>
+                  <Label htmlFor="roles">Practice Roles *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <div className="flex min-h-10 w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">

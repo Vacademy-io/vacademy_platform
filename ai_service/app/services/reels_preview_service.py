@@ -18,11 +18,19 @@ Design notes:
 - If the LLM key is missing or the call fails / response is malformed, a
   pure-heuristic fallback produces usable (but coarser) importance scores.
   The Phase-1 product can ship with the fallback; the LLM is quality polish.
-- The cut planner is deterministic: greedy selection of lowest-importance
-  words until predicted duration matches target ± tolerance. Constraints:
-    * never cut importance ≥ 2
-    * each merged cut span is ≥80ms (avoid sub-syllable artifacts) and ≤2s
-      (longer cuts feel jumpy even with crossfade)
+- The cut planner is deterministic and duration-driven, in three steps
+  (each later step only runs if the reel is still over target + tolerance):
+    1. silence spans — every prosody pause ≥0.4s inside the window is
+       trimmed down to a 0.15s breathing gap (kind="silence"). The
+       constants mirror the engagement scorer's predicted_after_silence_s
+       math so scan-time prediction and the rendered edit agree.
+    2. disfluency runs — whole runs of importance==0 words (fillers,
+       repeats, false starts), and ONLY when the run borders a ≥120ms
+       pause or a window edge. Isolated mid-clause holes are never
+       punched; importance ≥ 1 words are never auto-cut.
+    3. edge shrink — drop a whole trailing (preferred) or leading
+       sentence when fillers alone can't reach target.
+  Any remaining excess is left to the render-time speed_multiplier.
 """
 from __future__ import annotations
 
@@ -36,6 +44,10 @@ from typing import Any, Optional, Sequence
 import httpx
 
 from ..config import get_settings
+from .reels_engagement_service import (
+    SILENCE_TRIM_MIN_GAP_S,
+    SILENCE_TRIM_THRESHOLD_S,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +63,24 @@ _LLM_DEFAULT_MODEL = "anthropic/claude-3-5-haiku"
 
 # Cut planner constraints.
 MIN_CUT_SPAN_S = 0.080         # below this = sub-syllable, audible artifact risk
-MAX_CUT_SPAN_S = 2.000         # longer than this feels jumpy even with crossfade
+# Cap on a single auto word/filler cut. A run of importance-0 words longer
+# than this almost always means the importance labels are wrong (the LLM
+# wrote off a whole clause) — we skip the run rather than auto-delete that
+# much speech. Silence spans and window-edge sentence drops are exempt:
+# nothing meaningful is inside them.
+MAX_CUT_SPAN_S = 2.000
 # B2 (2026-05-22) — user-toggled cuts (kind="user") from the FE trim UI can
 # run longer than auto-cuts because the user explicitly judges the span as
 # removable. Up to 15s per single user span; the audio_edit pipeline uses
 # atrim+concat which handles arbitrary-length joins cleanly at word
 # boundaries (the FE only lets users toggle whole words, not partial spans).
 MAX_USER_CUT_SPAN_S = 15.000
-# Validation drops sub-MIN_CUT_SPAN_S spans (lossy step). The planner over-
-# marks by this fraction so the validated total still hits the target.
-# Empirically ~10% covers typical stutter-heavy windows; higher would risk
-# cutting actually-needed words on clean transcripts.
-CUT_OVERSHOOT_FRACTION = 0.15
+# Grammar safety for word-level cuts. A splice is only inaudible-as-an-edit
+# when it lands where the speaker actually paused; a cut span must border a
+# gap at least this long (or a window edge) on one side. This is what stops
+# the planner from punching isolated mid-clause holes (deleted pronouns /
+# copulas in the middle of a sentence).
+PAUSE_ADJACENCY_MIN_GAP_S = 0.120
 
 # Heuristic filler — single-word disfluencies. Importance 0 by default in
 # the fallback path.
@@ -235,7 +253,13 @@ class ReelsPreviewService:
         emojis_arr: list[str] = []
         corrections: list[dict] = []
         if self.has_llm:
-            llm_out = await self._call_llm(words, candidate_row, topic_keywords)
+            llm_out = await self._call_llm(
+                words,
+                candidate_row,
+                topic_keywords,
+                target_duration_sec=target_duration_sec,
+                duration_tolerance_sec=duration_tolerance_sec,
+            )
             if llm_out is not None:
                 title, rationale, importance_arr, emojis_arr, corrections = llm_out
                 method = "llm"
@@ -270,15 +294,17 @@ class ReelsPreviewService:
             candidate_t_end=candidate_row.source_t_end,
         )
 
-        # 4. Cut planner.
-        predicted_after_silence_s = _get_predicted_after_silence(
-            candidate_row, words
-        )
+        # 4. Cut planner. Silence spans are planned from the indexer's
+        # prosody pauses — the same signal the scan-time scorer used for
+        # predicted_after_silence_s, so prediction and edit agree.
+        pauses = (context.get("prosody") or {}).get("pauses") or []
         cut_plan, predicted_final = plan_cuts(
             words,
             target_duration_sec=target_duration_sec,
             duration_tolerance_sec=duration_tolerance_sec,
-            predicted_after_silence_s=predicted_after_silence_s,
+            window_t_start=float(candidate_row.source_t_start),
+            window_t_end=float(candidate_row.source_t_end),
+            pauses=pauses,
         )
 
         return EnrichedPayload(
@@ -311,6 +337,9 @@ class ReelsPreviewService:
         words: list[_Word],
         candidate_row: Any,
         topic_keywords: Sequence[str],
+        *,
+        target_duration_sec: int,
+        duration_tolerance_sec: int,
     ) -> Optional[tuple[str, str, list[int], list[str], list[dict]]]:
         """One LLM call returning (title, rationale, importance, emojis, corrections).
 
@@ -323,14 +352,23 @@ class ReelsPreviewService:
         importance-array length mismatch — caller falls back to heuristic.
         """
         system = _SYSTEM_PROMPT
-        user = _build_user_prompt(words, candidate_row, topic_keywords)
+        user = _build_user_prompt(
+            words,
+            candidate_row,
+            topic_keywords,
+            target_duration_sec=target_duration_sec,
+            duration_tolerance_sec=duration_tolerance_sec,
+        )
         payload = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.2,  # low — we want consistent rankings
+            # 0.7 — the hook-line title needs creative range. Importance
+            # scoring is anchored by the 0-3 rubric plus the deterministic
+            # floors applied after the call, so it tolerates the heat.
+            "temperature": 0.7,
             "max_tokens": 1500,
         }
         headers = {
@@ -409,123 +447,264 @@ def plan_cuts(
     *,
     target_duration_sec: int,
     duration_tolerance_sec: int,
-    predicted_after_silence_s: float,
+    window_t_start: float,
+    window_t_end: float,
+    pauses: Sequence[dict] = (),
 ) -> tuple[list[_CutSpan], float]:
-    """Greedy cut planner. Returns (cut_plan, predicted_final_duration_s).
+    """Deterministic cut planner. Returns (cut_plan, predicted_final_duration_s).
 
-    Algorithm:
-      1. If already within tolerance, no cuts needed.
-      2. We need to remove `excess_s = predicted_after_silence_s - target` seconds.
-      3. Sort cuttable words (importance ≤ 1) by (importance asc, duration desc)
-         so we cut the most-filler-y and longest first (fewer total cut points
-         → fewer crossfade artifacts).
-      4. Mark words until `accumulated_s ≥ excess_s * (1 + overshoot)` so
-         validation losses still leave us inside tolerance (P18 fix).
-      5. Merge consecutive marks → spans.
-      6. Validate: drop sub-80ms spans, split spans >2s into 2s chunks.
-      7. If validation losses still left us short of target, iterate: mark
-         more cuttable words, re-validate. Bounded retries protect against
-         pathological cases.
+    Three duration-driven steps — each later step only runs while the reel
+    is still over `target + tolerance`:
+
+      1. Silence: every prosody pause ≥ SILENCE_TRIM_THRESHOLD_S that lies
+         fully inside the window is trimmed down to a SILENCE_TRIM_MIN_GAP_S
+         breathing gap (kind="silence"). The constants mirror the engagement
+         scorer's `predicted_after_silence_s` math, so the scan-time
+         prediction and the rendered edit describe the same audio. Silence
+         trim is unconditional in the plan; render time honors
+         PaceConfig.silence_trim by dropping these spans where the trim_map
+         is derived (reels_audio_edit_service).
+      2. Disfluency runs: maximal runs of importance==0 words (fillers,
+         repeats, false starts) cut whole — only when the run borders a
+         ≥ PAUSE_ADJACENCY_MIN_GAP_S gap or a window edge on at least one
+         side. Importance ≥ 1 words are never auto-cut: deleting glue words
+         mid-clause makes speech ungrammatical, which is worse than missing
+         the duration target.
+      3. Edge shrink: drop a whole trailing (preferred — the head carries
+         the hook) or leading sentence, only when the shrink lands inside
+         [target - tol, target + tol].
+
+    Any remaining excess is left to the render-time speed_multiplier.
+    Predicted duration is computed from the UNION of all spans, so spans
+    planned from different signals (prosody pauses vs ASR word timing)
+    can brush against each other without double-counting savings.
     """
+    window_duration = max(0.0, window_t_end - window_t_start)
     if not words:
-        return [], max(0.0, predicted_after_silence_s)
+        return [], window_duration
 
-    tolerance_s = float(duration_tolerance_sec)
     target_s = float(target_duration_sec)
-    excess_s = predicted_after_silence_s - target_s
+    tolerance_s = float(duration_tolerance_sec)
 
-    # Within tolerance OR already shorter than target — no word-cuts needed.
-    if excess_s <= tolerance_s:
-        return [], max(0.0, predicted_after_silence_s)
+    # 1. Silence spans — emitted before any word math so the remaining
+    # excess for word cuts is computed against the post-silence duration.
+    plan: list[_CutSpan] = _plan_silence_spans(
+        words, pauses, window_t_start, window_t_end
+    )
 
-    # Cuttable list, sorted once. (importance asc, -duration) is a static
-    # preference order — we'll iterate through it across retry rounds.
-    cuttable_idxs = [w.idx for w in words if w.importance <= 1]
-    cuttable_idxs.sort(key=lambda i: (words[i].importance, -words[i].duration))
-    if not cuttable_idxs:
-        return [], max(0.0, predicted_after_silence_s)
+    def _predicted() -> float:
+        return max(0.0, window_duration - _union_duration_s(plan))
 
-    marked: set[int] = set()
-    cursor = 0  # how far we've consumed cuttable_idxs across retries
+    if _predicted() - target_s <= tolerance_s:
+        return plan, _predicted()
 
-    # Budget the planner aims for. Overshoot by CUT_OVERSHOOT_FRACTION on the
-    # first pass; later passes scale up if validation drops too much.
-    needed_s = excess_s
-    budget_s = needed_s * (1.0 + CUT_OVERSHOOT_FRACTION)
+    # 2. Disfluency runs, longest first (most seconds saved per seam).
+    runs = _disfluency_runs(words)
+    runs.sort(key=lambda r: -r.duration)
+    for run in runs:
+        if _predicted() - target_s <= tolerance_s:
+            break
+        # Don't let one long run swing the reel from too-long to too-short.
+        if window_duration - _union_duration_s(plan + [run]) < target_s - tolerance_s:
+            continue
+        plan.append(run)
+    plan.sort(key=lambda s: s.t_start)
 
-    validated: list[_CutSpan] = []
-    MAX_RETRIES = 3
-    for _attempt in range(MAX_RETRIES):
-        # Mark more words until budget is met OR cuttable list exhausted.
-        accumulated_s = sum(words[i].duration for i in marked)
-        while cursor < len(cuttable_idxs) and accumulated_s < budget_s:
-            idx = cuttable_idxs[cursor]
-            cursor += 1
-            if idx in marked:
+    if _predicted() - target_s <= tolerance_s:
+        return plan, _predicted()
+
+    # 3. Edge shrink to the nearest sentence boundary.
+    edge_span = _plan_edge_shrink(
+        words,
+        plan,
+        window_t_start=window_t_start,
+        window_t_end=window_t_end,
+        window_duration=window_duration,
+        target_s=target_s,
+        tolerance_s=tolerance_s,
+    )
+    if edge_span is not None:
+        plan.append(edge_span)
+        plan.sort(key=lambda s: s.t_start)
+
+    return plan, _predicted()
+
+
+def _plan_silence_spans(
+    words: list[_Word],
+    pauses: Sequence[dict],
+    window_t_start: float,
+    window_t_end: float,
+) -> list[_CutSpan]:
+    """kind="silence" spans: each pause ≥ threshold fully inside the window,
+    trimmed down to the keep-gap. The kept gap is split half-before /
+    half-after the cut so both sides of the seam keep breathing room (the
+    audio service's de-click fades also want a few ms to land in).
+
+    Only pauses that lie ENTIRELY inside the window count — same rule the
+    engagement scorer applies when computing predicted_after_silence_s.
+    Edge-straddling dead air is the window snapper's problem, not ours.
+    """
+    spans: list[_CutSpan] = []
+    half_gap = SILENCE_TRIM_MIN_GAP_S / 2.0
+    for p in pauses or ():
+        if not isinstance(p, dict):
+            continue
+        try:
+            ps = float(p.get("start", 0.0))
+            pe = float(p.get("end", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if ps < window_t_start or pe > window_t_end:
+            continue
+        if pe - ps < SILENCE_TRIM_THRESHOLD_S:
+            continue
+        cs, ce = ps + half_gap, pe - half_gap
+        # Defensive clamp: ASR word timings occasionally bleed into a
+        # prosody-detected pause. Never let a silence cut clip speech —
+        # shrink to the word-free middle, or drop the pause entirely when
+        # a word sits strictly inside it (distrust the signal).
+        intruded = False
+        for w in words:
+            if w.t_end <= cs or w.t_start >= ce:
                 continue
-            marked.add(idx)
-            accumulated_s += words[idx].duration
-
-        if not marked:
-            return [], max(0.0, predicted_after_silence_s)
-
-        # Merge consecutive marked words into spans.
-        marked_sorted = sorted(marked)
-        spans: list[_CutSpan] = []
-        run_start_idx = marked_sorted[0]
-        run_last_idx = run_start_idx
-        for idx in marked_sorted[1:]:
-            if idx == run_last_idx + 1:
-                run_last_idx = idx
-                continue
-            spans.append(_make_span(words, run_start_idx, run_last_idx))
-            run_start_idx = idx
-            run_last_idx = idx
-        spans.append(_make_span(words, run_start_idx, run_last_idx))
-
-        # Validate + split too-long spans.
-        validated = []
-        for span in spans:
-            if span.duration < MIN_CUT_SPAN_S:
-                # Sub-syllable — skip to avoid audible artifact.
-                continue
-            if span.duration <= MAX_CUT_SPAN_S:
-                validated.append(span)
-                continue
-            # Too long — split into MAX_CUT_SPAN_S chunks.
-            cur = span.t_start
-            while cur < span.t_end:
-                next_end = min(cur + MAX_CUT_SPAN_S, span.t_end)
-                if next_end - cur >= MIN_CUT_SPAN_S:
-                    validated.append(_CutSpan(cur, next_end, span.kind))
-                cur = next_end
-
-        cuts_total_s = sum(c.duration for c in validated)
-        # Are we within tolerance?
-        predicted_final = max(0.0, predicted_after_silence_s - cuts_total_s)
-        if predicted_final - target_s <= tolerance_s:
-            return validated, predicted_final
-        # Still over target — bump budget for another pass. Stop if we've
-        # exhausted the cuttable list (predicted_final reflects best effort).
-        if cursor >= len(cuttable_idxs):
-            return validated, predicted_final
-        # Bump budget by the validation-loss gap + a fresh overshoot margin.
-        residual_s = (predicted_final - target_s) - tolerance_s
-        budget_s += max(0.5, residual_s * (1.0 + CUT_OVERSHOOT_FRACTION))
-
-    # Should be unreachable — MAX_RETRIES with bumping budget converges. Best
-    # effort return on the off chance we're stuck.
-    cuts_total_s = sum(c.duration for c in validated)
-    return validated, max(0.0, predicted_after_silence_s - cuts_total_s)
+            if w.t_start <= cs:
+                cs = max(cs, w.t_end)
+            elif w.t_end >= ce:
+                ce = min(ce, w.t_start)
+            else:
+                intruded = True
+                break
+        if intruded:
+            continue
+        if ce - cs >= MIN_CUT_SPAN_S:
+            spans.append(_CutSpan(cs, ce, "silence"))
+    spans.sort(key=lambda s: s.t_start)
+    return spans
 
 
-def _make_span(words: list[_Word], start_idx: int, end_idx: int) -> _CutSpan:
-    t_start = words[start_idx].t_start
-    t_end = words[end_idx].t_end
-    # Tag the span "filler" if every word in the run has importance 0;
-    # otherwise "word".
-    all_filler = all(words[i].importance == 0 for i in range(start_idx, end_idx + 1))
-    return _CutSpan(t_start=t_start, t_end=t_end, kind="filler" if all_filler else "word")
+def _disfluency_runs(words: list[_Word]) -> list[_CutSpan]:
+    """Candidate kind="filler" spans: maximal runs of consecutive
+    importance==0 words that qualify for a grammar-safe cut.
+
+    A run is split wherever the inter-word gap reaches
+    SILENCE_TRIM_THRESHOLD_S — that gap belongs to the silence planner,
+    and keeping the two span kinds disjoint keeps the duration math exact.
+
+    Qualification rules:
+      - The run must border a gap ≥ PAUSE_ADJACENCY_MIN_GAP_S (or a window
+        edge) on at least one side. A run covering a whole phrase between
+        two pauses qualifies via either side; an isolated mid-clause word
+        does not — splicing there is audible AND ungrammatical.
+      - MIN_CUT_SPAN_S ≤ duration ≤ MAX_CUT_SPAN_S. Longer runs mean the
+        importance labels probably wrote off a whole clause; skip rather
+        than auto-delete that much speech.
+    """
+    n = len(words)
+    out: list[_CutSpan] = []
+    i = 0
+    while i < n:
+        if words[i].importance != 0:
+            i += 1
+            continue
+        j = i
+        while (
+            j + 1 < n
+            and words[j + 1].importance == 0
+            and (words[j + 1].t_start - words[j].t_end) < SILENCE_TRIM_THRESHOLD_S
+        ):
+            j += 1
+        gap_before = (
+            float("inf") if i == 0
+            else words[i].t_start - words[i - 1].t_end
+        )
+        gap_after = (
+            float("inf") if j == n - 1
+            else words[j + 1].t_start - words[j].t_end
+        )
+        if max(gap_before, gap_after) >= PAUSE_ADJACENCY_MIN_GAP_S:
+            span = _CutSpan(words[i].t_start, words[j].t_end, "filler")
+            if MIN_CUT_SPAN_S <= span.duration <= MAX_CUT_SPAN_S:
+                out.append(span)
+        i = j + 1
+    return out
+
+
+# Sentence terminator at the end of a token, tolerating trailing quotes /
+# brackets ("end." / "end?\"" / "end.)").
+_SENTENCE_END_RE = re.compile(r"[.!?…]['\"’”)\]]*$")
+
+
+def _plan_edge_shrink(
+    words: list[_Word],
+    plan: list[_CutSpan],
+    *,
+    window_t_start: float,
+    window_t_end: float,
+    window_duration: float,
+    target_s: float,
+    tolerance_s: float,
+) -> Optional[_CutSpan]:
+    """Last duration lever before speed_multiplier: drop a whole sentence
+    off a window edge (kind="word"). Tail first — the head carries the
+    hook. Returns the single best span, or None when no sentence-granular
+    shrink lands inside [target - tol, target + tol].
+
+    The candidate span runs all the way to the window edge so trailing /
+    leading dead air goes with the sentence. Overlap with already-planned
+    spans is fine — predicted duration is union-based.
+    """
+    sentence_ends = [
+        i for i, w in enumerate(words) if _SENTENCE_END_RE.search(w.text.strip())
+    ]
+    if not sentence_ends:
+        return None
+
+    def _try(span: _CutSpan) -> Optional[float]:
+        """Predicted duration with `span` added, or None if it misses the
+        acceptance band."""
+        if span.duration < MIN_CUT_SPAN_S:
+            return None
+        predicted = max(0.0, window_duration - _union_duration_s(plan + [span]))
+        if target_s - tolerance_s <= predicted <= target_s + tolerance_s:
+            return predicted
+        return None
+
+    n = len(words)
+    # Tail: latest sentence end first = smallest shrink. Skip the final
+    # word — if it terminates a sentence there's nothing after it to drop.
+    for k in reversed(sentence_ends):
+        if k >= n - 1:
+            continue
+        span = _CutSpan(words[k + 1].t_start, window_t_end, "word")
+        if _try(span) is not None:
+            return span
+
+    # Head: earliest sentence end first = smallest shrink.
+    for k in sentence_ends:
+        if k >= n - 1:
+            continue
+        span = _CutSpan(window_t_start, words[k + 1].t_start, "word")
+        if _try(span) is not None:
+            return span
+    return None
+
+
+def _union_duration_s(spans: list[_CutSpan]) -> float:
+    """Total seconds covered by the spans' union (overlap-safe)."""
+    total = 0.0
+    cur_start: Optional[float] = None
+    cur_end: Optional[float] = None
+    for s in sorted(spans, key=lambda x: x.t_start):
+        if cur_end is None or s.t_start > cur_end:
+            if cur_end is not None and cur_start is not None:
+                total += cur_end - cur_start
+            cur_start, cur_end = s.t_start, s.t_end
+        else:
+            cur_end = max(cur_end, s.t_end)
+    if cur_end is not None and cur_start is not None:
+        total += cur_end - cur_start
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -783,21 +962,6 @@ def _enforce_deterministic_floors(
             if w.t_start <= et <= w.t_end:
                 w.importance = max(w.importance, 2)
                 break
-
-
-def _get_predicted_after_silence(candidate_row: Any, words: list[_Word]) -> float:
-    """Recover `predicted_after_silence_s` from the candidate's stored
-    breakdown. If unavailable (older row), fall back to the words' span."""
-    try:
-        bd = candidate_row.breakdown or {}
-        val = bd.get("predicted_after_silence_s")
-        if val is not None:
-            return float(val)
-    except Exception:
-        pass
-    if not words:
-        return 0.0
-    return max(0.0, words[-1].t_end - words[0].t_start)
 
 
 def _parse_llm_response(
@@ -1121,7 +1285,7 @@ Editorial principles:
 - The end of the window biases toward 2-3 (callback/payoff matters for retention).
 
 Also produce:
-- title:     a working title ≤8 words, ≤60 chars, no quotes around it.
+- title:     a scroll-stopping hook line for the reel — the sentence that makes a viewer stop mid-feed. Spoken style, the way the speaker would actually say it ("This one mistake costs you years"). ≤8 words, ≤60 chars, no quotes around it, no ALL-CAPS clickbait.
 - rationale: ≤20 words explaining why this clip is worth rendering. Mention the hook, the payoff, and one concrete content beat.
 
 Required: emoji punctuation on high-impact words.
@@ -1182,6 +1346,9 @@ def _build_user_prompt(
     words: list[_Word],
     candidate_row: Any,
     topic_keywords: Sequence[str],
+    *,
+    target_duration_sec: int,
+    duration_tolerance_sec: int,
 ) -> str:
     """Compact word-indexed prompt — keeps response bandwidth small."""
     duration = candidate_row.source_t_end - candidate_row.source_t_start
@@ -1189,6 +1356,11 @@ def _build_user_prompt(
     parts.append(
         f"Window: source seconds {candidate_row.source_t_start:.1f}–{candidate_row.source_t_end:.1f} "
         f"({duration:.1f}s total, {len(words)} words)."
+    )
+    parts.append(
+        f"Target reel duration: {target_duration_sec}s "
+        f"(±{duration_tolerance_sec}s). Long pauses and importance-0 words "
+        f"are what gets cut to reach it — score with that budget in mind."
     )
     safe_keywords = _sanitize_topic_keywords(topic_keywords)
     if safe_keywords:

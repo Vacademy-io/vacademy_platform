@@ -34,6 +34,14 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
     Page<TelephonyCallLog> findByUserIdAndInstituteIdOrderByCreatedAtDesc(
             String userId, String instituteId, Pageable pageable);
 
+    /**
+     * All calls placed/received by one counsellor in an institute — powers the
+     * manager's "Calls" coaching tab in the counsellor workbench drawer.
+     * Served by idx_tcl_counsellor (counsellor_user_id, created_at DESC).
+     */
+    Page<TelephonyCallLog> findByCounsellorUserIdAndInstituteIdOrderByCreatedAtDesc(
+            String counsellorUserId, String instituteId, Pageable pageable);
+
     Page<TelephonyCallLog> findByResponseIdOrderByCreatedAtDesc(String responseId, Pageable pageable);
 
     /**

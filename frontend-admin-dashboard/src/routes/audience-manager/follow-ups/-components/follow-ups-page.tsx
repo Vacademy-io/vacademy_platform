@@ -21,11 +21,14 @@ import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
+    CompleteFollowUpPopover,
     LeadEmptyState,
     LeadTable,
+    usePlaceCall,
     useUpdateLeadTier,
     recentLeadToVM,
     type LeadActionHandlers,
+    type LeadTableExtraColumn,
 } from '@/components/shared/leads';
 import { FollowUpStatTiles } from './follow-up-stat-tiles';
 import {
@@ -64,6 +67,8 @@ const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 const FETCH_PAGE_SIZE = 200;
 // Hidden on this surface to keep triage focused — easy to surface again in v2.
 const HIDDEN_COLUMNS = new Set(['score', 'source']);
+// Static cache keys every mutation on this page must refresh.
+const INVALIDATE_KEYS: string[][] = [['follow-ups'], ['lead-profiles-batch']];
 
 export const FollowUpsPage = () => {
     const { setNavHeading } = useNavHeadingStore();
@@ -117,6 +122,9 @@ const FollowUpsContent = () => {
         userId: string;
         userName: string;
         responseId?: string;
+        /** Pre-select a dialog tab — 'FOLLOW_UP' for the "schedule next" flow
+         *  after marking a follow-up complete. */
+        initialActionType?: string;
     } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
@@ -177,8 +185,8 @@ const FollowUpsContent = () => {
     const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
-    const invalidateKeys: string[][] = [['follow-ups'], ['lead-profiles-batch']];
-    const updateTier = useUpdateLeadTier({ invalidateKeys });
+    const updateTier = useUpdateLeadTier({ invalidateKeys: INVALIDATE_KEYS });
+    const placeCall = usePlaceCall({ invalidateKeys: INVALIDATE_KEYS });
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -194,8 +202,58 @@ const FollowUpsContent = () => {
                 ? (userId, userName) => setCounsellorTarget({ userId, userName })
                 : undefined,
             onSetTier: (userId, _userName, tier) => updateTier.mutate({ userId, tier }),
+            onCallLead: (vm, preferredNumberId) => {
+                if (!vm.responseId) return;
+                placeCall.mutate({
+                    responseId: vm.responseId,
+                    userId: vm.userId ?? undefined,
+                    preferredNumberId,
+                });
+            },
+            canCall: (vm) => {
+                if (!vm.responseId) return { allowed: false, reason: 'Lead has no submission id' };
+                const phone = vm.phone && vm.phone !== '-' ? vm.phone : '';
+                if (!phone) return { allowed: false, reason: 'Lead has no phone on file' };
+                if (placeCall.isPending)
+                    return { allowed: false, reason: 'Another call is starting…' };
+                return { allowed: true };
+            },
         }),
-        [setSelectedStudent, updateTier, isAdmin]
+        [setSelectedStudent, updateTier, isAdmin, placeCall]
+    );
+
+    // Inline "Mark complete" row action — the close flow for the follow-up the
+    // row represents. Rows are leads (one row can carry several open
+    // follow-ups), so the popover fetches the lead's open follow-ups on demand
+    // and the user completes the pending one. "Schedule next" re-opens the
+    // add-note dialog on the Follow Up tab.
+    const extraColumns: LeadTableExtraColumn[] = useMemo(
+        () => [
+            {
+                id: 'complete',
+                header: 'Action',
+                thClass: 'w-32',
+                render: (vm) =>
+                    vm.responseId && vm.userId ? (
+                        <CompleteFollowUpPopover
+                            audienceResponseId={vm.responseId}
+                            userId={vm.userId}
+                            invalidateKeys={INVALIDATE_KEYS}
+                            onScheduleNext={() =>
+                                setNoteTarget({
+                                    userId: vm.userId!,
+                                    userName: vm.name,
+                                    responseId: vm.responseId,
+                                    initialActionType: 'FOLLOW_UP',
+                                })
+                            }
+                        />
+                    ) : (
+                        <span className="text-sm text-neutral-300">—</span>
+                    ),
+            },
+        ],
+        []
     );
 
     const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
@@ -221,6 +279,7 @@ const FollowUpsContent = () => {
                 actions={actions}
                 onStatusUpdated={handleStatusUpdated}
                 hiddenColumns={HIDDEN_COLUMNS}
+                extraColumns={extraColumns}
             />
         );
     } else if (error) {
@@ -243,6 +302,7 @@ const FollowUpsContent = () => {
                 actions={actions}
                 onStatusUpdated={handleStatusUpdated}
                 hiddenColumns={HIDDEN_COLUMNS}
+                extraColumns={extraColumns}
                 emptyState={
                     <LeadEmptyState
                         title={emptyTitle(isAdmin, bucket, counts)}
@@ -340,6 +400,15 @@ const FollowUpsContent = () => {
                         onOpenChange={(o) => !o && setNoteTarget(null)}
                         userId={noteTarget.userId}
                         userName={noteTarget.userName}
+                        // Without the response id the dialog's Follow Up tab is
+                        // permanently disabled (canSubmit requires it).
+                        audienceResponseId={noteTarget.responseId}
+                        initialActionType={noteTarget.initialActionType}
+                        // Scheduling a follow-up changes followUpDueAt — refresh
+                        // the queue so the new task appears without a reload.
+                        onSuccess={() =>
+                            queryClient.invalidateQueries({ queryKey: ['follow-ups'] })
+                        }
                     />
                 )}
                 {counsellorTarget && (

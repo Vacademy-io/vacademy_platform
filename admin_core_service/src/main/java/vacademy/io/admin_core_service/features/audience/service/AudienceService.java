@@ -171,6 +171,10 @@ public class AudienceService {
     @Autowired
     private UserLeadProfileService userLeadProfileService;
 
+    /** Shared bell-alert sender — same notification every assignment path uses. */
+    @Autowired
+    private LeadAssignmentNotifier leadAssignmentNotifier;
+
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
 
@@ -524,7 +528,8 @@ public class AudienceService {
                     try {
                         assignManualCounsellor(
                                 leadUserIdForAssignment, instituteIdForAssignment,
-                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName());
+                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                                userForNotification.getFullName(), audience.getCampaignName());
                     } catch (Exception e) {
                         logger.error("Failed to assign manual counsellor for response {}: {}",
                                 savedResponse.getId(), e.getMessage());
@@ -785,9 +790,11 @@ public class AudienceService {
      * and assigned_counselor_name (the fields the leads table renders) via the same service
      * the manual-assign UI uses. Looks the display name up from auth_service when the caller
      * didn't supply one, so the Counsellor column shows a name rather than "Unassigned".
+     * Also sends the standard new-lead bell alert to the owner ({@code leadName} /
+     * {@code campaignName} just flavour the alert text; both may be null).
      */
     private void assignManualCounsellor(String leadUserId, String instituteId,
-            String counsellorId, String counsellorName) {
+            String counsellorId, String counsellorName, String leadName, String campaignName) {
         if (!StringUtils.hasText(leadUserId) || !StringUtils.hasText(counsellorId)) {
             return;
         }
@@ -804,6 +811,11 @@ public class AudienceService {
             }
         }
         userLeadProfileService.assignCounselor(leadUserId, instituteId, counsellorId, name);
+
+        // Bell notification to the new owner — mirrors the pool auto-assign
+        // alert so a bulk-imported lead owner hears about their lead too.
+        // Best-effort inside the notifier; never fails the import row.
+        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName);
     }
 
     /**
@@ -1560,6 +1572,17 @@ public class AudienceService {
                 } catch (Exception e) {
                     logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
                             enquiry.getId(), e.getMessage());
+                }
+
+                // Bell to the counsellor — same alert every other assignment path sends.
+                try {
+                    String campaignName = audienceId != null
+                            ? audienceRepository.findById(audienceId).map(Audience::getCampaignName).orElse(null)
+                            : null;
+                    leadAssignmentNotifier.notifyAssigned(instituteId, finalCounsellorId, null, campaignName);
+                } catch (Exception e) {
+                    logger.warn("Failed to notify counsellor {} for enquiry {}: {}",
+                            finalCounsellorId, enquiry.getId(), e.getMessage());
                 }
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);

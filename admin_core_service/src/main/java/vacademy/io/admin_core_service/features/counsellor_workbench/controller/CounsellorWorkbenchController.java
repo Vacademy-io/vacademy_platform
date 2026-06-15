@@ -31,7 +31,7 @@ public class CounsellorWorkbenchController {
     private final LeadWorkbenchSettingService configService;
 
     // ────────────────────────────────────────────────────────────────
-    // Config (leads_team_id)
+    // Config (leads_team_id + rating strategy)
     // ────────────────────────────────────────────────────────────────
 
     @GetMapping("/config")
@@ -39,9 +39,39 @@ public class CounsellorWorkbenchController {
         return ResponseEntity.ok(configService.get(instituteId));
     }
 
+    /**
+     * Partial upsert of the workbench config. Two frontend pages PUT here
+     * with different payload shapes:
+     * <ul>
+     *   <li>Leads-team picker — {@code {institute_id, leads_team_id}} only
+     *       (leads_team_id may be an explicit null to CLEAR the team);</li>
+     *   <li>Rating settings — the full config echo with rating fields set
+     *       (its leads_team_id is whatever GET returned, possibly null when
+     *       the team was never configured).</li>
+     * </ul>
+     * setLeadsTeam(null) REMOVES the team, so we only honour a null
+     * leads_team_id when the payload carries no rating fields — a
+     * rating-settings save must never wipe an existing team just because
+     * the echoed leads_team_id was null.
+     */
     @PutMapping("/config")
     public ResponseEntity<WorkbenchConfig> updateConfig(@RequestBody WorkbenchConfig request) {
-        return ResponseEntity.ok(configService.setLeadsTeam(request.getInstituteId(), request.getLeadsTeamId()));
+        boolean hasRatingFields = request.getStrategyType() != null
+                || request.getStartingRating() != null
+                || request.getWindowDays() != null
+                || request.getSuccessStatusKeys() != null
+                || request.getWConversion() != null
+                || request.getWVelocity() != null
+                || request.getIdealVelocityHours() != null
+                || request.getWorstVelocityHours() != null
+                || request.getMinSampleSize() != null;
+        if (hasRatingFields) {
+            configService.upsertRatingStrategy(request);
+        }
+        if (request.getLeadsTeamId() != null || !hasRatingFields) {
+            configService.setLeadsTeam(request.getInstituteId(), request.getLeadsTeamId());
+        }
+        return ResponseEntity.ok(configService.get(request.getInstituteId()));
     }
 
     // ────────────────────────────────────────────────────────────────

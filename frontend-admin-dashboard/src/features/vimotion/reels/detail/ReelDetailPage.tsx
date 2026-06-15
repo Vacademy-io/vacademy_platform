@@ -20,6 +20,7 @@ import {
     Download,
     Edit3,
     PlayCircle,
+    RotateCcw,
     Scissors,
     Trash2,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useReel } from '../hooks/useReel';
+import { useRetryReel } from '../hooks/useRetryReel';
 import { deleteReel, type ReelResponse } from '../services/reels-api';
 import { VimotionLoader } from '../../brand/VimotionLoader';
 import { StageProgressList } from './StageProgressList';
@@ -43,8 +45,7 @@ export function ReelDetailPage({ reelId }: ReelDetailPageProps) {
     const apiKey = useVimotionApiKey(instituteId);
     const reelQuery = useReel({ apiKey: apiKey.data, reelId });
 
-    const goBackToList = () =>
-        navigate({ to: '/vim/dashboard', search: { tab: 'reels' } });
+    const goBackToList = () => navigate({ to: '/vim/dashboard', search: { tab: 'reels' } });
 
     return (
         <div className="min-h-screen bg-[#FAFAF7]">
@@ -97,9 +98,13 @@ function ReelDetailBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }
 
 function RunningBody({ reel }: { reel: ReelResponse }) {
     const title = getTitle(reel);
+    // Server-written note explaining a parked bar (e.g. waiting for a render
+    // slot while the worker is at capacity). Cleared server-side when the
+    // render actually starts moving.
+    const stageNote = (reel.metadata as { stage_note?: string } | undefined)?.stage_note;
     return (
         <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-5">
+            <div className="space-y-5 lg:col-span-2">
                 <header>
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">
                         <VimotionLoader size={12} className="text-blue-700" label="Rendering" />
@@ -107,9 +112,14 @@ function RunningBody({ reel }: { reel: ReelResponse }) {
                     </span>
                     <h2 className="mt-3 text-xl font-semibold text-neutral-900">{title}</h2>
                     <p className="mt-1 text-sm text-neutral-500">
-                        We poll every 3 seconds — leave this page open or check back later
-                        from the Reels tab.
+                        We poll every 3 seconds — leave this page open or check back later from the
+                        Reels tab.
                     </p>
+                    {stageNote && (
+                        <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 ring-1 ring-amber-200">
+                            {stageNote}
+                        </p>
+                    )}
                 </header>
 
                 <div>
@@ -122,9 +132,7 @@ function RunningBody({ reel }: { reel: ReelResponse }) {
                 </div>
 
                 <section>
-                    <h3 className="mb-3 text-sm font-semibold text-neutral-900">
-                        Pipeline stages
-                    </h3>
+                    <h3 className="mb-3 text-sm font-semibold text-neutral-900">Pipeline stages</h3>
                     <StageProgressList reel={reel} />
                 </section>
             </div>
@@ -149,10 +157,7 @@ function CompletedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string })
     const aspect = (reel.config?.aspect as string | undefined) ?? '9:16';
     const isVertical = aspect === '9:16';
 
-    const editorSearch = useMemo(
-        () => buildEditorSearch(reel, apiKey),
-        [reel, apiKey]
-    );
+    const editorSearch = useMemo(() => buildEditorSearch(reel, apiKey), [reel, apiKey]);
 
     const openInEditor = () => {
         if (!editorSearch) {
@@ -182,14 +187,14 @@ function CompletedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string })
         <div className="grid gap-6 lg:grid-cols-3">
             <div
                 className={cn(
-                    'lg:col-span-2 flex flex-col items-center',
+                    'flex flex-col items-center lg:col-span-2',
                     isVertical ? 'lg:col-span-1' : 'lg:col-span-2'
                 )}
             >
                 <div
                     className={cn(
                         'overflow-hidden rounded-xl bg-black shadow-lg',
-                        isVertical ? 'aspect-[9/16] max-w-sm w-full' : 'aspect-video w-full'
+                        isVertical ? 'aspect-[9/16] w-full max-w-sm' : 'aspect-video w-full'
                     )}
                 >
                     {videoUrl ? (
@@ -207,12 +212,7 @@ function CompletedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string })
                 </div>
             </div>
 
-            <aside
-                className={cn(
-                    'space-y-5',
-                    isVertical ? 'lg:col-span-2' : 'lg:col-span-1'
-                )}
-            >
+            <aside className={cn('space-y-5', isVertical ? 'lg:col-span-2' : 'lg:col-span-1')}>
                 <div>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
                         Ready
@@ -267,19 +267,36 @@ function CompletedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string })
 // ---------------------------------------------------------------------------
 
 function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
-    void apiKey; // retry-via-/render uses input_asset + candidate, slice 5+
     const navigate = useNavigate();
+    const retryMutation = useRetryReel({ apiKey, reelId: reel.reel_id });
+
+    const handleRetry = () => {
+        retryMutation.mutate(undefined, {
+            onSuccess: () => toast.success('Retrying render — same clip, same settings.'),
+            onError: (e) => toast.error(e.message),
+        });
+    };
+
     return (
         <div className="space-y-6">
             <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
                 <div className="flex items-start gap-3">
                     <AlertCircle className="mt-0.5 size-6 text-red-600" />
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                         <h2 className="text-base font-semibold text-red-800">Render failed</h2>
                         <p className="mt-1 text-sm text-red-700">
                             {reel.error_message ?? 'Unknown error.'}
                         </p>
-                        <div className="mt-4 flex gap-2">
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={handleRetry}
+                                disabled={retryMutation.isPending}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <RotateCcw className="size-4" />
+                                {retryMutation.isPending ? 'Retrying…' : 'Retry render'}
+                            </button>
                             <button
                                 type="button"
                                 onClick={() =>
@@ -290,7 +307,7 @@ function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
                                         },
                                     })
                                 }
-                                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700"
+                                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50"
                             >
                                 Pick another candidate from this video
                             </button>
@@ -309,9 +326,7 @@ function FailedBody({ reel, apiKey }: { reel: ReelResponse; apiKey: string }) {
             </div>
 
             <section>
-                <h3 className="mb-3 text-sm font-semibold text-neutral-900">
-                    What had completed
-                </h3>
+                <h3 className="mb-3 text-sm font-semibold text-neutral-900">What had completed</h3>
                 <StageProgressList reel={reel} />
             </section>
         </div>
@@ -347,8 +362,7 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
         ? `${meta.output_resolution.width ?? '?'}×${meta.output_resolution.height ?? '?'}`
         : '—';
     const hasUserCuts =
-        typeof meta.cut_plan_override_count === 'number'
-        && meta.cut_plan_override_count > 0;
+        typeof meta.cut_plan_override_count === 'number' && meta.cut_plan_override_count > 0;
     return (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
             <Fact label="Aspect" value={(reel.config?.aspect as string) ?? '9:16'} />
@@ -369,9 +383,7 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
             <Fact
                 label="Render time"
                 value={
-                    meta.render_duration_s != null
-                        ? `${meta.render_duration_s.toFixed(0)}s`
-                        : '—'
+                    meta.render_duration_s != null ? `${meta.render_duration_s.toFixed(0)}s` : '—'
                 }
             />
             {hasUserCuts && (
@@ -399,9 +411,7 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
 }
 
 function SourceClipFacts({ reel }: { reel: ReelResponse }) {
-    const window = reel.source_window as
-        | { t_start?: number; t_end?: number }
-        | undefined;
+    const window = reel.source_window as { t_start?: number; t_end?: number } | undefined;
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
             <dl className="space-y-2">
@@ -445,8 +455,7 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 
 function getTitle(reel: ReelResponse): string {
     return (
-        (reel.config?.enriched_snapshot as { title?: string } | undefined)?.title ??
-        reel.reel_id
+        (reel.config?.enriched_snapshot as { title?: string } | undefined)?.title ?? reel.reel_id
     );
 }
 
@@ -472,6 +481,7 @@ function buildEditorSearch(
     apiKey: string | undefined;
     orientation: string;
     kind: 'reel';
+    projectId: string | undefined;
     focusTime: number | undefined;
 } | null {
     const htmlUrl = reel.s3_urls?.time_based_frame;
@@ -487,6 +497,7 @@ function buildEditorSearch(
         apiKey: apiKey || undefined,
         orientation,
         kind: 'reel',
+        projectId: undefined,
         focusTime: undefined,
     };
 }

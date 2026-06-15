@@ -11,9 +11,32 @@ interface MyMembershipWidgetProps {
     className?: string;
 }
 
+interface InstituteSession {
+    id: string;
+    session_name?: string;
+}
+
+interface BatchForSession {
+    id?: string;
+    session?: { id?: string } | null;
+}
+
+interface BatchGroup {
+    batches?: { package_session_id?: string }[];
+}
+
+interface MembershipPackage {
+    id?: string;
+    package_name?: string;
+    package_type?: string;
+    package_session_id?: string;
+    validity_in_days?: number;
+    child_packages?: { id?: string; package_name?: string }[] | null;
+}
+
 export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ className }) => {
     const [loading, setLoading] = useState(true);
-    const [memberships, setMemberships] = useState<any[]>([]);
+    const [memberships, setMemberships] = useState<MembershipPackage[]>([]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -23,12 +46,13 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
                 // STEP 1: Fetch Institute details to find the "Plan" session
                 const instResponse = await authenticatedAxiosInstance.get(`${urlInstituteDetails}/${instituteId}`);
-                const sessions = instResponse.data?.sessions || [];
-                const batchesForSessions = instResponse.data?.batches_for_sessions || [];
+                const sessions: InstituteSession[] = instResponse.data?.sessions || [];
+                const batchesForSessions: BatchForSession[] =
+                    instResponse.data?.batches_for_sessions || [];
 
                 // Only condition we care about: session_name === "Plan" (case-insensitive, trimmed)
                 const planSession = sessions.find(
-                    (s: any) => (s?.session_name || "").trim().toLowerCase() === "plan"
+                    (s) => (s?.session_name || "").trim().toLowerCase() === "plan"
                 );
 
                 if (!planSession) {
@@ -48,11 +72,11 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
                 // Preferred mapping: from institute details (if backend provides it)
                 if (Array.isArray(batchesForSessions) && batchesForSessions.length > 0) {
-                    (batchesForSessions || [])
-                        .filter((b: any) => b?.session?.id === planSessionId)
-                        .map((b: any) => b?.id)
-                        .filter(Boolean)
-                        .forEach((id: string) => planPackageSessionIds.add(id));
+                    batchesForSessions
+                        .filter((b) => b?.session?.id === planSessionId)
+                        .forEach((b) => {
+                            if (b?.id) planPackageSessionIds.add(b.id);
+                        });
                 } else {
                     // Fallback mapping: batches-by-session API returns package_session_ids for a given sessionId
                     // This is required for institutes where details-non-batches returns batches_for_sessions: []
@@ -63,15 +87,16 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
                         const batchData = batchListResponse.data;
                         // Expected shapes seen in codebase: BatchData[] or { content: BatchData[] } etc.
-                        const batchGroups: any[] =
+                        const batchGroups: BatchGroup[] =
                             (Array.isArray(batchData) ? batchData : batchData?.content) || [];
 
-                        batchGroups.forEach((group: any) => {
-                            const batches: any[] = Array.isArray(group?.batches) ? group.batches : [];
-                            batches
-                                .map((b: any) => b?.package_session_id)
-                                .filter(Boolean)
-                                .forEach((id: string) => planPackageSessionIds.add(id));
+                        batchGroups.forEach((group) => {
+                            const batches = Array.isArray(group?.batches) ? group.batches : [];
+                            batches.forEach((b) => {
+                                if (b?.package_session_id) {
+                                    planPackageSessionIds.add(b.package_session_id);
+                                }
+                            });
                         });
                     } catch {
                         // Silent fallback failure
@@ -103,11 +128,11 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                     }
                 );
 
-                const allContent = pkgResponse.data?.content || [];
+                const allContent: MembershipPackage[] = pkgResponse.data?.content || [];
 
                 // STEP 4: Filter memberships by package_type "MEMBERSHIP" and package_session_id
                 // Only show memberships that belong to the Plan session (using mapped package_session_ids)
-                const filtered = allContent.filter((pkg: any) => {
+                const filtered = allContent.filter((pkg) => {
                     // Only condition we care about: package_type === "MEMBERSHIP" (case-insensitive, trimmed)
                     const packageType = (pkg.package_type || "").trim().toUpperCase();
                     const pkgSessionId = pkg.package_session_id;
@@ -115,12 +140,13 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                     return packageType === "MEMBERSHIP" && pkgSessionId && planPackageSessionIds.has(pkgSessionId);
                 });
 
-                const unique = filtered.filter((pkg: any, index: number, self: any[]) =>
-                    index === self.findIndex((p) => p.package_name === pkg.package_name)
+                const unique = filtered.filter(
+                    (pkg, index, self) =>
+                        index === self.findIndex((p) => p.package_name === pkg.package_name)
                 );
 
                 setMemberships(unique);
-            } catch (error) {
+            } catch {
                 // Silently fail
             } finally {
                 setLoading(false);
@@ -143,6 +169,11 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
         );
     }
 
+    // Settled and empty: render nothing instead of an empty commerce shell
+    if (memberships.length === 0) {
+        return null;
+    }
+
     return (
         <Card className={cn("border border-border shadow-sm bg-card", className)}>
             <CardHeader className="p-4 pb-2">
@@ -152,8 +183,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-3">
-                {memberships.length > 0 ? (
-                    memberships.map((membership, idx) => (
+                {memberships.map((membership, idx) => (
                         <div key={membership.id || idx} className="space-y-3">
                             {/* Membership Item */}
                             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card shadow-sm">
@@ -174,7 +204,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                             {/* Sub-packages (Books) */}
                             {membership.child_packages && membership.child_packages.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
-                                    {membership.child_packages.map((child: any, cidx: number) => (
+                                    {membership.child_packages.map((child, cidx) => (
                                         <div key={child.id || cidx} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 border border-border">
                                             <BookOpen className="w-3 h-3 text-muted-foreground" />
                                             <span className="text-caption font-medium text-foreground truncate max-w-32">
@@ -184,13 +214,8 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                     ))}
                                 </div>
                             )}
-                        </div>
-                    ))
-                ) : (
-                    <div className="py-4 px-3 rounded-lg border border-dashed border-border flex items-center justify-center">
-                        <p className="text-sm text-muted-foreground italic">No active membership found.</p>
                     </div>
-                )}
+                ))}
             </CardContent>
         </Card>
     );

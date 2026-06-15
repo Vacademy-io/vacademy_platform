@@ -1,6 +1,7 @@
 import { TokenKey } from '@/constants/auth/tokens';
 import axios from 'axios';
 import type { InternalAxiosRequestConfig } from 'axios';
+import * as Sentry from '@sentry/react';
 import { getInstituteId } from '@/constants/helper';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import {
@@ -12,6 +13,30 @@ import {
 } from './sessionUtility';
 
 const authenticatedAxiosInstance = axios.create();
+
+// Every call below ends in removeCookiesAndLogout() — a destructive logout the
+// user experiences as "the app kicked me out". These must be visible in Sentry
+// so an auth-service outage (everyone logged out at once) is distinguishable
+// from normal session expiry. Stable messages keep grouping clean; specifics go
+// in tags/extra.
+const captureForcedLogout = (
+    message: string,
+    options: { level?: Sentry.SeverityLevel; error?: unknown; extra?: Record<string, unknown> } = {}
+) => {
+    try {
+        if (!Sentry.getClient()) return;
+        Sentry.withScope((scope) => {
+            scope.setLevel(options.level ?? 'warning');
+            scope.setTag('feature', 'auth');
+            scope.setTag('auth.forced_logout', 'true');
+            if (options.extra) scope.setContext('Auth Failure', options.extra);
+            if (options.error) scope.setExtra('originalError', String(options.error));
+            Sentry.captureMessage(message);
+        });
+    } catch {
+        // Never let Sentry instrumentation break the auth flow itself.
+    }
+};
 
 // A 401 from the AI service does NOT mean the user's session is dead. The AI
 // service (FastAPI) validates JWTs with its own secret, so an auth-service
@@ -45,6 +70,9 @@ authenticatedAxiosInstance.interceptors.request.use(
 
         if (!accessToken) {
             console.error('[Axios Request] No access token found');
+            captureForcedLogout('Forced logout: no access token on authenticated request', {
+                extra: { requestUrl: request.url },
+            });
             removeCookiesAndLogout();
             return Promise.reject(new Error('No access token found'));
         }
@@ -63,6 +91,16 @@ authenticatedAxiosInstance.interceptors.request.use(
                 accessToken = getTokenFromCookie(TokenKey.accessToken); // Get the new token
             } catch (error) {
                 console.error('[Axios Request] Token refresh failed:', error);
+                // A 4xx means the session is genuinely dead (expected expiry);
+                // anything else (network, timeout, 5xx) is a transient failure
+                // that just destroyed a valid session — that's an error.
+                const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+                const isTransient = status === undefined || status >= 500;
+                captureForcedLogout('Forced logout: token refresh failed', {
+                    level: isTransient ? 'error' : 'warning',
+                    error,
+                    extra: { requestUrl: request.url, refreshStatus: status ?? 'no-response' },
+                });
                 removeCookiesAndLogout();
                 return Promise.reject(new Error('Token refresh failed'));
             }
@@ -142,6 +180,9 @@ authenticatedAxiosInstance.interceptors.response.use(
             console.error('[Axios Response] Response data:', response.data);
             console.error('[Axios Response] Running auth debug...');
             debugAuthStatus();
+            captureForcedLogout('Forced logout: 511 from backend', {
+                extra: { requestUrl: error.config?.url, responseData: response?.data },
+            });
             removeCookiesAndLogout();
             return Promise.reject(
                 new Error('Network authentication required. Please log in again.')
@@ -161,6 +202,9 @@ authenticatedAxiosInstance.interceptors.response.use(
             }
             console.error('[Axios Response] 401 Unauthorized - Token is invalid');
             console.error('[Axios Response] Response data:', response.data);
+            captureForcedLogout('Forced logout: 401 on authenticated request', {
+                extra: { requestUrl: error.config?.url, responseData: response?.data },
+            });
             removeCookiesAndLogout();
             return Promise.reject(new Error('Authentication failed. Please log in again.'));
         }

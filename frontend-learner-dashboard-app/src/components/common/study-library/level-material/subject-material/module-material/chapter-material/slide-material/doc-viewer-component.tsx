@@ -310,12 +310,15 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
       {isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
+          {/* Text documents read at a centered ~65ch measure (max-w-prose);
+              DOCX below keeps its own page width and players are separate
+              components, so only this HTML/markdown branch is constrained. */}
           {htmlContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-prose">
               <DocumentWithMermaid htmlContent={htmlContent} />
             </div>
           ) : markdownContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray max-w-none">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-prose">
               <ReactMarkdown 
                 components={{
                   // Enhanced heading styles with better typography
@@ -533,7 +536,6 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
               line-height: 1.7;
               color: #374151; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
-              max-width: none;
             }
             
             /* Responsive embeds */

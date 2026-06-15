@@ -1,185 +1,24 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
-import { CalendarCheck, CheckCircle, Clock } from '@phosphor-icons/react';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_LEAD_FOLLOWUPS, CLOSE_LEAD_FOLLOWUP, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
-import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
+import { CalendarCheck, Clock } from '@phosphor-icons/react';
+import {
+    CompleteFollowUpPopover,
+    fetchLeadFollowups,
+    type LeadFollowup,
+} from '@/components/shared/leads';
 import { parseHtmlToString } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 
-export interface LeadFollowup {
-    id: string;
-    audience_response_id: string;
-    institute_id: string;
-    created_by: string | null;
-    schedule_time: string | null;
-    status: string;
-    is_closed: boolean;
-    content: string | null;
-    closer_reason: string | null;
-    closed_by: string | null;
-    closed_at: string | null;
-    created_at: string;
-    updated_at: string;
-}
+// Close flow (CompleteFollowUpPopover) lives in the shared leads layer now —
+// the Follow-ups page reuses the same component for its inline row action.
+export type { LeadFollowup };
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-    PENDING:   { label: 'Pending',   className: 'bg-blue-100 text-blue-700' },
-    ONGOING:   { label: 'Ongoing',   className: 'bg-amber-100 text-amber-700' },
-    OVERDUE:   { label: 'Overdue',   className: 'bg-red-100 text-red-700' },
+    PENDING: { label: 'Pending', className: 'bg-blue-100 text-blue-700' },
+    ONGOING: { label: 'Ongoing', className: 'bg-amber-100 text-amber-700' },
+    OVERDUE: { label: 'Overdue', className: 'bg-red-100 text-red-700' },
     COMPLETED: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
 };
-
-async function fetchFollowups(audienceResponseId: string): Promise<LeadFollowup[]> {
-    const { data } = await authenticatedAxiosInstance.get(GET_LEAD_FOLLOWUPS(audienceResponseId));
-    return data;
-}
-
-// ── Complete Popover ──────────────────────────────────────────────────────────
-
-function CompletePopover({
-    followupId,
-    audienceResponseId,
-    userId,
-}: {
-    followupId: string;
-    audienceResponseId: string;
-    userId: string;
-}) {
-    const [open, setOpen] = useState(false);
-    const [reason, setReason] = useState('');
-    const [scheduleNext, setScheduleNext] = useState(false);
-    const [nextTime, setNextTime] = useState('');
-    const [nextContent, setNextContent] = useState('');
-    const queryClient = useQueryClient();
-
-    const resetAndClose = () => {
-        setOpen(false);
-        setReason('');
-        setScheduleNext(false);
-        setNextTime('');
-        setNextContent('');
-    };
-
-    const createMutation = useMutation({
-        mutationFn: () =>
-            authenticatedAxiosInstance.post(CREATE_LEAD_FOLLOWUP, {
-                audience_response_id: audienceResponseId,
-                schedule_time: new Date(nextTime).toISOString(),
-                content: nextContent || null,
-            }),
-        onSuccess: () => {
-            toast.success('Next follow-up scheduled');
-            queryClient.invalidateQueries({ queryKey: ['lead-followups', audienceResponseId] });
-            invalidateLeadCaches(queryClient, userId);
-            resetAndClose();
-        },
-        onError: () => toast.error('Failed to schedule next follow-up'),
-    });
-
-    const closeMutation = useMutation({
-        mutationFn: () =>
-            authenticatedAxiosInstance.put(CLOSE_LEAD_FOLLOWUP(followupId), {
-                closer_reason: reason,
-            }),
-        onSuccess: () => {
-            toast.success('Follow-up marked complete');
-            queryClient.invalidateQueries({ queryKey: ['lead-followups', audienceResponseId] });
-            invalidateLeadCaches(queryClient, userId);
-            if (scheduleNext && nextTime) {
-                createMutation.mutate();
-            } else {
-                resetAndClose();
-            }
-        },
-        onError: () => toast.error('Failed to close follow-up'),
-    });
-
-    const isBusy = closeMutation.isPending || createMutation.isPending;
-    const canSubmit = !isBusy && (!scheduleNext || !!nextTime);
-
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <button
-                    type="button"
-                    className="flex cursor-pointer items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-                >
-                    <CheckCircle weight="regular" className="size-3.5" />
-                    Mark complete
-                </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-72 p-3" align="end">
-                <p className="mb-2 text-xs font-semibold text-neutral-700">Mark as complete</p>
-                <textarea
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Closing note (optional)…"
-                    rows={2}
-                    className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
-                />
-
-                <label className="mt-2.5 flex cursor-pointer items-center gap-2">
-                    <input
-                        type="checkbox"
-                        checked={scheduleNext}
-                        onChange={(e) => setScheduleNext(e.target.checked)}
-                        className="size-3.5 cursor-pointer accent-primary-600"
-                    />
-                    <span className="text-xs font-medium text-neutral-600">Schedule next follow-up</span>
-                </label>
-
-                {scheduleNext && (
-                    <div className="mt-2 flex flex-col gap-2">
-                        <input
-                            type="datetime-local"
-                            value={nextTime}
-                            onChange={(e) => setNextTime(e.target.value)}
-                            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-800 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
-                        />
-                        <textarea
-                            value={nextContent}
-                            onChange={(e) => setNextContent(e.target.value)}
-                            placeholder="Note for next follow-up (optional)…"
-                            rows={2}
-                            className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
-                        />
-                    </div>
-                )}
-
-                <div className="mt-2 flex justify-end gap-1.5">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2.5 text-xs"
-                        onClick={resetAndClose}
-                        disabled={isBusy}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        size="sm"
-                        className="h-7 bg-emerald-600 px-2.5 text-xs text-white hover:bg-emerald-700"
-                        onClick={() => closeMutation.mutate()}
-                        disabled={!canSubmit}
-                    >
-                        {closeMutation.isPending
-                            ? 'Saving…'
-                            : createMutation.isPending
-                              ? 'Scheduling…'
-                              : scheduleNext
-                                ? 'Done & Schedule next'
-                                : 'Done ✓'}
-                    </Button>
-                </div>
-            </PopoverContent>
-        </Popover>
-    );
-}
 
 // ── Follow-up Card ────────────────────────────────────────────────────────────
 
@@ -210,13 +49,13 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
                 <span
                     className={cn(
                         'shrink-0 rounded-full px-2 py-0.5 text-caption font-semibold',
-                        config.className,
+                        config.className
                     )}
                 >
                     {config.label}
                 </span>
                 {!followup.is_closed && (
-                    <CompletePopover
+                    <CompleteFollowUpPopover
                         followupId={followup.id}
                         audienceResponseId={followup.audience_response_id}
                         userId={userId}
@@ -228,9 +67,7 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
                 <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-500">
                     <Clock weight="fill" className="size-3.5 shrink-0 text-neutral-400" />
                     <span>{formattedTime}</span>
-                    {relativeTime && (
-                        <span className="text-neutral-400">· {relativeTime}</span>
-                    )}
+                    {relativeTime && <span className="text-neutral-400">· {relativeTime}</span>}
                 </div>
             )}
 
@@ -239,7 +76,7 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
             )}
 
             {followup.is_closed && followup.closer_reason && (
-                <p className="mt-1.5 text-xs text-neutral-400 italic">
+                <p className="mt-1.5 text-xs italic text-neutral-400">
                     Closed: {followup.closer_reason}
                 </p>
             )}
@@ -257,7 +94,7 @@ interface FollowUpsWidgetProps {
 export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetProps) {
     const { data: followups = [], isLoading } = useQuery({
         queryKey: ['lead-followups', audienceResponseId],
-        queryFn: () => fetchFollowups(audienceResponseId),
+        queryFn: () => fetchLeadFollowups(audienceResponseId),
         enabled: !!audienceResponseId,
         staleTime: 60 * 1000,
     });

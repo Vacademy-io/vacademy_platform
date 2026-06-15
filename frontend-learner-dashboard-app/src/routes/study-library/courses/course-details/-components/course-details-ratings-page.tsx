@@ -95,7 +95,7 @@ export function CourseDetailsRatingsComponent({
             try {
                 const userId = await getUserId();
                 setCurrentUserId(userId);
-            } catch (error) {
+            } catch {
                 setCurrentUserId(null);
             }
         };
@@ -437,43 +437,65 @@ export function CourseDetailsRatingsComponent({
     return (
         <div className={cn(
             "relative bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md shadow-sm hover:shadow-md transition-all duration-200 p-3 group overflow-hidden",
-            // Vibrant Styles
-            "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
+            // Vibrant — white card with a tenant top-rail
+            "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
-            // Play Styles — solid, bold, Duolingo-style
-            "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
-            "[.ui-play_&]:shadow-play-4d-navy"
+            // Play Styles — quiet white rail card (one rail language)
+            "[.ui-play_&]:bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+            "[.ui-play_&]:rounded-play-card [.ui-play_&]:text-play-ink",
+            "[.ui-play_&]:shadow-none [.ui-play_&]:hover:shadow-none"
         )}>
             {/* Background gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+            <div className={cn(
+                "absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md",
+                "[.ui-play_&]:hidden"
+            )}></div>
 
             {/* Floating orb effects */}
-            <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6"></div>
+            <div className={cn(
+                "absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6",
+                "[.ui-play_&]:hidden"
+            )}></div>
+            <div className={cn(
+                "absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6",
+                "[.ui-play_&]:hidden"
+            )}></div>
 
             <div className="relative space-y-3">
                 {/* Enhanced Header */}
                 <div className="flex items-center space-x-2 animate-fade-in-down">
                     <div className={cn(
                         "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
-                        "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600",
                         // Play Styles
                         "[.ui-play_&]:bg-play-gold [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-gold"
                     )}>
                         <Star
                             size={14}
-                            className="text-yellow-600"
+                            className={cn(
+                                "text-yellow-600",
+                                // Play — ink on the bright gold chip, never white/dim
+                                "[.ui-play_&]:text-play-ink"
+                            )}
                             weight="duotone"
                         />
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-sm font-bold text-gray-900 tracking-tight leading-tight">
+                        <h1 className={cn(
+                            "text-sm font-bold text-gray-900 tracking-tight leading-tight",
+                            "[.ui-play_&]:text-play-ink"
+                        )}>
                             Ratings & Reviews
                         </h1>
-                        <p className="text-caption text-gray-600 flex items-center gap-1">
+                        <p className={cn(
+                            "text-caption text-gray-600 flex items-center gap-1",
+                            "[.ui-play_&]:text-play-muted-deep"
+                        )}>
                             <ChatCircle
                                 size={10}
-                                className="text-primary-500"
+                                className={cn(
+                                    "text-primary-500",
+                                    "[.ui-play_&]:text-play-muted-deep"
+                                )}
                                 weight="duotone"
                             />
                             <span>Community feedback and ratings</span>
@@ -481,8 +503,14 @@ export function CourseDetailsRatingsComponent({
                     </div>
                 </div>
 
-                <form className="flex flex-col gap-2 rounded-md border bg-gray-50 dark:bg-neutral-900 p-2.5">
-                    <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                <form className={cn(
+                    "flex flex-col gap-2 rounded-md border bg-gray-50 dark:bg-neutral-900 p-2.5",
+                    "[.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-white"
+                )}>
+                    <label className={cn(
+                        "text-xs font-semibold text-neutral-700 dark:text-neutral-300",
+                        "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
+                    )}>
                         Your Feedback
                     </label>
                     <Textarea
@@ -492,7 +520,10 @@ export function CourseDetailsRatingsComponent({
                         rows={2}
                         className="resize-none text-xs"
                     />
-                    <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                    <label className={cn(
+                        "text-xs font-semibold text-neutral-700 dark:text-neutral-300",
+                        "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
+                    )}>
                         Rating <span className="text-red-500">*</span>
                     </label>
                     <div className="flex items-center gap-1.5">
@@ -510,15 +541,18 @@ export function CourseDetailsRatingsComponent({
                                             ? "fill"
                                             : "regular"
                                     }
-                                    className={
+                                    className={cn(
                                         selectedRating && selectedRating >= star
-                                            ? "text-yellow-400"
-                                            : "text-gray-300"
-                                    }
+                                            ? "text-yellow-400 [.ui-play_&]:text-play-gold"
+                                            : "text-gray-300 [.ui-play_&]:text-neutral-300"
+                                    )}
                                 />
                             </button>
                         ))}
-                        <span className="ml-1 text-caption text-neutral-500">
+                        <span className={cn(
+                            "ml-1 text-caption text-neutral-500",
+                            "[.ui-play_&]:text-play-muted-deep [.ui-play_&]:font-bold"
+                        )}>
                             {selectedRating
                                 ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
                                 : ""}
@@ -532,7 +566,16 @@ export function CourseDetailsRatingsComponent({
                             !selectedRating
                         }
                         scale="small"
-                        className="w-fit"
+                        className={cn(
+                            "w-fit",
+                            // Play — Duolingo press grammar when enabled
+                            "[.ui-play_&]:rounded-xl [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
+                            "[.ui-play_&]:enabled:bg-play-success [.ui-play_&]:enabled:hover:bg-play-success-deep",
+                            "[.ui-play_&]:enabled:!text-white [.ui-play_&]:enabled:shadow-play-2d-success",
+                            "[.ui-play_&]:enabled:active:translate-y-0.5 [.ui-play_&]:enabled:active:shadow-none",
+                            // Play — clearly disabled, never pale-on-white
+                            "[.ui-play_&]:disabled:bg-play-surface [.ui-play_&]:disabled:!text-play-muted-deep [.ui-play_&]:disabled:shadow-none"
+                        )}
                         onClick={handleSubmit}
                     >
                         {submitting ? "Submitting..." : "Submit Feedback"}
@@ -547,9 +590,9 @@ export function CourseDetailsRatingsComponent({
                         {/* Enhanced Overall Rating Section */}
                         <div className={cn(
                             "relative bg-gradient-to-br from-yellow-50/80 to-orange-50/80 border border-yellow-200/60 rounded-md p-2.5 overflow-hidden group/rating",
-                            // Vibrant Styles - Flat Pastel
-                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-amber-50/50 dark:[.ui-vibrant_&]:bg-amber-950/20",
-                            "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30",
+                            // Vibrant — flat primary-50 wash (tenant family)
+                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
+                            "[.ui-vibrant_&]:border-primary-100 dark:[.ui-vibrant_&]:border-primary-500/30",
                             // Play Styles — solid, bold, Duolingo-style
                             "[.ui-play_&]:bg-play-gold [.ui-play_&]:border-play-gold-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
                             "[.ui-play_&]:shadow-play-3d-gold"
@@ -590,10 +633,17 @@ export function CourseDetailsRatingsComponent({
                                                 starColor={true}
                                             />
                                         </div>
-                                        <div className="flex items-center space-x-1.5 text-gray-600">
+                                        <div className={cn(
+                                            "flex items-center space-x-1.5 text-gray-600",
+                                            "[.ui-play_&]:text-play-ink"
+                                        )}>
                                             <TrendUp
                                                 size={14}
-                                                className="text-success-600"
+                                                className={cn(
+                                                    "text-success-600",
+                                                    // Play — ink on the gold surface
+                                                    "[.ui-play_&]:text-play-ink"
+                                                )}
                                                 weight="duotone"
                                             />
                                             <span className="text-xs font-medium">
@@ -623,10 +673,17 @@ export function CourseDetailsRatingsComponent({
                                                 key={stars}
                                                 className="flex items-center gap-2 sm:gap-3 group/bar"
                                             >
-                                                <div className="flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-12">
+                                                <div className={cn(
+                                                    "flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-12",
+                                                    "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
+                                                )}>
                                                     <Star
                                                         size={12}
-                                                        className="text-yellow-500"
+                                                        className={cn(
+                                                            "text-yellow-500",
+                                                            // Play — ink stars on the gold surface
+                                                            "[.ui-play_&]:text-play-ink"
+                                                        )}
                                                         weight="fill"
                                                     />
                                                     <span>{stars}</span>
@@ -634,7 +691,12 @@ export function CourseDetailsRatingsComponent({
                                                 <div className="flex-1 relative">
                                                     <ProgressBar
                                                         value={percent}
-                                                        className="h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover/bar:h-2 transition-all duration-300"
+                                                        className={cn(
+                                                            "h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover/bar:h-2 transition-all duration-300",
+                                                            // Play — white track + deep-gold fill on the gold box
+                                                            "[.ui-play_&]:border-transparent [.ui-play_&]:bg-white/60",
+                                                            "[.ui-play_&]:[&>div]:bg-play-gold-deep"
+                                                        )}
                                                     />
                                                 </div>
                                                 <span className="text-xs font-bold text-gray-900 min-w-10 text-right">

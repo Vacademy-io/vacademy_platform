@@ -5,6 +5,7 @@ import { Storage } from "@capacitor/storage";
 import {
   CheckCircle,
   Clock,
+  Eye,
   ListChecks,
   ListNumbers,
   PlayCircle,
@@ -201,6 +202,25 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
     }
   };
 
+  // Show a report link once submitted, results are enabled for this slide, and
+  // the admin has released them. Uses the learner's latest attempt id.
+  const canViewReport =
+    isSubmitted &&
+    showResult &&
+    assessment?.report_release_status === "RELEASED" &&
+    Boolean(assessment?.last_attempt_id);
+
+  const handleViewReport = () => {
+    if (!assessment?.last_attempt_id) return;
+    navigate({
+      to: "/assessment/reports/student-report",
+      search: {
+        assessmentId: assessment.assessment_id,
+        attemptId: assessment.last_attempt_id,
+      },
+    });
+  };
+
   if (!assessmentId) {
     return (
       <div className="flex h-reg-420 flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
@@ -277,7 +297,11 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
             <CheckCircle className="size-5" />
             <span className="text-sm font-semibold">You have submitted this assessment.</span>
           </div>
-          {showResult && assessment?.report_release_status === "RELEASED" ? (
+          {!showResult ? (
+            <p className="mt-1 text-xs text-emerald-700/80">
+              Results are not shown for this assessment.
+            </p>
+          ) : assessment?.report_release_status === "RELEASED" ? (
             <p className="mt-1 text-xs text-emerald-700/80">
               Your result is available — open the assessment to view your detailed report.
             </p>
@@ -296,6 +320,17 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
       )}
 
       <div className="mt-1 flex items-center justify-end gap-2">
+        {canViewReport && (
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={handleViewReport}
+            className="min-w-reg-180"
+          >
+            <Eye className="mr-2 size-4" />
+            View Report
+          </Button>
+        )}
         <Button
           size="lg"
           disabled={buttonState.disabled}

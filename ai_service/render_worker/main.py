@@ -7,6 +7,7 @@ runs generate_video.py (Playwright + FFmpeg), uploads MP4 to S3.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import uuid
@@ -59,7 +60,9 @@ if not (os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCES
 # ---------------------------------------------------------------------------
 
 def _verify_key(x_render_key: str = Header(...)):
-    if RENDER_KEY and x_render_key != RENDER_KEY:
+    # compare_digest: a plain != short-circuits on the first differing byte,
+    # which leaks key prefixes through response timing.
+    if RENDER_KEY and not hmac.compare_digest(x_render_key, RENDER_KEY):
         raise HTTPException(status_code=401, detail="Invalid render key")
 
 

@@ -2,13 +2,19 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, ChevronDownIcon } from "@radix-ui/react-icons";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { truncateString } from "@/lib/reusable/truncateString";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { CaretLeft, BookOpen, GraduationCap, CaretRight, CheckCircle } from "@phosphor-icons/react";
+import {
+  CaretLeft,
+  GraduationCap,
+  CaretRight,
+  CheckCircle,
+  ArrowsIn,
+  ArrowsOut,
+} from "@phosphor-icons/react";
 import { SlideMaterial } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/slide-material";
 import {
   ChapterSidebarSlides,
@@ -52,6 +58,51 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { recordSlideVisit } from "@/services/resume-thread";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import {
+  celebrateCompletion,
+  celebrateMilestone,
+  isStreakMilestone,
+  shouldCelebrateSlide,
+} from "@/lib/play-celebration";
+import { usePlayGamificationStore } from "@/stores/play-gamification-store";
+import { playIllustrations } from "@/assets/play-illustrations";
+
+// sessionStorage key for the viewer's focus mode (per-tab persistence).
+const SLIDES_FOCUS_MODE_KEY = "slides-viewer-focus-mode";
+
+// ── Play celebration guards ──────────────────────────────────────────────────
+// Once-per-chapter guard mirroring shouldCelebrateSlide, so the chapter volley
+// fires only the first time a chapter completes in this tab (query refetches
+// can briefly re-cross the threshold).
+const CELEBRATED_CHAPTERS_KEY = "vacademy.celebratedChapters.v1";
+const shouldCelebrateChapter = (chapterId: string): boolean => {
+  if (!chapterId) return false;
+  try {
+    const seen: string[] = JSON.parse(
+      sessionStorage.getItem(CELEBRATED_CHAPTERS_KEY) ?? "[]"
+    );
+    if (seen.includes(chapterId)) return false;
+    sessionStorage.setItem(
+      CELEBRATED_CHAPTERS_KEY,
+      JSON.stringify([...seen.slice(-49), chapterId])
+    );
+    return true;
+  } catch {
+    return true;
+  }
+};
+
+// Last streak value this tab has seen — lets the streak effect distinguish
+// "streak just incremented to a milestone" from "streak was already there
+// when the viewer opened" (only the former earns a volley).
+const LAST_SEEN_STREAK_KEY = "vacademy.viewer.lastSeenStreak.v1";
+
+// XP awarded per completed slide in the play gamification model — mirrors
+// computeXp() in services/play-gamification.ts (slides viewed × 10).
+const SLIDE_XP = 10;
 
 interface ChapterSearchParams {
   courseId: string;
@@ -94,7 +145,7 @@ const ModuleAccordionItem = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(isInitiallyExpanded);
   const completedChapters = modData.chapters.filter(
-    (c) => c.percentage_completed >= 90
+    (c) => c.percentage_completed >= SLIDE_COMPLETION_THRESHOLD
   ).length;
 
   return (
@@ -132,7 +183,7 @@ const ModuleAccordionItem = ({
         <div className="pb-1">
           {modData.chapters.map((chapter) => {
             const isCurrent = chapter.id === currentChapterId;
-            const isDone = chapter.percentage_completed >= 90;
+            const isDone = chapter.percentage_completed >= SLIDE_COMPLETION_THRESHOLD;
             return (
               <button
                 key={chapter.id}
@@ -180,7 +231,7 @@ function Slides() {
   const { courseId, levelId, subjectId, moduleId, chapterId, slideId, sessionId } =
     Route.useSearch();
 
-  useSidebar();
+  const { setOpen: setAppSidebarOpen } = useSidebar();
   const navigate = useNavigate();
 
   const { data: packageSessionIdFromStore } = useQuery({
@@ -560,20 +611,6 @@ function Slides() {
     modulesWithChaptersData,
   ]);
 
-  const handleSubjectRoute = useCallback(() => {
-    navigate({
-      to: "/study-library/courses/course-details/subjects/modules",
-      search: { courseId, subjectId, moduleId },
-    });
-  }, [navigate, courseId, subjectId, moduleId]);
-
-  const handleModuleRoute = useCallback(() => {
-    navigate({
-      to: "/study-library/courses/course-details/subjects/modules/chapters",
-      search: { courseId, subjectId, moduleId, chapterId },
-    });
-  }, [navigate, courseId, subjectId, moduleId, chapterId]);
-
   const [moduleName, setModuleName] = useState("");
   const [chapterName, setChapterName] = useState("");
   const [subjectName, setSubjectName] = useState("");
@@ -679,7 +716,14 @@ function Slides() {
         search: { courseId, subjectId: targetSubjectId, moduleId: "" },
       });
     },
-    [subjectId, sessionId, courseId, navigate, setModulesWithChaptersData]
+    [
+      subjectId,
+      sessionId,
+      resolvedSessionId,
+      courseId,
+      navigate,
+      setModulesWithChaptersData,
+    ]
   );
 
   // truncatedChapterName removed (unused)
@@ -787,6 +831,172 @@ function Slides() {
     getCourseAndLevelInfo();
   }, [sessionId, courseId, courseName, levelName]);
 
+  // ── Resume thread (write) ─────────────────────────────────────────────────
+  // Record the slide actually being viewed so other surfaces can offer a
+  // one-click "Continue". Keyed on the ACTIVE slide id (not just the URL's
+  // slideId, which is empty when the route defaults to the first slide), so
+  // once-per-slide writes happen for every slide a learner lands on. Display
+  // names may resolve a tick later; the effect harmlessly re-records the same
+  // entry with the richer names when they do.
+  const activeSlideId = activeItem?.id || "";
+  const activeSlideTitle = activeItem?.title || "";
+  useEffect(() => {
+    if (!courseId || !subjectId || !moduleId || !chapterId || !resolvedSessionId) return;
+    if (!activeSlideId || activeSlideId === "feedback-slide") return;
+    // During route transitions activeItem can briefly point at the previous
+    // chapter's slide; only record once it belongs to the current chapter.
+    if (!slides?.some((s: Slide) => s.id === activeSlideId)) return;
+    recordSlideVisit({
+      courseId,
+      levelId,
+      subjectId,
+      moduleId,
+      chapterId,
+      slideId: activeSlideId,
+      sessionId: resolvedSessionId,
+      slideTitle: activeSlideTitle,
+      chapterName: chapterName || undefined,
+      courseName: courseName || undefined,
+    });
+  }, [
+    courseId,
+    levelId,
+    subjectId,
+    moduleId,
+    chapterId,
+    activeSlideId,
+    activeSlideTitle,
+    resolvedSessionId,
+    slides,
+    chapterName,
+    courseName,
+  ]);
+
+  // ── Play celebrations ─────────────────────────────────────────────────────
+  // Confetti + an XP-pop toast when a slide CROSSES the completion threshold
+  // during this session, a bigger volley when that crossing completes the
+  // chapter, and a milestone volley when the streak increments to a milestone.
+  // All user-visible celebration is gated on the play skin.
+  const isPlay = usePlayTheme();
+  const playStreak = usePlayGamificationStore((s) => s.data?.currentStreak);
+
+  // Last-seen completion per slide id. Seeded on first observation so slides
+  // that were ALREADY complete on load never celebrate — only a below→above
+  // transition observed in this mount counts as a crossing. Quiz/assessment
+  // completions land here instantly (setQueryData on ["slides", chapterId]);
+  // video/doc progress arrives on the next slides refetch. The map persists
+  // across chapter navigation (slide ids are globally unique).
+  const slidePercentsRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (!slides?.length) return;
+    const prevPercents = slidePercentsRef.current;
+    const crossedNow: string[] = [];
+    let allCompleteNow = true;
+    for (const slide of slides as Slide[]) {
+      const pct = slide.percentage_completed ?? 0;
+      const before = prevPercents.get(slide.id);
+      if (
+        before !== undefined &&
+        before < SLIDE_COMPLETION_THRESHOLD &&
+        pct >= SLIDE_COMPLETION_THRESHOLD
+      ) {
+        crossedNow.push(slide.id);
+      }
+      if (pct < SLIDE_COMPLETION_THRESHOLD) allCompleteNow = false;
+      prevPercents.set(slide.id, pct);
+    }
+
+    // Snapshot bookkeeping always runs (even outside play) so switching the
+    // skin mid-session can't retroactively celebrate earlier crossings.
+    if (!isPlay || crossedNow.length === 0) return;
+
+    // Chapter completion outranks the per-slide moment: two-sided volley plus
+    // a bigger toast. Consume the per-slide guards too so a cache flap can't
+    // re-fire the smaller moment for the same slides later.
+    if (allCompleteNow && chapterId && shouldCelebrateChapter(chapterId)) {
+      crossedNow.forEach((id) => shouldCelebrateSlide(id));
+      celebrateMilestone();
+      toast.custom(
+        (t) => (
+          <button
+            type="button"
+            onClick={() => toast.dismiss(t)}
+            className="flex items-center gap-3 rounded-play-card bg-play-success px-5 py-4 shadow-play-4d-success active:translate-y-0.5 active:shadow-none"
+          >
+            <playIllustrations.Winners className="h-12 w-auto shrink-0 text-white" />
+            <span className="text-left">
+              <span className="block text-base font-black text-play-ink">
+                {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
+                complete!
+              </span>
+              <span className="block text-xs font-bold text-play-ink/80">
+                Every{" "}
+                {getTerminology(
+                  ContentTerms.Slides,
+                  SystemTerms.Slides
+                ).toLowerCase()}{" "}
+                done. Keep it rolling!
+              </span>
+            </span>
+          </button>
+        ),
+        { duration: 5000 }
+      );
+      return;
+    }
+
+    // Per-slide moment: quick burst + XP-pop chip. One toast per update even
+    // if several slides land at once (find consumes the once-per-slide guard).
+    const celebratedId = crossedNow.find((id) => shouldCelebrateSlide(id));
+    if (!celebratedId) return;
+    celebrateCompletion();
+    toast.custom(
+      (t) => (
+        <button
+          type="button"
+          onClick={() => toast.dismiss(t)}
+          className="flex items-center gap-3 rounded-play-card bg-play-success px-4 py-3 shadow-play-4d-success active:translate-y-0.5 active:shadow-none"
+        >
+          <playIllustrations.Completed className="h-10 w-auto shrink-0 text-white" />
+          <span className="text-sm font-black text-play-ink">
+            Nice! {getTerminology(ContentTerms.Slides, SystemTerms.Slides)}{" "}
+            complete
+          </span>
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-black text-play-ink">
+            +{SLIDE_XP} XP
+          </span>
+        </button>
+      ),
+      { duration: 3500 }
+    );
+  }, [slides, isPlay, chapterId]);
+
+  // Streak milestone: fire only when the streak INCREMENTS to a milestone
+  // while this tab is open. The sessionStorage marker seeds on the first
+  // observation, so a streak already at 7 when the viewer opens stays quiet;
+  // the marker also updates outside play so toggling the skin mid-session
+  // can't retroactively celebrate an earlier increment.
+  useEffect(() => {
+    if (playStreak == null) return;
+    let lastSeen: number | null = null;
+    try {
+      const raw = sessionStorage.getItem(LAST_SEEN_STREAK_KEY);
+      lastSeen = raw == null ? null : Number(raw);
+    } catch {
+      lastSeen = null;
+    }
+    try {
+      sessionStorage.setItem(LAST_SEEN_STREAK_KEY, String(playStreak));
+    } catch {
+      // sessionStorage unavailable (private mode); the milestone just won't fire
+    }
+    if (!isPlay) return;
+    if (lastSeen == null || Number.isNaN(lastSeen)) return;
+    if (playStreak > lastSeen && isStreakMilestone(playStreak)) {
+      celebrateMilestone();
+    }
+  }, [playStreak, isPlay]);
+
   const [showLearningPath, setShowLearningPath] = useState(true);
   const [feedbackVisible, setFeedbackVisible] = useState(true);
   // "breadcrumb" = legacy per-chapter slide list; cross-module navigation
@@ -809,6 +1019,54 @@ function Slides() {
       );
     });
   }, []);
+
+  // ── Focus mode ────────────────────────────────────────────────────────────
+  // Collapses the chapter sidebar and tightens the content margins so the
+  // slide gets the full reading width. State is local to this route and
+  // persisted per-tab in sessionStorage so it survives slide-to-slide and
+  // chapter-to-chapter navigation within a study session.
+  const [focusMode, setFocusMode] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(SLIDES_FOCUS_MODE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      const next = !prev;
+      try {
+        sessionStorage.setItem(SLIDES_FOCUS_MODE_KEY, next ? "1" : "0");
+      } catch {
+        // sessionStorage unavailable (private mode); state still toggles
+      }
+      return next;
+    });
+  }, []);
+
+  // Drive the app sidebar from focus mode. setOpen's identity changes with
+  // the sidebar's open state (shadcn useCallback dep), so route it through a
+  // ref and key the effect on focusMode only — otherwise manual sidebar
+  // toggles from the navbar would re-trigger this effect and fight the user.
+  const setAppSidebarOpenRef = useRef(setAppSidebarOpen);
+  useEffect(() => {
+    setAppSidebarOpenRef.current = setAppSidebarOpen;
+  }, [setAppSidebarOpen]);
+  useEffect(() => {
+    setAppSidebarOpenRef.current(!focusMode);
+  }, [focusMode]);
+  // Restore the sidebar when leaving the route while focus mode is on, so
+  // the rest of the app doesn't inherit a collapsed sidebar.
+  const focusModeRef = useRef(focusMode);
+  useEffect(() => {
+    focusModeRef.current = focusMode;
+  }, [focusMode]);
+  useEffect(
+    () => () => {
+      if (focusModeRef.current) setAppSidebarOpenRef.current(true);
+    },
+    []
+  );
 
   const nextChapter = useMemo(() => {
     if (!modulesWithChaptersData?.length) return null;
@@ -949,6 +1207,18 @@ function Slides() {
                 : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
             </p>
           </div>
+          {/* Focus mode: hides this sidebar + tightens content margins.
+              Desktop only — on mobile the sidebar is already an offcanvas
+              sheet, so the toggle would only add noise. The matching exit
+              control floats bottom-left while focus mode is active. */}
+          <button
+            onClick={toggleFocusMode}
+            title="Focus mode"
+            aria-label="Enter focus mode"
+            className="hidden sm:flex size-7 flex-shrink-0 items-center justify-center rounded-md border border-gray-150 bg-white text-gray-400 transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-700 [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
+          >
+            <ArrowsOut size={14} weight="bold" />
+          </button>
         </div>
 
         {/* Breadcrumb: [Subject >] Module Switcher > Current Chapter.
@@ -969,10 +1239,7 @@ function Slides() {
           const showModuleCrumb = !isDefaultName(moduleName);
           const showChapterCrumb = !isDefaultName(chapterName);
           return (
-          <div
-            className="flex items-center gap-1.5 text-xs text-gray-500 font-medium min-w-0"
-            id="slides-breadcrumb-row"
-          >
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium min-w-0">
             {/* Subject — tapping opens a picker listing all subjects in the
                 course. Selecting one routes to that subject's modules view
                 (we don't know its first chapter yet, so we drop the learner
@@ -1229,14 +1496,16 @@ function Slides() {
             </button>
           )}
 
-          {/* Progress Bar */}
+          {/* Progress Bar — labeled so the bar is never an anonymous strip:
+              "Chapter progress · 40%" (terminology-aware chapter term). */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-caption font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
-              <span>Progress</span>
-              <span className="text-gray-800 text-xs normal-case tracking-normal [.ui-play_&]:font-black">
+            <p className="text-caption font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+              {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
+              progress{" · "}
+              <span className="text-gray-800 normal-case tracking-normal tabular-nums [.ui-play_&]:font-black">
                 {Math.min(calculateOverallCompletion(slides), 100)}%
               </span>
-            </div>
+            </p>
             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden [.ui-play_&]:rounded-full [.ui-play_&]:h-3">
               <div
                 className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out [.ui-play_&]:rounded-full [.ui-play_&]:h-3"
@@ -1290,135 +1559,26 @@ function Slides() {
 
   const { setNavHeading } = useNavHeadingStore();
 
+  // Top bar carries only the current chapter as a plain title. The single
+  // breadcrumb trail (Subject > Module > Chapter, with pickers) lives in the
+  // chapter sidebar header — keeping a second Subject/Module/Chapter trail
+  // here duplicated it.
   useEffect(() => {
-    const heading = (
-      <div className="flex items-center gap-2 sm:gap-3 w-full min-w-0">
-        <button
-          onClick={() => window.history.back()}
-          className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0"
-        >
-          <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-        </button>
-        <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
-          <div className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-8 min-h-8 sm:min-w-10 sm:min-h-10">
-            {instituteLogoUrl ? (
-              <img
-                src={instituteLogoUrl}
-                alt="Institute Logo"
-                onClick={
-                  homeIconClickRoute ? handleInstituteLogoClick : undefined
-                }
-                className={`max-w-full max-h-full object-contain${homeIconClickRoute ? " cursor-pointer" : ""
-                  }`}
-                style={{
-                  width: "auto",
-                  height: "auto",
-                  maxWidth: "28px",
-                  maxHeight: "28px",
-                }}
-              />
-            ) : (
-              <BookOpen
-                size={16}
-                className="sm:w-5 sm:h-5 text-primary-600"
-                weight="fill"
-              />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            {/* Mobile: Show only current node, popover reveals full path for selection */}
-            <div className="block sm:hidden">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="flex items-center gap-1 text-xs font-bold text-gray-900 truncate mb-0.5 max-w-full">
-                    <span className="truncate">
-                      {truncateString(
-                        toTitleCase(chapterName || `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`),
-                        25
-                      )}
-                    </span>
-                    <ChevronDownIcon className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-vw-90 max-w-sm p-2"
-                  sideOffset={6}
-                  align="start"
-                >
-                  <div className="space-y-2">
-                    <div className="text-caption font-semibold text-gray-500 uppercase tracking-wide">
-                      Learning Path
-                    </div>
-                    <div className="flex items-center gap-1 text-sm">
-                      <button
-                        className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
-                        onClick={handleSubjectRoute}
-                      >
-                        {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
-                      </button>
-                      <ChevronRightIcon className="w-3 h-3 text-gray-400" />
-                      <button
-                        className="px-2 py-1 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 truncate"
-                        onClick={handleModuleRoute}
-                      >
-                        {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
-                      </button>
-                      <ChevronRightIcon className="w-3 h-3 text-gray-400" />
-                      <span className="px-2 py-1 rounded-md bg-primary-50 text-primary-700 font-semibold truncate">
-                        {toTitleCase(chapterName || getTerminology(ContentTerms.Chapters, SystemTerms.Chapters))}
-                      </span>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-sm font-bold text-gray-900 truncate">
-                {subjectName && moduleName && chapterName
-                  ? `${truncateString(
-                    toTitleCase(subjectName),
-                    window.innerWidth < 768
-                      ? 8
-                      : window.innerWidth < 1024
-                        ? 12
-                        : 18
-                  )} • ${truncateString(
-                    toTitleCase(moduleName),
-                    window.innerWidth < 768
-                      ? 8
-                      : window.innerWidth < 1024
-                        ? 12
-                        : 18
-                  )} • ${truncateString(
-                    toTitleCase(chapterName),
-                    window.innerWidth < 768
-                      ? 10
-                      : window.innerWidth < 1024
-                        ? 15
-                        : 25
-                  )}`
-                  : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
-              </h1>
-            </div>
-          </div>
-        </div>
-      </div>
+    setNavHeading(
+      <span className="truncate">
+        {toTitleCase(
+          chapterName ||
+            `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`
+        )}
+      </span>
     );
-    setNavHeading(heading);
-  }, [
-    setNavHeading,
-    subjectName,
-    moduleName,
-    chapterName,
-    instituteLogoUrl,
-    handleSubjectRoute,
-    handleModuleRoute,
-  ]);
+  }, [setNavHeading, chapterName]);
 
   return (
     <LayoutContainer
+      fullWidth
       sidebarComponent={SidebarComponent}
-      className="md:my-0 md:mx-2 lg:mx-3"
+      className={focusMode ? "m-0 md:m-1" : "md:my-0 md:mx-2 lg:mx-3"}
     >
       <InitStudyLibraryProvider>
         <ModulesWithChaptersProvider
@@ -1434,6 +1594,20 @@ function Slides() {
           </SidebarProvider>
         </ModulesWithChaptersProvider>
       </InitStudyLibraryProvider>
+      {/* Exit handle for focus mode — floats bottom-left (the sidebar it
+          replaced lived on the left; bottom-right belongs to the chatbot
+          button and the doubt sidebar). Rendered only while focused, so it
+          never overlaps the open sidebar's footer. */}
+      {focusMode && (
+        <button
+          onClick={toggleFocusMode}
+          aria-label="Exit focus mode"
+          className="fixed bottom-6 left-4 z-30 hidden sm:flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-md transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 [.ui-play_&]:border-2 [.ui-play_&]:font-bold"
+        >
+          <ArrowsIn size={14} weight="bold" />
+          <span>Exit focus</span>
+        </button>
+      )}
     </LayoutContainer>
   );
 }

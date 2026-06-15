@@ -80,9 +80,9 @@ export const CourseHeader = ({
                       variant="secondary"
                       className={cn(
                         "uppercase tracking-wide text-caption font-semibold px-2.5 py-1",
-                        // Vibrant Styles - Flat Pastel
-                        "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
-                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
+                        // Vibrant — primary-50 wash chips (tenant family)
+                        "[.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:text-primary-500 dark:[.ui-vibrant_&]:bg-primary-500/10 dark:[.ui-vibrant_&]:text-primary-300",
+                        "[.ui-vibrant_&]:border [.ui-vibrant_&]:border-primary-200 dark:[.ui-vibrant_&]:border-primary-500/30",
                         // Play Styles
                         "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2",
                       )}
@@ -94,12 +94,7 @@ export const CourseHeader = ({
               )}
 
               {/* Title */}
-              <h1
-                className={cn(
-                  "text-h3 sm:text-h2 lg:text-h1 font-bold leading-tight tracking-tight text-foreground",
-                  "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50",
-                )}
-              >
+              <h1 className="text-h3 sm:text-h2 lg:text-h1 font-bold leading-tight tracking-tight text-foreground">
                 {courseData.title}
               </h1>
 

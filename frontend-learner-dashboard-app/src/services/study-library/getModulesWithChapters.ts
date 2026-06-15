@@ -10,27 +10,12 @@ export const fetchModulesWithChaptersPublic = async (
   subjectId: string,
   packageSessionId: string,
 ) => {
-  if (import.meta.env.MODE !== "production") {
-    console.info("[ModulesAPI] PUBLIC request", {
-      subjectId,
-      packageSessionId,
-    });
-  }
   const response = await authenticatedAxiosInstance.get(MODULES_WITH_CHAPTERS, {
     params: {
       subjectId: subjectId,
       packageSessionId: packageSessionId,
     },
   });
-  if (import.meta.env.MODE !== "production") {
-    const data = response?.data;
-    console.info("[ModulesAPI] PUBLIC response", {
-      subjectId,
-      packageSessionId,
-      type: Array.isArray(data) ? "array" : typeof data,
-      length: Array.isArray(data) ? data.length : undefined,
-    });
-  }
   return response.data;
 };
 
@@ -38,12 +23,6 @@ export const fetchModulesWithChapters = async (
   subjectId: string,
   packageSessionId: string,
 ) => {
-  if (import.meta.env.MODE !== "production") {
-    console.info("[ModulesAPI] PRIVATE request", {
-      subjectId,
-      packageSessionId,
-    });
-  }
   const response = await authenticatedAxiosInstance.get(
     MODULES_WITH_CHAPTERS_PRIVATE,
     {
@@ -53,15 +32,6 @@ export const fetchModulesWithChapters = async (
       },
     },
   );
-  if (import.meta.env.MODE !== "production") {
-    const data = response?.data;
-    console.info("[ModulesAPI] PRIVATE response", {
-      subjectId,
-      packageSessionId,
-      type: Array.isArray(data) ? "array" : typeof data,
-      length: Array.isArray(data) ? data.length : undefined,
-    });
-  }
   return response.data;
 };
 

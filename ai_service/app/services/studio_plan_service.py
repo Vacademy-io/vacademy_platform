@@ -186,6 +186,12 @@ class StudioPlanService:
             return StepPlanResult(step=step, operations=[], notes="No tools available for this step.")
 
         ctx = _build_validation_ctx(manifest, prior_steps)
+        # P7: audio policy preferences ride detect_ctx (router _plan_inputs);
+        # expose them to LLM-tool validators too — propose_bgm drops its op
+        # when bgm_policy='never' (defense-in-depth; the prompt also says so).
+        for _policy_key in ("bgm_policy", "sfx_policy"):
+            if detect_ctx and _policy_key in detect_ctx:
+                ctx[_policy_key] = detect_ctx[_policy_key]
         det_specs = [s for s in specs if s.is_deterministic]
         llm_specs = [s for s in specs if not s.is_deterministic]
 

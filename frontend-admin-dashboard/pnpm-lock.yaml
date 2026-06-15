@@ -377,6 +377,9 @@ importers:
       '@yoopta/video':
         specifier: ^4.9.4
         version: 4.9.9(@yoopta/editor@4.9.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(slate-react@0.102.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(slate@0.102.0))(slate@0.102.0))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@zip.js/zip.js':
+        specifier: ^2.8.26
+        version: 2.8.26
       '@zoom/meetingsdk':
         specifier: ^3.0.0
         version: 3.13.2(lodash@4.17.21)(react-dom@18.3.1(react@18.3.1))(react-redux@7.2.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)(redux-thunk@2.4.2(redux@4.2.1))(redux@4.2.1)
@@ -6276,6 +6279,10 @@ packages:
       '@yoopta/editor': '>=4.0.0'
       react: '>=17.0.2'
       react-dom: '>=17.0.2'
+
+  '@zip.js/zip.js@2.8.26':
+    resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   '@zoom/meetingsdk@3.13.2':
     resolution: {integrity: sha512-aSafD54bqDsvJpkJYfvd+y8sU9cIwuZs9urILyQhIxCpFb4Fq9uckdnxsqQZkEZX1pRtp+b2OCoelq5CyFpFvQ==}
@@ -21795,6 +21802,8 @@ snapshots:
       re-resizable: 6.11.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
+
+  '@zip.js/zip.js@2.8.26': {}
 
   '@zoom/meetingsdk@3.13.2(lodash@4.17.21)(react-dom@18.3.1(react@18.3.1))(react-redux@7.2.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)(redux-thunk@2.4.2(redux@4.2.1))(redux@4.2.1)':
     dependencies:

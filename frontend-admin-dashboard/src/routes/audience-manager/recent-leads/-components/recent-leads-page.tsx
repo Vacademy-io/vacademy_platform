@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { convertToLocalDateTime } from '@/constants/helper';
@@ -53,11 +54,18 @@ import {
     type LeadActionHandlers,
 } from '@/components/shared/leads';
 
-const ALL_AUDIENCES_VALUE = '__ALL__';
-const ALL_TIERS_VALUE = '__ALL__';
-const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted (default)
-const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status
-const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage (TAT / follow-up)
+import {
+    ALL_AUDIENCES_VALUE,
+    ALL_TIERS_VALUE,
+    ALL_ACTIVE_VALUE,
+    ALL_STATUSES_VALUE,
+    ALL_SLA_VALUE,
+    ALL_COUNSELLORS_VALUE,
+    ALL_DATE_VALUE,
+    CUSTOM_DATE_VALUE,
+    DEFAULT_RANGE_DAYS,
+} from './recent-leads-search';
+
 type SlaFilter =
     | 'TAT_BEFORE'
     | 'TAT_OVERDUE'
@@ -97,9 +105,7 @@ const toDateInputValue = (d: Date) => {
 };
 // Date filter is a preset day-range select (no custom calendar) so a counsellor
 // can switch windows in one click. "ALL" disables the submitted-date filter.
-const ALL_DATE_VALUE = 'ALL';
-const CUSTOM_DATE_VALUE = 'CUSTOM';
-const DEFAULT_RANGE_DAYS = '30';
+// (Preset sentinels live in ./recent-leads-search so URL deep-links share them.)
 const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
     { value: '1', label: 'Last 24 hours' },
     { value: '7', label: 'Last 7 days' },
@@ -162,12 +168,23 @@ const RecentLeadsContent = () => {
     const { setSelectedStudent } = useStudentSidebar();
     const queryClient = useQueryClient();
 
+    // Filters are URL-driven: state seeds from the search params on mount
+    // (drill-through links from Reports / Sales Dashboard land here) and the
+    // effect below writes every change back with replace:true — same pattern
+    // as the Follow-ups page (use-follow-ups-view-state.ts).
+    const urlSearch = useSearch({ from: '/audience-manager/recent-leads/' });
+    const navigate = useNavigate({ from: '/audience-manager/recent-leads/' });
+
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(20);
-    const [rangeDays, setRangeDays] = useState<string>(DEFAULT_RANGE_DAYS);
+    const [rangeDays, setRangeDays] = useState<string>(
+        () =>
+            urlSearch.range ??
+            (urlSearch.from || urlSearch.to ? CUSTOM_DATE_VALUE : DEFAULT_RANGE_DAYS)
+    );
     // Custom-range state (only used when rangeDays === CUSTOM_DATE_VALUE).
-    const [customFrom, setCustomFrom] = useState('');
-    const [customTo, setCustomTo] = useState('');
+    const [customFrom, setCustomFrom] = useState(urlSearch.from ?? '');
+    const [customTo, setCustomTo] = useState(urlSearch.to ?? '');
     const [customOpen, setCustomOpen] = useState(false);
     const appliedRange = useMemo(
         () =>
@@ -176,10 +193,12 @@ const RecentLeadsContent = () => {
                 : rangeForPreset(rangeDays),
         [rangeDays, customFrom, customTo]
     );
-    const [audienceId, setAudienceId] = useState<string>(ALL_AUDIENCES_VALUE);
+    const [audienceId, setAudienceId] = useState<string>(
+        urlSearch.audience ?? ALL_AUDIENCES_VALUE
+    );
 
-    const [searchInput, setSearchInput] = useState('');
-    const [appliedSearch, setAppliedSearch] = useState('');
+    const [searchInput, setSearchInput] = useState(urlSearch.search ?? '');
+    const [appliedSearch, setAppliedSearch] = useState(urlSearch.search ?? '');
     useEffect(() => {
         const trimmed = searchInput.trim();
         if (trimmed === appliedSearch) return;
@@ -190,18 +209,58 @@ const RecentLeadsContent = () => {
         return () => window.clearTimeout(timer);
     }, [searchInput, appliedSearch]);
 
-    const [tierFilter, setTierFilter] = useState<string>(ALL_TIERS_VALUE);
+    const [tierFilter, setTierFilter] = useState<string>(urlSearch.tier ?? ALL_TIERS_VALUE);
     // Unified Lead Status filter — combines pipeline status + conversion state:
     //   ALL_ACTIVE_VALUE   → all leads except Converted (default)
     //   ALL_STATUSES_VALUE → every lead regardless of status
     //   <statusKey>        → only leads currently in that custom status
-    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(
+        urlSearch.status ?? ALL_ACTIVE_VALUE
+    );
     // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
     // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
-    const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
+    const [slaFilter, setSlaFilter] = useState<string>(urlSearch.sla ?? ALL_SLA_VALUE);
     // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
-    const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
-    const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
+    const [counsellorFilter, setCounsellorFilter] = useState<string>(
+        urlSearch.counsellor ?? ALL_COUNSELLORS_VALUE
+    );
+    // Source-type filter — URL-only for now (no dropdown); drill-through links
+    // from the Reports source breakdown set it. Empty string = all sources.
+    const [sourceFilter, setSourceFilter] = useState<string>(urlSearch.source ?? '');
+
+    // Write the applied filters back to the URL (replace, not push — filter
+    // tweaks shouldn't pollute browser history). Defaults are omitted so the
+    // bare /recent-leads URL stays clean.
+    useEffect(() => {
+        void navigate({
+            search: {
+                status: leadStatusFilter === ALL_ACTIVE_VALUE ? undefined : leadStatusFilter,
+                tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                sla: slaFilter === ALL_SLA_VALUE ? undefined : slaFilter,
+                counsellor:
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                audience: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                search: appliedSearch || undefined,
+                range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
+                from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
+                to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
+                source: sourceFilter || undefined,
+            },
+            replace: true,
+        });
+    }, [
+        navigate,
+        leadStatusFilter,
+        tierFilter,
+        slaFilter,
+        counsellorFilter,
+        audienceId,
+        appliedSearch,
+        rangeDays,
+        customFrom,
+        customTo,
+        sourceFilter,
+    ]);
     // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
     // the institute-wide list. See useLeadCounsellorOptions.
     const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
@@ -288,6 +347,7 @@ const RecentLeadsContent = () => {
             slaFilter,
             counsellorFilter,
             ALL_COUNSELLORS_VALUE,
+            sourceFilter,
             page,
             pageSize,
         ],
@@ -304,6 +364,7 @@ const RecentLeadsContent = () => {
                 sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                 assigned_counselor_id:
                     counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                source_type: sourceFilter || undefined,
                 page,
                 size: pageSize,
             }),
@@ -386,6 +447,7 @@ const RecentLeadsContent = () => {
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
+        setSourceFilter('');
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -433,7 +495,8 @@ const RecentLeadsContent = () => {
         tierFilter !== ALL_TIERS_VALUE ||
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
-        counsellorFilter !== ALL_COUNSELLORS_VALUE;
+        counsellorFilter !== ALL_COUNSELLORS_VALUE ||
+        !!sourceFilter;
 
     // CSV export (shared by "Export" + "Export selected")
     const [isExporting, setIsExporting] = useState(false);
@@ -541,6 +604,7 @@ const RecentLeadsContent = () => {
                     sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                     assigned_counselor_id:
                         counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                    source_type: sourceFilter || undefined,
                     page: pageNo,
                     size: 200,
                 });
@@ -585,6 +649,14 @@ const RecentLeadsContent = () => {
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
         });
     }
+    if (sourceFilter)
+        chips.push({
+            label: `Source: ${sourceFilter}`,
+            onRemove: () => {
+                setPage(0);
+                setSourceFilter('');
+            },
+        });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {

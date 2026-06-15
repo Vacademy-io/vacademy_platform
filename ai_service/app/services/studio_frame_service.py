@@ -10,7 +10,9 @@ Mirrors `reels_frame_service.ReelsFrameService` field-for-field; differences:
   * identifier is `build_id` (UUID), institute scope is asserted via the
     parent project;
   * timeline URL comes from `AiStudioBuild.s3_urls['timeline']`;
-  * adds a `reorder_frame` op (move an entry to a new index, by entry_id).
+  * adds a `reorder_frame` op (move an entry to a new index, by entry_id);
+  * adds audio-track ops (P7) — add/update/delete `meta.audio_tracks` entries
+    so the editor's AudioTracksPanel persists for kind=studio.
 
 Sync work (S3 download + JSON munge + upload) runs inside `asyncio.to_thread`
 in the router so the FastAPI loop stays responsive.
@@ -23,7 +25,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from ..config import get_settings
 from ..models.ai_studio_build import AiStudioBuild
@@ -74,6 +76,12 @@ class StudioFrameService:
 
     def _load_build(self, build_id: str, institute_id: str) -> AiStudioBuild:
         """Fetch build + verify institute ownership via the parent project."""
+        try:
+            UUID(str(build_id))
+        except (TypeError, ValueError):
+            # A malformed id must read as not-found (404), not a DB DataError
+            # bubbling up as a 500 — mirrors the router's _load_build_or_404.
+            raise StudioBuildNotFound(f"Build '{build_id}' not found")
         build = self._build_repo_().get_by_id(build_id)
         if build is None:
             raise StudioBuildNotFound(f"Build '{build_id}' not found")
@@ -291,6 +299,110 @@ class StudioFrameService:
             saved = self._save_timeline(data, fp, key)
             return self._result(build_id, entry_id, target, saved, entries, meta,
                                  "Frame reordered.")
+
+    # ── audio tracks (P7) ────────────────────────────────────────────────
+    # The editor's AudioTracksPanel persists BGM/extra-VO tracks per call (one
+    # POST per add/update/delete), mutating `meta.audio_tracks` in the same
+    # timeline JSON the frame ops rewrite. Shape mirrors
+    # video_generation_service.add_audio_track ({id,label,url,volume,delay,
+    # fadeIn,fadeOut} — camelCase fades), which both the render worker's mixer
+    # and the player read.
+
+    def add_audio_track(
+        self, build_id: str, institute_id: str, *, label: str, url: str,
+        volume: float = 1.0, delay: float = 0.0,
+        fade_in: float = 0.0, fade_out: float = 0.0,
+        loop: bool = False,
+        track_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        build = self._load_build(build_id, institute_id)
+        timeline_url = self._timeline_url(build)
+        bucket = get_settings().aws_bucket_name
+        key = self._s3_key_from_url(build_id, timeline_url, bucket)
+
+        with tempfile.TemporaryDirectory(prefix="studio-track-add-") as tmp:
+            fp = Path(tmp) / "time_based_frame.json"
+            data, entries, meta, wrapped = self._download_timeline(timeline_url, fp)
+            new_id = track_id or f"track-{uuid4().hex[:8]}"
+            new_track = {
+                "id": new_id, "label": label, "url": url,
+                "volume": volume, "delay": delay, "fadeIn": fade_in, "fadeOut": fade_out,
+                "loop": bool(loop),
+            }
+            tracks = list(meta.get("audio_tracks") or [])
+            tracks.append(new_track)
+            meta["audio_tracks"] = tracks
+            if wrapped:
+                data["meta"] = meta
+            else:
+                # Studio timelines are always wrapped, but stay tolerant.
+                data = {"entries": entries, "meta": meta}
+            self._save_timeline(data, fp, key)
+            return {"status": "success", "build_id": build_id, "track_id": new_id,
+                    "message": "Audio track added."}
+
+    def update_audio_track(
+        self, build_id: str, institute_id: str, *, track_id: str,
+        label: Optional[str] = None, url: Optional[str] = None,
+        volume: Optional[float] = None, delay: Optional[float] = None,
+        fade_in: Optional[float] = None, fade_out: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        build = self._load_build(build_id, institute_id)
+        timeline_url = self._timeline_url(build)
+        bucket = get_settings().aws_bucket_name
+        key = self._s3_key_from_url(build_id, timeline_url, bucket)
+
+        with tempfile.TemporaryDirectory(prefix="studio-track-update-") as tmp:
+            fp = Path(tmp) / "time_based_frame.json"
+            data, entries, meta, wrapped = self._download_timeline(timeline_url, fp)
+            tracks = list(meta.get("audio_tracks") or [])
+            track = next((t for t in tracks if t.get("id") == track_id), None)
+            if track is None:
+                raise ValueError(f"Audio track '{track_id}' not found in build '{build_id}'")
+            if label is not None:
+                track["label"] = label
+            if url is not None:
+                track["url"] = url
+            if volume is not None:
+                track["volume"] = volume
+            if delay is not None:
+                track["delay"] = delay
+            if fade_in is not None:
+                track["fadeIn"] = fade_in
+            if fade_out is not None:
+                track["fadeOut"] = fade_out
+            meta["audio_tracks"] = tracks
+            if wrapped:
+                data["meta"] = meta
+            else:
+                data = {"entries": entries, "meta": meta}
+            self._save_timeline(data, fp, key)
+            return {"status": "success", "build_id": build_id, "track_id": track_id,
+                    "message": "Audio track updated."}
+
+    def delete_audio_track(
+        self, build_id: str, institute_id: str, *, track_id: str,
+    ) -> Dict[str, Any]:
+        build = self._load_build(build_id, institute_id)
+        timeline_url = self._timeline_url(build)
+        bucket = get_settings().aws_bucket_name
+        key = self._s3_key_from_url(build_id, timeline_url, bucket)
+
+        with tempfile.TemporaryDirectory(prefix="studio-track-delete-") as tmp:
+            fp = Path(tmp) / "time_based_frame.json"
+            data, entries, meta, wrapped = self._download_timeline(timeline_url, fp)
+            tracks = list(meta.get("audio_tracks") or [])
+            kept = [t for t in tracks if t.get("id") != track_id]
+            if len(kept) == len(tracks):
+                raise ValueError(f"Audio track '{track_id}' not found in build '{build_id}'")
+            meta["audio_tracks"] = kept
+            if wrapped:
+                data["meta"] = meta
+            else:
+                data = {"entries": entries, "meta": meta}
+            self._save_timeline(data, fp, key)
+            return {"status": "success", "build_id": build_id, "track_id": track_id,
+                    "message": "Audio track deleted."}
 
     # ── shared index resolution ──────────────────────────────────────────
 

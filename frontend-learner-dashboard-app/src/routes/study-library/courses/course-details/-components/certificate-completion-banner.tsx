@@ -82,9 +82,9 @@ export const CertificateCompletionBanner = ({
         <>
             <div className={cn(
                 "mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm animate-fade-in-up",
-                // Vibrant Styles - Flat Pastel
-                "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
-                "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30 [.ui-vibrant_&]:shadow-sm",
+                // Vibrant — semantic success surface (completion status)
+                "[.ui-vibrant_&]:bg-success-50 dark:[.ui-vibrant_&]:bg-success-500/10",
+                "[.ui-vibrant_&]:border-success-200 dark:[.ui-vibrant_&]:border-success-500/30 [.ui-vibrant_&]:shadow-sm",
                 // Play Styles — solid green hero with soft layered shadow
                 "[.ui-play_&]:bg-play-success [.ui-play_&]:border-transparent [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
                 "[.ui-play_&]:shadow-play-glow-success-lg"
@@ -95,8 +95,8 @@ export const CertificateCompletionBanner = ({
                         {/* Certificate Icon */}
                         <div className={cn(
                             "flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg",
-                            // Vibrant Styles - Flat Icon
-                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:shadow-md",
+                            // Vibrant — flat semantic success disc (status)
+                            "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-success-600 [.ui-vibrant_&]:shadow-md",
                             // Play Styles — white icon disc with soft shadow
                             "[.ui-play_&]:bg-white [.ui-play_&]:text-play-success [.ui-play_&]:shadow-play-soft [.ui-play_&]:rounded-xl"
                         )}>
@@ -162,11 +162,11 @@ export const CertificateCompletionBanner = ({
                         role="dialog"
                         aria-modal="true"
                         aria-label="Certificate preview"
-                        className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-4"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
                         onClick={() => setPreviewOpen(false)}
                     >
                         <div
-                            className="relative w-[95vw] max-w-5xl h-[90vh] bg-white dark:bg-gray-900 rounded-lg shadow-2xl flex flex-col overflow-hidden"
+                            className="relative w-vw-95 max-w-5xl h-screen-90 bg-white dark:bg-gray-900 rounded-lg shadow-2xl flex flex-col overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 pr-24">

@@ -169,8 +169,10 @@ export function AttendanceWidget() {
       className={cn(
         "attendance-widget-card group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "[.ui-vibrant_&]:bg-emerald-50/50 [.ui-vibrant_&]:border-emerald-200",
-        "dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/50",
+        // Vibrant: tenant-primary wash + top rail; success/danger stay
+        // reserved for the actual attendance statuses inside
+        "[.ui-vibrant_&]:bg-primary-50/50 [.ui-vibrant_&]:border-primary-100",
+        "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
         // Play: solid success-green card with hard press shadow, ink text
         "[.ui-play_&]:bg-play-success [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
         "[.ui-play_&]:shadow-play-4d-success [.ui-play_&]:hover:shadow-play-4d-success",

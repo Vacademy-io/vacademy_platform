@@ -13,6 +13,7 @@ import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
 import LeadSlaSettings from './LeadSlaSettings';
+import LeadReportSettings from './LeadReportSettings';
 import PoolsList from './pools/PoolsList';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
 // and configure the counsellor rating strategy.
@@ -217,8 +218,8 @@ function ConfigSection({
                 <CardHeader>
                     <CardTitle>Lead Management System</CardTitle>
                     <CardDescription>
-                        Controls whether lead scoring, tier badges, and the lead sidebar tab are visible
-                        institute-wide. Disabling hides all lead UI without deleting data.
+                        Controls whether lead scoring, tier badges, and the lead sidebar tab are
+                        visible institute-wide. Disabling hides all lead UI without deleting data.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -248,9 +249,18 @@ function ConfigSection({
                         <CardContent className="space-y-4">
                             {(
                                 [
-                                    ['showScoreInEnquiryTable', 'Enquiries table (Admissions → Enquiries)'],
-                                    ['showScoreInContactsTable', 'Contacts table (Manage Contacts)'],
-                                    ['showScoreInStudentsTable', 'Students table (Manage Students)'],
+                                    [
+                                        'showScoreInEnquiryTable',
+                                        'Enquiries table (Admissions → Enquiries)',
+                                    ],
+                                    [
+                                        'showScoreInContactsTable',
+                                        'Contacts table (Manage Contacts)',
+                                    ],
+                                    [
+                                        'showScoreInStudentsTable',
+                                        'Students table (Manage Students)',
+                                    ],
                                 ] as [keyof LeadSettingsData, string][]
                             ).map(([key, label]) => (
                                 <div key={key} className="flex items-center gap-3">
@@ -272,20 +282,39 @@ function ConfigSection({
                         <CardHeader>
                             <CardTitle>Scoring Weights</CardTitle>
                             <CardDescription>
-                                Each factor contributes its weight percentage to the final score (0–100).
-                                Weights must sum to exactly 100.
+                                Each factor contributes its weight percentage to the final score
+                                (0–100). Weights must sum to exactly 100.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {(
                                 [
-                                    ['sourceQuality', 'Source Quality', 'Score based on how the lead came in (e.g. Walk-in > Google Ads > Manual)'],
-                                    ['profileCompleteness', 'Profile Completeness', 'Percentage of key fields filled (name, email, phone, class, etc.)'],
-                                    ['recency', 'Recency', 'Time decay — newer leads score higher, older ones decay'],
-                                    ['engagement', 'Engagement', 'Number of timeline notes and interactions recorded'],
+                                    [
+                                        'sourceQuality',
+                                        'Source Quality',
+                                        'Score based on how the lead came in (e.g. Walk-in > Google Ads > Manual)',
+                                    ],
+                                    [
+                                        'profileCompleteness',
+                                        'Profile Completeness',
+                                        'Percentage of key fields filled (name, email, phone, class, etc.)',
+                                    ],
+                                    [
+                                        'recency',
+                                        'Recency',
+                                        'Time decay — newer leads score higher, older ones decay',
+                                    ],
+                                    [
+                                        'engagement',
+                                        'Engagement',
+                                        'Number of timeline notes and interactions recorded',
+                                    ],
                                 ] as [keyof LeadSettingsData['scoringWeights'], string, string][]
                             ).map(([key, label, desc]) => (
-                                <div key={key} className="grid grid-cols-[1fr_80px] items-start gap-4">
+                                <div
+                                    key={key}
+                                    className="grid grid-cols-[1fr_80px] items-start gap-4"
+                                >
                                     <div>
                                         <p className="text-sm font-medium">{label}</p>
                                         <p className="text-xs text-muted-foreground">{desc}</p>
@@ -296,7 +325,9 @@ function ConfigSection({
                                             min={0}
                                             max={100}
                                             value={settings.scoringWeights[key]}
-                                            onChange={(e) => updateWeight(key, parseInt(e.target.value, 10) || 0)}
+                                            onChange={(e) =>
+                                                updateWeight(key, parseInt(e.target.value, 10) || 0)
+                                            }
                                             className="w-16 text-center"
                                         />
                                         <span className="text-sm text-muted-foreground">%</span>
@@ -327,9 +358,9 @@ function ConfigSection({
                         <CardHeader>
                             <CardTitle>Recency Decay</CardTitle>
                             <CardDescription>
-                                Number of days before a lead&apos;s recency score starts to decay toward 0. A
-                                lead submitted today scores 100 for recency; one submitted{' '}
-                                {settings.recencyDecayDays} days ago scores ~50.
+                                Number of days before a lead&apos;s recency score starts to decay
+                                toward 0. A lead submitted today scores 100 for recency; one
+                                submitted {settings.recencyDecayDays} days ago scores ~50.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -340,7 +371,9 @@ function ConfigSection({
                                     max={365}
                                     value={settings.recencyDecayDays}
                                     onChange={(e) =>
-                                        update({ recencyDecayDays: parseInt(e.target.value, 10) || 30 })
+                                        update({
+                                            recencyDecayDays: parseInt(e.target.value, 10) || 30,
+                                        })
                                     }
                                     className="w-24"
                                 />
@@ -360,6 +393,9 @@ function ConfigSection({
                             {saving ? 'Saving…' : 'Save scoring settings'}
                         </MyButton>
                     </div>
+
+                    {/* ── Reports Center config (LEAD_SETTING.data.reports subtree) ── */}
+                    <LeadReportSettings />
 
                     {/* ── TAT + Follow-up reminders (table-backed) ── */}
                     <LeadSlaSettings />

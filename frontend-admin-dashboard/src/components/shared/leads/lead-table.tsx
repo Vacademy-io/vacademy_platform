@@ -59,6 +59,18 @@ interface LeadTableProps {
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
     emptyState?: ReactNode;
+    /** Surface-specific trailing columns (e.g. the Follow-ups page's inline
+     *  "Mark complete" action). Cells are interactive — clicks don't bubble
+     *  to the row's open-side-view handler. */
+    extraColumns?: LeadTableExtraColumn[];
+}
+
+/** Shape of a caller-supplied trailing column. */
+export interface LeadTableExtraColumn {
+    id: string;
+    header: string;
+    thClass?: string;
+    render: (vm: LeadCardVM, profile?: LeadProfileSummary) => ReactNode;
 }
 
 interface Col {
@@ -191,6 +203,7 @@ export function LeadTable({
     onStatusUpdated,
     hiddenColumns,
     emptyState,
+    extraColumns,
 }: LeadTableProps) {
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
@@ -462,6 +475,12 @@ export function LeadTable({
             ),
         },
     ];
+
+    // Caller-supplied trailing columns render after the built-ins, always
+    // interactive so their controls don't trigger the row's open handler.
+    for (const extra of extraColumns ?? []) {
+        allCols.push({ ...extra, show: true, interactive: true });
+    }
 
     const cols = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
 

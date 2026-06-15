@@ -16,6 +16,7 @@ import {
     Loader2,
     Upload,
     FileAudio,
+    Repeat,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AudioTrack } from '@/components/ai-video-player/types';
@@ -48,6 +49,7 @@ function EditRow({ track, colorHex, onClose, onDelete, onSave }: EditRowProps) {
     const [delay, setDelay] = useState(track.delay);
     const [fadeIn, setFadeIn] = useState(track.fadeIn);
     const [fadeOut, setFadeOut] = useState(track.fadeOut);
+    const [loop, setLoop] = useState(track.loop ?? false);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -92,7 +94,7 @@ function EditRow({ track, colorHex, onClose, onDelete, onSave }: EditRowProps) {
 
     const handleSave = async () => {
         setSaving(true);
-        const ok = await onSave({ label, url, volume, delay, fadeIn, fadeOut });
+        const ok = await onSave({ label, url, volume, delay, fadeIn, fadeOut, loop });
         setSaving(false);
         if (ok) onClose();
     };
@@ -215,10 +217,28 @@ function EditRow({ track, colorHex, onClose, onDelete, onSave }: EditRowProps) {
                         step={0.5}
                         value={fadeOut}
                         onChange={(e) => setFadeOut(parseFloat(e.target.value) || 0)}
-                        className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
+                        disabled={loop}
+                        className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
                     />
                 </div>
             </div>
+
+            {/* Loop until video end */}
+            <label className="flex cursor-pointer items-center gap-2">
+                <input
+                    type="checkbox"
+                    checked={loop}
+                    onChange={(e) => setLoop(e.target.checked)}
+                    className="size-3.5 cursor-pointer"
+                    style={{ accentColor: colorHex }}
+                />
+                <span className="text-[10px] font-medium text-gray-600">Loop until video end</span>
+                {loop && (
+                    <span className="text-[10px] text-gray-400">
+                        repeats, then fades out at the end automatically
+                    </span>
+                )}
+            </label>
 
             {/* Actions */}
             <div className="flex items-center gap-2 pt-0.5">
@@ -405,8 +425,15 @@ function AddForm({ onAdd, onCancel }: AddFormProps) {
 
 // ── Main panel ───────────────────────────────────────────────────────────────
 export function AudioTracksPanel() {
-    const { videoId, apiKey, audioTracks, addAudioTrack, updateAudioTrack, removeAudioTrack } =
-        useVideoEditorStore();
+    const {
+        videoId,
+        apiKey,
+        kind,
+        audioTracks,
+        addAudioTrack,
+        updateAudioTrack,
+        removeAudioTrack,
+    } = useVideoEditorStore();
 
     const [expanded, setExpanded] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -428,7 +455,7 @@ export function AudioTracksPanel() {
                 fadeIn: 0,
                 fadeOut: 0,
             };
-            const result = await apiAddAudioTrack(videoId, apiKey, newTrack);
+            const result = await apiAddAudioTrack(videoId, apiKey, newTrack, kind);
             if (!result.ok) {
                 toast.error(`Failed to add track: ${result.error}`);
                 return;
@@ -437,7 +464,7 @@ export function AudioTracksPanel() {
             setShowAddForm(false);
             toast.success('Audio track added');
         },
-        [videoId, apiKey, addAudioTrack]
+        [videoId, apiKey, kind, addAudioTrack]
     );
 
     const handleSave = useCallback(
@@ -446,7 +473,7 @@ export function AudioTracksPanel() {
                 toast.error('No API key — cannot save track.');
                 return false;
             }
-            const result = await apiUpdateAudioTrack(videoId, apiKey, trackId, patch);
+            const result = await apiUpdateAudioTrack(videoId, apiKey, trackId, patch, kind);
             if (!result.ok) {
                 toast.error(`Failed to update track: ${result.error}`);
                 return false;
@@ -455,7 +482,7 @@ export function AudioTracksPanel() {
             toast.success('Track updated');
             return true;
         },
-        [videoId, apiKey, updateAudioTrack]
+        [videoId, apiKey, kind, updateAudioTrack]
     );
 
     const handleDelete = useCallback(
@@ -464,7 +491,7 @@ export function AudioTracksPanel() {
                 toast.error('No API key — cannot delete track.');
                 return;
             }
-            const result = await apiDeleteAudioTrack(videoId, apiKey, trackId);
+            const result = await apiDeleteAudioTrack(videoId, apiKey, trackId, kind);
             if (!result.ok) {
                 toast.error(`Failed to delete track: ${result.error}`);
                 return;
@@ -473,7 +500,7 @@ export function AudioTracksPanel() {
             setEditingId(null);
             toast.success('Track removed');
         },
-        [videoId, apiKey, removeAudioTrack]
+        [videoId, apiKey, kind, removeAudioTrack]
     );
 
     return (
@@ -529,6 +556,12 @@ export function AudioTracksPanel() {
                                 <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-700">
                                     {track.label}
                                 </span>
+                                {track.loop && (
+                                    <Repeat
+                                        className="size-3 shrink-0 text-gray-400"
+                                        aria-label="Loops until video end"
+                                    />
+                                )}
                                 <span className="shrink-0 font-mono text-[10px] text-gray-400">
                                     {Math.round(track.volume * 100)}%
                                     {track.delay > 0 && ` +${track.delay}s`}

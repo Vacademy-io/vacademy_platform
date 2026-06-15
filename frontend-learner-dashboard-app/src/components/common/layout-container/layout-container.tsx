@@ -8,7 +8,8 @@ import { ChatbotSidePanel } from "@/components/chatbot/ChatbotSidePanel";
 import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { useChatbotContext } from "@/components/chatbot/useChatbotContext";
 import { usePlayTheme } from "@/hooks/use-play-theme";
-import { PlayBottomNav } from "./PlayBottomNav";
+import { PlayBottomNav, PlayNavRail } from "./PlayBottomNav";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 interface LayoutContainerProps {
     children?: React.ReactNode;
@@ -20,6 +21,13 @@ interface LayoutContainerProps {
      * instead of a floating overlay.
      */
     enableChatbotPanel?: boolean;
+    /**
+     * Bypass the centered max-w-screen-xl content contract for full-bleed
+     * surfaces (slide viewer split panes, live-class embeds). Opted-out
+     * routes keep the legacy m-3 md:m-5 spacing so they render exactly as
+     * they did before the contract existed.
+     */
+    fullWidth?: boolean;
 }
 
 export const LayoutContainer = ({
@@ -27,12 +35,30 @@ export const LayoutContainer = ({
     className,
     sidebarComponent,
     enableChatbotPanel = true, // Docked panel enabled by default
+    fullWidth = false,
 }: LayoutContainerProps) => {
     const { setHasCustomSidebar } = useStore();
     const { isOpen: chatbotIsOpen } = useChatbotContext();
     const { panelWidth, setIsDockedMode } = useChatbotPanelStore();
     const [isMobile, setIsMobile] = useState(false);
     const isPlayTheme = usePlayTheme();
+    // Display settings can hide the standard sidebar app-wide
+    // (sidebar.visible === false makes MySidebar render null). Track that
+    // here so play mode can fill the desktop nav gap with PlayNavRail.
+    const [standardSidebarHidden, setStandardSidebarHidden] = useState(false);
+
+    useEffect(() => {
+        if (!isPlayTheme) return;
+        let cancelled = false;
+        getStudentDisplaySettings(false).then((settings) => {
+            if (!cancelled) {
+                setStandardSidebarHidden(settings?.sidebar?.visible === false);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [isPlayTheme]);
 
     // Detect mobile viewport
     useEffect(() => {
@@ -59,9 +85,19 @@ export const LayoutContainer = ({
     // Show docked panel only on desktop when enableChatbotPanel is true
     const showDockedPanel = enableChatbotPanel && chatbotIsOpen && !isMobile;
 
+    // Play desktop nav: sidebar hiding is institute-config driven (not
+    // per-route), and the standard sidebar already renders its desktop
+    // variant from md up. So the only nav-less desktop case is
+    // "sidebar config-hidden + no custom sidebar" — render the play icon
+    // rail exactly there (lg+ via CSS inside PlayNavRail) to avoid
+    // double-nav everywhere else.
+    const showPlayRail =
+        isPlayTheme && standardSidebarHidden && !sidebarComponent;
+
     return (
         <>
             <MySidebar sidebarComponent={sidebarComponent} />
+            {showPlayRail && <PlayNavRail />}
             <SidebarInset
                 className="overflow-x-hidden w-full"
                 style={{
@@ -71,7 +107,21 @@ export const LayoutContainer = ({
                 }}
             >
                 <Navbar />
-                <div className={cn("m-3 md:m-5 max-w-full overflow-x-hidden", isPlayTheme && isMobile && "pb-20", className)}>
+                {/* One content contract for every routed page: centered, capped
+                    at screen-xl, with a consistent gutter + top rhythm. Routes
+                    that self-manage (className="!m-0 !p-0 max-w-none") still
+                    win via twMerge/!important, and fullWidth keeps the legacy
+                    spacing for split-pane/embed surfaces. */}
+                <div
+                    className={cn(
+                        "overflow-x-hidden",
+                        fullWidth
+                            ? "m-3 md:m-5 max-w-full"
+                            : "mx-auto w-full max-w-screen-xl px-4 py-4 sm:px-6 lg:px-8 lg:py-6",
+                        isPlayTheme && isMobile && "pb-20",
+                        className
+                    )}
+                >
                     {children}
                 </div>
             </SidebarInset>

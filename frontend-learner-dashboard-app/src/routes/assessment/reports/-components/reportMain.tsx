@@ -29,7 +29,7 @@ const playModeStyles: { [key: string]: string } = {
 export const viewStudentReport = async (
   assessmentId: string,
   attemptId: string,
-  instituteId: string | null
+  instituteId: string | null,
 ) => {
   const response = await authenticatedAxiosInstance({
     method: "GET",
@@ -147,12 +147,12 @@ const AssessmentReportList = ({
             pageNo,
             pageSize,
           },
-        }
+        },
       );
 
       const newReports = response.data.content;
       setReports((prev) =>
-        pageNo === 0 ? newReports : [...prev, ...newReports]
+        pageNo === 0 ? newReports : [...prev, ...newReports],
       );
       setHasMore(!response.data.last);
     } catch (err) {
@@ -176,12 +176,12 @@ const AssessmentReportList = ({
             setPageNo((prevPageNo) => prevPageNo + 1);
           }
         },
-        { threshold: 0.5 }
+        { threshold: 0.5 },
       );
 
       if (node) observer.current.observe(node);
     },
-    [loading, hasMore]
+    [loading, hasMore],
   );
 
   // Load initial data
@@ -233,7 +233,7 @@ const AssessmentReportList = ({
                     variant="outline"
                     className={cn(
                       "text-xs font-semibold px-2.5 py-0.5 border",
-                      playModeStyles[report.play_mode as PlayMode]
+                      playModeStyles[report.play_mode as PlayMode],
                     )}
                   >
                     {report.play_mode}
@@ -254,14 +254,14 @@ const AssessmentReportList = ({
                     <span className="font-medium text-foreground">
                       {getTerminology(
                         ContentTerms.Subjects,
-                        SystemTerms.Subjects
+                        SystemTerms.Subjects,
                       )}
                       :
                     </span>
                     <span>
                       {getSubjectNameById(
                         instituteDetails?.subjects || [],
-                        report?.subject_id
+                        report?.subject_id,
                       ) || "-"}
                     </span>
                   </div>

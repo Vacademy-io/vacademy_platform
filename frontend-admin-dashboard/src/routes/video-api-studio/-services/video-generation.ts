@@ -285,7 +285,8 @@ export type AvatarModel =
     | 'fal-ai/heygen/avatar4/image-to-video'
     | 'veed/fabric-1.0'
     | 'fal-ai/flashtalk'
-    | 'fal-ai/ltx-2.3-quality/audio-to-video';
+    | 'fal-ai/ltx-2.3-quality/audio-to-video'
+    | 'bytedance/seedance-2.0/reference-to-video';
 
 export type AvatarQuality = '480p' | '720p';
 
@@ -378,6 +379,15 @@ export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecond
         value: 'fal-ai/ltx-2.3-quality/audio-to-video',
         label: 'LTX 2.3 (audio-to-video)',
         perSecondUsd: 0.0237,
+    },
+    {
+        // Seedance 2.0 reference-to-video. Audio-capable (reference image +
+        // driving audio → video) with native audio + camera control. Priced
+        // PER-SECOND — $0.3034/s @720p (the picker caps avatars at 480p/720p).
+        // Note: ≤15s audio cap per shot, and it is the priciest host model.
+        value: 'bytedance/seedance-2.0/reference-to-video',
+        label: 'Seedance 2.0 (reference-to-video)',
+        perSecondUsd: 0.3034,
     },
 ];
 

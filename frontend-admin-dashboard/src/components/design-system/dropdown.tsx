@@ -28,6 +28,7 @@ export const MyDropdown = ({
     error,
     disable,
     className,
+    contentClassName,
 }: myDropDownProps) => {
     const [isOpen, setIsOpen] = useState<boolean>(false);
 
@@ -123,7 +124,10 @@ export const MyDropdown = ({
                 )}
                 <DropdownMenuPortal container={document.getElementById('portal-root')}>
                     <DropdownMenuContent
-                        className="z-[9999] mt-2 min-w-60 rounded-lg bg-white py-2 shadow focus:outline-none"
+                        className={cn(
+                            'z-[9999] mt-2 min-w-60 rounded-lg bg-white py-2 shadow focus:outline-none',
+                            contentClassName
+                        )}
                         sideOffset={5}
                         align="start"
                     >

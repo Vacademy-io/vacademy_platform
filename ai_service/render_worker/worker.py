@@ -881,8 +881,15 @@ class RenderWorker:
                 "-i", str(frames_dir / "frame_%06d.jpg"),
                 "-i", str(audio_path),  # narration — always input 1
             ]
-            for p, _ in valid_extra:
-                ffmpeg_cmd += ["-i", str(p)]
+            for p, _track in valid_extra:
+                if _track.get("loop"):
+                    # -stream_loop applies to the NEXT -i: repeat the file
+                    # indefinitely. The mix still terminates at video end via
+                    # the muxer's -shortest, and the chain below always applies
+                    # a tail fade at total_duration for looped tracks.
+                    ffmpeg_cmd += ["-stream_loop", "-1", "-i", str(p)]
+                else:
+                    ffmpeg_cmd += ["-i", str(p)]
             # SFX cue inputs come after extras so the input-index math stays
             # additive: 0=frames, 1=narration, 2..2+E-1=extras, 2+E..=sfx,
             # then HTML <video> audio after the sfx block.
@@ -929,12 +936,15 @@ class RenderWorker:
                 # Probe the source duration so we know if the track will
                 # extend past video end. If so, swap the user's fadeOut for
                 # a fade timed to total_duration so the cut doesn't pop.
+                # Looped tracks (-stream_loop -1 on the input) are infinite,
+                # so they ALWAYS reach video end and take the tail fade.
+                _is_loop = bool(track.get("loop"))
                 try:
                     _src_dur = _AFC(str(_p)).duration
                 except Exception:
                     _src_dur = None
                 _track_natural_end = (track_delay + _src_dur) if _src_dur is not None else None
-                _will_be_truncated = (
+                _will_be_truncated = _is_loop or (
                     _track_natural_end is not None
                     and _track_natural_end > total_duration + 0.05
                 )

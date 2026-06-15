@@ -34,6 +34,7 @@ const STAGE_LABELS: Array<{ id: BuildStage; label: string }> = [
     { id: 'ASSEMBLE_TIMELINE', label: 'Assembling timeline' },
     { id: 'COMPOSE_HTML', label: 'Adding overlays' },
     { id: 'ASSEMBLE_WORDS', label: 'Building captions' },
+    { id: 'ASSEMBLE_AUDIO', label: 'Building soundtrack' },
     { id: 'UPLOAD', label: 'Saving' },
     { id: 'HANDOFF', label: 'Finishing up' },
 ];

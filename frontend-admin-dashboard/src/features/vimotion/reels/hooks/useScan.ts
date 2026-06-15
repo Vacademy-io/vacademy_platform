@@ -9,6 +9,7 @@
  *
  * Slice 2 only uses default config; slice 4 will pass real config.
  */
+import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     scanReelCandidates,
@@ -16,6 +17,15 @@ import {
     type ScanRequest,
     type ScanResponse,
 } from '../services/reels-api';
+
+// Thumbnails are generated asynchronously server-side and only appear on a
+// subsequent /scan call (which is a cache hit on the backend's config_hash,
+// so re-asking is cheap). Without a refetch, a cold scan leaves every card
+// as a grey placeholder for the whole session. We poll gently for a bounded
+// window after each scan, then stop — the backend only fills thumbnails for
+// the top-ranked candidates, so lower ranks may legitimately never get one.
+const THUMBNAIL_HEAL_INTERVAL_MS = 7_000;
+const THUMBNAIL_HEAL_WINDOW_MS = 45_000; // ≈6 tries
 
 export interface UseScanOptions {
     apiKey: string | undefined;
@@ -37,6 +47,12 @@ export function useScan(options: UseScanOptions) {
         aspect = '9:16',
         topicKeywords = [],
     } = options;
+
+    // Per-scan thumbnail-heal window, keyed by the backend's config_hash so
+    // a settings change (new scan identity) restarts the window. A ref (not
+    // state) because `refetchInterval` may be evaluated several times per
+    // render and must stay side-effect-light.
+    const thumbHealRef = useRef<{ hash: string; startedAtMs: number } | null>(null);
 
     return useQuery<ScanResponse>({
         // Include every config field in the key so changing target / aspect /
@@ -60,6 +76,20 @@ export function useScan(options: UseScanOptions) {
         // Don't retry — scans against missing assets / failed indexing
         // should surface immediately so the user sees the error.
         retry: false,
+        // Heal missing thumbnails: while any returned candidate still lacks
+        // one, background-refetch on a gentle interval for a bounded window.
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            if (!data) return false;
+            if (!data.candidates.some((c) => !c.thumbnail_strip_url)) return false;
+            const heal = thumbHealRef.current;
+            if (!heal || heal.hash !== data.config_hash) {
+                thumbHealRef.current = { hash: data.config_hash, startedAtMs: Date.now() };
+                return THUMBNAIL_HEAL_INTERVAL_MS;
+            }
+            if (Date.now() - heal.startedAtMs >= THUMBNAIL_HEAL_WINDOW_MS) return false;
+            return THUMBNAIL_HEAL_INTERVAL_MS;
+        },
         queryFn: (): Promise<ScanResponse> => {
             if (!apiKey || !inputAssetId) {
                 return Promise.reject(new Error('Missing apiKey or inputAssetId'));

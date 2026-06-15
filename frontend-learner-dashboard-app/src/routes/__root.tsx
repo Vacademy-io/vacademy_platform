@@ -456,6 +456,15 @@ const RootComponent = () => {
               console.warn(
                 "[OAuth DeepLink] Could not extract instituteId from token",
               );
+              if (import.meta.env.VITE_ENABLE_SENTRY === "true") {
+                Sentry.captureMessage(
+                  "OAuth deep link: no instituteId in token",
+                  {
+                    level: "warning",
+                    tags: { feature: "auth", "auth.stage": "oauth_deeplink" },
+                  },
+                );
+              }
               toast.error("Login failed. Please try again.");
             }
           } else if (url.searchParams.get("error")) {
@@ -467,6 +476,11 @@ const RootComponent = () => {
           }
         } catch (err) {
           console.error("[OAuth DeepLink] Error processing deep link:", err);
+          if (import.meta.env.VITE_ENABLE_SENTRY === "true") {
+            Sentry.captureException(err, {
+              tags: { feature: "auth", "auth.stage": "oauth_deeplink" },
+            });
+          }
           toast.error("Login failed. Please try again.");
         }
       });
@@ -621,21 +635,13 @@ const RootComponent = () => {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hideChatbot = pathname.startsWith("/admission");
 
-  // ── Sentry: track route navigation as breadcrumbs ──
+  // ── Sentry: tag events with the current route. Navigation breadcrumbs
+  // come from the SDK's built-in history instrumentation; a custom one here
+  // just duplicated them. ──
   const prevPathRef = useRef(pathname);
   useEffect(() => {
     if (import.meta.env.VITE_ENABLE_SENTRY !== "true") return;
     if (pathname !== prevPathRef.current) {
-      Sentry.addBreadcrumb({
-        category: "navigation",
-        message: `${prevPathRef.current} → ${pathname}`,
-        level: "info",
-        data: {
-          from: prevPathRef.current,
-          to: pathname,
-          domain: window.location.hostname,
-        },
-      });
       Sentry.setTag("route", pathname);
       prevPathRef.current = pathname;
     }

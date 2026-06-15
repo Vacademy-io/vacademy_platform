@@ -52,7 +52,7 @@ export function StudioTab() {
     }, [projectsQuery.data, filter]);
 
     const startNewProject = () => {
-        navigate({ to: '/vim/studio/new', search: {} });
+        navigate({ to: '/vim/studio/new', search: { projectId: undefined } });
     };
 
     if (apiKey.isError) {

@@ -130,6 +130,10 @@ module.exports = {
             fontWeight: "500",
           },
         ],
+        // Display tier — exactly ONE display-size element per screen (hero
+        // number/title). Pair with `tabular-nums` for figures.
+        display: ["40px", { lineHeight: "44px", fontWeight: "700" }],
+        "display-sm": ["32px", { lineHeight: "38px", fontWeight: "700" }],
         // Micro text sizes below the caption (12px) floor — for dense badges/labels/metadata.
         "2xs": ["11px", { lineHeight: "16px" }],
         "3xs": ["10px", { lineHeight: "14px" }],

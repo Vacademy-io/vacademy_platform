@@ -5,19 +5,21 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import {
   format,
-  parseISO,
   startOfDay,
   subDays,
   subMonths,
   subYears,
 } from "date-fns";
+import { formatDate } from "@/lib/format-date";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, CaretDownIcon } from "@radix-ui/react-icons";
+import { CalendarBlank, CaretDown, CalendarX, Fire } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+import { EmptyState, ErrorState, LoadingState } from "@/components/design-system/states";
 import { MyPagination } from "@/components/design-system/pagination";
 import {
   fetchAttendanceReport,
@@ -178,16 +180,6 @@ function RouteComponent() {
       </Helmet>
 
       <div className="flex flex-col gap-4">
-        {/* Heading */}
-        <div>
-          <h1 className="text-xl font-semibold text-neutral-800 sm:text-2xl">
-            My Attendance
-          </h1>
-          <p className="text-neutral-600">
-            Track your attendance for live classes and sessions
-          </p>
-        </div>
-
         {/* Summary Stats */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div className="rounded-lg border border-neutral-200 bg-white p-3 text-center">
@@ -195,13 +187,14 @@ function RouteComponent() {
               <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
             ) : (
               <div
-                className={`text-2xl font-bold ${
+                className={cn(
+                  "text-2xl font-bold tabular-nums",
                   (attendanceStats?.attendancePercentage ?? 0) >= 75
-                    ? "text-emerald-600"
+                    ? "text-success-600"
                     : (attendanceStats?.attendancePercentage ?? 0) >= 50
-                      ? "text-amber-600"
-                      : "text-red-600"
-                }`}
+                      ? "text-warning-600"
+                      : "text-danger-600",
+                )}
               >
                 {attendanceStats?.attendancePercentage ?? 0}%
               </div>
@@ -212,8 +205,17 @@ function RouteComponent() {
             {isLoading ? (
               <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
             ) : (
-              <div className="flex items-center justify-center gap-1 text-2xl font-bold text-neutral-800">
-                <span className={attendanceStats?.currentStreak ? "text-orange-500" : "text-neutral-300"}>🔥</span>
+              <div className="flex items-center justify-center gap-1 text-2xl font-bold tabular-nums text-neutral-800">
+                <Fire
+                  size={22}
+                  weight="fill"
+                  aria-hidden="true"
+                  className={cn(
+                    attendanceStats?.currentStreak
+                      ? "text-warning-500 [.ui-play_&]:text-play-warn"
+                      : "text-neutral-300",
+                  )}
+                />
                 {attendanceStats?.currentStreak ?? 0}
               </div>
             )}
@@ -223,7 +225,7 @@ function RouteComponent() {
             {isLoading ? (
               <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
             ) : (
-              <div className="text-2xl font-bold text-emerald-600">
+              <div className="text-2xl font-bold tabular-nums text-success-600">
                 {attendanceStats?.presentDays ?? 0}
               </div>
             )}
@@ -233,7 +235,7 @@ function RouteComponent() {
             {isLoading ? (
               <div className="mx-auto h-8 w-12 animate-pulse rounded bg-neutral-100" />
             ) : (
-              <div className="text-2xl font-bold text-red-500">
+              <div className="text-2xl font-bold tabular-nums text-danger-500">
                 {attendanceStats?.absentDays ?? 0}
               </div>
             )}
@@ -272,13 +274,12 @@ function RouteComponent() {
         {/* Mobile cards (visible on small screens) */}
         <div className="md:hidden">
           {isLoading ? (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4 text-center text-neutral-500">
-              Loading attendance data...
-            </div>
+            <LoadingState variant="list" count={4} />
           ) : error ? (
-            <div className="rounded-lg border border-danger-200 bg-white p-4 text-center text-danger-600">
-              Error: {(error as Error)?.message || "An error occurred"}
-            </div>
+            <ErrorState
+              variant="inline"
+              message={(error as Error)?.message || "Could not load attendance data."}
+            />
           ) : !isNullOrEmptyOrUndefined(paginatedData) ? (
             <div className="space-y-3">
               {paginatedData?.map((cls, idx) => (
@@ -290,26 +291,28 @@ function RouteComponent() {
                     {cls.sessionTitle}
                   </div>
                   <div className="mb-2 text-xs text-neutral-600">
-                    {format(parseISO(cls.meetingDate), "MMM dd, yyyy")} • {selectedBatchLabel}
+                    {formatDate(cls.meetingDate)}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-caption font-medium ${
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-caption font-medium",
                         cls.accessLevel === "private"
                           ? "bg-primary-50 text-primary-600"
-                          : "bg-purple-50 text-purple-600"
-                      }`}
+                          : "bg-info-50 text-info-600",
+                      )}
                     >
                       {cls.accessLevel === "private" ? "Private" : "Public"}
                     </span>
                     <span
-                      className={`rounded-full px-3 py-0.5 text-caption font-medium ${
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-caption font-medium",
                         cls.attendanceStatus === "PRESENT"
                           ? "bg-success-50 text-success-600"
                           : cls.attendanceStatus === "ABSENT"
                             ? "bg-danger-100 text-danger-600"
-                            : "bg-slate-100 text-slate-500"
-                      }`}
+                            : "bg-neutral-100 text-neutral-500",
+                      )}
                     >
                       {cls.attendanceStatus === "UNMARKED" ? "Unmarked" : cls.attendanceStatus}
                     </span>
@@ -318,9 +321,14 @@ function RouteComponent() {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4 text-center text-neutral-500">
-              No classes found for the selected filters.
-            </div>
+            <EmptyState
+              compact
+              icon={CalendarX}
+              title="No classes found"
+              description="No classes match the selected filters. Try a different date range."
+              action={{ label: "Clear filters", onClick: clearFilters }}
+              className="rounded-lg border border-neutral-200 bg-white"
+            />
           )}
         </div>
 
@@ -337,9 +345,11 @@ function RouteComponent() {
                       className="border-neutral-400 bg-white text-neutral-600 data-[state=checked]:bg-primary-500 data-[state=checked]:text-white"
                     />
                   </th> */}
+                  {/* Batch column removed: the attendance API does not return a
+                      per-row batch, and printing the filter label here showed
+                      false data for every row. */}
                   <th className="px-4 py-3">Live Class Title</th>
                   <th className="px-4 py-3">Date &amp; Time</th>
-                  <th className="px-4 py-3">Batch</th>
                   <th className="px-4 py-3">Class Type</th>
                   <th className="px-4 py-3">Attendance</th>
                 </tr>
@@ -347,17 +357,17 @@ function RouteComponent() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="p-8 text-center text-neutral-500"
-                    >
-                      Loading attendance data...
+                    <td colSpan={4} className="p-4">
+                      <LoadingState variant="list" count={3} />
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-danger-600">
-                      Error: {(error as Error)?.message || "An error occurred"}
+                    <td colSpan={4} className="p-4">
+                      <ErrorState
+                        variant="inline"
+                        message={(error as Error)?.message || "Could not load attendance data."}
+                      />
                     </td>
                   </tr>
                 ) : !isNullOrEmptyOrUndefined(paginatedData) ? (
@@ -378,29 +388,30 @@ function RouteComponent() {
                       </td> */}
                       <td className="px-4 py-3">{cls.sessionTitle}</td>
                       <td className="px-4 py-3">
-                        {format(parseISO(cls.meetingDate), "MMM dd, yyyy")}
+                        {formatDate(cls.meetingDate)}
                       </td>
-                      <td className="px-4 py-3">{selectedBatchLabel}</td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-medium",
                             cls.accessLevel === "private"
                               ? "bg-primary-50 text-primary-600"
-                              : "bg-purple-50 text-purple-600"
-                          }`}
+                              : "bg-info-50 text-info-600",
+                          )}
                         >
                           {cls.accessLevel === "private" ? "Private" : "Public"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-full px-3 py-0.5 text-xs font-medium ${
+                          className={cn(
+                            "rounded-full px-3 py-0.5 text-xs font-medium",
                             cls.attendanceStatus === "PRESENT"
                               ? "bg-success-50 text-success-600"
                               : cls.attendanceStatus === "ABSENT"
                                 ? "bg-danger-100 text-danger-600"
-                                : "bg-slate-100 text-slate-500"
-                          }`}
+                                : "bg-neutral-100 text-neutral-500",
+                          )}
                         >
                           {cls.attendanceStatus === "UNMARKED" ? "Unmarked" : cls.attendanceStatus}
                         </span>
@@ -409,11 +420,14 @@ function RouteComponent() {
                   ))
                 ) : (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="p-8 text-center text-neutral-500"
-                    >
-                      No classes found for the selected filters.
+                    <td colSpan={4} className="p-4">
+                      <EmptyState
+                        compact
+                        icon={CalendarX}
+                        title="No classes found"
+                        description="No classes match the selected filters. Try a different date range."
+                        action={{ label: "Clear filters", onClick: clearFilters }}
+                      />
                     </td>
                   </tr>
                 )}
@@ -447,20 +461,23 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
       <Popover>
         <PopoverTrigger asChild>
           <button
-            className={`flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
-              from || to ? "text-neutral-900" : "text-neutral-500"
-            } focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500`}
+            type="button"
+            className={cn(
+              "flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm",
+              from || to ? "text-neutral-900" : "text-neutral-500",
+              "focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500",
+            )}
           >
             {from && to ? (
               <>
-                {format(from, "dd/MM/yy")} - {format(to, "dd/MM/yy")}
+                {formatDate(from)} to {formatDate(to)}
               </>
             ) : from ? (
-              <>From {format(from, "dd/MM/yy")}</>
+              <>From {formatDate(from)}</>
             ) : (
               <>Select date range</>
             )}
-            <CalendarIcon className="ml-2 size-4 text-neutral-500" />
+            <CalendarBlank className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-lg p-3 sm:w-auto" align="start">
@@ -533,12 +550,17 @@ function BatchDropdown({
       <Popover>
         <PopoverTrigger asChild>
           <button
-            className={`flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${
-              value !== `All ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}` ? "text-neutral-900" : "text-neutral-500"
-            } focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500`}
+            type="button"
+            className={cn(
+              "flex h-11 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm",
+              value !== `All ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch)}`
+                ? "text-neutral-900"
+                : "text-neutral-500",
+              "focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500",
+            )}
           >
             {value || label}
-            <CaretDownIcon className="ml-2 size-4 text-neutral-500" />
+            <CaretDown className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-sm p-3 sm:w-auto" align="start">

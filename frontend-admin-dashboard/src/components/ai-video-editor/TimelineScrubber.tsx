@@ -428,6 +428,7 @@ export function TimelineScrubber() {
         updateAudioTrack,
         videoId,
         apiKey,
+        editorKind,
     } = useVideoEditorStore(
         useShallow((s) => ({
             entries: s.entries,
@@ -447,6 +448,9 @@ export function TimelineScrubber() {
             updateAudioTrack: s.updateAudioTrack,
             videoId: s.videoId,
             apiKey: s.apiKey,
+            // `kind` is taken by the drag-op parameter below — alias the
+            // editor kind so the audio-track save hits the right backend.
+            editorKind: s.kind,
         }))
     );
     // currentTime is intentionally NOT a parent-level subscription — playhead
@@ -599,7 +603,10 @@ export function TimelineScrubber() {
 
     // Channel-aware track assignment — driven by the previewed entries so
     // overlapping a neighbour during a drag visibly pushes track rows.
-    const channelGroups = useMemo(() => assignChannelGroups(previewedEntries), [previewedEntries]);
+    const channelGroups = useMemo(
+        () => assignChannelGroups(previewedEntries, navigationMode),
+        [previewedEntries, navigationMode]
+    );
 
     // M / R toggle the active mode. Ignored while focus is in an input,
     // textarea, select, or contenteditable so the user can type those
@@ -900,7 +907,7 @@ export function TimelineScrubber() {
                 if (kind === 'fadeOut') patch.fadeOut = Math.round(next.fadeOut * 10) / 10;
                 updateAudioTrack(track.id, patch);
                 if (videoId && apiKey) {
-                    apiUpdateAudioTrack(videoId, apiKey, track.id, patch).catch(() => {
+                    apiUpdateAudioTrack(videoId, apiKey, track.id, patch, editorKind).catch(() => {
                         toast.error('Failed to save audio track');
                     });
                 }
@@ -908,7 +915,7 @@ export function TimelineScrubber() {
             window.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onUp);
         },
-        [navigationMode, seek, updateAudioTrack, videoId, apiKey]
+        [navigationMode, seek, updateAudioTrack, videoId, apiKey, editorKind]
     );
 
     // ── Edge drag (resize shots) ───────────────────────────────────────────

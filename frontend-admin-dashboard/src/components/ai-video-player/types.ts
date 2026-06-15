@@ -134,6 +134,9 @@ export interface AudioTrack {
     delay: number; // seconds to wait before starting, default 0
     fadeIn: number; // fade-in duration in seconds, default 0
     fadeOut: number; // fade-out duration in seconds, default 0
+    // Repeat the track until video end (render loops the input and applies a
+    // tail fade at total_duration; preview loops the Web Audio source).
+    loop?: boolean;
 }
 
 /**
@@ -177,6 +180,14 @@ export interface TimelineMeta {
     // Audio/timing information
     audio_start_at: number;
     total_duration: number | null;
+
+    /**
+     * Optimistic-lock counter, bumped by the server on every `/frame/*`
+     * mutation. The editor sends it back as `expected_revision` so a save
+     * from a stale tab fails with HTTP 409 instead of silently overwriting
+     * another session's changes. Absent on legacy timelines (treated as 0).
+     */
+    revision?: number;
 
     // Extra audio tracks (background music, etc.) mixed on top of narration
     audio_tracks?: AudioTrack[];

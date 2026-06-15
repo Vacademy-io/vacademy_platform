@@ -20,6 +20,15 @@ const initialState: ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
+/**
+ * Mode provider PINNED TO LIGHT (2026-06-11): dark-mode fidelity is not
+ * ready across the redesigned surfaces (play/vibrant are light-first), so
+ * the toggle was removed and this provider forces light — including
+ * rescuing users whose stored preference says "dark" from before.
+ * When a dark-fidelity pass lands, restore the real implementation
+ * (persist light/dark/system + apply the resolved class + follow OS
+ * changes in system mode) and re-add the UserMenu toggle.
+ */
 export function ThemeProvider({
   children,
   storageKey = "vite-ui-theme",
@@ -31,14 +40,22 @@ export function ThemeProvider({
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add("light");
-    localStorage.setItem(storageKey, "light");
+    try {
+      localStorage.setItem(storageKey, "light");
+    } catch {
+      // Storage unavailable — the class is applied either way.
+    }
   }, [storageKey]);
 
   const value = {
     theme,
     setTheme: (nextTheme: Theme) => {
       void nextTheme;
-      localStorage.setItem(storageKey, "light");
+      try {
+        localStorage.setItem(storageKey, "light");
+      } catch {
+        // Storage unavailable — stay light.
+      }
       setThemeState("light");
     },
   };

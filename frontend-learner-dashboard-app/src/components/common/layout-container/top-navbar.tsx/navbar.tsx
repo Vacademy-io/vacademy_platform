@@ -1,9 +1,8 @@
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { List, Sidebar } from "@phosphor-icons/react";
+import { Sidebar } from "@phosphor-icons/react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
-import { LogoutSidebar } from "../sidebar/logoutSidebar";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import {
   Tooltip,
@@ -12,11 +11,12 @@ import {
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Student } from "@phosphor-icons/react";
-import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-services/institute-details";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
-import { SystemAlertsBar } from "@/components/announcements";
+import { NotificationsBell } from "./NotificationsBell";
+import { UserMenu } from "./UserMenu";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, House } from "@phosphor-icons/react";
@@ -38,14 +38,17 @@ interface UserRole {
 }
 
 export function Navbar() {
-  const { data: instituteDetails } = useSuspenseQuery(
+  // useQuery (NOT useSuspenseQuery): a failed navbar fetch must degrade to the
+  // fallback UI below, not throw to the router error boundary and replace the
+  // whole page (live class, assessment, ...) with an error screen.
+  const { data: instituteDetails } = useQuery(
     handleGetPublicInstituteDetails(),
   );
   const {
     data: userRoleDetails,
     isLoading,
     error,
-  } = useSuspenseQuery(handleFetchUserRoleDetails());
+  } = useQuery(handleFetchUserRoleDetails());
 
   // Fetch cached institute logo URL (cached for 24 hours)
   // Use useQuery (not useSuspenseQuery) because getInstituteLogoQuery has enabled: !!fileId
@@ -67,7 +70,6 @@ export function Navbar() {
   const { navHeading } = useNavHeadingStore();
   const {
     setInstituteDetails,
-    setSidebarOpen,
     instituteName,
     instituteLogoFileUrl,
     hasCustomSidebar,
@@ -80,7 +82,27 @@ export function Navbar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const isDashboard = pathname.startsWith("/dashboard");
 
+  // Session state wiped mid-page (expired refresh token, cleared storage):
+  // the role query fails with the missing-userId error, or with the
+  // interceptor's "Unauthorized" (only thrown after auth state was wiped on a
+  // definitively rejected refresh). Send the user to login with a deep link
+  // back instead of leaving them on a dead page. Transient network errors
+  // have different messages and fall through to the fallback navbar below.
+  useEffect(() => {
+    if (
+      error?.message?.includes("Could not determine userId") ||
+      error?.message === "Unauthorized"
+    ) {
+      const redirect = window.location.pathname + window.location.search;
+      router.navigate({
+        to: "/login",
+        search: { redirect } as never,
+      });
+    }
+  }, [error, router]);
+
   const handleNavigateToAdmin = () => {
+    if (!instituteDetails?.teacher_portal_base_url) return;
     const accessToken = localStorage.getItem(TokenKey.accessToken);
     const refreshToken = localStorage.getItem(TokenKey.refreshToken);
     window.location.href = `https://${instituteDetails.teacher_portal_base_url}/auth-transfer?accessToken=${accessToken}&refreshToken=${refreshToken}`;
@@ -186,10 +208,8 @@ export function Navbar() {
     // Return a simplified navbar without role-dependent features
     return (
       <div className="navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
-        <LogoutSidebar />
-
         {/* Left Section */}
-        <div className="flex items-center gap-2 md:gap-4 shrink-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           {canGoBack && !isDashboard && (
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
@@ -241,7 +261,7 @@ export function Navbar() {
             (showSidebarControls && (isMobile ? openMobile : true)) ||
             hasCustomSidebar
           ) && (
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               {/* Institute / Sub-org brand */}
               <div className="flex items-center gap-2">
                 {subOrgName ? (
@@ -329,24 +349,20 @@ export function Navbar() {
                   </>
                 )}
               </div>
-              <div className="h-7 md:h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
-              <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-vw-60 md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
-                {navHeading || "Dashboard"}
-              </h1>
+              <div className="h-7 md:h-8 w-px shrink-0 bg-primary-200/50 dark:bg-neutral-700" />
             </div>
           )}
+
+          {/* Always-on page title */}
+          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold text-primary-900 dark:text-primary-100 [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+            {navHeading || "Dashboard"}
+          </h1>
         </div>
 
         {/* Right Section */}
-        <div className="flex items-center gap-2 md:gap-3 shrink-0">
-          <SystemAlertsBar />
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-px bg-primary-200/50 dark:bg-neutral-700" />
-            <Student className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400 [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:p-1.5 [.ui-play_&]:w-7 [.ui-play_&]:h-7" />
-            <span className="text-xs md:text-sm font-medium text-primary-700 dark:text-primary-300">
-              User
-            </span>
-          </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <NotificationsBell className="h-9 w-9" />
+          <UserMenu />
         </div>
       </div>
     );
@@ -356,10 +372,8 @@ export function Navbar() {
     <div
       className={`navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
     >
-      <LogoutSidebar />
-
       {/* Left Section */}
-      <div className="flex items-center gap-2 md:gap-4 shrink-0">
+      <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
         {showSidebarControls && (
           <SidebarTrigger>
             <div
@@ -405,7 +419,7 @@ export function Navbar() {
           (showSidebarControls && (isMobile ? openMobile : true)) ||
           hasCustomSidebar
         ) && (
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             {/* Institute brand */}
             <div className="flex items-center gap-2">
               {instituteLogoFileUrl ? (
@@ -432,25 +446,20 @@ export function Navbar() {
                 </div>
               )}
             </div>
-            <div className="w-px h-7 md:h-8 bg-primary-200/60 dark:bg-neutral-700"></div>
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-6 bg-primary-600 dark:bg-primary-500 rounded-full shadow-sm"></div>
-              <div className="relative">
-                <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-vw-60 md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
-                  {navHeading}
-                </h1>
-                <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-primary-300/50 dark:bg-neutral-700"></div>
-              </div>
-            </div>
+            <div className="w-px h-7 md:h-8 shrink-0 bg-primary-200/60 dark:bg-neutral-700"></div>
           </div>
         )}
+
+        {/* Always-on page title: identity + location on every viewport */}
+        {navHeading ? (
+          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold leading-tight text-neutral-900 dark:text-neutral-100 [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+            {navHeading}
+          </h1>
+        ) : null}
       </div>
 
-      {/* Right Section */}
-      <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        {/* System Alerts */}
-        <SystemAlertsBar />
-
+      {/* Right Section: one aligned cluster of ghost icon buttons */}
+      <div className="flex shrink-0 items-center gap-1">
         {hasTeacherAndStudentRole && (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
@@ -474,15 +483,19 @@ export function Navbar() {
             </TooltipContent>
           </Tooltip>
         )}
+        {/* Notifications */}
+        <NotificationsBell className="h-9 w-9" />
+
         {showTopbarIcon && (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>
               <button
+                type="button"
                 aria-label="Raise a query"
                 onClick={openQueryDialog}
-                className="group flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-primary/10"
               >
-                <Question className="w-4 h-4 md:w-5 md:h-5 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
+                <Question className="h-4 w-4 md:h-5 md:w-5" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="bg-primary-400 text-white" side="bottom">
@@ -491,17 +504,8 @@ export function Navbar() {
           </Tooltip>
         )}
 
-        <div className="w-px h-6 bg-primary-200/60 dark:bg-neutral-700"></div>
-
-        {/* Menu Button (always visible) */}
-        <button
-          className="group relative flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-100 dark:hover:bg-neutral-700 hover:border-primary-400 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:p-1.5 [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
-          onClick={() => {
-            setSidebarOpen();
-          }}
-        >
-          <List className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
-        </button>
+        {/* Avatar + account dropdown */}
+        <UserMenu />
       </div>
 
       {/* Global query dialog — opened from this icon and the dashboard card */}

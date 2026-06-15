@@ -15,6 +15,7 @@ Onboarding doc set for the Vacademy CRM cluster (admin_core_service + frontend-a
 | [LEADS_SETTINGS.md](LEADS_SETTINGS.md) | Everything configurable: Lead Settings tab, status manager, TAT/SLA config, full `LEAD_SETTING` JSON shape, rating strategy, display-settings gating, known config gaps |
 | [CRM_WORKBENCH_AND_SALES_DASHBOARD.md](CRM_WORKBENCH_AND_SALES_DASHBOARD.md) | Manager surfaces: counsellor workbench (`/counsellors`), sales dashboard, counsellor ratings, the reassign engine, org-team hierarchy & RBAC, the data-storage map, known issues |
 | [EXOTEL_CALL_INTEGRATION.md](EXOTEL_CALL_INTEGRATION.md) | Telephony: click-to-call from lead rows, provider-agnostic SPI (Exotel first), SSE live status, recording capture into the timeline |
+| [CRM_PRODUCT_DEEP_DIVE.md](CRM_PRODUCT_DEEP_DIVE.md) | Product audit (2026-06-12): multi-level report hierarchy design, per-persona experience gaps, unsurfaced-data report ideas, AI layer, trust/correctness debt, prioritized roadmap |
 
 ## Reading order for new joiners
 

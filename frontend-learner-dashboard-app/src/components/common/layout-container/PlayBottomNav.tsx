@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useRouter } from "@tanstack/react-router";
-import { DotsThree } from "@phosphor-icons/react";
+import { DotsThree, type IconProps } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { SidebarItemsType } from "@/types/layout-container-types";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/sheet";
 
 // Same icon map as mySidebar.tsx
-const ICON_MAP: Record<string, React.FC<any>> = {
+const ICON_MAP: Record<string, React.FC<IconProps>> = {
   dashboard: House,
   "learning-center": BookOpen,
   homework: NotePencil,
@@ -57,7 +58,7 @@ const ROUTE_MAP: Record<string, string> = {
 };
 
 function createLetterIcon(letter: string) {
-  return function LetterIcon({ size = 20, className = "", weight = "regular" }: any) {
+  return function LetterIcon({ size = 20, className = "" }: IconProps) {
     return (
       <span
         className={`inline-flex items-center justify-center rounded-lg text-xs font-black ${className}`}
@@ -89,10 +90,9 @@ function transformTabs(tabs: StudentSidebarTabConfig[]): SidebarItemsType[] {
 
 const MAX_VISIBLE = 4;
 
-export const PlayBottomNav: React.FC = () => {
+/** Shared item source for the mobile bottom bar and the desktop rail. */
+function usePlayNavItems(): SidebarItemsType[] {
   const [items, setItems] = useState<SidebarItemsType[]>([]);
-  const router = useRouter();
-  const currentRoute = router.state.location.pathname;
 
   useEffect(() => {
     getStudentDisplaySettings(false).then((settings) => {
@@ -100,6 +100,21 @@ export const PlayBottomNav: React.FC = () => {
       setItems(transformTabs(tabs));
     });
   }, []);
+
+  return items;
+}
+
+function shortLabelFor(title: string): string {
+  return (
+    SHORT_LABEL[title] ||
+    (title.length > 6 ? title.slice(0, 5) + "…" : title)
+  );
+}
+
+export const PlayBottomNav: React.FC = () => {
+  const items = usePlayNavItems();
+  const router = useRouter();
+  const currentRoute = router.state.location.pathname;
 
   if (items.length === 0) return null;
 
@@ -119,20 +134,21 @@ export const PlayBottomNav: React.FC = () => {
         {visibleItems.map((item, i) => {
           const isActive = item.to ? currentRoute.includes(item.to) : false;
           const Icon = item.icon;
-          const shortLabel = SHORT_LABEL[item.title] || (item.title.length > 6 ? item.title.slice(0, 5) + "…" : item.title);
+          const shortLabel = shortLabelFor(item.title);
 
           return (
             <Link
               key={i}
               to={item.to || "/"}
-              className="flex flex-col items-center justify-center flex-1 py-1.5 gap-0.5 transition-all duration-150"
+              className="group flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 transition-all duration-150"
             >
               <div
-                className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150 ${
+                className={cn(
+                  "flex h-10 w-12 items-center justify-center rounded-play-card transition-all duration-150",
                   isActive
-                    ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]" // design-lint-ignore: custom shadow
-                    : "text-muted-foreground"
-                }`}
+                    ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
+                    : "text-play-muted"
+                )}
               >
                 {Icon &&
                   React.createElement(Icon, {
@@ -141,9 +157,10 @@ export const PlayBottomNav: React.FC = () => {
                   })}
               </div>
               <span
-                className={`text-3xs font-bold uppercase tracking-wide leading-none ${
-                  isActive ? "text-primary" : "text-muted-foreground"
-                }`}
+                className={cn(
+                  "text-2xs font-bold uppercase leading-none tracking-wide",
+                  isActive ? "text-play-success-deep" : "text-play-muted"
+                )}
               >
                 {shortLabel}
               </span>
@@ -155,11 +172,11 @@ export const PlayBottomNav: React.FC = () => {
         {hasOverflow && (
           <Sheet>
             <SheetTrigger asChild>
-              <button className="flex flex-col items-center justify-center flex-1 py-1.5 gap-0.5">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl text-muted-foreground">
+              <button className="flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 py-1.5">
+                <div className="flex h-10 w-12 items-center justify-center rounded-play-card text-play-muted">
                   <DotsThree size={24} weight="bold" />
                 </div>
-                <span className="text-3xs font-bold uppercase tracking-wide leading-none text-muted-foreground">
+                <span className="text-2xs font-bold uppercase leading-none tracking-wide text-play-muted">
                   More
                 </span>
               </button>
@@ -180,18 +197,18 @@ export const PlayBottomNav: React.FC = () => {
                     <Link
                       key={i}
                       to={item.to || "/"}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-2xl border-2 transition-all ${
-                        isActive
-                          ? "bg-primary/10 border-primary/30"
-                          : "border-transparent hover:bg-muted"
-                      }`}
+                      className={cn(
+                        "group flex min-h-12 flex-col items-center gap-2 rounded-play-card p-4 transition-all",
+                        isActive ? "bg-play-highlight" : "hover:bg-muted"
+                      )}
                     >
                       <div
-                        className={`flex items-center justify-center w-12 h-12 rounded-xl ${
+                        className={cn(
+                          "flex size-12 items-center justify-center rounded-play-card",
                           isActive
-                            ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]" // design-lint-ignore: custom shadow
-                            : "bg-muted text-muted-foreground"
-                        }`}
+                            ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
+                            : "bg-muted text-play-muted"
+                        )}
                       >
                         {Icon &&
                           React.createElement(Icon, {
@@ -199,7 +216,12 @@ export const PlayBottomNav: React.FC = () => {
                             weight: isActive ? "fill" : "regular",
                           })}
                       </div>
-                      <span className="text-xs font-bold text-center">
+                      <span
+                        className={cn(
+                          "text-center text-xs font-bold",
+                          isActive ? "text-play-ink" : "text-play-muted"
+                        )}
+                      >
                         {item.title}
                       </span>
                     </Link>
@@ -210,6 +232,65 @@ export const PlayBottomNav: React.FC = () => {
           </Sheet>
         )}
       </div>
+    </nav>
+  );
+};
+
+/**
+ * Desktop (lg+) play-mode icon rail. Rendered by LayoutContainer ONLY when
+ * the standard sidebar is config-hidden (display settings
+ * `sidebar.visible === false`) and the route has no custom sidebar — the one
+ * desktop case with no persistent navigation. Sits in the sidebar-provider
+ * flex row as a sticky sibling, so content clears it without padding hacks.
+ * Mirrors the bottom bar's items and press grammar for one play nav language.
+ */
+export const PlayNavRail: React.FC = () => {
+  const items = usePlayNavItems();
+  const router = useRouter();
+  const currentRoute = router.state.location.pathname;
+
+  if (items.length === 0) return null;
+
+  return (
+    <nav
+      aria-label="Main navigation"
+      className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r-[3px] border-primary/20 bg-white px-2 py-4 lg:flex"
+    >
+      {items.map((item, i) => {
+        const isActive = item.to ? currentRoute.includes(item.to) : false;
+        const Icon = item.icon;
+
+        return (
+          <Link
+            key={i}
+            to={item.to || "/"}
+            className="group flex min-h-12 w-full flex-col items-center justify-center gap-1 py-1.5 transition-all duration-150"
+          >
+            <div
+              className={cn(
+                "flex h-11 w-12 items-center justify-center rounded-play-card transition-all duration-150",
+                isActive
+                  ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
+                  : "text-play-muted group-hover:bg-muted"
+              )}
+            >
+              {Icon &&
+                React.createElement(Icon, {
+                  size: 26,
+                  weight: isActive ? "fill" : "regular",
+                })}
+            </div>
+            <span
+              className={cn(
+                "text-2xs font-bold uppercase leading-none tracking-wide",
+                isActive ? "text-play-success-deep" : "text-play-muted"
+              )}
+            >
+              {shortLabelFor(item.title)}
+            </span>
+          </Link>
+        );
+      })}
     </nav>
   );
 };

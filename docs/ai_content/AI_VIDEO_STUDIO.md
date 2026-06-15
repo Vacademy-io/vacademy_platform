@@ -1,6 +1,8 @@
 # Vimotion Studio — Multi-Asset Video Editing Pipeline
 
-**Status**: P6b shipped 2026-06-08 — **captions** complete the Overlays step. `propose_captions` (deterministic, free+) proposes a caption config ({enabled, preset}) from the project preference; the user toggles it in OverlaysStep. A new `ASSEMBLE_WORDS` build stage (gated on captions enabled) remaps each kept clip's indexed word-transcript onto the composed timeline (`studio_words_track`, driven off the SOURCE_CLIP entries so it can't drift) → uploads `words.json` → `s3_urls.words`; the editor deep-link passes `wordsUrl` (caption preview) and the render passes `--captions-words`. The full Overlays step (titles + text + captions) is now done across free→premium tiers. Next: P7 (Audio).
+**Status**: P7 shipped 2026-06-12 — the **Audio** step + the **silent-MP4 fix**. The render worker never extracts SOURCE_CLIP audio (it composites pixels only; the P4 "browser captures the unmuted `<video>` audio" assumption was wrong), so every rendered build was MUTE. A new `ASSEMBLE_AUDIO` build stage now bakes the real soundtrack (`studio_master_audio`: per-clip ffmpeg `-ss/-t` range reads → `adelay` → `amix` over an `anullsrc` anchor) → `s3_urls.audio`, which the render passes as the worker's required `audio_url`. The Audio wizard step is live: `propose_bgm` (LLM, one fal/ElevenLabs bed loop-extended to video length, or a user `manual_bgm` URL — attached as `meta.audio_tracks`, which the worker already mixes and the editor previews/edits via new per-build audio-track endpoints) + `propose_sfx` (deterministic pink-noise whooshes at segment changes or every cut, baked into the master track). Also: render failures no longer brick builds (status returns to AWAITING_EDIT with a `[RENDER]` error_message; FAILED+`[RENDER]` rows are recoverable), `_tier_of` defaults to `STUDIO_DEFAULT_TIER=premium` (the old `free` default made every premium tool unreachable — nothing ever wrote `config['tier']`), the editor Back button returns studio builds to the project page, and `/vim/studio/new?projectId=…` resumes an abandoned wizard. **`propose_transitions` is deferred to P8**: footage is luma-key composited, so visual transitions need worker-side support — shipping editor-preview-only transitions would repeat the silent-render mistake. ⚠ The whole A/V path needs a staging render (no ffmpeg/worker in dev). Companion PM review: [STUDIO_PM_REVIEW_2026-06-12.md](./STUDIO_PM_REVIEW_2026-06-12.md).
+
+**Status (P6b)**: shipped 2026-06-08 — **captions** complete the Overlays step. `propose_captions` (deterministic, free+) proposes a caption config ({enabled, preset}) from the project preference; the user toggles it in OverlaysStep. A new `ASSEMBLE_WORDS` build stage (gated on captions enabled) remaps each kept clip's indexed word-transcript onto the composed timeline (`studio_words_track`, driven off the SOURCE_CLIP entries so it can't drift) → uploads `words.json` → `s3_urls.words`; the editor deep-link passes `wordsUrl` (caption preview) and the render passes `--captions-words`. The full Overlays step (titles + text + captions) is now done across free→premium tiers. Next: P7 (Audio).
 
 **Status (P6a)**: 2026-06-08 — the **Overlays** wizard step went live (titles + text overlays). `propose_titles` + `propose_text_overlays` (LLM, premium+) propose segment-anchored overlays; the user accepts/edits/refines/adds-manual; a new `COMPOSE_HTML` build stage appends them as z-layered overlay entries (bright-on-transparent, studio-native renderers in `app/services/edit_overlays/`) over the SOURCE_CLIPs. Wizard now runs ingest → arrangement → cuts → **overlays** → build. Captions (a words-track + render wiring) are deferred to **P6b**. This slice also fixed pre-P6 bugs: confirm now persists losslessly (was `exclude_none=True`, would corrupt overlay params), render is idempotent (in-flight guard), `update_on_render` merges metadata, image still-duration no longer derives from a bare `t_end`, and BuildStep shows all stages.
 P5 (2026-05-29) closed the round-trip: a built timeline opens in the existing editor (`kind=studio`), `/frame/{add,update,delete,reorder}` persist edits, `POST /builds/{id}/render` renders to MP4. P4 (build pipeline), P3 (Cuts), P2 (Arrangement), P1.5 (advanced UI), P1 (CRUD), P0 (schema) all prior. Audio wizard step pending (P7).
@@ -86,7 +88,8 @@ Mounted at `{AI_SERVICE_BASE_URL}/external/studio/v1/*`. Auth via existing `X-In
 | `POST /builds/{id}/publish` | Mark this build as the project's "published" one | free | **P4 wired** |
 | `DELETE /builds/{id}` | Soft delete a build (409 if published) | free | **P4 wired** |
 | `POST /builds/{id}/frame/{add,update,delete,reorder}` | Editor wire-up for `kind=studio` (build id in PATH) | free | **P5 wired** |
-| `POST /builds/{id}/render` | Render to MP4 via worker (silent narration + intrinsic source audio) | render | **P5 wired** (⚠ staging verify) |
+| `POST /builds/{id}/audio-track/{add,update,delete}` | Editor AudioTracksPanel persistence — RMW of timeline `meta.audio_tracks` | free | **P7 wired** |
+| `POST /builds/{id}/render` | Render to MP4 via worker (P7: master soundtrack `s3_urls.audio`; silent fallback for image-only/pre-P7 builds) | render | **P5 wired, P7 audio** (⚠ staging verify) |
 
 `{step}` ∈ `{arrangement, cuts, overlays, audio}`.
 
@@ -113,9 +116,9 @@ Two registers: **PLAN-TIME** (LLM emits structured specs; user confirms in wizar
 | `propose_image_overlays` | Overlays | premium+ | image foreground assets |
 | `face_track_reframe` | Overlays | premium+ | reels `_source_to_crop_time` + `face_segments` |
 | `propose_motion_graphics` | Overlays | ultra+ | reels `_build_motion_graphic_html` |
-| `propose_transitions` | Audio | premium+ | reels `_KNOWN_TRANSITIONS` + new mask transitions |
-| `propose_bgm` | Audio | ultra+ | AI-video Lyria path + reels sidechaincompress |
-| `propose_sfx` | Audio | ultra+ | reels `_compute_cut_points` + anoisesrc pink-noise |
+| `propose_transitions` | Audio | premium+ | **DEFERRED to P8** — footage is luma-key composited (worker keeps bright overlay pixels only; no inter-entry xfade exists), so visual transitions need worker changes. GSAP entrance tweens animate only the overlay layer. |
+| `propose_bgm` | Audio | premium+ | fal/ElevenLabs `generate_music_bed` (≤22s loop-extended) or `manual_bgm` URL → `meta.audio_tracks` — **P7 (LLM)**. Lyria long-form is a P8 upgrade. |
+| `propose_sfx` | Audio | premium+ | anoisesrc pink-noise whoosh recipe (reels), baked into the master track — **P7 (deterministic)** |
 | `change_aspect` | Ingest | all | reels source-clip face-aware crop |
 
 Tier filter is server-side in `studio_tools.tools_for_step(step, tier, …)` — LLM never sees tools the user can't access (defense-in-depth re-checks at validation time).
@@ -129,6 +132,7 @@ Tier filter is server-side in `studio_tools.tools_for_step(step, tier, …)` —
 | `build_timeline` | ASSEMBLE_TIMELINE | SOURCE_CLIP/IMAGE_STILL entry per segment; tags `entry_meta.order_index` + emits `meta.segment_windows` |
 | `compose_html` | COMPOSE_HTML | **P6a wired** — appends title/text overlay entries (z 500–8999, bright-on-transparent) resolved from `segment_windows`; reads `overlays.operations`+`manual_operations` by param shape |
 | `assemble_words` | ASSEMBLE_WORDS | **P6b wired** — if captions enabled, fetches transcripts + `studio_words_track.build_words_track` → `words.json` → `s3_urls.words`. Best-effort (never fails the build) |
+| `assemble_audio` | ASSEMBLE_AUDIO | **P7 wired** — master soundtrack from SOURCE_CLIP entries (`studio_master_audio`, fail-loud) → `s3_urls.audio`; BGM bed (fal bed or manual URL, best-effort) → `meta.audio_tracks`; whoosh SFX baked into the master at cut points |
 | `upload_artifacts` | UPLOAD | S3 PUT under `ai-studio/{build_id}/*` |
 | `handoff` | HANDOFF | flips build → AWAITING_EDIT; FE polls and routes to editor |
 
@@ -231,11 +235,21 @@ Migration: `app/migrations/add_ai_studio_tables.sql` (source of truth); Flyway c
   - **Frontend** — `OverlaysStep` gains a Captions card (enable toggle + preset selector, prefilled from the proposed config); confirm always includes a `propose_captions` op; `BuildStep.STAGE_LABELS` adds ASSEMBLE_WORDS ("Building captions").
   - **Verification**: words-track unit test passes (remap, cut-boundary clamp, removed-gap drop, ordering); `propose_captions` tier/detect/validate verified; orchestrator pipeline ordered + bands contiguous 0–100; FE design-lint clean + `tsc --noEmit` exit 0. **Caption rendering (worker `--captions-words`) needs staging** (no worker in dev).
 
+- **P7 (2026-06-12)** — Audio step + the silent-MP4 fix + render reliability + funnel repairs:
+  - **Silent-MP4 fix (`ASSEMBLE_AUDIO` stage)**: the render worker composites SOURCE_CLIP footage as pixels only — `shot_preprocess` strips `<video data-source-clip>` before the browser render, `_collect_video_audio` skips the tag, and Playwright frames are silent — so the P4/P5 "browser-captured clip audio" assumption was wrong and every rendered MP4 was mute. New `studio_master_audio.py` (pure cmd-builder + runner, unit-tested) assembles the soundtrack on the composed clock: input 0 `anullsrc` duration anchor, per-clip `-ss/-t`-seeked HTTPS inputs → `aresample/asetpts/adelay` → `amix=duration=first:normalize=0` → mp3. `assemble_audio` executor uploads it → `s3_urls.audio`; `studio_render_service` passes it as the worker's `audio_url` (silent fallback only for image-only/pre-P7 builds). Master-audio failure FAILS the build (a silently mute video is the bug this fixes); captions stay aligned (same composed clock as the words track).
+  - **Audio wizard step**: `propose_bgm` (LLM, premium+; ONE bed: mood + music_prompt + volume 0–0.5; validator honors `bgm_policy=never` via policies threaded into both detect_ctx and the validation ctx) + `propose_sfx` (deterministic, premium+; `{enabled, placement: segment_boundaries|all_cuts, volume_db}` honoring `sfx_policy`). BGM source: `manual_bgm` user URL (wins, http(s)-validated) or fal/ElevenLabs `generate_music_bed` (≤22s, ~$0.04, loop-extended to video length via `-stream_loop`) → `ai-studio/{id}/bgm.mp3` → `meta.audio_tracks` `{id:'background-music', volume, fadeIn:2, fadeOut:3}` — the worker already mixes `meta.audio_tracks` and the editor previews them; BGM is best-effort (no FAL key → `extra_metadata.bgm='skipped:…'`). SFX = pink-noise whoosh chains (reels recipe) baked into the master at segment boundaries (entries whose `entry_meta.order_index` changes; entries without an order_index can't define a boundary) or every cut; min spacing 0.3s, min t 1.0s, tail guard 0.25s. Stage order: ASSEMBLE_TIMELINE(0–30) → COMPOSE_HTML(30–45) → ASSEMBLE_WORDS(45–60) → **ASSEMBLE_AUDIO(60–85)** → UPLOAD(85–95) → HANDOFF.
+  - **Render reliability**: a failed/timed-out render now returns the build to AWAITING_EDIT with `error_message='[RENDER] …'` instead of terminal FAILED (one transient worker failure used to brick the build forever — §9 F24); "completed without a video URL" and the 30-min poll timeout also surface errors now. The render endpoint additionally accepts pre-fix `FAILED` rows whose error starts with `[RENDER]` and whose timeline exists (recovery); genuine BUILD failures (`[STAGE]`-prefixed) stay un-renderable.
+  - **Per-build audio-track endpoints**: `POST /builds/{id}/audio-track/{add,update,delete}` (StudioFrameService S3 RMW of `meta.audio_tracks`, camelCase fades stored, wire shapes mirroring `/external/video/v1/audio-track/*`) — the editor's AudioTracksPanel now persists for `kind=studio` via a kind-aware `audio-track-api.ts`.
+  - **Tier unblock**: `_tier_of` was reading `config['tier']` which nothing writes → every project was `free` and the P6a premium overlay tools were unreachable in production. Now defaults to `STUDIO_DEFAULT_TIER` env (default `premium`). Real institute-tier resolution remains P10.
+  - **Funnel repairs (FE)**: wizard runs ingest → arrangement → cuts → overlays → **audio** → build (`AudioStep.tsx`: BGM card incl. custom-URL override, SFX card, refine box; config-always-rides confirm like captions); BuildStep adds "Building soundtrack"; WizardShell audio copy → "Music + sound effects" (transitions no longer advertised); `/vim/studio/new?projectId=…` resumes at the first unconfirmed step + ProjectDetailPage "Resume planning" CTA; editor Back for `kind=studio` → `/vim/studio/$projectId` (was the broken AI-gen production view); editor Render button + thumbnail picker hidden for studio (wrong-pipeline endpoints); ProjectDetailPage polls during renders and shows inline `[RENDER]` errors with retry.
+  - **Post-review hardening (same day, from the adversarial review)**: (1) sources WITHOUT an audio stream (screen recordings, b-roll) are ffprobe-detected and muted in the mix instead of failing the whole filter graph — a streamless `[N:a]` pad would have FAILED every build of the project unrecoverably; all-silent sources → silent-master fallback. (2) `video_only` AssetOverrides now mute that asset's clips in the master mix (`exclude_handles` by `entry_meta.handle`). (3) `bgm_policy`/`sfx_policy` = `never` are enforced at BUILD time too (`BuildContext.preferences`; confirm is not re-validated, so a hand-confirmed op no longer incurs fal cost under 'never'). (4) malformed build ids on frame/audio-track endpoints → 404 (UUID guard in `_load_build`), not a 500 DataError. (5) audio-track `url` is http(s)-validated at the schema (the worker `urlopen`s it — file:// was an SSRF vector). (6) render error messages embed the job id so the FE can distinguish a retry's identical failure. (7) audio tracks carry `loop` (parity with AI-video). FE: resume remounts on `?projectId` change (`key`), Resume CTA shows whenever a step is unconfirmed (every pre-P7 project lacks `audio`), `[RENDER]` prefix stripped from displayed errors, reel audio-track non-support documented in `audio-track-api.ts`.
+  - **Verification**: pure functional suite passes (cmd-builder structure incl. `-ss/-t`-before-`-i` + adelay ms + amix counts + whoosh chains; cue spacing/tail/min-t + malformed-entry tolerance; orchestrator band contiguity + handler registration; executor BGM manual/no-provider/zero-clip/fail-loud paths + policy-never enforcement + video_only exclusion + silent-source probe; render service prefers `s3_urls.audio` + all four poll outcomes). FE `tsc --noEmit` clean, design-lint 0 errors. **⚠ STAGING: the entire A/V render path (master audio audibility, BGM mix levels, whoosh timing, caption alignment) has never run end-to-end — verify before announcing.**
+
 ### Pending (in plan order)
-- **P7** — AudioStep + `propose_bgm` + `propose_sfx` + `propose_transitions` + `face_track_reframe` integration
-- **P8** — `detect_off_topic` (LLM, ultra+) + `propose_motion_graphics` + `propose_image_overlays` + `change_aspect`
-- **P9** — Build versioning UI polish + "Publish" + per-build editor session preservation tests
-- **P10** — `RunStateAggregator` wiring + V200 stage routing rows for the 4 LLM stages + cost telemetry pinning
+- **P7.5 (proposed)** — render-time re-sync: rebuild `words.json` AND `master_audio.mp3` from the LIVE timeline at render submit (editor frame edits currently desync both — see §9)
+- **P8** — `propose_transitions` (needs render-worker xfade/compositor support — see §5.1) + `detect_off_topic` (LLM, ultra+) + `propose_motion_graphics` + `propose_image_overlays` + `change_aspect` + Lyria long-form BGM upgrade + BGM ducking (sidechain) option
+- **P9** — Build versioning UI polish + wizard back-navigation with confirmed-plan prefill + cut rows showing transcript context + apiKey out of editor URLs + per-build editor session preservation tests
+- **P10** — `RunStateAggregator` wiring + V200 stage routing rows for the 4 LLM stages + cost telemetry pinning + real institute-tier resolution (replace `STUDIO_DEFAULT_TIER`) + wire or drop `ai_studio_operation_logs`
 
 ---
 
@@ -249,7 +263,12 @@ Migration: `app/migrations/add_ai_studio_tables.sql` (source of truth); Flyway c
 - **Captions words track is built at BUILD time, gated on the confirmed config (P6b)** — `ASSEMBLE_WORDS` only runs (and `s3_urls.words` only exists) when `propose_captions.enabled` was true at build. So toggling captions ON in the EDITOR after a no-captions build has no words to show; re-build with captions enabled. Cause: avoiding a transcript fetch on every build. Planned: lazy words-track build on first editor caption-enable.
 - **No per-shot caption suppression / `caption_style` yet (P6b)** — captions render across the whole timeline; they are not auto-suppressed under a title/text overlay, and per-shot `entry_meta.caption_style` (hide/position) isn't emitted. Cause: scope. Workaround: position overlays where they don't clash (titles center, captions bottom). Planned: compute suppression ranges from overlay windows in `assemble_words`.
 - **Caption transcript fetch is best-effort (P6b)** — if `ASSEMBLE_WORDS` can't fetch/parse a transcript it logs and ships the build WITHOUT captions (no words track) rather than failing. A build can therefore silently have captions-enabled-in-plan but no `s3_urls.words`. Check `extra_metadata.caption_word_count` to confirm captions landed.
-- **Render idempotency is process-local (P6a)** — the `_ACTIVE_RENDER_BUILDS` in-flight guard prevents duplicate renders within one ai_service process (single-pod today, same assumption as `RunStateAggregator`). A multi-pod move needs a DB/Redis lock. A render that FAILS still flips the build to `FAILED` (pre-existing; an AWAITING_EDIT build can't currently be re-rendered after a render failure — tracked for the render-hardening slice, F24).
+- **Render idempotency is process-local (P6a)** — the `_ACTIVE_RENDER_BUILDS` in-flight guard prevents duplicate renders within one ai_service process (single-pod today, same assumption as `RunStateAggregator`). A multi-pod move needs a DB/Redis lock. ~~A render that FAILS still flips the build to `FAILED`~~ **FIXED (P7)**: render failures/timeouts/no-URL outcomes now return the build to `AWAITING_EDIT` with a `[RENDER] …` `error_message`, and the render endpoint accepts pre-fix `FAILED`+`[RENDER]` rows whose timeline exists.
+- **Editor timing edits desync the words track AND the master audio (P7)** — both `words.json` (P6b) and `master_audio.mp3` (P7) are built at BUILD time from the then-current timeline. Editor `/frame/*` edits (trim/move/delete/reorder) rewrite only the timeline JSON; render submits the stale `words_url` + `s3_urls.audio`, so captions and the soundtrack drift from the visuals after any timing edit. Cause: avoiding transcript/ffmpeg work per edit. Workaround: re-build after heavy timing edits. Planned (P7.5): rebuild both at render-submit from the live timeline.
+- **BGM is not ducked under speech (P7)** — the worker mixes `meta.audio_tracks` with adelay/volume/fades but no `sidechaincompress` against the master track. Mitigation: low default volume (0.12), user-adjustable in the editor's AudioTracksPanel. Planned: a P8 "duck music under speech" option that bakes BGM into the master with the reels sidechain recipe (trades editability for ducking).
+- **Editor audio ≠ render audio path (P7)** — the editor plays each SOURCE_CLIP's `<video>` intrinsic audio + `meta.audio_tracks`; the render plays `master_audio.mp3` (built from the same source ranges) + `meta.audio_tracks`. The two must stay equivalent: if the timeline builder ever mutes/changes clip entries or `assemble_audio` changes its slicing, preview and MP4 diverge. The builder's `_source_clip_html` docstring carries the warning.
+- **Tier default is `premium` via env (P7)** — `_tier_of` falls back to `STUDIO_DEFAULT_TIER` (default `premium`) because nothing writes `config['tier']` and no institute-tier resolution exists; every institute gets the premium toolset (LLM overlays/BGM) at no gate. Replace with real plan resolution + credits metering in P10 before paid launch.
+- **`propose_transitions` deferred (P7→P8)** — visual transitions over footage are blocked by the luma-key compositing model (dark pixels key out; no worker xfade). The wizard no longer advertises them ("Music + sound effects"). Needs render-worker support first.
 
 ---
 
@@ -275,13 +294,15 @@ services/
 ├── studio_cut_detectors.py                                  ← P3 (deterministic silence/filler fns)
 ├── studio_timeline_builder.py                               ← P4 (plan → {meta, entries})
 ├── studio_orchestrator.py                                   ← P4 (async build runner)
-├── studio_frame_service.py                                  ← P5 (S3 timeline add/update/delete/reorder)
-├── studio_render_service.py                                 ← P5 (worker submit + poll); P6a idempotency; P6b words_url
+├── studio_frame_service.py                                  ← P5 (S3 timeline add/update/delete/reorder); P7 audio-track RMW
+├── studio_render_service.py                                 ← P5 (worker submit + poll); P6a idempotency; P6b words_url; P7 master audio + failure recovery
 ├── studio_words_track.py                                    ← P6b (pure: remap clip words → composed timeline)
+├── studio_master_audio.py                                   ← P7 (pure ffmpeg cmd-builder: clip specs, sfx cues, master mix, bed loop)
 ├── studio_executors/
 │   ├── build_timeline.py                                    ← P4 (ASSEMBLE_TIMELINE; P6a order_index + segment_windows)
 │   ├── compose_html.py                                      ← P6a (COMPOSE_HTML → overlay entries)
 │   ├── assemble_words.py                                    ← P6b (ASSEMBLE_WORDS → words.json, gated on captions)
+│   ├── assemble_audio.py                                    ← P7 (ASSEMBLE_AUDIO → master_audio.mp3 + bgm track)
 │   └── upload_artifacts.py                                  ← P4 (UPLOAD → S3)
 ├── studio_tools/
 │   ├── __init__.py                                           ← P2 registry; P3 detect(); P6a/b register propose_*
@@ -291,7 +312,9 @@ services/
 │   ├── detect_fillers.py                                     ← P3
 │   ├── propose_titles.py                                     ← P6a (LLM, overlays, premium+)
 │   ├── propose_text_overlays.py                              ← P6a (LLM, overlays, premium+)
-│   └── propose_captions.py                                   ← P6b (deterministic config, overlays, free+)
+│   ├── propose_captions.py                                   ← P6b (deterministic config, overlays, free+)
+│   ├── propose_bgm.py                                        ← P7 (LLM, audio, premium+)
+│   └── propose_sfx.py                                        ← P7 (deterministic config, audio, premium+)
 └── edit_overlays/                                            ← P6a (studio-native renderers; NOT extracted from reels)
     ├── __init__.py
     ├── _render_common.py                                    ← escape + transparent wrapper + bright palette
@@ -301,11 +324,10 @@ migrations/
 └── add_ai_studio_tables.sql                                  ← P0 (source of truth)
 ```
 
-Pending (P7+):
+Pending (P8+):
 ```
 services/
-├── studio_tools/ (more)                                      ← P7/8 — bgm/sfx/transitions/motion_graphics
-└── studio_executors/ (more)                                  ← P7 — ASSEMBLE_AUDIO (bgm/sfx mix)
+└── studio_tools/ (more)                                      ← P8 — transitions/motion_graphics/image_overlays/off_topic
 ```
 
 ### Flyway (`admin_core_service/.../db/migration/`)
@@ -331,7 +353,13 @@ features/vimotion/studio/
 ├── hooks/useStudioBuild.ts                                  ← P4 (create + status poll)
 ├── detail/ProjectDetailPage.tsx                             ← P5 BuildRow (Edit/Render/Publish/MP4)
 ├── create/OverlaysStep.tsx                                  ← P6a (titles + text; accept/edit/refine/manual)
-└── create/AudioStep.tsx                                     ← P7 pending
+├── create/AudioStep.tsx                                     ← P7 (BGM card + custom URL, SFX card, refine)
+└── (P7 also touched: CreatePage resume + audio branch, WizardShell copy,
+     BuildStep ASSEMBLE_AUDIO label, StudioTab search param, studio-api types,
+     detail/ProjectDetailPage render polling + Resume CTA + editor projectId,
+     routes/vim/studio/new.tsx ?projectId, routes/vim/edit/$videoId/* studio back,
+     components/ai-video-editor: audio-track-api kind-aware + AudioTracksPanel,
+     VideoEditorPage render/thumbnail hidden for studio)
 
 Shared editor (modified, P5): `components/ai-video-editor/stores/video-editor-store.ts` (`EditorKind += 'studio'`; `saveChanges` studio frameBase) + `routes/vim/edit/$videoId/index.tsx` (`kind=studio` in validateSearch).
 routes/vim/studio/
@@ -511,6 +539,16 @@ P6b couplings:
 - **`ASSEMBLE_WORDS` stage** — `studio_orchestrator` (constant + band + handler slot + `register_all_stages` import) ⇄ FE `BuildStep.STAGE_LABELS`. The `BuildStage` Literal/TS union already include `ASSEMBLE_WORDS`. It needs `BuildContext.source_asset_refs` (populated in `create_build`) to fetch transcripts.
 - **Words drive off the BUILT timeline** — `build_words_track` reads each SOURCE_CLIP entry's `source_start`/`source_end`/`inTime`/`exitTime`/`entry_meta.handle`. If the timeline builder changes that entry shape (P5 casing couplings), the words remap silently mis-aligns. Same casing contract as §11 P5.
 
+
+P7 couplings:
+- **Audio op param shapes** — `propose_bgm` `{enabled,mood,music_prompt,volume}` and `propose_sfx` `{enabled,placement,volume_db}` round-trip across the tool validators (`studio_tools/propose_bgm.py`/`propose_sfx.py`), the FE `AudioStep.doConfirm`, and the `assemble_audio` executor readers (`_bgm_request`/`_sfx_config`). `manual_bgm` is read by tool NAME + `params.url` shape. Four sites per shape.
+- **`s3_urls.audio`** — written by `assemble_audio`; read by `studio_render_service._prepare_and_submit` (preferred over the silent fallback). Renaming the key silently re-mutes renders (the fallback hides the breakage) — grep both before touching.
+- **`meta.audio_tracks` shape** — `{id,label,url,volume,delay,fadeIn,fadeOut}` (camelCase fades) written by `assemble_audio._attach_bgm_track` AND `StudioFrameService.add/update_audio_track`, mixed by `render_worker/worker.py` (~140-165, 920-965), previewed by the editor's playback engine, edited via AudioTracksPanel → kind-aware `audio-track-api.ts` → `/builds/{id}/audio-track/*`. The BGM track id `background-music` is how a re-build replaces (not stacks) the bed.
+- **`[RENDER]` error prefix is load-bearing** — `studio_render_service` writes it on render failures; the render endpoint's FAILED-recovery branch and the FE ProjectDetailPage inline-error/retry detection both match on the prefix. Build-stage failures use `[{STAGE}]` prefixes and must stay distinct.
+- **Whoosh recipe** — the anoisesrc/highpass/lowpass/afade chain in `studio_master_audio._whoosh_chain` mirrors `reels_audio_edit_service` (~589-604); keep them sonically identical or split deliberately.
+- **Editor audio ≠ render audio** — editor plays SOURCE_CLIP `<video>` intrinsic audio; render plays `master_audio.mp3` built from the same `source_start/source_end` ranges. Changing the builder's clip slicing or `collect_clip_audio_specs` must keep both representations in sync (see `_source_clip_html` docstring).
+- **Stage list (again)** — `ASSEMBLE_AUDIO` lives in `studio_orchestrator` (constant/band/preseed/register import), the `BuildStage` Literal + TS union, and FE `BuildStep.STAGE_LABELS`. Same three-site rule as COMPOSE_HTML/ASSEMBLE_WORDS.
+- **Tier default** — `STUDIO_DEFAULT_TIER` env read in `_tier_of` (router). P10's real tier resolution must delete that env fallback, not layer on top of it.
 ---
 
 ## 12. Verification
@@ -590,5 +628,40 @@ Walk (staging, real worker):
 2. Build → BuildStep shows "Building captions" reached; the build's `s3_urls.words` is set and `extra_metadata.caption_word_count > 0`. Fetch `words.json` → flat `[{word,start,end}]`, times within `[0, meta.total_duration]`, monotonic, NO words inside cut gaps.
 3. Open in editor → captions preview (karaoke pills on the scrubber). **Render with show_captions → confirm captions burn into the MP4, aligned to the spoken audio (staging-only — worker).**
 4. Free-tier institute: overlays step offers ONLY captions (no titles/text); building with captions on still produces a words track.
+
+### P7 verification (audio)
+
+Backend functional test (pure, no ffmpeg/worker), from `ai_service/` (suite kept at `/tmp/test_studio_p7_audio.py` during development):
+```python
+# studio_master_audio: collect_clip_audio_specs (ordering by inTime, index→URL
+#   resolution, malformed + non-http skip, cap); compute_sfx_cue_times
+#   (segment_boundaries via order_index change incl. meta-less-entry tolerance,
+#   all_cuts, min-t 1.0, spacing 0.3, tail guard); build_master_audio_cmd
+#   (anullsrc anchor input 0, -ss/-t BEFORE each -i, aresample/asetpts/adelay
+#   ms per clip, whoosh chains, amix inputs count, libmp3lame args);
+#   loop_bed_to_duration_cmd (-stream_loop -1, -t total).
+# orchestrator: STAGE_PIPELINE order ASSEMBLE_TIMELINE→COMPOSE_HTML→
+#   ASSEMBLE_WORDS→ASSEMBLE_AUDIO→UPLOAD→HANDOFF, bands contiguous 0-100,
+#   ASSEMBLE_AUDIO handler registered.
+# assemble_audio: manual-bgm path (meta.audio_tracks single replace-by-id
+#   track, volume from op), generated path with no FAL key (bgm 'skipped:…',
+#   master still built), bgm-absent path, image-only (master_audio='none'),
+#   master failure raises (fail-loud), missing timeline raises.
+# studio_render_service: prefers s3_urls.audio over silent fallback (silent
+#   only generated when absent); poll outcomes — failed → AWAITING_EDIT +
+#   '[RENDER] …', completed-no-URL → AWAITING_EDIT + error, completed+URL →
+#   update_on_render, timeout → AWAITING_EDIT + timeout error.
+# All assertions pass (2026-06-12).
+```
+
+FE: `npx tsc --noEmit` clean (pre-existing libphonenumber/react-virtual module
+errors excepted); design-lint 0 errors on all touched studio/editor files.
+
+Walk (staging, real worker — REQUIRED before announcing P7):
+1. Build a 2-video project with cuts + captions + BGM + SFX enabled → BuildStep shows "Building soundtrack"; build lands AWAITING_EDIT with `s3_urls.audio` set and `extra_metadata.master_audio_seconds ≈ meta.total_duration`; `extra_metadata.bgm` = 'generated' (or 'skipped: no_provider' without FAL_API_KEY — build still succeeds).
+2. Render → **the MP4 has the clips' voices** (the P0 silent bug), BGM under them at the chosen level, whooshes at segment changes, captions aligned to speech.
+3. Editor: AudioTracksPanel shows "Background music"; change volume → persists via `/builds/{id}/audio-track/update`; re-render reflects it. Back button lands on `/vim/studio/{projectId}`.
+4. Kill the render worker mid-render → build returns to AWAITING_EDIT with `[RENDER]` error inline on the project page; Render again succeeds.
+5. Resume: abandon a wizard after Cuts, open the project page → "Resume planning" lands on Overlays.
 
 Subsequent phases will append their own verification stanzas.

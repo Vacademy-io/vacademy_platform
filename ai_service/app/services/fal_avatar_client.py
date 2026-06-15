@@ -14,6 +14,9 @@ Used by `automation_pipeline._run_avatar_batch` during the HTML stage when
     • fal-ai/ltx-2.3-quality/audio-to-video      (priced PER-MEGAPIXEL, ~$0.024/sec @480p·24fps;
                                                  general audio-driven gen, NOT dedicated lip-sync;
                                                  host image is the OPTIONAL initial frame; tunable fps)
+    • bytedance/seedance-2.0/reference-to-video  ($0.3034/sec @720p; reference image(s) + driving
+                                                 audio as LISTS; native audio + camera control;
+                                                 ≤15s audio cap; no fps param)
 
   Built-in catalog (enum + audio → video — no Seedream, no face image):
     • argil/avatars/audio-to-video               ($0.02  / input-sec)
@@ -72,6 +75,8 @@ MODEL_AUDIO_CAP_S: Dict[str, float] = {
     "fal-ai/kling-video/ai-avatar/v2/standard": 40.0,
     "fal-ai/kling-video/ai-avatar/v2/pro":      40.0,
     "veed/fabric-1.0":                          60.0,
+    # Seedance accepts ≤15s combined reference audio (hard fal limit).
+    "bytedance/seedance-2.0/reference-to-video": 15.0,
 }
 # Subtract from the model cap before enforcing. fal's gate is inclusive and
 # slight ffprobe/encoder rounding (≤ 0.5s) has burned us before.
@@ -251,6 +256,31 @@ def _build_payload(
                 payload["image_strength"] = 0.7
             if fps:
                 payload["frames_per_second"] = int(fps)
+            return payload
+        if model == "bytedance/seedance-2.0/reference-to-video":
+            # Seedance 2.0 reference-to-video. Audio-capable generator: drives
+            # motion from reference audio (up to 3 clips, ≤15s combined — see
+            # MODEL_AUDIO_CAP_S) + up to 9 reference images. We pass the host
+            # face as the single reference image and the per-shot narration
+            # slice as the driving audio — both are LISTS here, unlike the
+            # single-string fields the other models use.
+            #   • resolution accepts 480p/720p/1080p — map the avatar quality
+            #     (the picker exposes 480p/720p).
+            #   • aspect_ratio follows the canvas orientation (avoid letterboxing).
+            #   • duration="auto" lets the clip length follow the inputs.
+            #   • generate_audio is left at the model default (true) so the audio
+            #     natively drives the result; the pipeline overlays master
+            #     narration as the final track regardless. No fps param exists.
+            payload = {
+                "prompt": (details_prompt or
+                           "A person speaking naturally with subtle head movements."),
+                "audio_urls": [audio_url],
+                "resolution": "720p" if quality == "720p" else "480p",
+                "aspect_ratio": "9:16" if orientation == "portrait" else "16:9",
+                "duration": "auto",
+            }
+            if image_url:
+                payload["image_urls"] = [image_url]
             return payload
         raise ValueError(f"Unsupported custom-avatar model: {model!r}")
 

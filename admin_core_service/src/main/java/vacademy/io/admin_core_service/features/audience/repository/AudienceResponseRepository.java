@@ -961,6 +961,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         // ─────────────────────────────────────────────────────────────────────
         // Lead Reports — institute-scoped aggregates, date-bounded on submitted_at.
         // OPTED_OUT leads are excluded everywhere so totals match the counsellor view.
+        // All seven queries take three optional dimension binds (null = no filter):
+        //   :scopeUsersCsv — comma-joined counsellor user_ids (RBAC scope). Matched against
+        //       COALESCE(lu.user_id, ulp.assigned_counselor_id) — the same per-lead counsellor
+        //       identity the performance rows group by. An EMPTY string matches nothing
+        //       (STRING_TO_ARRAY('', ',') = {}), so an empty scope yields a zeroed report
+        //       instead of silently widening back to institute-wide.
+        //   :audienceId / :sourceType — straight equality on audience_response columns.
         // ─────────────────────────────────────────────────────────────────────
 
         /** Single-row totals: total / converted / lost / active / currently-overdue counts. */
@@ -973,17 +980,28 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id FROM linked_users lu
+                                WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC LIMIT 1
+                            ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                               AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                              AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                         """, nativeQuery = true)
         LeadReportProjections.TotalsProjection findReportTotals(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
-                        @Param("toTs") String toTs);
+                        @Param("toTs") String toTs,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /**
          * Response stats aggregate. "first response" = MIN(timeline_event by the assigned counsellor)
@@ -1015,6 +1033,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                                   AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                                  AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                                  AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                                  AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             )
                             SELECT COUNT(first_action_at)                                                  AS respondedLeads,
                                    AVG(EXTRACT(EPOCH FROM (first_action_at - submitted_at)) / 60.0)        AS avgResponseMinutes,
@@ -1027,7 +1048,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
                         @Param("toTs") String toTs,
-                        @Param("tatHours") Integer tatHours);
+                        @Param("tatHours") Integer tatHours,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /** Status breakdown: rows of (status_key, count). */
         @Query(value = """
@@ -1035,18 +1059,29 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    COUNT(*)                                AS leadCount
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id FROM linked_users lu
+                                WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC LIMIT 1
+                            ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                               AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                              AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             GROUP BY COALESCE(ulp.conversion_status, 'LEAD')
                         """, nativeQuery = true)
         List<LeadReportProjections.StatusCountProjection> findReportStatusBreakdown(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
-                        @Param("toTs") String toTs);
+                        @Param("toTs") String toTs,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /** Source breakdown: rows of (source_type, total, converted). */
         @Query(value = """
@@ -1055,19 +1090,30 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END)   AS convertedCount
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id FROM linked_users lu
+                                WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC LIMIT 1
+                            ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                               AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                              AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             GROUP BY ar.source_type
                             ORDER BY totalCount DESC
                         """, nativeQuery = true)
         List<LeadReportProjections.SourceCountProjection> findReportSourceBreakdown(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
-                        @Param("toTs") String toTs);
+                        @Param("toTs") String toTs,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /** Tier breakdown: explicit lead_tier wins, else score-derived bucket, else UNCLASSIFIED. */
         @Query(value = """
@@ -1079,18 +1125,29 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    COUNT(*)                                              AS leadCount
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id FROM linked_users lu
+                                WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC LIMIT 1
+                            ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                               AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                              AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             GROUP BY 1
                         """, nativeQuery = true)
         List<LeadReportProjections.TierCountProjection> findReportTierBreakdown(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
-                        @Param("toTs") String toTs);
+                        @Param("toTs") String toTs,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /** Daily trend: GROUP BY DATE(submitted_at). */
         @Query(value = """
@@ -1099,19 +1156,30 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END) AS convertedCount
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id FROM linked_users lu
+                                WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC LIMIT 1
+                            ) lu ON true
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                               AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                              AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             GROUP BY DATE(ar.submitted_at)
                             ORDER BY DATE(ar.submitted_at)
                         """, nativeQuery = true)
         List<LeadReportProjections.DailyTrendProjection> findReportDailyTrend(
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
-                        @Param("toTs") String toTs);
+                        @Param("toTs") String toTs,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /**
          * Per-counsellor aggregate row. Counsellor resolution mirrors the leads list filter.
@@ -1144,6 +1212,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ar.submitted_at >= CAST(:fromTs AS timestamp)
                                   AND ar.submitted_at <  CAST(:toTs   AS timestamp)
                                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                                  AND (:scopeUsersCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeUsersCsv, ',')))
+                                  AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+                                  AND (:sourceType IS NULL OR ar.source_type = :sourceType)
                             )
                             SELECT counselor_id                                                                          AS counselorId,
                                    COUNT(*)                                                                              AS leadsAssigned,
@@ -1165,7 +1236,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("fromTs") String fromTs,
                         @Param("toTs") String toTs,
-                        @Param("tatHours") Integer tatHours);
+                        @Param("tatHours") Integer tatHours,
+                        @Param("scopeUsersCsv") String scopeUsersCsv,
+                        @Param("audienceId") String audienceId,
+                        @Param("sourceType") String sourceType);
 
         /**
          * Atomically claim a reminder stage for a lead. Returns 1 if this call won the claim (and the row

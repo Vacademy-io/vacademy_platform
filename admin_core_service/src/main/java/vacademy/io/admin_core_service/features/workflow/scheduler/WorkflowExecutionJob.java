@@ -42,24 +42,10 @@ public class WorkflowExecutionJob implements Job {
 
             log.info("Found {} schedules due for execution", dueSchedules.size());
 
-            SentryLogger.logInfo("Scheduled workflow job started", Map.of(
-                    "schedule.count", String.valueOf(dueSchedules.size()),
-                    "operation", "WorkflowExecutionJob"
-            ));
-
             for (WorkflowSchedule schedule : dueSchedules) {
                 log.info("Processing schedule: {} - workflow: {}, cron: {}, lastRunAt: {}, nextRunAt: {}",
                         schedule.getId(), schedule.getWorkflowId(), schedule.getCronExpression(),
                         schedule.getLastRunAt(), schedule.getNextRunAt());
-
-                SentryLogger.logInfo("Processing scheduled workflow", Map.of(
-                        "schedule.id", schedule.getId(),
-                        "workflow.id", schedule.getWorkflowId(),
-                        "cron.expression", schedule.getCronExpression() != null ? schedule.getCronExpression() : "N/A",
-                        "last.run.at", schedule.getLastRunAt() != null ? schedule.getLastRunAt().toString() : "N/A",
-                        "next.run.at", schedule.getNextRunAt() != null ? schedule.getNextRunAt().toString() : "N/A",
-                        "operation", "WorkflowExecutionJob.processSchedule"
-                ));
 
                 try {
                     String idempotencyKey = generateIdempotencyKey(schedule);
@@ -91,13 +77,6 @@ public class WorkflowExecutionJob implements Job {
                         idempotencyService.markAsCompleted(idempotencyKey, result);
                         log.info("Successfully executed workflow schedule: {} - Status: {}",
                                 schedule.getId(), result.get("status"));
-
-                        SentryLogger.logInfo("Scheduled workflow execution completed", Map.of(
-                                "schedule.id", schedule.getId(),
-                                "workflow.id", schedule.getWorkflowId(),
-                                "status", String.valueOf(result.get("status")),
-                                "operation", "WorkflowExecutionJob.executionCompleted"
-                        ));
                     }
 
                     WorkflowSchedule updatedSchedule = workflowScheduleService.getScheduleById(schedule.getId())
@@ -133,6 +112,12 @@ public class WorkflowExecutionJob implements Job {
             }
         } catch (Exception e) {
             log.error("Error in workflow execution job", e);
+            // Job-level failure (e.g. cannot read due schedules) means NO workflows run;
+            // without this capture the outage is invisible to Sentry.
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Workflow execution job failed before processing schedules")
+                    .withTag("operation", "WorkflowExecutionJob.jobFailure")
+                    .send();
         }
     }
 

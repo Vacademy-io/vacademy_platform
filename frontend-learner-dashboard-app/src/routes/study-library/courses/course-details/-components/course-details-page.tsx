@@ -1,6 +1,12 @@
 import { useRouter } from "@tanstack/react-router";
-import { CaretLeft, CaretDown, Info } from "@phosphor-icons/react";
-import { toTitleCase } from "@/lib/utils";
+import { CaretLeft, CaretDown, Info, Play } from "@phosphor-icons/react";
+import { cn, toTitleCase } from "@/lib/utils";
+import {
+  getResumeForCourse,
+  resumeSearchParams,
+  RESUME_ROUTE,
+  type ResumeEntry,
+} from "@/services/resume-thread";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -703,6 +709,33 @@ export const CourseDetailsPage = () => {
       enrolledPkgSessionIds.includes(ps.id),
     );
   }, [enrolledSessions, courseDetailsData]);
+
+  // Enrolled in THIS course (any batch). Drives the enrolled-first layout:
+  // resume strip up top, shopper/marketing blocks demoted below content.
+  const isEnrolledInCourse = useMemo(
+    () =>
+      (enrolledSessions || []).some(
+        (enrolledSession) =>
+          enrolledSession.package_dto.id === searchParams.courseId,
+      ),
+    [enrolledSessions, searchParams.courseId],
+  );
+
+  // Last slide visited in THIS course (synchronous localStorage read; written
+  // by the slides viewer). Renders the "Continue where you left off" strip.
+  const resumeEntry = useMemo(
+    () =>
+      searchParams.courseId ? getResumeForCourse(searchParams.courseId) : null,
+    [searchParams.courseId],
+  );
+
+  const handleResumeContinue = useCallback(() => {
+    if (!resumeEntry) return;
+    router.navigate({
+      to: RESUME_ROUTE,
+      search: resumeSearchParams(resumeEntry),
+    });
+  }, [resumeEntry, router]);
 
   // Effect 2: Map session/level to packageSessionId when batches or selections change.
   // Uses batches API when available; falls back to course-init's package_sessions when
@@ -2096,6 +2129,10 @@ export const CourseDetailsPage = () => {
 
         {/* Main Content Container */}
         <div className="relative z-10 w-full px-2 sm:px-0 py-2 lg:py-3">
+          {/* Resume strip — directly under the course header, above the tabs */}
+          {resumeEntry && (
+            <ResumeStrip entry={resumeEntry} onContinue={handleResumeContinue} />
+          )}
           <div
             className={`grid grid-cols-1 ${
               hasRightSidebar ? "lg:grid-cols-3" : ""
@@ -2122,76 +2159,98 @@ export const CourseDetailsPage = () => {
                 threshold={certificateThreshold}
               />
 
-              {/* Course highlights (collapsed by default). Sits above
-                  configuration so admin-authored overview copy is the first
-                  thing the learner sees after the banner, for both enrolled
-                  and not-enrolled cases. */}
-              <CourseDetailsCollapsible
-                courseData={form.getValues("courseData")}
-              />
+              {/* Enrolled learners see content first (header → resume strip →
+                  tabs); shopper/marketing blocks (highlights, configuration)
+                  are demoted below the content. Non-enrolled shoppers keep the
+                  original marketing-first order. */}
+              {(() => {
+                // Course highlights (collapsed by default) — admin-authored
+                // overview copy; leads for shoppers, demoted for enrolled.
+                const highlightsBlock = (
+                  <CourseDetailsCollapsible
+                    courseData={form.getValues("courseData")}
+                  />
+                );
 
-              {/* Course Enrollment Configuration */}
-              <CourseEnrollment
-                showCourseConfiguration={showCourseConfiguration}
-                selectedTab={selectedTab}
-                sessionOptions={sessionOptions || []}
-                levelOptions={levelOptions || []}
-                batchOptions={batchOptions}
-                selectedSession={selectedSession}
-                selectedLevel={selectedLevel}
-                selectedBatchId={selectedBatchId}
-                shouldShowBatchDropdown={shouldShowBatchDropdown}
-                enrolledSessions={enrolledSessions || []}
-                courseId={searchParams.courseId || ""}
-                hasRightSidebar={hasRightSidebar}
-                paymentType={paymentType}
-                certificateUrl={certificateUrl}
-                packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
-                onBatchChange={handleBatchChange}
-                onEnrollmentClick={async () => {
-                  // Check user status for free payment types before opening enrollment dialog
-                  const isFreePayment =
-                    paymentType === "free" ||
-                    paymentType === "free_plan" ||
-                    paymentType === "FREE" ||
-                    paymentType === "FREE_PLAN";
+                // Course Enrollment Configuration
+                const enrollmentBlock = (
+                  <CourseEnrollment
+                    showCourseConfiguration={showCourseConfiguration}
+                    selectedTab={selectedTab}
+                    sessionOptions={sessionOptions || []}
+                    levelOptions={levelOptions || []}
+                    batchOptions={batchOptions}
+                    selectedSession={selectedSession}
+                    selectedLevel={selectedLevel}
+                    selectedBatchId={selectedBatchId}
+                    shouldShowBatchDropdown={shouldShowBatchDropdown}
+                    enrolledSessions={enrolledSessions || []}
+                    courseId={searchParams.courseId || ""}
+                    hasRightSidebar={hasRightSidebar}
+                    paymentType={paymentType}
+                    certificateUrl={certificateUrl}
+                    packageSessionIdForCurrentLevel={
+                      packageSessionIdForCurrentLevel
+                    }
+                    onBatchChange={handleBatchChange}
+                    onEnrollmentClick={async () => {
+                      // Check user status for free payment types before opening enrollment dialog
+                      const isFreePayment =
+                        paymentType === "free" ||
+                        paymentType === "free_plan" ||
+                        paymentType === "FREE" ||
+                        paymentType === "FREE_PLAN";
 
-                  if (isFreePayment) {
-                    await handleFreeEnrollmentClick();
-                  } else {
-                    // For paid payment types, open enrollment dialog directly
-                    setEnrollmentDialogOpen(true);
-                  }
-                }}
-              />
+                      if (isFreePayment) {
+                        await handleFreeEnrollmentClick();
+                      } else {
+                        // For paid payment types, open enrollment dialog directly
+                        setEnrollmentDialogOpen(true);
+                      }
+                    }}
+                  />
+                );
 
-              {/* Course Structure (always rendered; internal logic will adapt to enrollment/public) */}
-              <div
-                className="animate-fade-in-up"
-                style={{ animationDelay: "0.2s" }}
-              >
-                <CourseStructureDetails
-                  selectedSession={selectedSession}
-                  selectedLevel={selectedLevel}
-                  courseStructure={
-                    courseStructureFromApi ??
-                    stableCourseData?.courseData?.courseStructure ??
-                    5
-                  }
-                  courseData={stableCourseData}
-                  packageSessionId={packageSessionIdForCurrentLevel || ""}
-                  selectedTab={selectedTab}
-                  updateModuleStats={updateModuleStats}
-                  isEnrolledInCourse={(enrolledSessions || []).some(
-                    (enrolledSession) =>
-                      enrolledSession.package_dto.id === searchParams.courseId,
-                  )}
-                  onLoadingChange={handleModulesLoadingChange}
-                  courseInitSubjects={courseInitSubjectsFromCourseInit}
-                  {...(paymentType && { paymentType })}
-                />
-              </div>
+                // Course Structure (always rendered; internal logic will adapt to enrollment/public)
+                const structureBlock = (
+                  <div
+                    className="animate-fade-in-up"
+                    style={{ animationDelay: "0.2s" }}
+                  >
+                    <CourseStructureDetails
+                      selectedSession={selectedSession}
+                      selectedLevel={selectedLevel}
+                      courseStructure={
+                        courseStructureFromApi ??
+                        stableCourseData?.courseData?.courseStructure ??
+                        5
+                      }
+                      courseData={stableCourseData}
+                      packageSessionId={packageSessionIdForCurrentLevel || ""}
+                      selectedTab={selectedTab}
+                      updateModuleStats={updateModuleStats}
+                      isEnrolledInCourse={isEnrolledInCourse}
+                      onLoadingChange={handleModulesLoadingChange}
+                      courseInitSubjects={courseInitSubjectsFromCourseInit}
+                      {...(paymentType && { paymentType })}
+                    />
+                  </div>
+                );
 
+                return isEnrolledInCourse ? (
+                  <>
+                    {structureBlock}
+                    {enrollmentBlock}
+                    {highlightsBlock}
+                  </>
+                ) : (
+                  <>
+                    {highlightsBlock}
+                    {enrollmentBlock}
+                    {structureBlock}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Right Column - Course Stats Sidebar (1/4) */}
@@ -2322,6 +2381,70 @@ export const CourseDetailsPage = () => {
     </>
   );
 };
+
+// Slim "Continue where you left off" band rendered directly under the course
+// header when the resume thread has an entry for this course. Quiet tinted
+// band on default; tenant-primary tint on vibrant; white bordered band with a
+// press-grammar Continue button on play.
+const ResumeStrip = ({
+  entry,
+  onContinue,
+}: {
+  entry: ResumeEntry;
+  onContinue: () => void;
+}) => (
+  <section
+    aria-label="Continue where you left off"
+    className={cn(
+      "mb-3 flex items-center justify-between gap-3 rounded-xl bg-muted/40 px-4 py-3",
+      "[.ui-vibrant_&]:bg-primary-50",
+      "[.ui-play_&]:bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+    )}
+  >
+    <div className="min-w-0">
+      <p
+        className={cn(
+          "text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+          "[.ui-vibrant_&]:text-primary-500",
+          "[.ui-play_&]:text-play-ink/70",
+        )}
+      >
+        Continue where you left off
+      </p>
+      <p
+        className={cn(
+          "mt-0.5 truncate text-sm font-semibold text-foreground",
+          "[.ui-play_&]:text-play-ink",
+        )}
+      >
+        {entry.slideTitle}
+      </p>
+      {entry.chapterName && (
+        <p
+          className={cn(
+            "truncate text-xs text-muted-foreground",
+            "[.ui-play_&]:text-play-ink/70",
+          )}
+        >
+          {entry.chapterName}
+        </p>
+      )}
+    </div>
+    <Button
+      type="button"
+      onClick={onContinue}
+      className={cn(
+        "flex-shrink-0 font-semibold",
+        "[.ui-play_&]:bg-play-success [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold",
+        "[.ui-play_&]:rounded-play-card [.ui-play_&]:shadow-play-2d-success",
+        "[.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
+      )}
+    >
+      <Play size={14} weight="fill" />
+      Continue
+    </Button>
+  </section>
+);
 
 // Local component: More details toggle for PROGRESS tab
 type CourseDetailsForSections = {

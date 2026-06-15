@@ -109,9 +109,7 @@
 
   /* Badges: always pill, solid */
   .ui-play .badge,
-  .ui-play .Badge,
-  .ui-play .level-badge,
-  .ui-play .course-tag {
+  .ui-play .Badge {
     border-radius: var(--play-radius-badge) !important;
     font-weight: 700;
     border-width: 1px !important;
@@ -136,9 +134,9 @@
   }
 
   /* ── Buttons: 3D press effect (Duolingo style) ──────────────────── */
-  .ui-play button.bg-primary-500,
-  .ui-play .btn,
-  .ui-play .my-button {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]),
+  .ui-play .btn:not([class*="shadow-play"]),
+  .ui-play .my-button:not([class*="shadow-play"]) {
     border-radius: var(--play-radius-btn) !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
@@ -147,31 +145,22 @@
     transition: transform 100ms ease, box-shadow 100ms ease;
   }
 
-  .ui-play button.bg-primary-500:hover,
-  .ui-play .btn:hover,
-  .ui-play .my-button:hover {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]):hover,
+  .ui-play .btn:not([class*="shadow-play"]):hover,
+  .ui-play .my-button:not([class*="shadow-play"]):hover {
     transform: translateY(-1px);
     box-shadow: 0 5px 0 hsl(var(--primary-400)) !important;
   }
 
-  .ui-play button.bg-primary-500:active,
-  .ui-play .btn:active,
-  .ui-play .my-button:active {
+  .ui-play button.bg-primary-500:not([class*="shadow-play"]):active,
+  .ui-play .btn:not([class*="shadow-play"]):active,
+  .ui-play .my-button:not([class*="shadow-play"]):active {
     transform: translateY(3px);
     box-shadow: 0 1px 0 hsl(var(--primary-400)) !important;
   }
 
-  /* ── Navbar ─────────────────────────────────────────────────────── */
-  .ui-play .navbar {
-    border-bottom: 1px solid hsl(var(--primary-100)) !important;
-    background: white !important;
-    box-shadow: 0 1px 0 hsl(var(--primary-100) / 0.6);
-  }
-
-  .ui-play .navbar .text-base {
-    font-weight: 800;
-    letter-spacing: 0.3px;
-  }
+  /* (Play navbar shell + heading nudge removed 2026-06-11: the navbar
+     self-styles via [.ui-play_&] variants in navbar.tsx.) */
 
   /* Sidebar: basic container only (detailed overrides are OUTSIDE @layer below) */
   .ui-play .sidebar-content {
@@ -244,21 +233,9 @@
   /* No `color: white !important` here — that would cascade into the
      CTA button and make its text invisible. Per-element [.ui-play_&]:text-white
      classes in the JSX handle text color where needed. */
-  .ui-play .continue-learning-card {
-    background-color: hsl(var(--play-blue)) !important;
-    border-color: transparent !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-blue) / 0.18),
-      0 16px 32px -12px hsl(var(--play-blue) / 0.4) !important;
-  }
-
-  .ui-play .continue-learning-card:hover {
-    transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--play-blue) / 0.22),
-      0 24px 44px -14px hsl(var(--play-blue) / 0.5) !important;
-  }
+  /* (Continue Learning play shell removed 2026-06-11: navy surface +
+     foregrounds now live in DashboardContinueLearningCard.tsx JSX.
+     The vibrant rules in index.css and App.css touch-target rules stay.) */
 
   /* Upcoming Live Classes widget: navy skin now lives in the JSX
      ([.ui-play_&]:bg-play-navy + shadow-play-4d-navy in
@@ -281,39 +258,11 @@
       0 18px 36px -12px hsl(var(--play-blue) / 0.5) !important;
   }
 
-  /* Continue Learning empty state — green hero. Text color set on
-     individual elements (heading/paragraph) via [.ui-play_&]:text-white
-     so the CTA button can still use its own colors. */
-  .ui-play .continue-learning-card-empty {
-    background-color: hsl(var(--play-green)) !important;
-    border-color: transparent !important;
-    border-style: solid !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-green-deep) / 0.22),
-      0 16px 32px -12px hsl(var(--play-green) / 0.4) !important;
-  }
+  /* (Continue Learning empty-state shell + text overrides removed
+     2026-06-11: success surface + ink text now live in the JSX.) */
 
-  .ui-play .continue-learning-card .text-muted-foreground {
-    color: rgba(255, 255, 255, 0.8) !important;
-  }
-
-  .ui-play .continue-learning-card .text-foreground {
-    color: white !important;
-  }
-
-  /* ── Course Cards ───────────────────────────────────────────────── */
-  .ui-play .course-card-image {
-    border-radius: var(--play-radius-card) var(--play-radius-card) 0 0 !important;
-  }
-
-  .ui-play .level-badge {
-    border-width: 1px !important;
-    border-radius: var(--play-radius-badge) !important;
-    font-weight: 800;
-    text-transform: uppercase;
-    font-size: 0.65rem;
-  }
+  /* (Orphaned play course-card hooks removed 2026-06-11: course-card-image/
+     level-badge have zero JSX consumers — play card styling lives in CourseCards.tsx.) */
 
   .ui-play .course-stats {
     background: hsl(var(--primary-50));
@@ -441,14 +390,9 @@
       0 12px 28px -10px hsl(var(--primary-400) / 0.2);
   }
 
-  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"] {
-    border-radius: var(--play-radius-btn) !important;
-  }
-
-  .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"]:hover {
-    transform: scale(1.01);
-    background-color: hsl(var(--primary-50)) !important;
-  }
+  /* (Generic border+rounded-lg+hover:bg-accent interception removed 2026-06-11:
+     the Outline triggers it targeted are play-self-sufficient in JSX; the one
+     other match, parent-portal accordions, falls back to clean defaults.) */
 
   .ui-play .course-enrollment,
   .ui-play [class*="enrollment"] {
@@ -480,12 +424,8 @@
     transition: all 150ms ease !important;
   }
 
-  .ui-play [role="tab"][data-state="active"],
-  .ui-play [role="tab"][aria-selected="true"] {
-    background: hsl(var(--primary-400)) !important;
-    color: white !important;
-    box-shadow: 0 2px 6px hsl(var(--primary-400) / 0.4) !important;
-  }
+  /* (Active-tab primary-400 paint removed 2026-06-11: active tabs are
+     styled in JSX (navy + white on play); shape-only [role="tab"] rule stays.) */
 
   /* ── Inputs & Select (forms across all pages) ───────────────────── */
   .ui-play input[type="text"],
@@ -583,17 +523,10 @@
     background: hsl(var(--primary-100)) !important;
   }
 
-  /* ── Progress bars (everywhere) ─────────────────────────────────── */
-  .ui-play [role="progressbar"] {
-    border-radius: var(--play-radius-badge) !important;
-    height: 12px !important;
-    background: hsl(var(--primary-100)) !important;
-  }
-
-  .ui-play [role="progressbar"] > div {
-    border-radius: var(--play-radius-badge) !important;
-    background: hsl(var(--play-green)) !important;
-  }
+  /* (Global progressbar interception removed 2026-06-11: it force-painted
+     every play progress bar 12px primary-100/green, fighting the
+     self-sufficient bars in attendance/sidebar/ratings. Bars now style
+     themselves; unmigrated ones fall back to their own clean defaults.) */
 
   /* ── Accordion / Collapsible (course content, FAQ, etc.) ────────── */
   .ui-play [data-state="open"] > [role="button"],
@@ -876,90 +809,6 @@
 
 }
 
-/* ══════════════════════════════════════════════════════════════════════
-   SIDEBAR OVERRIDES — Outside @layer for higher specificity than CVA
-   ══════════════════════════════════════════════════════════════════════ */
-
-/* All sidebar menu buttons: rounded, taller, bolder */
-.ui-play [data-sidebar="menu-button"] {
-  border-radius: 14px !important;
-  font-weight: 700 !important;
-  min-height: 46px !important;
-  margin: 3px 4px !important;
-  padding: 8px 14px !important;
-  transition: all 150ms ease !important;
-}
-
-/* Bigger icons */
-.ui-play [data-sidebar="menu-button"] svg {
-  width: 22px !important;
-  height: 22px !important;
-}
-
-/* Hover */
-.ui-play [data-sidebar="menu-button"]:hover {
-  background-color: hsl(var(--primary-50)) !important;
-  transform: scale(1.02);
-}
-
-/* Active: SOLID primary bg, white text, soft elevated shadow */
-.ui-play [data-sidebar="menu-button"][data-active="true"] {
-  background-color: hsl(var(--primary-400)) !important;
-  color: white !important;
-  font-weight: 800 !important;
-  border-radius: 14px !important;
-  box-shadow:
-    0 1px 2px hsl(var(--primary-500) / 0.18),
-    0 8px 20px -6px hsl(var(--primary-400) / 0.45) !important;
-}
-
-.ui-play [data-sidebar="menu-button"][data-active="true"]:hover {
-  background-color: hsl(var(--primary-400)) !important;
-  transform: translateY(-1px);
-  box-shadow:
-    0 2px 4px hsl(var(--primary-500) / 0.22),
-    0 12px 24px -8px hsl(var(--primary-400) / 0.55) !important;
-}
-
-.ui-play [data-sidebar="menu-button"][data-active="true"] svg {
-  color: white !important;
-}
-
-/* Sub-menu items */
-.ui-play [data-sidebar="menu-sub-button"] {
-  border-radius: 10px !important;
-  font-weight: 600 !important;
-  min-height: 36px !important;
-  transition: all 150ms ease !important;
-}
-
-.ui-play [data-sidebar="menu-sub-button"]:hover {
-  background-color: hsl(var(--primary-50)) !important;
-}
-
-.ui-play [data-sidebar="menu-sub-button"][data-active="true"] {
-  background-color: hsl(var(--primary-100)) !important;
-  color: hsl(var(--primary-500)) !important;
-  font-weight: 700 !important;
-}
-
-/* Logo area */
-.ui-play [data-sidebar="header"] [data-sidebar="menu-button"] {
-  border-radius: 16px !important;
-  background-color: hsl(var(--primary-50)) !important;
-  border: 1px solid hsl(var(--primary-100)) !important;
-  box-shadow: 0 2px 8px hsl(var(--primary-300) / 0.1) !important;
-  margin: 8px !important;
-  padding: 12px !important;
-  min-height: auto !important;
-}
-
-.ui-play [data-sidebar="header"] [data-sidebar="menu-button"]:hover {
-  background-color: hsl(var(--primary-100)) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px hsl(var(--primary-300) / 0.18) !important;
-}
-
-.ui-play [data-sidebar="footer"] {
-  padding: 8px !important;
-}
+/* (SIDEBAR OVERRIDES block removed 2026-06-11: its !important rules MASKED
+   the redesigned sidebar's [.ui-play_&] JSX styling. Custom route sidebars
+   fall back to the quiet CVA baseline.) */

@@ -65,9 +65,29 @@ export interface ChannelGroup {
  * Groups entries by channel (z-index range) and runs the greedy
  * interval-scheduling algorithm within each channel.
  * Only returns channels that contain at least one entry.
+ *
+ * `navigationMode` should be the timeline's `meta.navigation`. It decides the
+ * layout branch the same way TimelineScrubber decides block positions:
+ * time_driven schedules by [inTime, exitTime) intervals; every other mode
+ * renders blocks at their global entry index (width 1), where horizontal
+ * overlap is impossible and a single row per channel is correct. When the
+ * mode isn't supplied, fall back to sniffing timing fields — including
+ * exitTime/end-only entries, which the old sniff missed (B8): an entry with
+ * only an exitTime used to drop the whole timeline into the single-row
+ * branch while the scrubber still drew real time spans, stacking
+ * overlapping clips on top of each other.
  */
-export function assignChannelGroups(entries: Entry[]): ChannelGroup[] {
-    const hasTimings = entries.some((e) => e.inTime !== undefined || e.start !== undefined);
+export function assignChannelGroups(entries: Entry[], navigationMode?: string): ChannelGroup[] {
+    const timeDriven =
+        navigationMode != null
+            ? navigationMode === 'time_driven'
+            : entries.some(
+                  (e) =>
+                      e.inTime !== undefined ||
+                      e.start !== undefined ||
+                      e.exitTime !== undefined ||
+                      e.end !== undefined
+              );
 
     // Bucket entries per channel
     const buckets = new Map<ChannelId, Entry[]>();
@@ -82,7 +102,7 @@ export function assignChannelGroups(entries: Entry[]): ChannelGroup[] {
 
         let assignments: Array<{ entry: Entry; track: number }>;
 
-        if (!hasTimings) {
+        if (!timeDriven) {
             assignments = bucket.map((entry) => ({ entry, track: 0 }));
         } else {
             const sorted = [...bucket].sort((a, b) => {

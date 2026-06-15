@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +614,65 @@ class FrameResponse(BaseModel):
     total_duration: Optional[float] = None
     entry_count: Optional[int] = None
     message: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Audio tracks (per-build, P7) — the editor's AudioTracksPanel persistence.
+# Wire shapes mirror the AI-video /external/video/v1/audio-track/* contract
+# (snake_case fade_in/fade_out on the wire; the stored/returned track uses
+# camelCase fadeIn/fadeOut) so the FE client stays uniform. The build id rides
+# the URL path; a redundant body id is tolerated and ignored.
+# ---------------------------------------------------------------------------
+
+
+def _require_http_url(value: Optional[str]) -> Optional[str]:
+    """Track URLs end up in the render worker's downloader and the editor's
+    Web Audio loader — only http(s) is acceptable (file:// and friends are an
+    SSRF/local-read vector)."""
+    if value is None:
+        return value
+    if not str(value).lower().startswith(("http://", "https://")):
+        raise ValueError("url must be an http(s) URL")
+    return value
+
+
+class AddStudioAudioTrackRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")  # tolerate a redundant build/video id
+    label: str = Field(..., description="Track display label")
+    url: str = Field(..., description="Public S3 URL of the audio file")
+    volume: float = Field(default=1.0, ge=0.0, le=2.0)
+    delay: float = Field(default=0.0, ge=0.0)
+    fade_in: float = Field(default=0.0, ge=0.0)
+    fade_out: float = Field(default=0.0, ge=0.0)
+    loop: bool = Field(default=False, description="Loop the track to fill the video")
+    track_id: Optional[str] = Field(None, description="Client-provided track ID (auto-generated if absent)")
+
+    _url_scheme = field_validator("url")(_require_http_url)
+
+
+class UpdateStudioAudioTrackRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    track_id: str = Field(..., description="Track ID to update")
+    label: Optional[str] = None
+    url: Optional[str] = None
+    volume: Optional[float] = Field(None, ge=0.0, le=2.0)
+    delay: Optional[float] = Field(None, ge=0.0)
+    fade_in: Optional[float] = Field(None, ge=0.0)
+    fade_out: Optional[float] = Field(None, ge=0.0)
+
+    _url_scheme = field_validator("url")(_require_http_url)
+
+
+class DeleteStudioAudioTrackRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    track_id: str = Field(..., description="Track ID to delete")
+
+
+class StudioAudioTrackResponse(BaseModel):
+    status: str
+    build_id: str
+    track_id: str
+    message: str
 
 
 # ---------------------------------------------------------------------------

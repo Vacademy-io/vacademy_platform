@@ -10,12 +10,14 @@
  * invalid when params change; CreatePage clears the selection on each
  * change.
  *
- * Always-visible chip strip rather than a collapsible panel because the
- * "tweak duration → see new candidates → tweak again" loop is the core
- * exploration flow — hiding it behind an extra click would be friction.
+ * Collapsed by default behind a one-line summary of the current settings:
+ * the zero-config path should be a single decision (pick clips), and the
+ * defaults are opinionated enough that most users never need to open it.
+ * The summary keeps the settings visible so power users know where the
+ * "tweak duration → see new candidates" loop lives.
  */
 import { useState } from 'react';
-import { Clock, Hash, ListChecks, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clock, Hash, ListChecks, SlidersHorizontal, X } from 'lucide-react';
 import { VimotionLoader } from '../../brand/VimotionLoader';
 import { cn } from '@/lib/utils';
 
@@ -61,58 +63,97 @@ export function ScanSettingsStrip({
     onChange,
     busy = false,
 }: ScanSettingsStripProps) {
+    const [expanded, setExpanded] = useState(false);
+
+    const summary = [
+        `~${targetDurationSec}s clips`,
+        `${scanLimit} candidates`,
+        topicKeywords.length > 0
+            ? `topics: ${topicKeywords.join(', ')}`
+            : 'no topic bias',
+    ].join(' · ');
+
     return (
         <div
             className={cn(
-                'space-y-3 rounded-xl border border-neutral-200 bg-white px-4 py-3',
+                'rounded-xl border border-neutral-200 bg-white',
                 busy && 'opacity-60 pointer-events-none'
             )}
         >
-            <div className="flex flex-wrap items-center gap-4">
-                <SettingGroup
-                    icon={<Clock className="size-4 text-neutral-500" />}
-                    label="Target duration"
+            <button
+                type="button"
+                onClick={() => setExpanded((e) => !e)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                aria-expanded={expanded}
+                aria-controls="scan-settings-fields"
+            >
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <SlidersHorizontal className="size-4 shrink-0 text-neutral-500" />
+                    <div className="min-w-0">
+                        <p className="text-sm font-medium text-neutral-900">Scan settings</p>
+                        <p className="truncate text-xs text-neutral-500">{summary}</p>
+                    </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                    {busy && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-neutral-500">
+                            <VimotionLoader size={12} className="text-neutral-500" label="Re-scanning" />
+                            Re-scanning…
+                        </span>
+                    )}
+                    {expanded ? (
+                        <ChevronUp className="size-4 text-neutral-500" />
+                    ) : (
+                        <ChevronDown className="size-4 text-neutral-500" />
+                    )}
+                </div>
+            </button>
+
+            {expanded && (
+                <div
+                    id="scan-settings-fields"
+                    className="space-y-3 border-t border-neutral-100 px-4 py-3"
                 >
-                    {DURATION_CHIPS.map((d) => (
-                        <Chip
-                            key={d}
-                            active={d === targetDurationSec}
-                            onClick={() => onChange({ targetDurationSec: d })}
+                    <div className="flex flex-wrap items-center gap-4">
+                        <SettingGroup
+                            icon={<Clock className="size-4 text-neutral-500" />}
+                            label="Target duration"
                         >
-                            {d}s
-                        </Chip>
-                    ))}
-                </SettingGroup>
+                            {DURATION_CHIPS.map((d) => (
+                                <Chip
+                                    key={d}
+                                    active={d === targetDurationSec}
+                                    onClick={() => onChange({ targetDurationSec: d })}
+                                >
+                                    {d}s
+                                </Chip>
+                            ))}
+                        </SettingGroup>
 
-                <div className="hidden h-6 w-px bg-neutral-200 sm:block" />
+                        <div className="hidden h-6 w-px bg-neutral-200 sm:block" />
 
-                <SettingGroup
-                    icon={<ListChecks className="size-4 text-neutral-500" />}
-                    label="Candidates"
-                >
-                    {LIMIT_CHIPS.map((n) => (
-                        <Chip
-                            key={n}
-                            active={n === scanLimit}
-                            onClick={() => onChange({ scanLimit: n })}
+                        <SettingGroup
+                            icon={<ListChecks className="size-4 text-neutral-500" />}
+                            label="Candidates"
                         >
-                            {n}
-                        </Chip>
-                    ))}
-                </SettingGroup>
+                            {LIMIT_CHIPS.map((n) => (
+                                <Chip
+                                    key={n}
+                                    active={n === scanLimit}
+                                    onClick={() => onChange({ scanLimit: n })}
+                                >
+                                    {n}
+                                </Chip>
+                            ))}
+                        </SettingGroup>
+                    </div>
 
-                {busy && (
-                    <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-neutral-500">
-                        <VimotionLoader size={12} className="text-neutral-500" label="Re-scanning" />
-                        Re-scanning…
-                    </span>
-                )}
-            </div>
-
-            <TopicKeywordInput
-                keywords={topicKeywords}
-                onChange={(next) => onChange({ topicKeywords: next })}
-            />
+                    <TopicKeywordInput
+                        keywords={topicKeywords}
+                        onChange={(next) => onChange({ topicKeywords: next })}
+                    />
+                </div>
+            )}
         </div>
     );
 }

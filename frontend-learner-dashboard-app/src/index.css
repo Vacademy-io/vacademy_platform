@@ -233,18 +233,10 @@ html, body {
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
-  /* Navbar tweaks */
-  .ui-vibrant .navbar .text-base {
-    letter-spacing: 0.1px;
-  }
+  /* (Vibrant navbar heading nudge removed 2026-06-11: typography in JSX.) */
 
-  /* Sidebar tiles: clearer solid backgrounds */
-  .ui-vibrant .sidebar-content .bg-primary-50 {
-    background-color: hsl(var(--primary-100)) !important;
-  }
-  .ui-vibrant .sidebar-content .hover\:bg-primary-50:hover {
-    background-color: hsl(var(--primary-200)) !important;
-  }
+  /* (Vibrant sidebar tile interception removed 2026-06-11: active/hover
+     states live in the sidebar item JSX via [.ui-vibrant_&] variants.) */
 
   /* Course cards and common cards */
   .ui-vibrant .card,
@@ -253,39 +245,9 @@ html, body {
     border-color: hsl(var(--primary-100)) !important;
   }
 
-  /* Vibrant course card title styling */
-  .ui-vibrant .course-card-title,
-  .ui-vibrant .course-title {
-    letter-spacing: 0.1px;
-  }
-
-  /* Vibrant accents for course catalog */
-  .ui-vibrant .course-card-image {
-    background-image: none !important;
-    background-color: hsl(var(--primary-50)) !important;
-  }
-  .ui-vibrant .course-card-title-icon {
-    display: inline-block !important;
-  }
-  .ui-vibrant .level-badge {
-    border-width: 2px !important;
-  }
-  .ui-vibrant .course-tag {
-    background-color: hsl(var(--info-100)) !important;
-    color: hsl(var(--info-700)) !important;
-    border-color: hsl(var(--info-300)) !important;
-  }
-  /* Secondary/Tertiary tag variants */
-  .ui-vibrant .course-tag--secondary {
-    background-color: hsl(var(--secondary-100)) !important;
-    color: hsl(var(--secondary-500)) !important;
-    border-color: hsl(var(--secondary-300)) !important;
-  }
-  .ui-vibrant .course-tag--tertiary {
-    background-color: hsl(var(--tertiary-100)) !important;
-    color: hsl(var(--text-secondary)) !important;
-    border-color: hsl(var(--tertiary-300)) !important;
-  }
+  /* (Orphaned vibrant course-card hooks removed 2026-06-11: course-card-title/
+     course-title/course-card-image/course-card-title-icon/level-badge/course-tag
+     have zero JSX consumers — card styling now lives in CourseCards.tsx.) */
   .ui-vibrant .course-stats {
     background: hsl(var(--primary-50));
     border-color: hsl(var(--primary-200));
@@ -316,10 +278,8 @@ html, body {
 
   /* 2) Vibrant stat card sizing - keep compact */
 
-  /* 3) Continue learning card accents */
-  .ui-vibrant .continue-learning-card {
-    border-color: hsl(var(--primary-200)) !important;
-  }
+  /* (Vibrant continue-learning border interception removed 2026-06-11:
+     it recolored the new border-t-primary-300 top rail; JSX self-styles.) */
   .ui-vibrant .dashboard-user-avatar {
     background-color: hsl(var(--primary-200)) !important;
   }
@@ -336,129 +296,8 @@ html, body {
     border-color: hsl(var(--tertiary-200)) !important;
   }
 
-  /* Category-specific solid colors for stat cards */
-  .ui-vibrant .stat-card--courses .stat-card-inner {
-    background-color: hsl(var(--info-500)) !important;
-    border-color: hsl(var(--info-400)) !important;
-  }
-  .ui-vibrant .stat-card--assignments .stat-card-inner {
-    background-color: hsl(var(--warning-500)) !important;
-    border-color: hsl(var(--warning-400)) !important;
-  }
-  .ui-vibrant .stat-card--evaluations .stat-card-inner {
-    background-color: hsl(var(--success-500)) !important;
-    border-color: hsl(var(--success-400)) !important;
-  }
-  .ui-vibrant .stat-card--attendance .stat-card-inner {
-    background-color: hsl(var(--primary-500)) !important;
-    border-color: hsl(var(--primary-400)) !important;
-  }
-  .ui-vibrant .stat-card--live .stat-card-inner {
-    background-color: hsl(var(--success-500)) !important;
-    border-color: hsl(var(--success-400)) !important;
-  }
-  /* Pastel overrides for dashboard stat cards (theme-agnostic) — values tokenized in :root */
-  .ui-vibrant .dashboard-container .stat-card--courses .stat-card-inner {
-    background-color: var(--pastel-blue) !important;
-    border-color: var(--pastel-blue-border) !important;
-    color: var(--pastel-ink) !important;
-  }
-  .ui-vibrant .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: var(--pastel-orange) !important;
-    border-color: var(--pastel-orange-border) !important;
-    color: var(--pastel-ink) !important;
-  }
-  .ui-vibrant .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: var(--pastel-purple) !important;
-    border-color: var(--pastel-purple-border) !important;
-    color: var(--pastel-ink) !important;
-  }
-  .ui-vibrant .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: var(--pastel-green) !important;
-    border-color: var(--pastel-green-border) !important;
-    color: var(--pastel-ink) !important;
-  }
-  .ui-vibrant .dashboard-container .stat-card--live .stat-card-inner {
-    background-color: var(--pastel-teal) !important;
-    border-color: var(--pastel-teal-border) !important;
-    color: var(--pastel-ink) !important;
-  }
-  /* Optional alt stat colors using secondary/tertiary */
-  .ui-vibrant .stat-card--alt-secondary .stat-card-inner {
-    background-color: hsl(var(--secondary-500)) !important;
-    border-color: hsl(var(--secondary-400)) !important;
-    color: hsl(var(--primary-foreground)) !important;
-  }
-  .ui-vibrant .stat-card--alt-tertiary .stat-card-inner {
-    background-color: hsl(var(--tertiary-500)) !important;
-    border-color: hsl(var(--tertiary-400)) !important;
-    color: hsl(var(--text-primary)) !important;
-  }
-
-  /* Ensure icon chip contrasts on solid cards */
-  .ui-vibrant .stat-card--courses .stat-card-icon,
-  .ui-vibrant .stat-card--assignments .stat-card-icon,
-  .ui-vibrant .stat-card--evaluations .stat-card-icon,
-  .ui-vibrant .stat-card--attendance .stat-card-icon,
-  .ui-vibrant .stat-card--live .stat-card-icon {
-    background-color: rgba(255, 255, 255, 0.2) !important;
-    color: hsl(var(--primary-foreground)) !important;
-  }
-
-  /* Playful feel: slightly rounded, subtle scale on hover already exists; add gentle shadow */
-  .ui-vibrant .stat-card-inner {
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12) !important;
-  }
-
-  /* Playful decorative shapes behind stat card titles */
-  .ui-vibrant .stat-card-title {
-    position: relative;
-    padding-left: 18px;
-  }
-  .ui-vibrant .stat-card-title::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    width: 12px;
-    height: 12px;
-    transform: translateY(-50%) rotate(15deg);
-    border-radius: 3px;
-    background: linear-gradient(
-      135deg,
-      hsl(var(--primary-300)),
-      hsl(var(--primary-500))
-    );
-    opacity: 0.9;
-  }
-  .ui-vibrant .stat-card--courses .stat-card-title::before {
-    background: linear-gradient(
-      135deg,
-      hsl(var(--info-300)),
-      hsl(var(--info-500))
-    );
-  }
-  .ui-vibrant .stat-card--assignments .stat-card-title::before {
-    background: linear-gradient(
-      135deg,
-      hsl(var(--warning-300)),
-      hsl(var(--warning-500))
-    );
-  }
-  .ui-vibrant .stat-card--evaluations .stat-card-title::before {
-    background: linear-gradient(
-      135deg,
-      hsl(var(--success-300)),
-      hsl(var(--success-500))
-    );
-  }
-  .ui-vibrant .stat-card--live .stat-card-title::before {
-    background: linear-gradient(
-      135deg,
-      hsl(var(--success-300)),
-      hsl(var(--success-500))
-    );
-  }
+  /* (Dead vibrant stat-card category rules removed 2026-06-11:
+     zero JSX consumers; dashboard uses stat-card-{courses,live,assessments}.) */
 
   /* Prevent double animation conflicts in vibrant mode (GSAP handles it) */
   .ui-vibrant .animate-fade-in-up {
@@ -556,17 +395,8 @@ html, body {
   .ui-vibrant .stat-card-inner .group:hover .lucide-chevron-right {
     color: hsl(var(--primary-foreground)) !important;
   }
-  /* Sidebar hover text: use neutral instead of primary */
-  .ui-vibrant .sidebar-content a:hover,
-  .ui-vibrant .sidebar-content button:hover,
-  .ui-vibrant .sidebar-content [class*="hover:text-primary-"]:hover {
-    color: hsl(var(--text-secondary)) !important;
-  }
-  /* Sidebar shadows: subtle */
-  .ui-vibrant .sidebar-content .shadow-sm,
-  .ui-vibrant .sidebar-content .shadow {
-    box-shadow: none !important;
-  }
+  /* (Vibrant sidebar hover/shadow interception removed 2026-06-11:
+     the redesigned sidebar self-styles; hamburger sheet falls back to defaults.) */
 }
 
 @layer base {
@@ -1271,50 +1101,7 @@ html, body {
   }
 }
 
-/* Ensure dark text on pastel stat cards (override white mapping) */
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .text-gray-900,
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .text-gray-800,
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .text-gray-700,
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .text-gray-600,
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .text-primary-600 {
-  color: var(--pastel-ink) !important;
-}
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .group:hover
-  [class*="group-hover:text-primary-"] {
-  color: var(--pastel-ink) !important;
-}
-.ui-vibrant
-  .dashboard-container
-  [class*="stat-card--"]
-  .stat-card-inner
-  .group:hover
-  .lucide-chevron-right {
-  color: var(--pastel-ink) !important;
-}
+/* (Dead [class*="stat-card--"] pastel-text rules removed 2026-06-11: no JSX emits stat-card-- classes.) */
 
 /* Vimeo slide player: make the SDK-created iframe fill its container.
    Without this, an unavailable video collapses to a thin strip (the @vimeo

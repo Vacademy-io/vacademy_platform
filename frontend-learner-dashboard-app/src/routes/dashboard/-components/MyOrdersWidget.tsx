@@ -77,14 +77,6 @@ const ORDER_STATUS_STYLES: Record<string, string> = {
     DELIVERED: "bg-green-50 text-green-700",
 };
 
-const ORDER_STATUS_LABELS: Record<string, string> = {
-    ORDERED: "Ordered",
-    PREPARING_TO_SHIP: "Preparing to Ship",
-    SHIPPED: "Shipped",
-    IN_TRANSIT: "In Transit",
-    DELIVERED: "Delivered",
-};
-
 const PAYMENT_STATUS_STYLES: Record<string, string> = {
     PAID: "bg-green-50 text-green-700",
     FAILED: "bg-red-50 text-red-700",
@@ -381,6 +373,11 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                 </CardContent>
             </Card>
         );
+    }
+
+    // Settled and no orders: render nothing instead of an empty shell
+    if (!loading && totalElements === 0) {
+        return null;
     }
 
     return (

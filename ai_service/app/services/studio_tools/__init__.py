@@ -130,3 +130,8 @@ from . import detect_fillers as _detect_fillers  # noqa: E402,F401
 from . import propose_titles as _propose_titles  # noqa: E402,F401
 from . import propose_text_overlays as _propose_text_overlays  # noqa: E402,F401
 from . import propose_captions as _propose_captions  # noqa: E402,F401
+# P7 — Audio step. BGM is LLM (premium+, ONE bed for the whole video); SFX is
+# deterministic config (premium+, whoosh at segment boundaries, synthesized at
+# build time).
+from . import propose_bgm as _propose_bgm  # noqa: E402,F401
+from . import propose_sfx as _propose_sfx  # noqa: E402,F401

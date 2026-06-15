@@ -48,14 +48,35 @@ logger = logging.getLogger(__name__)
 # the work is bounded — 60s is more than safe.
 FFMPEG_TIMEOUT_S = 60
 
-# Output encoding — matches `generate_audio_metadata.py` convention.
-OUTPUT_SAMPLE_RATE = 22050
-OUTPUT_BITRATE = "96k"
+# Output encoding. 44.1kHz/128k even for speech-only — the 22.05kHz/96k
+# intermediate audibly dulled sibilants in the published reel, and the
+# bandwidth saving is irrelevant for a <60s clip.
+OUTPUT_SAMPLE_RATE = 44100
+OUTPUT_BITRATE = "128k"
+
+# Loudness mastering applied to the final mix. -14 LUFS integrated /
+# -1.5 dBTP is the common loudness target for social feeds; without it
+# reel volume varies wildly with source recording level.
+LOUDNORM_FILTER = "loudnorm=I=-14:TP=-1.5:LRA=11"
+
+# De-click fade applied to each kept span's head and tail before concat.
+# Hard atrim+concat at word-cut seams produces audible clicks when the
+# waveform is cut mid-cycle; 6ms qsin ramps are inaudible as fades but
+# guarantee zero-crossing-safe seams.
+SPAN_DECLICK_FADE_S = 0.006
 
 # Below this kept-span duration, ffmpeg's atrim can produce zero-frame
 # outputs that break the concat filter. The cut planner already validates
 # spans ≥80ms; the dual check here protects against rounding edge cases.
 MIN_KEPT_SPAN_S = 0.1
+
+# PaceConfig.silence_trim handling. The cut planner emits kind="silence"
+# spans at its default threshold (pauses ≥0.4s trimmed to a 0.15s gap);
+# render time can only DROP spans, not plan stronger trims, so "aggressive"
+# behaves like "on". "gentle" keeps only the cuts that came from clearly
+# long pauses: a span this long corresponds to a ~0.8s+ pause after the
+# planner's 0.15s kept gap.
+GENTLE_MIN_SILENCE_SPAN_S = 0.65
 
 # Output sample rate when background music is present — music gets crunchy
 # at 22050Hz mono, so we bump to a music-friendly rate + stereo. Speech-only
@@ -80,10 +101,10 @@ SIDECHAIN_ATTACK_MS = 5
 SIDECHAIN_RELEASE_MS = 200
 
 # Whoosh SFX — short pink-noise burst with bandpass envelope, dropped on
-# every hard cut in the speaker audio. Research §12.2: short transition
-# sounds mask abrupt audio edits and lift retention by re-engaging
-# attention at the seam. Default-on; ops can disable via env without a
-# redeploy if production audio reveals an issue.
+# every hard cut in the speaker audio. The 2026-06-12 audit found the
+# synthesized burst reads as a cheap hiss when fired on every seam, so
+# the feature is now OPT-IN (REELS_WHOOSH_SFX_ENABLED=1); the de-click
+# span fades handle seam masking by default.
 WHOOSH_DURATION_S = 0.20
 WHOOSH_VOLUME_DB = -10
 # Minimum spacing between adjacent whooshes. If cuts cluster tighter than
@@ -95,17 +116,19 @@ WHOOSH_MIN_SPACING_S = 0.30
 # common in TikTok template SFX.
 WHOOSH_HIGHPASS_HZ = 200
 WHOOSH_LOWPASS_HZ = 2400
-# Env kill-switch — set to "1"/"true"/"yes" to skip the SFX branch
-# entirely. Useful for A/B testing or if a production batch needs SFX
-# disabled without a code deploy.
+# Opt-in switch. The legacy kill-switch is still honored (it wins) so
+# existing deployments that explicitly disabled SFX stay disabled.
+_ENABLE_SFX_ENV = "REELS_WHOOSH_SFX_ENABLED"
 _DISABLE_SFX_ENV = "REELS_WHOOSH_SFX_DISABLED"
 
 
 def _whoosh_enabled() -> bool:
-    """Read the env kill-switch. Default-on (True) unless env is set to
-    a truthy value. Read at the start of each render so an ops flip
-    takes effect on the next reel without a service restart."""
-    return os.getenv(_DISABLE_SFX_ENV, "").strip().lower() not in ("1", "true", "yes")
+    """Whoosh SFX is opt-in (default OFF since the 2026-06-12 audit).
+    Read per render so an ops flip takes effect on the next reel
+    without a service restart."""
+    if os.getenv(_DISABLE_SFX_ENV, "").strip().lower() in ("1", "true", "yes"):
+        return False
+    return os.getenv(_ENABLE_SFX_ENV, "").strip().lower() in ("1", "true", "yes")
 
 
 def _compute_cut_points(
@@ -374,6 +397,12 @@ class ReelsAudioEditService:
         G4: Reading the snapshot — captured at /render dispatch — protects
         an in-flight render from being silently corrupted by a concurrent
         /preview re-run that changes candidate.enriched.
+
+        PaceConfig.silence_trim is honored HERE and only here: the kept
+        spans computed from this list become the trim_map that AUDIO_EDIT,
+        SOURCE_CLIP and the DIRECTOR caption remap all consume, so dropping
+        kind="silence" spans at this single point keeps video + audio +
+        captions in lockstep automatically.
         """
         # Preferred: snapshot captured at /render dispatch.
         snapshot = (ctx.config or {}).get("enriched_snapshot")
@@ -388,6 +417,8 @@ class ReelsAudioEditService:
             if candidate is None or not candidate.enriched:
                 return []
             raw_cuts = (candidate.enriched or {}).get("cut_plan") or []
+        pace = (ctx.config or {}).get("pace") or {}
+        silence_mode = str(pace.get("silence_trim") or "on").strip().lower()
         cuts: list[tuple[float, float]] = []
         for c in raw_cuts:
             if not isinstance(c, dict):
@@ -397,6 +428,11 @@ class ReelsAudioEditService:
                 te = float(c.get("t_end", 0.0))
             except (TypeError, ValueError):
                 continue
+            if str(c.get("kind") or "word") == "silence":
+                if silence_mode == "off":
+                    continue
+                if silence_mode == "gentle" and (te - ts) < GENTLE_MIN_SILENCE_SPAN_S:
+                    continue
             # Clip to window edges + drop spans that fell entirely outside.
             ts = max(ts, win_t_start)
             te = min(te, win_t_end)
@@ -518,14 +554,25 @@ class ReelsAudioEditService:
 
         filter_lines: list[str] = []
         labels: list[str] = []
+        multi_span = len(kept_spans_relative) > 1
         for i, (ts, te) in enumerate(kept_spans_relative):
             label = f"a{i}"
             labels.append(f"[{label}]")
             # atrim end is inclusive of the keyframe; asetpts resets timestamps
             # so concat doesn't see overlapping PTS.
+            # When the plan has cuts, ramp each span's head/tail with a 6ms
+            # qsin fade so mid-cycle cut points can't click at the seam.
+            fade = ""
+            span_d = te - ts
+            if multi_span and span_d > 0.05:
+                fade_out_st = max(0.0, span_d - SPAN_DECLICK_FADE_S)
+                fade = (
+                    f",afade=t=in:d={SPAN_DECLICK_FADE_S:.3f}:curve=qsin"
+                    f",afade=t=out:st={fade_out_st:.4f}:d={SPAN_DECLICK_FADE_S:.3f}:curve=qsin"
+                )
             filter_lines.append(
                 f"[0:a]{aresample_prefix}atrim=start={ts:.4f}:end={te:.4f},"
-                f"asetpts=PTS-STARTPTS[{label}]"
+                f"asetpts=PTS-STARTPTS{fade}[{label}]"
             )
 
         # Concatenate (only needed when more than one span).
@@ -561,8 +608,14 @@ class ReelsAudioEditService:
                 f"asetpts=PTS-STARTPTS,volume={BGM_BASE_GAIN_DB:+d}dB[bgm_quiet]"
             )
             if ducking:
+                # A labeled pad can only be consumed ONCE in a filtergraph.
+                # The speaker feeds both the sidechain detector AND the final
+                # mix, so split it first — without the asplit ffmpeg rejects
+                # the graph and every ducked-bgm render fails outright.
+                filter_lines.append(f"{speaker_label}asplit=2[spk_mix][spk_sc]")
+                mix_inputs[0] = "[spk_mix]"
                 filter_lines.append(
-                    f"[bgm_quiet]{speaker_label}sidechaincompress="
+                    f"[bgm_quiet][spk_sc]sidechaincompress="
                     f"threshold={SIDECHAIN_THRESHOLD:.3f}:"
                     f"ratio={SIDECHAIN_RATIO}:"
                     f"attack={SIDECHAIN_ATTACK_MS}:"
@@ -619,6 +672,11 @@ class ReelsAudioEditService:
                 f":duration=first:dropout_transition=0:normalize=0[mix]"
             )
             final_label = "[mix]"
+
+        # Loudness mastering — normalize the finished mix to the social-feed
+        # target so reel volume doesn't track the source recording level.
+        filter_lines.append(f"{final_label}{LOUDNORM_FILTER}[mastered]")
+        final_label = "[mastered]"
 
         filter_complex = ";".join(filter_lines)
 

@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Clock, WarningCircle } from '@phosphor-icons/react';
+import { useNavigate } from '@tanstack/react-router';
+import { CaretRight, Clock, WarningCircle } from '@phosphor-icons/react';
 import {
     fetchMissedFollowups,
     fetchUpcomingFollowups,
     type FollowupRow,
 } from '../-services/sales-dashboard-services';
+
+/** Recent Leads sla_filter value each card drills through to. */
+type FollowupSla = 'FOLLOW_UP_DUE' | 'FOLLOW_UP_OVERDUE';
 
 interface Props {
     instituteId: string;
@@ -25,6 +29,7 @@ export function UpcomingFollowupsWidget({ instituteId, teamId }: Props) {
             isLoading={isLoading}
             rows={data ?? []}
             tone="info"
+            sla="FOLLOW_UP_DUE"
         />
     );
 }
@@ -43,6 +48,7 @@ export function MissedFollowupsWidget({ instituteId, teamId }: Props) {
             isLoading={isLoading}
             rows={data ?? []}
             tone="danger"
+            sla="FOLLOW_UP_OVERDUE"
         />
     );
 }
@@ -54,6 +60,7 @@ function FollowupCard({
     isLoading,
     rows,
     tone,
+    sla,
 }: {
     title: string;
     subtitle: string;
@@ -61,7 +68,9 @@ function FollowupCard({
     isLoading: boolean;
     rows: FollowupRow[];
     tone: 'info' | 'danger';
+    sla: FollowupSla;
 }) {
+    const navigate = useNavigate();
     return (
         <section className="flex h-full flex-col rounded-lg border border-neutral-200 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
@@ -79,23 +88,40 @@ function FollowupCard({
                 ) : (
                     <ul className="space-y-1.5">
                         {rows.map((r) => (
-                            <li
-                                key={r.followup_id}
-                                className={`flex items-center justify-between rounded-md border px-2 py-1.5 ${
-                                    tone === 'danger'
-                                        ? 'border-danger-100 bg-danger-50'
-                                        : 'border-neutral-100'
-                                }`}
-                            >
-                                <div className="min-w-0">
-                                    <div className="truncate text-body text-neutral-900">
-                                        {r.lead_name ?? r.lead_id?.slice(0, 8)}
+                            <li key={r.followup_id}>
+                                {/* Drill-through → Recent Leads in this SLA bucket,
+                                    narrowed to the row's counsellor when known. */}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        navigate({
+                                            to: '/audience-manager/recent-leads',
+                                            search: {
+                                                sla,
+                                                counsellor: r.counsellor_user_id ?? undefined,
+                                            },
+                                        })
+                                    }
+                                    className={`group flex w-full cursor-pointer items-center justify-between rounded-md border px-2 py-1.5 text-left ${
+                                        tone === 'danger'
+                                            ? 'border-danger-100 bg-danger-50 hover:bg-danger-100'
+                                            : 'border-neutral-100 hover:bg-neutral-50'
+                                    }`}
+                                >
+                                    <div className="min-w-0">
+                                        <div className="truncate text-body text-neutral-900">
+                                            {r.lead_name ?? r.lead_id?.slice(0, 8)}
+                                        </div>
+                                        <div className="truncate text-caption text-neutral-500">
+                                            {r.counsellor_name ?? r.counsellor_user_id?.slice(0, 8)}{' '}
+                                            · {timeLabel(r)}
+                                        </div>
                                     </div>
-                                    <div className="truncate text-caption text-neutral-500">
-                                        {r.counsellor_name ?? r.counsellor_user_id?.slice(0, 8)} ·{' '}
-                                        {timeLabel(r)}
-                                    </div>
-                                </div>
+                                    <CaretRight
+                                        size={12}
+                                        className="shrink-0 text-neutral-300 transition-colors group-hover:text-neutral-500"
+                                    />
+                                </button>
                             </li>
                         ))}
                     </ul>

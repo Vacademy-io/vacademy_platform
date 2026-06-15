@@ -73,6 +73,9 @@ public class RazorpayWebHookService {
     private SchoolFeeReceiptService schoolFeeReceiptService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.invoice.service.InvoiceService invoiceService;
+
+    @Autowired
     private UserPlanService userPlanService;
 
     @Autowired
@@ -1080,6 +1083,18 @@ public class RazorpayWebHookService {
                 case "payment.captured":
                     log.info("School payment process for orderId: {}", orderId);
 
+                    // Idempotency guard. Razorpay delivers BOTH payment.captured AND order.paid
+                    // for a single payment, and both land in this shared case. Without this guard
+                    // each one re-ran fee allocation, so a partial payment was allocated twice — e.g.
+                    // ₹5 against ₹4/₹3/₹3 installments marked ALL three PAID (₹5 + ₹5 = ₹10), plus
+                    // duplicate ledger rows / receipts. The first event flips the PaymentLog to PAID
+                    // (updatePaymentLogOnly below); subsequent duplicate events short-circuit here.
+                    if (PaymentStatusEnum.PAID.name().equals(paymentLog.getPaymentStatus())) {
+                        log.info("SCHOOL payment for orderId {} already processed (PaymentLog PAID); "
+                                + "skipping duplicate '{}' event to avoid double allocation.", orderId, eventType);
+                        break;
+                    }
+
                     extractAndSavePaymentMethod(orderId, instituteId, paymentEntity);
                     generateAndStoreRazorpayInvoice(orderId, instituteId, paymentEntity);
 
@@ -1106,6 +1121,20 @@ public class RazorpayWebHookService {
                         String paymentId = paymentEntity.has("id") ? paymentEntity.get("id").asText() : null;
                         schoolFeeReceiptService.generateAndSendReceipt(paymentLog.getUserId(), userPlanId, orderId,
                                 instituteId, amount, paymentId, "ONLINE");
+
+                        // 5. Generate a real (downloadable) tax invoice. Without this the
+                        // payment-history tab can only synthesize a "PAID-<sfp>" row with no PDF
+                        // (no real Invoice exists), so the learner/admin gets no download button and
+                        // a non-"INV" number. Runs AFTER allocation so the invoice line items reflect
+                        // the installments settled by this payment. Email is suppressed (sendEmail=false)
+                        // because the fee receipt above already notifies the learner. Best-effort —
+                        // never fail the webhook over invoice generation.
+                        try {
+                            invoiceService.generateInvoice(paymentLog.getUserPlan(), paymentLog, instituteId, false);
+                        } catch (Exception e) {
+                            log.error("Failed to generate invoice for SCHOOL payment orderId {}: {}", orderId,
+                                    e.getMessage());
+                        }
                     }
                     break;
 

@@ -70,8 +70,9 @@ public class DoubtService {
                                                List<String> status,
                                                List<String> batchIds,
                                                Pageable pageable) {
+        // Unscoped (viewerUserId null) → admin path; the FSPSSM scope flags are irrelevant.
         return getAllDoubtsWithFilter(contentTypes, contentPositions, sources, sourceIds, null, startDate, endDate,
-                userIds, status, batchIds, null, null, pageable);
+                userIds, status, batchIds, null, null, false, false, pageable);
     }
 
     /**
@@ -79,8 +80,14 @@ public class DoubtService {
      * @param instituteId  scopes admin (unscoped) callers to one institute. Required for the admin
      *                     path now that batch is optional — GENERAL queries have no batch.
      * @param viewerUserId when non-null, restricts results to doubts visible to that viewer via
-     *                     direct doubt_assignee rows or FSPSSM (batch-level or subject-level).
+     *                     self-raised, direct doubt_assignee rows, or live FSPSSM scope.
      *                     Pass {@code null} for admin/root callers — no visibility filter is applied.
+     * @param scopeBatch   when {@code true}, the viewer additionally sees every doubt in any batch
+     *                     they have an active FSPSSM mapping to (batch-teacher visibility). Set for
+     *                     BATCH_TEACHER/BOTH and the no-setting default. Ignored when viewer is null.
+     * @param scopeSubject when {@code true}, the viewer additionally sees doubts via a batch-level
+     *                     (subject_id IS NULL) FSPSSM mapping or a subject-level mapping that resolves
+     *                     to the doubt's slide (subject-teacher visibility). Set for SUBJECT_TEACHER.
      */
     public Page<Doubts> getAllDoubtsWithFilter(List<String> contentTypes,
                                                List<String> contentPositions,
@@ -94,6 +101,8 @@ public class DoubtService {
                                                List<String> batchIds,
                                                String instituteId,
                                                String viewerUserId,
+                                               boolean scopeBatch,
+                                               boolean scopeSubject,
                                                Pageable pageable) {
         List<String> filteredContentTypes = Optional.ofNullable(contentTypes).orElse(Collections.emptyList());
         List<String> filteredContentPositions = Optional.ofNullable(contentPositions).orElse(Collections.emptyList());
@@ -127,7 +136,7 @@ public class DoubtService {
         // to a doubt on a batch they don't have FSPSSM access to.
         return doubtsRepository.findDoubtsWithFilterForViewer(filteredContentPositions, filteredContentTypes, filteredSources,
                 filteredSourceIds, filteredTypes, filteredUserIds, filteredStatus, scopeInstituteId, batchIdsForQuery,
-                hasBatchIds, startDate, endDate, viewerUserId, pageable);
+                hasBatchIds, startDate, endDate, viewerUserId, scopeBatch, scopeSubject, pageable);
     }
 
     public List<DoubtsDto> createDtoFromDoubts(List<Doubts> allDoubts) {

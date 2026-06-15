@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.user_subscription.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -322,5 +323,23 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("enrollInviteIds") List<String> enrollInviteIds,
       @Param("packageSessionIds") List<String> packageSessionIds,
       Pageable pageable);
+
+  /**
+   * Atomically claims a payment log for "paid" processing: flips it to the given paid/success
+   * statuses only if it is not already paid, returning the number of rows changed.
+   *
+   * <p>Returns {@code 1} for the caller that wins the claim and {@code 0} for any caller that
+   * finds it already paid. Used to dedupe Razorpay's concurrent {@code payment.captured} /
+   * {@code order.paid} webhook events (and cross-replica duplicates / retries) so that
+   * fee allocation and receipt/invoice generation run at most once. The single-statement
+   * conditional UPDATE is atomic at the DB row level — unlike a read-then-check guard, two
+   * concurrent webhook deliveries cannot both observe "not paid" and both proceed.</p>
+   */
+  @Modifying
+  @Query("UPDATE PaymentLog p SET p.paymentStatus = :paidStatus, p.status = :successStatus "
+      + "WHERE p.id = :id AND (p.paymentStatus IS NULL OR p.paymentStatus <> :paidStatus)")
+  int markPaidIfNotAlready(@Param("id") String id,
+      @Param("paidStatus") String paidStatus,
+      @Param("successStatus") String successStatus);
 
 }

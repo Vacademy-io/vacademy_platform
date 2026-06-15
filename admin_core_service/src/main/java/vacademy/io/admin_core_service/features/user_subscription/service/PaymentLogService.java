@@ -230,6 +230,24 @@ public class PaymentLogService {
     }
 
     /**
+     * Atomically claims a payment log for paid-processing — flips it to PAID/SUCCESS only if it
+     * is not already PAID, returning the rows changed (1 = this caller won and should run the
+     * post-payment side effects; 0 = a concurrent webhook event / another replica already
+     * claimed it).
+     *
+     * <p>Runs in its OWN transaction ({@link Propagation#REQUIRES_NEW}) so the PAID transition
+     * commits immediately and is visible to the other replicas handling Razorpay's sibling event
+     * (payment.captured vs order.paid). This is the dedupe gate that stops a single payment from
+     * being allocated more than once across the 4 admin-core-service replicas — a read-then-check
+     * guard cannot do this because both events read "not paid" before either commits.</p>
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int claimPaidIfNotAlready(String paymentLogId) {
+        return paymentLogRepository.markPaidIfNotAlready(paymentLogId,
+                PaymentStatusEnum.PAID.name(), PaymentLogStatusEnum.SUCCESS.name());
+    }
+
+    /**
      * Post-payment logic for the 4-arg updatePaymentLog path (synchronous payment,
      * e.g. Stripe same-request success).
      * Runs only cleanup and invoice generation (and invoice email when institute

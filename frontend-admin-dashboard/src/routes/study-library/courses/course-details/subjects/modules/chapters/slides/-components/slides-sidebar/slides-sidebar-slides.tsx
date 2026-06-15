@@ -33,6 +33,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useLearnerViewStore } from '../../-stores/learner-view-store';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 interface FormValues {
     slides: Slide[];
@@ -150,6 +152,7 @@ const SlideItem = ({
     isActive,
     onClick,
     assessmentOrdinal,
+    showNumbering = true,
 }: {
     slide: Slide;
     index: number;
@@ -161,6 +164,12 @@ const SlideItem = ({
      * undefined for non-ASSESSMENT slides.
      */
     assessmentOrdinal?: number;
+    /**
+     * Whether to show the 1-indexed position badge. Driven by the
+     * `coursePage.viewContentNumbering` display setting; when the admin
+     * toggles numbering off, the badge is hidden.
+     */
+    showNumbering?: boolean;
 }) => {
     const getSlideTitle = () => {
         // ASSESSMENT slides without a title fall back to "Assessment N" so
@@ -245,9 +254,11 @@ const SlideItem = ({
                         <Tooltip>
                             <TooltipTrigger className="w-full">
                                 <div className="flex flex-1 items-center gap-2.5">
-                                    {/* Slide Number with enhanced styling */}
-                                    <div
-                                        className={`
+                                    {/* Slide Number with enhanced styling — hidden
+                                        when the admin turns off content numbering */}
+                                    {showNumbering && (
+                                        <div
+                                            className={`
                                         flex size-6 items-center justify-center rounded-md text-xs font-bold transition-all
                                         duration-200 ease-in-out group-hover:scale-105
                                         ${
@@ -258,9 +269,10 @@ const SlideItem = ({
                                                   : 'bg-neutral-100 text-neutral-500 group-hover:bg-primary-100 group-hover:text-primary-600'
                                         }
                                     `}
-                                    >
-                                        {index + 1}
-                                    </div>
+                                        >
+                                            {index + 1}
+                                        </div>
+                                    )}
 
                                     {/* Icon with enhanced styling */}
                                     <div className="shrink-0">
@@ -328,6 +340,14 @@ export const ChapterSidebarSlides = ({
 }) => {
     const { setItems, activeItem, setActiveItem, items } = useContentStore();
     const { isLearnerView } = useLearnerViewStore();
+
+    // Content numbering badge visibility — driven by the active role's display
+    // settings (coursePage.viewContentNumbering). Mirrors the course-structure
+    // / subject-material sidebars so toggling it off in Settings hides the
+    // 1..N badges here too. Defaults to shown when the setting is absent.
+    const showNumbering =
+        getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.coursePage
+            ?.viewContentNumbering !== false;
     const router = useRouter();
     const searchParams = router.state.location.search;
     const { chapterId, slideId, courseId, levelId, moduleId, subjectId, sessionId } = searchParams;
@@ -502,6 +522,7 @@ export const ChapterSidebarSlides = ({
                                     isActive={slide.id === activeItem?.id}
                                     onClick={() => handleSlideClick(slide)}
                                     assessmentOrdinal={assessmentOrdinal}
+                                    showNumbering={showNumbering}
                                 />
                             );
                         });

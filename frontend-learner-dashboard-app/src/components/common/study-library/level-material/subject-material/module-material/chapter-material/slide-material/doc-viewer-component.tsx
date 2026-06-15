@@ -310,15 +310,17 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
       {isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
-          {/* Text documents read at a centered ~65ch measure (max-w-prose);
-              DOCX below keeps its own page width and players are separate
-              components, so only this HTML/markdown branch is constrained. */}
+          {/* Text documents read at a centered, generous measure (max-w-5xl,
+              ~1024px) so they fill the wide learner viewer instead of leaving
+              large side gutters. DOCX below keeps its own page width and
+              players are separate components, so only this HTML/markdown
+              branch is constrained. */}
           {htmlContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-prose">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
               <DocumentWithMermaid htmlContent={htmlContent} />
             </div>
           ) : markdownContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-prose">
+            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
               <ReactMarkdown 
                 components={{
                   // Enhanced heading styles with better typography
@@ -546,6 +548,17 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               max-width: 100%;
               width: 100%;
               border: 0;
+            }
+            /* Images keep the per-image width the author set in the editor
+               (the <img width=…> attribute — a resized logo stays small, a
+               content image stays large) but never overflow the column and
+               keep their aspect ratio when the screen is narrower than that
+               width. Without this every image rendered at its raw saved width,
+               so high-res logos looked as big as content images and overflowed
+               on mobile. */
+            .markdown-content img {
+              max-width: 100%;
+              height: auto;
             }
             .markdown-content .responsive-iframe { position: relative; width: 100%; }
             .markdown-content .responsive-iframe iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }

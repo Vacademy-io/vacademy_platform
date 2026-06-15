@@ -276,6 +276,18 @@ public class InvoiceService {
      */
     @Transactional
     public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
+        return generateInvoice(userPlan, paymentLog, instituteId, true);
+    }
+
+    /**
+     * Overload that controls whether the invoice email is sent. The online CPO/SCHOOL payment
+     * webhook generates the invoice purely so a real, downloadable {@code INV-} record exists,
+     * but it already sends its own fee receipt — so it passes {@code sendEmail=false} to avoid a
+     * duplicate learner email. All existing callers use the 3-arg overload and keep emailing.
+     *
+     * @param sendEmail whether to email the generated invoice PDF to the learner
+     */
+    public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId, boolean sendEmail) {
         try {
             log.info("Starting invoice generation for userPlanId: {}, paymentLogId: {}, instituteId: {}",
                     userPlan.getId(), paymentLog.getId(), instituteId);
@@ -317,11 +329,13 @@ public class InvoiceService {
                     paymentLogs, instituteId);
 
             // 8. Send email with PDF attached (don't fail if email fails)
-            try {
-                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
-            } catch (Exception e) {
-                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
-                        invoiceNumber, e);
+            if (sendEmail) {
+                try {
+                    sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
+                } catch (Exception e) {
+                    log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
+                            invoiceNumber, e);
+                }
             }
 
             log.info("Invoice generated successfully: {} with {} payment log(s)",

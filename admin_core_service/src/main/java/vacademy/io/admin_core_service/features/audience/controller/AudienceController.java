@@ -52,6 +52,21 @@ public class AudienceController {
         return ResponseEntity.ok(audienceService.eligibleAssignees(instituteId, query, user));
     }
 
+    /**
+     * Counsellor options for the CRM Leads "All counsellors" filter. When the institute has a
+     * leads_team_id configured AND the caller is in that subtree, the list is scoped to the
+     * caller's team hierarchy (themselves + reports + reports' reports) — matching the leads
+     * they can actually see. Otherwise {@code scoped=false} and the frontend falls back to its
+     * institute-wide counsellor list (admin behaviour). Used by the Recent Leads / per-campaign
+     * leads / Follow-ups filter bars.
+     */
+    @GetMapping("/lead-counsellor-options")
+    public ResponseEntity<LeadCounsellorOptionsDTO> leadCounsellorOptions(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user));
+    }
+
     @PostMapping("/campaign")
     public ResponseEntity<String> createCampaign(
             @RequestBody AudienceDTO audienceDTO,

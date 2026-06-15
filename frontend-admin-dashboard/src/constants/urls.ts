@@ -267,6 +267,11 @@ export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosugges
 // outside their reporting chain. Falls back to institute-wide autosuggest
 // when the gate doesn't apply (admin behaviour preserved).
 export const GET_ELIGIBLE_ASSIGNEES = `${BASE_URL}/admin-core-service/v1/audience/eligible-assignees`;
+// Counsellor options for the Leads "All counsellors" filter. Returns { scoped, counsellors }:
+// when a leads_team_id is configured and the caller is in that subtree the list is scoped to
+// the caller's team hierarchy (self + reports); otherwise scoped=false and the caller falls
+// back to the institute-wide counsellor list. See useLeadCounsellorOptions.
+export const GET_LEAD_COUNSELLOR_OPTIONS = `${BASE_URL}/admin-core-service/v1/audience/lead-counsellor-options`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
 export const GET_FACULTY_USER_ACCESS_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access-details`;
@@ -360,6 +365,20 @@ export const DELETE_COURSE = `${BASE_URL}/admin-core-service/course/v1/delete-co
 export const UPDATE_COURSE = `${BASE_URL}/admin-core-service/course/v1/update-course-details`;
 export const COPY_COURSE_CONTENT = `${BASE_URL}/admin-core-service/course/v1/copy-content`;
 export const COPY_CONTENT_LINEAGE = `${BASE_URL}/admin-core-service/course/v1/copy-lineage`;
+
+// Per-course (package-level) settings JSON (package.course_setting) + LMS settings
+// LOCAL TEST OVERRIDE: pointed at LOCAL_ADMIN_CORE_BASE (localhost:8072) for local testing.
+// Revert these two base URLs to BASE_URL before shipping to production.
+export const PACKAGE_SETTING_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/package/setting/v1`;
+export const PACKAGE_SETTING_RAW = `${PACKAGE_SETTING_BASE}/raw`;
+export const PACKAGE_SETTING_ALL = `${PACKAGE_SETTING_BASE}/all`;
+export const PACKAGE_SETTING_GET = `${PACKAGE_SETTING_BASE}/get`;
+export const PACKAGE_SETTING_DATA = `${PACKAGE_SETTING_BASE}/data`;
+export const PACKAGE_SETTING_SAVE = `${PACKAGE_SETTING_BASE}/save-setting`;
+export const PACKAGE_SETTING_APPLY_INSTITUTE_LMS = `${PACKAGE_SETTING_BASE}/apply-institute-lms`;
+export const LMS_PROVIDERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/lms/v1/providers`;
+// LOCAL TEST OVERRIDE: institute LMS_SETTING save endpoint base for local testing (revert to BASE_URL for prod).
+export const INSTITUTE_SETTING_SAVE_LOCAL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/setting/v1/save-setting`;
 
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;

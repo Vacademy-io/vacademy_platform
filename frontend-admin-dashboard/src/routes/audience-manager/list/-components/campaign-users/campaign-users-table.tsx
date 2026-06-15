@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { toast } from 'sonner';
 import {
@@ -135,12 +135,10 @@ const CampaignUsersContent = ({
     // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
     const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
     const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
-    const counsellorOptionsQuery = useQuery({
-        queryKey: ['counsellor-options', 'campaign-users'],
-        queryFn: fetchCounselors,
-        staleTime: 5 * 60 * 1000,
-    });
-    const counsellorOptions = counsellorOptionsQuery.data ?? [];
+    // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
+    // the institute-wide list. See useLeadCounsellorOptions.
+    const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
+        useLeadCounsellorOptions();
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
@@ -712,7 +710,7 @@ const CampaignUsersContent = ({
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
                             options={counsellorOptions}
-                            isLoading={counsellorOptionsQuery.isLoading}
+                            isLoading={counsellorOptionsLoading}
                         />
                     )}
                     <Popover>

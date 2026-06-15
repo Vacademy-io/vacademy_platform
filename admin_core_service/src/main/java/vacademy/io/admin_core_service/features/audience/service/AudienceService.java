@@ -1778,6 +1778,40 @@ public class AudienceService {
         return authService.autosuggestUsers(instituteId, query);
     }
 
+    /**
+     * Counsellor options for the CRM Leads "All counsellors" filter, scoped the SAME way
+     * {@link #getLeads} scopes the visible leads. When the institute has a leads_team_id
+     * configured AND the caller is in that subtree, returns the caller + their user-to-user
+     * descendants (self + reports + reports' reports) — so the filter only lists counsellors
+     * whose leads the caller can actually see. A team head sees their whole downstream; a
+     * mid-level manager sees their reports; a leaf counsellor sees only themselves.
+     *
+     * <p>Outside that gate (admin, or no leads team configured) returns {@code scoped=false}
+     * with an empty list; the frontend then falls back to its institute-wide counsellor list,
+     * preserving the existing admin behaviour.</p>
+     */
+    public LeadCounsellorOptionsDTO leadCounsellorOptions(String instituteId, CustomUserDetails caller) {
+        boolean rbac = caller != null && caller.getUserId() != null
+                && instituteId != null && !instituteId.isBlank()
+                && workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
+                && counsellorScopeService.isCallerInLeadsSubtree(instituteId, caller.getUserId());
+
+        if (!rbac) {
+            return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
+        }
+
+        List<String> userIds = counsellorScopeService
+                .descendantUserIdsForCaller(instituteId, caller.getUserId());
+        if (userIds.isEmpty()) {
+            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(List.of()).build();
+        }
+        // Full user records (name/email/mobile) for the scope — no limit, unlike the
+        // assignment picker; a filter dropdown wants the complete team, not a top-10.
+        List<vacademy.io.common.auth.dto.UserDTO> users =
+                authService.getUsersFromAuthServiceByUserIds(userIds);
+        return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(users).build();
+    }
+
     private static boolean matchesAutosuggest(vacademy.io.common.auth.dto.UserDTO u, String qLower) {
         if (u == null) return false;
         String name = u.getFullName();

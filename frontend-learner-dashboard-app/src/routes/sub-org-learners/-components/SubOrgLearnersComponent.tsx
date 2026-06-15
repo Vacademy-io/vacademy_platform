@@ -28,6 +28,13 @@ interface SubOrgLearnersComponentProps {
   instituteDetails: any;
 }
 
+// UI-only label mapping. The underlying value (and what we send to the backend)
+// stays as-is; we only change how it's displayed. LEARNER is shown as "Staff".
+const ORG_ROLE_LABELS: Record<string, string> = {
+  LEARNER: 'Staff',
+};
+const getOrgRoleLabel = (role: string): string => ORG_ROLE_LABELS[role] ?? role;
+
 export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: SubOrgLearnersComponentProps) {
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
   // Default selected country + picker order from the institute's preferred countries.
@@ -562,7 +569,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                           {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
                             formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
                               <Badge key={role} variant="secondary" className="mr-1 mb-1">
-                                {role}
+                                {getOrgRoleLabel(role)}
                                 <button
                                   className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                   onKeyDown={(e) => {
@@ -621,7 +628,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                                       isSelected ? "opacity-100" : "opacity-0"
                                     )}
                                   />
-                                  {role}
+                                  {getOrgRoleLabel(role)}
                                 </CommandItem>
                               );
                             })}

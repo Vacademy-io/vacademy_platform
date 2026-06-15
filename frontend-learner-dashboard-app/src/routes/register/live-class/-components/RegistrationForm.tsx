@@ -16,7 +16,10 @@ import { RegistrationFormValues, CustomField } from "../-types/type";
 import { useEffect, useMemo } from "react";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
-import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import {
+  getFieldRenderType,
+  FieldRenderType,
+} from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
   Card,
   CardContent,
@@ -35,6 +38,26 @@ interface RegistrationFormProps {
   onEmailChange: (email: string) => void;
 }
 
+/**
+ * Identify the email field by its render type (and name as a fallback) rather
+ * than a hardcoded `fieldKey === "email"`. The email custom field's key varies
+ * per institute (name/UUID-derived), so keying off the literal string meant the
+ * verified email never prefilled and the field stayed editable.
+ */
+const isEmailField = (field: CustomField): boolean => {
+  if (getFieldRenderType(field.fieldKey, field.fieldType) === FieldRenderType.EMAIL) {
+    return true;
+  }
+  const key = (field.fieldKey || "").toLowerCase();
+  const label = (field.fieldName || "").toLowerCase();
+  return (
+    key === "email" ||
+    key.includes("mail") ||
+    label.includes("email") ||
+    label.includes("e-mail")
+  );
+};
+
 export default function RegistrationForm({
   customFields,
   verifiedEmail,
@@ -49,11 +72,17 @@ export default function RegistrationForm({
     () => getPreferredPhoneCountries(),
     [],
   );
+  // Actual keys of every email field in this form (keys vary per institute).
+  const emailFieldKeys = useMemo(
+    () => (customFields || []).filter(isEmailField).map((f) => f.fieldKey),
+    [customFields],
+  );
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: {
-      email: verifiedEmail,
-    },
+    defaultValues: emailFieldKeys.reduce<Record<string, string>>(
+      (acc, key) => ({ ...acc, [key]: verifiedEmail }),
+      {},
+    ),
   });
 
   const {
@@ -63,9 +92,11 @@ export default function RegistrationForm({
 
   useEffect(() => {
     if (verifiedEmail) {
-      form.setValue("email", verifiedEmail);
+      emailFieldKeys.forEach((key) => {
+        form.setValue(key as never, verifiedEmail as never);
+      });
     }
-  }, [verifiedEmail, form]);
+  }, [verifiedEmail, emailFieldKeys, form]);
 
   return (
     <Card className="w-full border-primary-100/60 shadow-lg">
@@ -92,9 +123,12 @@ export default function RegistrationForm({
                   responseField.fieldKey,
                   responseField.fieldType
                 );
+                // Only show the email picker when there's an actual choice
+                // (a returning user with 2+ verified emails). For a single
+                // verified email, render it as a clean prefilled/locked field
+                // instead of a pointless one-option dropdown.
                 const isEmailWithVerifiedList =
-                  responseField.fieldKey === "email" &&
-                  verifiedEmails.length > 0;
+                  isEmailField(responseField) && verifiedEmails.length > 1;
                 const isMobileNumber =
                   responseField.fieldKey === "mobile_number";
 
@@ -156,7 +190,7 @@ export default function RegistrationForm({
                         control={form.control}
                         className="mt-2 w-full font-thin"
                         onSelect={(value) => {
-                          form.setValue("email", value);
+                          form.setValue(responseField.fieldKey as never, value as never);
                           onEmailChange(value);
                         }}
                       />
@@ -166,8 +200,7 @@ export default function RegistrationForm({
                         name={responseField.fieldKey as never}
                         render={({ field }) => {
                           const isVerifiedEmailField =
-                            responseField.fieldKey === "email" &&
-                            verifiedEmail !== "";
+                            isEmailField(responseField) && verifiedEmail !== "";
                           return (
                             <FormItem>
                               <FormLabel className="text-sm font-medium text-gray-700">

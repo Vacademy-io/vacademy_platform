@@ -60,8 +60,10 @@ export const useCollectPublicUserData = () => {
       return response.data;
     },
     onError: (error: AxiosError<ErrorResponse>) => {
+      // Lead-collection is a best-effort background call; the actual guest
+      // registration is handled separately. Don't surface its failure to the
+      // learner via a toast — just log it for debugging.
       console.error("Collecting public user data failed:", error);
-      toast.error(error.response?.data?.ex);
     },
   });
 };

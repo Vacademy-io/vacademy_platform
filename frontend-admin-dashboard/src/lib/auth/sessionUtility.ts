@@ -269,29 +269,108 @@ async function refreshTokens(refreshToken: string): Promise<UnauthorizedResponse
     }
 }
 
-// Clear cookies on logout with proper domain cleanup
-const removeCookiesAndLogout = (): void => {
-    // Remove from current domain
-    Cookies.remove(TokenKey.accessToken);
-    Cookies.remove(TokenKey.refreshToken);
+// Non-sensitive UI preferences that should survive logout (so the next visit
+// keeps the user's chosen theme). Everything else in localStorage is wiped.
+const LOGOUT_PRESERVE_KEYS = ['theme-code', 'theme-custom-color', 'vite-ui-theme'];
 
-    // Also remove any legacy cookies that were set on the shared parent domain
-    Cookies.remove(TokenKey.accessToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
-    Cookies.remove(TokenKey.refreshToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
-
-    // Clear sub-org faculty cache too. Without this, the next account to log in on
-    // the same browser inherits the previous user's `selected_suborg_id` +
-    // `faculty_access_data` from localStorage — which makes the sidebar's
-    // getEffectiveInstituteName / getEffectiveInstituteLogoFileId render the wrong
-    // sub-org's branding (logo + "Powered by ..." line) until a hard refresh.
-    // Inlined as raw removeItem calls instead of importing clearFacultyAccessData
-    // to avoid a sessionUtility ↔ facultyAccessUtils circular import.
+// Expire every cookie visible to this document on the current host AND every
+// parent domain (so legacy `.vacademy.io`-scoped cookies are removed too).
+const clearAllCookies = (): void => {
     try {
-        localStorage.removeItem('faculty_access_data');
-        localStorage.removeItem('selected_suborg_id');
+        const hostname = window.location.hostname;
+        const domains = new Set<string>(['', hostname, SSO_CONFIG.SHARED_DOMAIN]);
+        const parts = hostname.split('.');
+        for (let i = 0; i < parts.length - 1; i += 1) {
+            domains.add('.' + parts.slice(i).join('.'));
+        }
+
+        const cookies = document.cookie ? document.cookie.split('; ') : [];
+        for (const cookie of cookies) {
+            const eqIdx = cookie.indexOf('=');
+            const name = (eqIdx > -1 ? cookie.slice(0, eqIdx) : cookie).trim();
+            if (!name) continue;
+            for (const domain of domains) {
+                document.cookie =
+                    `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/` +
+                    (domain ? `; domain=${domain}` : '');
+            }
+        }
+    } catch (_err) {
+        /* best-effort */
+    }
+};
+
+// Wipe localStorage + sessionStorage, keeping only the UI-preference allowlist.
+const clearWebStorage = (): void => {
+    try {
+        const preserved = LOGOUT_PRESERVE_KEYS.map(
+            (key) => [key, localStorage.getItem(key)] as const
+        );
+        localStorage.clear();
+        for (const [key, value] of preserved) {
+            if (value !== null) localStorage.setItem(key, value);
+        }
     } catch (_err) {
         /* best-effort — Safari private mode etc. */
     }
+    try {
+        sessionStorage.clear();
+    } catch (_err) {
+        /* best-effort */
+    }
+};
+
+// Drop browser-managed caches: Cache Storage (PWA/service-worker) and IndexedDB.
+// Fire-and-forget — logout navigation must not block on these.
+const clearBrowserCaches = (): void => {
+    try {
+        if (typeof caches !== 'undefined' && typeof caches.keys === 'function') {
+            void caches
+                .keys()
+                .then((names) => Promise.all(names.map((name) => caches.delete(name))))
+                .catch(() => {});
+        }
+    } catch (_err) {
+        /* best-effort */
+    }
+    try {
+        const idb = window.indexedDB as unknown as {
+            databases?: () => Promise<Array<{ name?: string | null }>>;
+            deleteDatabase: (name: string) => unknown;
+        };
+        if (idb && typeof idb.databases === 'function') {
+            void idb
+                .databases()
+                .then((dbs) => {
+                    dbs.forEach((db) => {
+                        if (db?.name) idb.deleteDatabase(db.name);
+                    });
+                })
+                .catch(() => {});
+        }
+    } catch (_err) {
+        /* best-effort */
+    }
+};
+
+// Clear ALL client-side session data on logout: auth cookies, every other
+// cookie, localStorage, sessionStorage and browser caches (Cache Storage +
+// IndexedDB). Centralised so every logout entry-point (navbar, vimotion sidebar,
+// forced 401 logout) wipes the same data — no previous user's state leaks into
+// the next session on a shared browser. Only a small allowlist of non-sensitive
+// UI preferences (theme) is preserved. The full localStorage wipe also removes
+// the old sub-org faculty cache (faculty_access_data / selected_suborg_id).
+const removeCookiesAndLogout = (): void => {
+    // Remove auth tokens via js-cookie first (matches how they were set).
+    Cookies.remove(TokenKey.accessToken);
+    Cookies.remove(TokenKey.refreshToken);
+    Cookies.remove(TokenKey.accessToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
+    Cookies.remove(TokenKey.refreshToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
+
+    // Then wipe everything else.
+    clearAllCookies();
+    clearWebStorage();
+    clearBrowserCaches();
 };
 
 // Debug function to check token status

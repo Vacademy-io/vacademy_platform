@@ -9,6 +9,10 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { AdminMappings, InstituteCustomField, AddMemberRequest, addMember } from '@/services/sub-organization-learner-management';
 
+// Members uploaded here are always staff. The backend models staff as the LEARNER
+// org-role, so every row is sent as LEARNER — the sheet no longer carries a role column.
+const STAFF_ORG_ROLE = 'LEARNER';
+
 interface BulkUploadModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -110,10 +114,6 @@ export function BulkUploadModal({
       }
     });
 
-    // Add Organization Roles column
-    headers.push('Organization Roles*');
-    sampleRow.push('LEARNER');
-
     // Create workbook and worksheet
     const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
 
@@ -214,7 +214,6 @@ export function BulkUploadModal({
     let lastName = '';
     let email = '';
     let phone = '';
-    let orgRoles = '';
 
     // Find fields by their header names (which might have * suffix for mandatory)
     const fieldsToInclude = instituteCustomFields.filter(
@@ -259,9 +258,6 @@ export function BulkUploadModal({
       fullName = `${firstName} ${lastName}`.trim();
     }
 
-    // Get organization roles
-    orgRoles = (row['Organization Roles'] || row['Organization Roles*'] || 'LEARNER').trim();
-
     // Also add Practice Name to custom fields
     const practiceNameField = instituteCustomFields.find(
       f => f.custom_field.fieldName === 'Practice Name'
@@ -297,7 +293,7 @@ export function BulkUploadModal({
       sub_org_id: selectedMapping.sub_org_id,
       institute_id: selectedMapping.institute_id,
       status: 'ACTIVE',
-      comma_separated_org_roles: orgRoles || 'LEARNER',
+      comma_separated_org_roles: STAFF_ORG_ROLE,
       custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined,
     };
   };

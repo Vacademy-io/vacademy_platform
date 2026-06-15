@@ -1083,15 +1083,21 @@ public class RazorpayWebHookService {
                 case "payment.captured":
                     log.info("School payment process for orderId: {}", orderId);
 
-                    // Idempotency guard. Razorpay delivers BOTH payment.captured AND order.paid
-                    // for a single payment, and both land in this shared case. Without this guard
-                    // each one re-ran fee allocation, so a partial payment was allocated twice — e.g.
-                    // ₹5 against ₹4/₹3/₹3 installments marked ALL three PAID (₹5 + ₹5 = ₹10), plus
-                    // duplicate ledger rows / receipts. The first event flips the PaymentLog to PAID
-                    // (updatePaymentLogOnly below); subsequent duplicate events short-circuit here.
-                    if (PaymentStatusEnum.PAID.name().equals(paymentLog.getPaymentStatus())) {
-                        log.info("SCHOOL payment for orderId {} already processed (PaymentLog PAID); "
-                                + "skipping duplicate '{}' event to avoid double allocation.", orderId, eventType);
+                    // Atomic idempotency claim — the dedupe gate for this whole block.
+                    // Razorpay delivers BOTH payment.captured AND order.paid for one payment, and
+                    // with 4 replicas they are handled concurrently; the slow Razorpay-invoice API
+                    // call below widens the window further. A read-then-check guard races (both
+                    // events read paymentStatus=null before either commits PAID) and double-allocates
+                    // — e.g. ₹5 against ₹4/₹3/₹3 settles ALL three installments (₹5 + ₹5 = ₹10). This
+                    // single-statement conditional UPDATE is atomic at the DB row level: exactly one
+                    // event transitions NOT-PAID→PAID (rows=1) and proceeds; concurrent/duplicate/
+                    // retried events get 0 and bail before allocation, receipt, and invoice. It
+                    // commits in its own transaction so PAID is visible to the other replica at once.
+                    int claimed = paymentLogService.claimPaidIfNotAlready(orderId);
+                    if (claimed == 0) {
+                        log.info("SCHOOL payment for orderId {} already claimed/processed by another "
+                                + "event or replica; skipping duplicate '{}' to avoid double allocation.",
+                                orderId, eventType);
                         break;
                     }
 

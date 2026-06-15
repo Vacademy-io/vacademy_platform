@@ -1,6 +1,10 @@
 import { z, ZodTypeAny, ZodObject, ZodString } from "zod";
 import { phoneSchema } from "@/lib/phone-validation";
 import { CustomField } from "./type";
+import {
+  getFieldRenderType,
+  FieldRenderType,
+} from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 
 export const generateZodSchema = (
   customFields: CustomField[] | undefined
@@ -12,7 +16,10 @@ export const generateZodSchema = (
 
   for (const field of customFields) {
     // Phone field gets country-aware validation instead of plain text rules.
-    if (field.fieldKey === "mobile_number") {
+    // Detect by render type, not a literal "mobile_number" key — the backend
+    // suffixes field keys per institute (e.g. "mobile_number_inst_<id>"), so a
+    // strict key match would skip validation and let "12" through.
+    if (getFieldRenderType(field.fieldKey, field.fieldType) === FieldRenderType.PHONE) {
       shape[field.fieldKey] = phoneSchema({
         required: field.mandatory,
         label: field.fieldName,

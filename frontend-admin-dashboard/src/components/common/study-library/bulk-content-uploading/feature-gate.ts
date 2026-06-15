@@ -1,8 +1,9 @@
 // Bulk Content Uploading — per-institute feature gate.
 //
-// HIDDEN BY DEFAULT for every institute. Enable by listing institute ids in
-// the VITE_BULK_CONTENT_UPLOAD_INSTITUTES env var (comma-separated). Use "*"
-// to enable for ALL institutes (handy for local dev / staging / demos).
+// VISIBLE BY DEFAULT for every institute (including production). The
+// VITE_BULK_CONTENT_UPLOAD_INSTITUTES env var is now an optional *allowlist*:
+// set it (comma-separated institute ids) to RESTRICT the feature to only those
+// institutes. Leave it unset → everyone sees it. Use "*" to be explicit.
 
 import { getInstituteId } from '@/constants/helper';
 
@@ -16,7 +17,9 @@ const ENABLED_INSTITUTE_IDS: string[] = (
 const ENABLED_FOR_ALL = ENABLED_INSTITUTE_IDS.includes('*');
 
 export const isBulkContentUploadEnabled = (): boolean => {
-    if (ENABLED_FOR_ALL) return true;
+    // No allowlist configured → on for everyone. "*" → on for everyone.
+    if (ENABLED_INSTITUTE_IDS.length === 0 || ENABLED_FOR_ALL) return true;
+    // Allowlist set → only those institutes.
     const instituteId = getInstituteId();
     return !!instituteId && ENABLED_INSTITUTE_IDS.includes(instituteId);
 };

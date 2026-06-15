@@ -686,9 +686,24 @@ public class DoubtsManager {
 
         String viewerUserId = resolveViewerUserId(userDetails);
 
+        // For a scoped viewer (teacher / non-admin staff), their LIVE FSPSSM visibility mirrors the
+        // institute's configured default_assignee_source so what a teacher can see matches what the
+        // admin set: BATCH_TEACHER/BOTH (and the no-setting default) → they see their whole batch;
+        // SUBJECT_TEACHER → only their subject's doubts; NONE/ROLE/SPECIFIC_USERS → assignment-only.
+        // Admin/root callers (viewerUserId == null) are unscoped, so the flags are left off.
+        boolean scopeBatch = false;
+        boolean scopeSubject = false;
+        if (viewerUserId != null) {
+            DoubtDefaultAssigneeSourceEnum mode = parseAssigneeSource(
+                    loadDoubtManagementSettingByInstitute(filter.getInstituteId()));
+            scopeBatch = (mode == DoubtDefaultAssigneeSourceEnum.BATCH_TEACHER
+                    || mode == DoubtDefaultAssigneeSourceEnum.BOTH);
+            scopeSubject = (mode == DoubtDefaultAssigneeSourceEnum.SUBJECT_TEACHER);
+        }
+
         Page<Doubts> paginatedDoubts = doubtService.getAllDoubtsWithFilter(filter.getContentTypes(), filter.getContentPositions(), filter.getSources(),
                 filter.getSourceIds(), filter.getTypes(), filter.getStartDate(), filter.getEndDate(), filter.getUserIds(), filter.getStatus(),
-                filter.getBatchIds(), filter.getInstituteId(), viewerUserId, pageable);
+                filter.getBatchIds(), filter.getInstituteId(), viewerUserId, scopeBatch, scopeSubject, pageable);
 
         return ResponseEntity.ok(createDoubtAllResponse(paginatedDoubts));
     }
@@ -699,27 +714,33 @@ public class DoubtsManager {
      *
      * Check order:
      *   1. Null caller → no filter (defensive).
-     *   2. Explicit TEACHER or STUDENT role → scope, ignoring {@code isRootUser}. Handles teacher
+     *   2. Explicit ADMIN role → no filter. This is the authoritative admin signal and is checked
+     *      FIRST, before the teaching-role probe, because an admin-portal account may legitimately
+     *      hold BOTH an ADMIN role and a TEACHER role (or faculty/FSPSSM batch assignments) — see
+     *      {@code VALID_ROLES_FOR_ADMIN_PORTAL}. Without this ordering the TEACHER branch would
+     *      scope a real admin down to only their assigned batches.
+     *   3. Explicit TEACHER or STUDENT role → scope, ignoring {@code isRootUser}. Handles teacher
      *      accounts that were wrongly flagged root — the TEACHER role wins and they don't leak.
-     *   3. ANY admin signal — ADMIN role OR {@code isRootUser} — → no filter. Checked BEFORE the
-     *      FSPSSM probe so hybrid admins who happen to have teaching mappings (or stale FSPSSM
-     *      rows from older provisioning) keep their unrestricted view.
-     *   4. Has ACTIVE FSPSSM mapping → scope (custom role teachers like FACULTY/INSTRUCTOR).
-     *   5. Otherwise → scope by user id.
+     *   4. {@code isRootUser} (no ADMIN/TEACHER role) → no filter.
+     *   5. Has ACTIVE FSPSSM mapping → scope (custom role teachers like FACULTY/INSTRUCTOR).
+     *   6. Otherwise → scope by user id.
      *
-     * Tradeoff: teachers provisioned with {@code isRootUser=true} and NO formal TEACHER role will
-     * pass through step 3 and see everything. That's a data-provisioning bug, not a code bug —
-     * fix on the account by either clearing the root flag or adding the TEACHER role. Giving
-     * real admins back their visibility is the higher priority.
+     * Tradeoff: an account flagged {@code isRootUser=true} with NO formal ADMIN/TEACHER role will
+     * pass through step 4 and see everything. That's a data-provisioning concern, not a code bug —
+     * fix on the account by adding the right role. Giving real admins back their full doubt
+     * visibility is the higher priority.
      */
     private String resolveViewerUserId(CustomUserDetails user) {
         if (user == null) {
             return null;
         }
+        if (hasRole(user, "ADMIN")) {
+            return null;
+        }
         if (hasRole(user, "TEACHER") || hasRole(user, "STUDENT")) {
             return user.getUserId();
         }
-        if (hasRole(user, "ADMIN") || user.isRootUser()) {
+        if (user.isRootUser()) {
             return null;
         }
         if (hasAnyFacultyMapping(user.getUserId())) {

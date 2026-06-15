@@ -40,7 +40,7 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
-import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -261,13 +261,10 @@ const RecentLeadsContent = () => {
         customTo,
         sourceFilter,
     ]);
-    const counsellorOptionsQuery = useQuery({
-        queryKey: ['counsellor-options', instituteId],
-        queryFn: fetchCounselors,
-        enabled: !!instituteId,
-        staleTime: 5 * 60 * 1000,
-    });
-    const counsellorOptions = counsellorOptionsQuery.data ?? [];
+    // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
+    // the institute-wide list. See useLeadCounsellorOptions.
+    const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
+        useLeadCounsellorOptions();
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -424,7 +421,14 @@ const RecentLeadsContent = () => {
         [setSelectedStudent, updateTier, placeCall]
     );
 
-    const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+    // The backend mirrors a per-response status change onto the user's profile
+    // conversion_status, so the side-view agrees. Invalidate the profile/batch caches too
+    // (not just the list) or the side-view could still serve a stale cached profile.
+    const handleStatusUpdated = () => {
+        queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+        queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+    };
 
     const toggleColumn = (id: string) =>
         setHiddenColumns((prev) => {
@@ -731,7 +735,7 @@ const RecentLeadsContent = () => {
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
                             options={counsellorOptions}
-                            isLoading={counsellorOptionsQuery.isLoading}
+                            isLoading={counsellorOptionsLoading}
                         />
                     )}
                     <Select value={audienceId} onValueChange={handleAudienceChange}>

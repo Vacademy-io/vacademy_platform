@@ -28,6 +28,13 @@ interface SubOrgLearnersComponentProps {
   instituteDetails: any;
 }
 
+// UI-only label mapping. The underlying value (and what we send to the backend)
+// stays as-is; we only change how it's displayed. LEARNER is shown as "Staff".
+const ORG_ROLE_LABELS: Record<string, string> = {
+  LEARNER: 'Staff',
+};
+const getOrgRoleLabel = (role: string): string => ORG_ROLE_LABELS[role] ?? role;
+
 export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: SubOrgLearnersComponentProps) {
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
   // Default selected country + picker order from the institute's preferred countries.
@@ -146,7 +153,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     }
 
     if (!formData.comma_separated_org_roles) {
-      toast.error('At least one organization role is required');
+      toast.error('At least one practice role is required');
       return;
     }
 
@@ -554,7 +561,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
 
                 {/* Organization Roles - Always shown */}
                 <div>
-                  <Label htmlFor="roles">Organization Roles *</Label>
+                  <Label htmlFor="roles">Practice Roles *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <div className="flex min-h-10 w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
@@ -562,7 +569,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                           {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
                             formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
                               <Badge key={role} variant="secondary" className="mr-1 mb-1">
-                                {role}
+                                {getOrgRoleLabel(role)}
                                 <button
                                   className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                   onKeyDown={(e) => {
@@ -621,7 +628,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                                       isSelected ? "opacity-100" : "opacity-0"
                                     )}
                                   />
-                                  {role}
+                                  {getOrgRoleLabel(role)}
                                 </CommandItem>
                               );
                             })}

@@ -157,7 +157,7 @@ function BulkContentUploadingPage() {
     }));
 
     const handleModeChange = (next: string) => {
-        if (next !== 'single' && next !== 'multi') return;
+        if (next !== 'single' && next !== 'multi' && next !== 'csv') return;
         if (next === mode) return;
         resetWizardStore();
         setModeLocal(next);
@@ -177,10 +177,15 @@ function BulkContentUploadingPage() {
                             SystemTerms.Course
                         ).toLowerCase()}
                     </TabsTrigger>
+                    <TabsTrigger value="csv" disabled={pickersLocked}>
+                        By spreadsheet (CSV)
+                    </TabsTrigger>
                 </TabsList>
             </Tabs>
 
-            {mode === 'multi' ? (
+            {mode === 'csv' ? (
+                <BulkContentUploadingWizard key="csv" mode="csv" instituteId={instituteId} />
+            ) : mode === 'multi' ? (
                 <>
                     <div className="rounded-lg border border-neutral-200 bg-white p-4">
                         <h3 className="text-subtitle font-semibold text-neutral-700">

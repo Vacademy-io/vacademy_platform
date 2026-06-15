@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,15 @@ public class LeadStatusService {
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder leadTriggerContextBuilder;
     private final TimelineEventService timelineEventService;
+
+    /**
+     * @Lazy so the (one-way) edge to UserLeadProfileService can't trip Spring's eager
+     * constructor-cycle detection. Used to mirror a per-response status change onto the
+     * user's profile conversion_status (read by the side-view).
+     */
+    @Autowired
+    @Lazy
+    private UserLeadProfileService userLeadProfileService;
 
     /**
      * Starter statuses seeded the first time an institute opens Lead Statuses.
@@ -203,6 +214,19 @@ public class LeadStatusService {
 
         logStatusChangeToTimeline(saved, oldStatusId, target, actorUserId, source);
         emitStatusChanged(saved, instituteId, oldStatusId, target);
+
+        // Keep the user's profile conversion_status (what the side-view reads) in sync with this
+        // per-response change, so the leads list and the side-view never disagree. Best-effort —
+        // a mirror failure must never roll back the status change the user just made.
+        try {
+            String profileUserId = saved.getUserId() != null ? saved.getUserId() : saved.getStudentUserId();
+            if (profileUserId != null) {
+                userLeadProfileService.mirrorConversionStatusFromLead(profileUserId, instituteId, target.getStatusKey());
+            }
+        } catch (Exception ex) {
+            log.warn("[LeadStatus] Failed to mirror conversion_status for lead {}: {}",
+                    saved.getId(), ex.getMessage());
+        }
         return saved;
     }
 

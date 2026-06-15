@@ -13,9 +13,16 @@ import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-s
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import type { DisplaySettingsData } from '@/types/display-settings';
-import { buildTree } from './conventions';
+import { buildTree, formatBytes, isJunkPath, MAX_FILE_COUNT, MAX_ZIP_BYTES } from './conventions';
 import { runCommit } from './commit-engine';
 import { annotateSlideCollisions, applyMatching, buildExistingSnapshot } from './matching';
+import { isManifestEntry, resolveManifest } from './csv-manifest';
+import {
+    clearDirectFiles,
+    currentDirectFingerprint,
+    directFileEntries,
+    directTotalBytes,
+} from './file-source';
 import { openZipFile, setCurrentZipHandle, zipFingerprint } from './zip-parser';
 import {
     clearMultiParseCaches,
@@ -56,12 +63,19 @@ export const BulkContentUploadingWizard = ({
 }: BulkContentUploadingWizardProps) => {
     const queryClient = useQueryClient();
     const phase = useBulkContentUploadingStore((state) => state.phase);
-    const { setContext, setMode, setPhase, loadParseResult, loadMultiParse, resetStore } =
-        useBulkContentUploadingStore();
+    const {
+        setContext,
+        setMode,
+        setPhase,
+        loadParseResult,
+        loadMultiParse,
+        loadCsvResolve,
+        resetStore,
+    } = useBulkContentUploadingStore();
     const replaceBase64ImagesWithNetworkUrls = useReplaceBase64ImagesWithNetworkUrls();
     const roleDisplayRef = useRef<DisplaySettingsData | null>(null);
 
-    const effectiveInstituteId = mode === 'multi' ? instituteId ?? '' : context?.instituteId ?? '';
+    const effectiveInstituteId = mode === 'single' ? context?.instituteId ?? '' : instituteId ?? '';
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
 
     useEffect(() => {
@@ -80,12 +94,38 @@ export const BulkContentUploadingWizard = ({
     useEffect(
         () => () => {
             void setCurrentZipHandle(null);
+            clearDirectFiles();
             clearMultiParseCaches();
             resetStore();
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         []
     );
+
+    // CSV "select files directly" flow: the user picked files + uploaded a filled
+    // bulkcontent.csv. Resolve it against the in-memory selection (not a zip).
+    const handleManifestCsvSelected = async (csvText: string) => {
+        setPhase('parsing');
+        try {
+            void setCurrentZipHandle(null); // direct files take precedence over any prior zip
+            const studyLibraryData = useStudyLibraryStore.getState().studyLibraryData ?? [];
+            const result = await resolveManifest({
+                csvText,
+                zipEntries: directFileEntries(),
+                studyLibraryData,
+                instituteId: effectiveInstituteId,
+            });
+            loadCsvResolve(result, {
+                zipFileName: `${directFileEntries().length} selected file(s)`,
+                zipTotalBytes: directTotalBytes(),
+                fingerprint: currentDirectFingerprint(),
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not read the CSV';
+            toast.error(message);
+            setPhase('select');
+        }
+    };
 
     const handleZipSelected = async (file: File) => {
         if (!file.name.toLowerCase().endsWith('.zip')) {
@@ -94,9 +134,47 @@ export const BulkContentUploadingWizard = ({
         }
         setPhase('parsing');
         try {
+            clearDirectFiles(); // a zip upload supersedes any prior direct-file selection
             const handle = await openZipFile(file);
             await setCurrentZipHandle(handle);
             clearMultiParseCaches();
+
+            if (mode === 'csv') {
+                // Zip-level guards (sections skip them).
+                const usableCount = handle.entries.filter(
+                    (e) => !e.isDirectory && !isJunkPath(e.path)
+                ).length;
+                if (file.size > MAX_ZIP_BYTES) {
+                    throw new Error(
+                        `Zip is ${formatBytes(file.size)} — larger than the ${formatBytes(MAX_ZIP_BYTES)} limit.`
+                    );
+                }
+                if (usableCount > MAX_FILE_COUNT) {
+                    throw new Error(
+                        `Zip contains ${usableCount} files — more than the ${MAX_FILE_COUNT} limit.`
+                    );
+                }
+                const manifestEntry = handle.entries.find(
+                    (e) => !e.isDirectory && isManifestEntry(e.path)
+                );
+                if (!manifestEntry) {
+                    throw new Error('No bulkcontent.csv found at the root of the zip.');
+                }
+                const csvText = await handle.readText(manifestEntry.path);
+                const studyLibraryData = useStudyLibraryStore.getState().studyLibraryData ?? [];
+                const result = await resolveManifest({
+                    csvText,
+                    zipEntries: handle.entries,
+                    studyLibraryData,
+                    instituteId: effectiveInstituteId,
+                });
+                loadCsvResolve(result, {
+                    zipFileName: file.name,
+                    zipTotalBytes: file.size,
+                    fingerprint: zipFingerprint(file),
+                });
+                return;
+            }
 
             if (mode === 'multi') {
                 const studyLibraryData = useStudyLibraryStore.getState().studyLibraryData ?? [];
@@ -280,7 +358,12 @@ export const BulkContentUploadingWizard = ({
 
     switch (phase) {
         case 'select':
-            return <UploadStep onZipSelected={handleZipSelected} />;
+            return (
+                <UploadStep
+                    onZipSelected={handleZipSelected}
+                    onManifestCsvSelected={handleManifestCsvSelected}
+                />
+            );
         case 'parsing':
             return (
                 <div className="flex min-h-64 flex-col items-center justify-center gap-2">

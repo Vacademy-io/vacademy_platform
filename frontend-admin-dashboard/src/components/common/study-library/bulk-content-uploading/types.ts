@@ -12,7 +12,7 @@ export type BulkItemKind =
     | 'YOUTUBE'
     | 'EXTERNAL_LINK';
 
-export type UploadMode = 'single' | 'multi';
+export type UploadMode = 'single' | 'multi' | 'csv';
 
 export type NodeKind = 'subject' | 'module' | 'chapter';
 
@@ -76,6 +76,12 @@ export interface BulkItem {
     error?: string;
     /** Multi-course mode: which CourseSection this item belongs to. Absent in single mode. */
     sectionId?: string;
+    /**
+     * CSV mode: where the new slide goes relative to the chapter's existing
+     * slides — 'top' (before) or 'bottom' (after, default). Absent in folder
+     * modes (they always append).
+     */
+    placement?: 'top' | 'bottom';
 }
 
 // ----- Multi-course mode -----
@@ -186,3 +192,18 @@ export interface ExistingSnapshot {
     /** Slides directly under the DEFAULT chapter — used for depth-2 collision checks. */
     directSlides: ExistingSlideRef[];
 }
+
+// ----- CSV-manifest mode -----
+
+/** A chapter resolved from a manifest row: everything the CSV commit loop needs. */
+export interface CsvChapterResolution {
+    chapterId: string;
+    chapterName: string;
+    subjectId: string;
+    moduleId: string;
+    /** Existing slides in the chapter — the append base for slide_order. */
+    existingSlides: ExistingSlideRef[];
+}
+
+/** chapterId → resolution, built once per package session from its snapshot. */
+export type CsvChapterIndex = Record<string, CsvChapterResolution>;

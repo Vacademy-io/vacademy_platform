@@ -14,6 +14,7 @@ import {
     useBulkContentUploadingStore,
 } from '../use-bulk-content-uploading-store';
 import { CourseSectionCard } from './course-section-card';
+import { CsvPreview } from './csv-preview';
 import type { SectionCallbacks } from '../bulk-content-uploading-wizard';
 
 interface PreviewStepProps {
@@ -128,6 +129,9 @@ const MultiCoursePreview = ({
 
 export const PreviewStep = ({ onConfirm, sectionCallbacks }: PreviewStepProps) => {
     const mode = useBulkContentUploadingStore((state) => state.mode);
+    if (mode === 'csv') {
+        return <CsvPreview onConfirm={onConfirm} />;
+    }
     if (mode === 'multi' && sectionCallbacks) {
         return <MultiCoursePreview onConfirm={onConfirm} sectionCallbacks={sectionCallbacks} />;
     }

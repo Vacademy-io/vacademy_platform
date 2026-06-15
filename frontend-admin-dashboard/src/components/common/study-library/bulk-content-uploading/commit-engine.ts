@@ -12,26 +12,21 @@
 // Plain async functions, not hooks: they read/write the zustand store via
 // getState() so progress renders live regardless of which step is mounted.
 
-import * as pdfjs from 'pdfjs-dist';
-import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
-import { convertDocToHtml } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/slides-sidebar/utils/doc-to-html';
-import { convertPptToPdf } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/slides-sidebar/add-ppt-dialog';
-import { convertHtmlToPdf } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-helper/helper';
-import {
-    createDocHtmlSlide,
-    createExternalLinkSlide,
-    createImageSlide,
-    createPdfSlide,
-    createVideoFileSlide,
-    createYoutubeSlide,
-    updateChapterSlideOrder,
-    type BulkSlideContext,
-} from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-services/bulk-slide-creation';
+import type { BulkSlideContext } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-services/bulk-slide-creation';
 import { DEFAULT_ENTITY_NAME, isSyntheticRootNode } from './conventions';
 import { createChapter, createModule, createSubject } from './hierarchy-api';
 import { findExistingChapter } from './matching';
 import { openManifest } from './session-manifest';
 import { getCurrentZipHandle } from './zip-parser';
+import { extractDirectFile, hasDirectFiles } from './file-source';
+import {
+    commitChapterItems,
+    createMutex,
+    reorderAppendedSlides,
+    reorderChapterSlidesExplicit,
+    type PipelineCtx,
+    type SharedRunResources,
+} from './slide-pipeline';
 import {
     groupItemsByChapter,
     selectSectionsOrdered,
@@ -40,25 +35,11 @@ import {
 } from './use-bulk-content-uploading-store';
 import type { BulkItem, BulkNode, BulkUploadContext, ExistingSnapshot } from './types';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-
-const UPLOAD_POOL_SIZE = 3;
-const BIG_FILE_BYTES = 100 * 1024 * 1024; // >100MB uploads run one at a time
-const UPLOAD_ATTEMPTS = 3;
-
 export interface CommitDeps {
     /** From useReplaceBase64ImagesWithNetworkUrls() — instantiated by the wizard component. */
     replaceBase64ImagesWithNetworkUrls: (html: string) => Promise<string>;
     /** Required in multi-course mode (single mode reads it from the wizard context). */
     instituteId?: string;
-}
-
-type Mutex = <T>(task: () => Promise<T>) => Promise<T>;
-
-/** Shared across all scopes in one run: one conversion service, one uplink. */
-interface SharedRunResources {
-    pptMutex: Mutex;
-    bigFileMutex: Mutex;
 }
 
 interface CommitScope {
@@ -70,7 +51,14 @@ interface CommitScope {
     setDefaults: (defaults: SectionDefaults) => void;
 }
 
-const normalizeHtmlQuotes = (html: string) => html.replace(/\\"/g, '"');
+/** Pick the file source for this run: in-memory selection (CSV direct mode) or the zip. */
+const buildExtractFile = (): PipelineCtx['extractFile'] => {
+    if (hasDirectFiles()) return extractDirectFile;
+    const zip = getCurrentZipHandle();
+    if (zip) return (entryPath, fileName) => zip.extractFile(entryPath, fileName);
+    return () =>
+        Promise.reject(new Error('The upload is no longer available — re-select it and retry.'));
+};
 
 const sortNodes = (nodes: BulkNode[]): BulkNode[] =>
     [...nodes].sort((a, b) => {
@@ -82,78 +70,6 @@ const sortNodes = (nodes: BulkNode[]): BulkNode[] =>
         return a.displayName.localeCompare(b.displayName);
     });
 
-/** Serializes calls through a single-flight chain (ppt conversion, big uploads). */
-const createMutex = (): Mutex => {
-    let chain: Promise<unknown> = Promise.resolve();
-    return <T>(task: () => Promise<T>): Promise<T> => {
-        const run = chain.then(task, task);
-        chain = run.catch(() => undefined);
-        return run;
-    };
-};
-
-const pool = async <T>(
-    inputs: T[],
-    limit: number,
-    task: (input: T, index: number) => Promise<void>
-): Promise<void> => {
-    let next = 0;
-    const workers = Array.from({ length: Math.min(limit, inputs.length) }, async () => {
-        while (next < inputs.length) {
-            const index = next++;
-            await task(inputs[index]!, index);
-        }
-    });
-    await Promise.all(workers);
-};
-
-const uploadWithRetry = async (
-    file: File,
-    instituteId: string,
-    sourceId: string
-): Promise<string> => {
-    let lastError: unknown;
-    for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
-        try {
-            // UploadFileInS3 requests a fresh presigned URL on every call, so
-            // retries never reuse an expired/consumed URL.
-            const fileId = await UploadFileInS3(
-                file,
-                () => {},
-                'bulk-content-upload',
-                instituteId,
-                sourceId,
-                true
-            );
-            if (!fileId) throw new Error('Upload did not return a file id');
-            return fileId;
-        } catch (error) {
-            lastError = error;
-            if (attempt < UPLOAD_ATTEMPTS) {
-                await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** (attempt - 1)));
-            }
-        }
-    }
-    throw lastError instanceof Error ? lastError : new Error('Upload failed');
-};
-
-const countPdfPages = async (file: File): Promise<number> => {
-    try {
-        const buffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: buffer }).promise;
-        return pdf.numPages;
-    } catch {
-        return 1; // encrypted/corrupt PDFs still become slides
-    }
-};
-
-interface PreparedContent {
-    fileId?: string;
-    totalPages?: number;
-    html?: string;
-    publicImageUrl?: string;
-}
-
 const commitScope = async (
     scope: CommitScope,
     deps: CommitDeps,
@@ -162,7 +78,6 @@ const commitScope = async (
     const store = useBulkContentUploadingStore;
     const state = () => store.getState();
     const { snapshot } = scope;
-    const zip = getCurrentZipHandle();
 
     const { packageSessionId, instituteId, courseDepth } = scope.context;
     const options = state().options;
@@ -337,118 +252,14 @@ const commitScope = async (
         };
     };
 
-    const prepareItem = async (item: BulkItem): Promise<PreparedContent> => {
-        if (item.kind === 'YOUTUBE' || item.kind === 'EXTERNAL_LINK') return {};
-
-        state().markItem(item.id, 'preparing');
-        if (!zip) throw new Error('The zip file is no longer available — re-select it and retry.');
-
-        if (item.kind === 'DOC') {
-            const file = await zip.extractFile(item.entryPath, item.fileName);
-            const html = await convertDocToHtml(file);
-            const processed = await deps.replaceBase64ImagesWithNetworkUrls(html);
-            const normalized = normalizeHtmlQuotes(processed);
-            let totalPages = 1;
-            try {
-                const result = await convertHtmlToPdf(processed);
-                totalPages = result.totalPages || 1;
-            } catch {
-                totalPages = 1;
-            }
-            return { html: normalized, totalPages };
-        }
-
-        if (item.kind === 'PDF' || item.kind === 'PPT') {
-            let pdfFile: File;
-            if (item.kind === 'PPT') {
-                const source = await zip.extractFile(item.entryPath, item.fileName);
-                // The conversion service is a shared multipart endpoint — one at a time.
-                pdfFile = await shared.pptMutex(() => convertPptToPdf(source));
-            } else {
-                pdfFile = await zip.extractFile(item.entryPath, item.fileName);
-            }
-            const totalPages = await countPdfPages(pdfFile);
-            if (item.fileId) return { fileId: item.fileId, totalPages };
-            state().markItem(item.id, 'uploading');
-            const fileId = await uploadWithRetry(pdfFile, instituteId, 'PDF_DOCUMENTS');
-            state().patchItem(item.id, { fileId });
-            manifest.set(item.key, { fileId });
-            return { fileId, totalPages };
-        }
-
-        if (item.kind === 'IMAGE') {
-            let fileId = item.fileId;
-            if (!fileId) {
-                const file = await zip.extractFile(item.entryPath, item.fileName);
-                state().markItem(item.id, 'uploading');
-                fileId = await uploadWithRetry(file, instituteId, 'IMAGES');
-                state().patchItem(item.id, { fileId });
-                manifest.set(item.key, { fileId });
-            }
-            const publicImageUrl = await getPublicUrl(fileId);
-            if (!publicImageUrl) throw new Error('Could not resolve the uploaded image URL');
-            return { fileId, publicImageUrl };
-        }
-
-        // VIDEO_FILE
-        if (item.fileId) return { fileId: item.fileId };
-        const file = await zip.extractFile(item.entryPath, item.fileName);
-        state().markItem(item.id, 'uploading');
-        const upload = () => uploadWithRetry(file, instituteId, 'ADMIN');
-        const fileId =
-            item.sizeBytes > BIG_FILE_BYTES ? await shared.bigFileMutex(upload) : await upload();
-        state().patchItem(item.id, { fileId });
-        manifest.set(item.key, { fileId });
-        return { fileId };
-    };
-
-    const createSlideForItem = async (
-        slideCtx: BulkSlideContext,
-        item: BulkItem,
-        prepared: PreparedContent,
-        slideOrder: number
-    ): Promise<string> => {
-        switch (item.kind) {
-            case 'PDF':
-            case 'PPT':
-                return createPdfSlide(slideCtx, {
-                    title: item.title,
-                    fileId: prepared.fileId!,
-                    totalPages: prepared.totalPages ?? 1,
-                    slideOrder,
-                });
-            case 'DOC':
-                return createDocHtmlSlide(slideCtx, {
-                    title: item.title,
-                    html: prepared.html!,
-                    totalPages: prepared.totalPages ?? 1,
-                    slideOrder,
-                });
-            case 'IMAGE':
-                return createImageSlide(slideCtx, {
-                    title: item.title,
-                    publicImageUrl: prepared.publicImageUrl!,
-                    slideOrder,
-                });
-            case 'VIDEO_FILE':
-                return createVideoFileSlide(slideCtx, {
-                    title: item.title,
-                    fileId: prepared.fileId!,
-                    slideOrder,
-                });
-            case 'YOUTUBE':
-                return createYoutubeSlide(slideCtx, {
-                    title: item.title,
-                    url: item.url!,
-                    slideOrder,
-                });
-            case 'EXTERNAL_LINK':
-                return createExternalLinkSlide(slideCtx, {
-                    title: item.title,
-                    url: item.url!,
-                    slideOrder,
-                });
-        }
+    const pipeline: PipelineCtx = {
+        extractFile: buildExtractFile(),
+        instituteId,
+        manifest,
+        shared,
+        replaceBase64ImagesWithNetworkUrls: deps.replaceBase64ImagesWithNetworkUrls,
+        markItem: (id, status, patch) => state().markItem(id, status, patch),
+        patchItem: (id, patch) => state().patchItem(id, patch),
     };
 
     const allChapterNodes = scopedNodes().filter((n) => n.kind === 'chapter' && n.resolvedId);
@@ -467,87 +278,162 @@ const commitScope = async (
         const existingSlides =
             courseDepth === 2 ? snapshot.directSlides : existingChapter?.slides ?? [];
 
-        // Precomputed orders over the full (non-skipped) list keep numbering
-        // deterministic across retries — no max+1 snapshot races.
-        const orderedItems = chapterItems.filter((i) => state().items[i.id]?.status !== 'skipped');
-        const orderOf = new Map(
-            orderedItems.map((item, index) => [item.id, existingSlides.length + index])
-        );
-
-        const pendingItems = orderedItems.filter((i) => state().items[i.id]?.status === 'pending');
-        if (pendingItems.length === 0) continue;
-
-        const preparedById = new Map<string, Promise<PreparedContent>>();
-        const prepareQueue = [...pendingItems];
-        const prepareStarted = new Map<string, () => void>();
-        // Start preparations through a pool, but expose each as a promise the
-        // sequential creator below can await in item order.
-        const preparePromises = pendingItems.map(
-            (item) =>
-                new Promise<PreparedContent>((resolve, reject) => {
-                    prepareStarted.set(item.id, () => {
-                        prepareItem(item).then(resolve, reject);
-                    });
-                })
-        );
-        pendingItems.forEach((item, index) => preparedById.set(item.id, preparePromises[index]!));
-        preparedById.forEach((p) => p.catch(() => undefined)); // avoid unhandled rejections
-        void pool(prepareQueue, UPLOAD_POOL_SIZE, async (item) => {
-            prepareStarted.get(item.id)?.();
-            await preparedById.get(item.id)!.catch(() => undefined);
+        await commitChapterItems({
+            chapterItems,
+            slideCtx,
+            existingSlideCount: existingSlides.length,
+            pipeline,
+            getItem: (id) => state().items[id],
         });
-
-        for (const item of pendingItems) {
-            const current = state().items[item.id];
-            if (!current || current.status === 'skipped' || current.status === 'done') continue;
-            try {
-                const prepared = await preparedById.get(item.id)!;
-                state().markItem(item.id, 'creating');
-                const slideOrder = orderOf.get(item.id) ?? existingSlides.length;
-                const slideId = await createSlideForItem(slideCtx, current, prepared, slideOrder);
-                state().markItem(item.id, 'done', { slideId });
-                manifest.set(item.key, { slideId, fileId: state().items[item.id]?.fileId });
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to create slide';
-                state().markItem(item.id, 'failed', { error: message });
-            }
-        }
 
         // Pre-existing chapters: append new slides after the existing ones explicitly.
         if (wasExisting && existingSlides.length > 0) {
-            const createdNow = orderedItems
+            const createdIds = chapterItems
                 .map((i) => state().items[i.id])
-                .filter((i): i is BulkItem => !!i && i.status === 'done' && !!i.slideId);
-            if (createdNow.length > 0) {
-                const sortedExisting = [...existingSlides].sort(
-                    (a, b) => a.slideOrder - b.slideOrder
-                );
-                const payload = [
-                    ...sortedExisting.map((s, index) => ({
-                        slide_id: s.id,
-                        slide_order: index,
-                    })),
-                    ...createdNow.map((item, index) => ({
-                        slide_id: item.slideId!,
-                        slide_order: sortedExisting.length + index,
-                    })),
-                ];
-                try {
-                    await updateChapterSlideOrder(slideCtx.chapterId, payload);
-                } catch {
-                    // Slides exist — only their relative order may be off. Non-fatal.
-                }
-            }
+                .filter((i): i is BulkItem => !!i && i.status === 'done' && !!i.slideId)
+                .map((i) => i.slideId!);
+            await reorderAppendedSlides(slideCtx.chapterId, existingSlides, createdIds);
         }
     }
 
     manifest.flush();
 };
 
+/**
+ * CSV-manifest commit: chapters already exist and are given by id (no hierarchy
+ * creation). One scope per package session; per chapter, prepare+create via the
+ * shared pipeline, sourcing the slide-order base directly from the chapter index
+ * (no courseDepth coupling). Section failure blocks only that section's items.
+ */
+const runCsvCommit = async (deps: CommitDeps, shared: SharedRunResources): Promise<void> => {
+    const store = useBulkContentUploadingStore;
+    const state = () => store.getState();
+    const extractFile = buildExtractFile();
+    const instituteId = deps.instituteId || state().context?.instituteId || '';
+    const fingerprint = state().fingerprint;
+
+    state().setPhase('committing');
+
+    for (const section of selectSectionsOrdered(state().courseSections)) {
+        if (section.status !== 'ready' || !section.courseId || !section.packageSessionId) continue;
+        const chapterIndex = state().chapterIndexBySection[section.id];
+        if (!chapterIndex || !instituteId) continue;
+
+        const manifest = openManifest(
+            `${section.courseId}|${section.packageSessionId}`,
+            fingerprint
+        );
+        const pipeline: PipelineCtx = {
+            extractFile,
+            instituteId,
+            manifest,
+            shared,
+            replaceBase64ImagesWithNetworkUrls: deps.replaceBase64ImagesWithNetworkUrls,
+            markItem: (id, status, patch) => state().markItem(id, status, patch),
+            patchItem: (id, patch) => state().patchItem(id, patch),
+        };
+        const options = state().options;
+
+        // Resume pre-pass: restore completed work from a prior interrupted run.
+        for (const item of Object.values(state().items)) {
+            if (item.sectionId !== section.id) continue;
+            const remembered = manifest.get(item.key);
+            if (remembered?.fileId && !item.fileId) {
+                state().patchItem(item.id, { fileId: remembered.fileId });
+            }
+            if (remembered?.slideId && item.status !== 'done') {
+                state().markItem(item.id, 'done', { slideId: remembered.slideId });
+                continue;
+            }
+            if (item.status === 'done' || item.status === 'skipped') continue;
+            state().markItem(item.id, 'pending', { error: undefined });
+        }
+
+        const itemsByChapter = groupItemsByChapter(state().items);
+        const chapterNodes = Object.values(state().nodes).filter(
+            (n) => n.sectionId === section.id && n.kind === 'chapter' && n.resolvedId
+        );
+
+        for (const chapterNode of chapterNodes) {
+            const resolution = chapterIndex[chapterNode.resolvedId!];
+            const chapterItems = itemsByChapter.get(chapterNode.id) ?? [];
+            if (!resolution || chapterItems.length === 0) continue;
+
+            const slideCtx: BulkSlideContext = {
+                chapterId: resolution.chapterId,
+                moduleId: resolution.moduleId,
+                subjectId: resolution.subjectId,
+                packageSessionId: section.packageSessionId,
+                instituteId,
+                status: options.publish ? 'PUBLISHED' : 'DRAFT',
+                notify: options.notify,
+            };
+
+            try {
+                // Split by per-row placement: top slides go before the chapter's
+                // existing slides, bottom (default) after. Create top-first.
+                const topItems = chapterItems.filter(
+                    (i) => state().items[i.id]?.placement === 'top'
+                );
+                const bottomItems = chapterItems.filter(
+                    (i) => state().items[i.id]?.placement !== 'top'
+                );
+                await commitChapterItems({
+                    chapterItems: [...topItems, ...bottomItems],
+                    slideCtx,
+                    existingSlideCount: resolution.existingSlides.length,
+                    pipeline,
+                    getItem: (id) => state().items[id],
+                });
+                const createdId = (item: BulkItem): string | undefined => {
+                    const current = state().items[item.id];
+                    return current?.status === 'done' && current.slideId
+                        ? current.slideId
+                        : undefined;
+                };
+                const topCreated = topItems.map(createdId).filter((x): x is string => !!x);
+                const bottomCreated = bottomItems.map(createdId).filter((x): x is string => !!x);
+                // Reorder only when placement matters: existing slides present, or
+                // some slides must sit at the top. Pure bottom-append to an empty
+                // chapter is already in creation order.
+                if (
+                    topCreated.length + bottomCreated.length > 0 &&
+                    (resolution.existingSlides.length > 0 || topCreated.length > 0)
+                ) {
+                    const existingIds = [...resolution.existingSlides]
+                        .sort((a, b) => a.slideOrder - b.slideOrder)
+                        .map((s) => s.id);
+                    await reorderChapterSlidesExplicit(resolution.chapterId, [
+                        ...topCreated,
+                        ...existingIds,
+                        ...bottomCreated,
+                    ]);
+                }
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : 'Failed to upload this chapter';
+                for (const item of chapterItems) {
+                    if (state().items[item.id]?.status === 'pending') {
+                        state().markItem(item.id, 'blocked', { error: message });
+                    }
+                }
+            }
+        }
+        manifest.flush();
+    }
+
+    state().setPhase('results');
+};
+
 export const runCommit = async (deps: CommitDeps): Promise<void> => {
     const store = useBulkContentUploadingStore;
     const state = () => store.getState();
     const shared: SharedRunResources = { pptMutex: createMutex(), bigFileMutex: createMutex() };
+
+    if (state().mode === 'csv') {
+        await runCsvCommit(deps, shared);
+        return;
+    }
 
     if (state().mode === 'single') {
         const context = state().context;

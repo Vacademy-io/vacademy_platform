@@ -1,6 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import PhoneInput from "react-phone-input-2";
-import "react-phone-input-2/lib/bootstrap.css";
+import PhoneInputField from "@/components/design-system/phone-input-field";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FieldErrors, FormProvider, useForm } from "react-hook-form";
 import SelectField from "@/components/design-system/select-field";
@@ -9,12 +8,10 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
 import { generateZodSchema } from "../-types/registrationFormSchema";
 import { RegistrationFormValues, CustomField } from "../-types/type";
 import { useEffect, useMemo } from "react";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import {
   getFieldRenderType,
@@ -67,11 +64,6 @@ export default function RegistrationForm({
   onEmailChange,
 }: RegistrationFormProps) {
   const schema = generateZodSchema(customFields);
-  // Default selected country + picker order from the institute's preferred countries.
-  const { defaultCountry, preferredCountries } = useMemo(
-    () => getPreferredPhoneCountries(),
-    [],
-  );
   // Actual keys of every email field in this form (keys vary per institute).
   const emailFieldKeys = useMemo(
     () => (customFields || []).filter(isEmailField).map((f) => f.fieldKey),
@@ -129,54 +121,26 @@ export default function RegistrationForm({
                 // instead of a pointless one-option dropdown.
                 const isEmailWithVerifiedList =
                   isEmailField(responseField) && verifiedEmails.length > 1;
-                const isMobileNumber =
-                  responseField.fieldKey === "mobile_number";
+                // Detect phone fields by render type, not a literal
+                // "mobile_number" key (keys are institute-suffixed), so every
+                // phone field renders with the shared picker and is validated.
+                const isPhoneField = renderType === FieldRenderType.PHONE;
 
                 return (
                   <div key={responseField.id} className="flex flex-col gap-4">
-                    {isMobileNumber ? (
-                      <FormField
+                    {isPhoneField ? (
+                      // Reuse the shared design-system phone field (same as the
+                      // enroll-by-invite flow) so the country picker, styling and
+                      // E.164 formatting stay consistent across forms. Validation
+                      // is handled by this form's zod schema, so opt out of the
+                      // component's own country-aware rule.
+                      <PhoneInputField
+                        label={responseField.fieldName}
+                        name={responseField.fieldKey}
+                        placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
                         control={form.control}
-                        name={responseField.fieldKey as never}
-                        render={({ field }) => (
-                          <FormItem className="!w-full">
-                            <FormLabel className="text-sm font-medium text-gray-700">
-                              {responseField.fieldName}
-                              {responseField.mandatory && (
-                                <span className="text-red-500 ml-0.5">*</span>
-                              )}
-                            </FormLabel>
-                            <FormControl>
-                              <PhoneInput
-                                {...field}
-                                country={defaultCountry}
-                                enableSearch={true}
-                                placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
-                                onChange={(val) => {
-                                  const formattedValue = val.startsWith("+")
-                                    ? val
-                                    : `+${val}`;
-                                  field.onChange(formattedValue);
-                                }}
-                                inputClass="!w-full h-11 !rounded-lg !border-gray-200 !text-sm focus:!border-primary-300 focus:!ring-primary-100"
-                                buttonClass="!rounded-l-lg !border-gray-200 !h-11"
-                                disabled={false}
-                                value={field.value}
-                                countryCodeEditable={false}
-                                enableAreaCodes={true}
-                                disableCountryGuess={false}
-                                preferredCountries={preferredCountries}
-                                inputProps={{
-                                  // Cap input at the E.164 max (+ and up to 15
-                                  // digits). Country-aware length/format is
-                                  // enforced by the zod schema, not here.
-                                  maxLength: 16,
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                        required={responseField.mandatory}
+                        validate={false}
                       />
                     ) : isEmailWithVerifiedList ? (
                       <SelectField

@@ -28,7 +28,10 @@ const accountDetailsSchema = z
     username: z
       .string()
       .min(3, "Username must be at least 3 characters")
-      .max(50, "Username must be less than 50 characters"),
+      .max(50, "Username must be less than 50 characters")
+      .refine((value) => !/\s/.test(value), {
+        message: "Username cannot contain spaces",
+      }),
     newPassword: z
       .string()
       .min(6, "New password must be at least 6 characters"),
@@ -204,6 +207,11 @@ export default function AccountDetailsEdit({
               <Input
                 id="username"
                 {...register("username")}
+                onChange={(e) => {
+                  // Strip whitespace so usernames can never contain spaces
+                  e.target.value = e.target.value.replace(/\s/g, "");
+                  register("username").onChange(e);
+                }}
                 placeholder="Enter your username"
                 className="h-11 text-sm"
                 disabled={isLoading}

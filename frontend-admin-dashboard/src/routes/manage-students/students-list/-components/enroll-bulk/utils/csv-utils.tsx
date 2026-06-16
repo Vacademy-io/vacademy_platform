@@ -159,6 +159,21 @@ export const validateCsvData = (
                             return;
                         }
 
+                        // Usernames must not contain spaces. Flag the row so this
+                        // learner is NOT enrolled — any error here blocks the upload
+                        // and highlights the offending USERNAME cell in the preview.
+                        // (Values are already end-trimmed above, so this catches
+                        // internal spaces like "john doe".)
+                        if (fieldName.toUpperCase() === 'USERNAME' && value && /\s/.test(value)) {
+                            allErrors.push({
+                                path: [rowIndex, fieldName],
+                                message: 'Username cannot contain spaces',
+                                resolution: 'Remove the spaces from the username',
+                                currentVal: value,
+                                format: 'No spaces allowed',
+                            });
+                        }
+
                         // If field has a value, validate according to type
                         if (value) {
                             if (header.type === 'gender') {

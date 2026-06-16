@@ -227,18 +227,21 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     // Role Display Settings (course list tabs)
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        const fetchSettings = async () => {
-            const roleKey = getActiveRoleDisplaySettingsKey();
-            const cached = getDisplaySettingsFromCache(roleKey);
-            if (cached) {
-                setRoleDisplay(cached);
-            } else {
-                getDisplaySettings(roleKey)
-                    .then(setRoleDisplay)
-                    .catch(() => setRoleDisplay(null));
-            }
-        };
-        fetchSettings();
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        // Seed from cache for an instant first paint...
+        const cached = getDisplaySettingsFromCache(roleKey);
+        if (cached) {
+            setRoleDisplay(cached);
+        }
+        // ...but always force-refresh on mount so admin policy changes (e.g.
+        // showCreateCourse / showCreateCourseWithAI) take effect on the next page
+        // load instead of being masked by the 24h localStorage cache. Mirrors the
+        // course-details page, which force-refreshes for the same reason.
+        getDisplaySettings(roleKey, true)
+            .then(setRoleDisplay)
+            .catch(() => {
+                if (!cached) setRoleDisplay(null);
+            });
     }, [roles]);
 
     // Handle tab change with URL sync

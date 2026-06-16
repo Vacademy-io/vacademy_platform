@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import {
     fetchSubOrgAdmins,
@@ -35,6 +36,7 @@ import { MyButton } from '@/components/design-system/button';
 
 export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
+    const { instituteDetails } = useInstituteDetailsStore();
     const [isLoading, setIsLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
     const [admins, setAdmins] = useState<SubOrgAdmin[] | null>(null);
@@ -166,6 +168,16 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
     const heroTone = isAdmin ? 'primary' : 'neutral';
     const roleLabel = isAdmin ? 'Admin' : 'Member';
 
+    // "Open Management Portal" must point at the institute's configured learner
+    // portal (same source as enroll-invite / audience links), falling back to the
+    // global default. learner_portal_base_url may be a bare domain, so normalize it.
+    const rawPortalBase =
+        instituteDetails?.learner_portal_base_url || BASE_URL_LEARNER_DASHBOARD;
+    const managementPortalUrl =
+        rawPortalBase.startsWith('http://') || rawPortalBase.startsWith('https://')
+            ? rawPortalBase
+            : `https://${rawPortalBase}`;
+
     return (
         <div className="flex flex-col gap-3">
             {picker}
@@ -184,7 +196,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                     {/* Admin action bar */}
                     <ProfileActionBar>
                         <a
-                            href={BASE_URL_LEARNER_DASHBOARD}
+                            href={managementPortalUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                         >

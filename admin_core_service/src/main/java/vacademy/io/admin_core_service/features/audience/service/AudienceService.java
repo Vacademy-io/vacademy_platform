@@ -1902,6 +1902,14 @@ public class AudienceService {
             filterDTO.setAssignedCounselorId(user.getUserId());
         }
 
+        // "Only leads assigned to COUNSELLOR" display setting enforcement. The
+        // leads themselves stay RBAC-scoped (subtree visibility is preserved);
+        // this setting governs ONLY the shared unassigned pool. In COUNSELOR mode
+        // we drop unassigned leads (no counsellor on either linked_users or
+        // user_lead_profile) from the result; any other mode keeps them visible
+        // to anyone in scope, as before.
+        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR;
+
         String allowedAudienceIdsCsv = null;
         if (access.getMode() == Mode.AUDIENCE_LIST) {
             List<String> allowed = access.getAllowedAudienceIds();
@@ -1972,6 +1980,7 @@ public class AudienceService {
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
                     assignedCounselorIdsCsv,
+                    includeUnassigned,
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -2000,6 +2009,7 @@ public class AudienceService {
                 filterDTO.getLeadTier(),
                 filterDTO.getAssignedCounselorId(),
                 assignedCounselorIdsCsv,
+                includeUnassigned,
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldFiltersJson,

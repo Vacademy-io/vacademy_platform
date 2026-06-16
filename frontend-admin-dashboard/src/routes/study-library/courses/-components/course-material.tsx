@@ -740,6 +740,12 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     const canCreateCourse =
         !isPermissionGated
         || hasFacultyPermission('CREATE_COURSE');
+    // Per-role override: an admin can explicitly grant course creation to a
+    // permission-gated custom role (e.g. a "Course Creator" role that carries
+    // HAS_FACULTY_ASSIGNED but has no CREATE_COURSE access mapping) via the
+    // role's Display Settings → Course Creation → "Allow creating courses".
+    const allowCreateCourseOverride = roleDisplay?.courseCreation?.showCreateCourse === true;
+    const canShowCreateCourse = canCreateCourse || allowCreateCourseOverride;
 
     if (availableTabs.length === 0) {
         return (
@@ -751,8 +757,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     Try adding a new {getTerminology(ContentTerms.Course, SystemTerms.Course)}.
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                    {canCreateCourse && <AddCourseButton />}
-                    {canCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
+                    {canShowCreateCourse && <AddCourseButton />}
+                    {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton
                             type="button"
                             scale="large"
@@ -782,8 +788,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     </div>
                 </div>
                 <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                    {canCreateCourse && <AddCourseButton />}
-                    {canCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
+                    {canShowCreateCourse && <AddCourseButton />}
+                    {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton
                             type="button"
                             scale="large"

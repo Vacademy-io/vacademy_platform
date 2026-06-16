@@ -32,6 +32,9 @@ public class ChatConversationMember {
     @Column(name = "user_role", length = 64)
     private String userRole; // normalized snapshot: STUDENT | TEACHER | ADMIN
 
+    @Column(name = "user_name")
+    private String userName; // display-name snapshot — used to title a DIRECT conversation (the other member's name)
+
     @Column(name = "member_role", nullable = false, length = 32)
     private String memberRole = "MEMBER"; // ChatMemberRole
 

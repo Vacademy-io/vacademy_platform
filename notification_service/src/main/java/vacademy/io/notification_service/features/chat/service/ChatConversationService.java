@@ -87,8 +87,9 @@ public class ChatConversationService {
                 .updatedAt(LocalDateTime.now())
                 .build();
         conv = convRepo.saveAndFlush(conv);
-        saveMember(conv.getId(), callerId, ChatPermissionService.normalizeRole(callerRole).toUpperCase(), ChatMemberRole.MEMBER);
-        saveMember(conv.getId(), targetId, ChatPermissionService.normalizeRole(req.getTargetUserRole()).toUpperCase(), ChatMemberRole.MEMBER);
+        // Store each participant's display name so the DM can be titled with the OTHER member's name.
+        saveMember(conv.getId(), callerId, ChatPermissionService.normalizeRole(callerRole).toUpperCase(), callerName, ChatMemberRole.MEMBER);
+        saveMember(conv.getId(), targetId, ChatPermissionService.normalizeRole(req.getTargetUserRole()).toUpperCase(), req.getTargetUserName(), ChatMemberRole.MEMBER);
         return conv;
     }
 
@@ -172,7 +173,8 @@ public class ChatConversationService {
         }
         List<ChatConversationMember> rows = new ArrayList<>(roleByUser.size());
         for (Map.Entry<String, String> e : roleByUser.entrySet()) {
-            rows.add(newMember(conversationId, e.getKey(), e.getValue(), ChatMemberRole.MEMBER));
+            // Batch members: name not needed (group is titled by batch name; messages carry sender names).
+            rows.add(newMember(conversationId, e.getKey(), e.getValue(), null, ChatMemberRole.MEMBER));
         }
         memberRepo.saveAll(rows);
     }
@@ -201,18 +203,19 @@ public class ChatConversationService {
             }
             return m;
         }
-        return saveMember(conv.getId(), userId, ChatPermissionService.normalizeRole(userRole).toUpperCase(), memberRole);
+        return saveMember(conv.getId(), userId, ChatPermissionService.normalizeRole(userRole).toUpperCase(), null, memberRole);
     }
 
-    private ChatConversationMember saveMember(String conversationId, String userId, String userRole, ChatMemberRole memberRole) {
-        return memberRepo.save(newMember(conversationId, userId, userRole, memberRole));
+    private ChatConversationMember saveMember(String conversationId, String userId, String userRole, String userName, ChatMemberRole memberRole) {
+        return memberRepo.save(newMember(conversationId, userId, userRole, userName, memberRole));
     }
 
-    private ChatConversationMember newMember(String conversationId, String userId, String userRole, ChatMemberRole memberRole) {
+    private ChatConversationMember newMember(String conversationId, String userId, String userRole, String userName, ChatMemberRole memberRole) {
         return ChatConversationMember.builder()
                 .conversationId(conversationId)
                 .userId(userId)
                 .userRole(userRole)
+                .userName(userName)
                 .memberRole(memberRole.name())
                 .lastReadSeq(0L)
                 .muted(false)
@@ -291,11 +294,16 @@ public class ChatConversationService {
         long unread = Math.max(0, Math.min(UNREAD_CAP, lastSeq - readSeq));
 
         String otherUserId = null;
+        String title = c.getTitle();
         boolean canPost;
         if (ChatConversationType.DIRECT.name().equals(c.getType())) {
             ChatConversationMember other = activeMembers.stream()
                     .filter(m -> !m.getUserId().equals(callerId)).findFirst().orElse(null);
             otherUserId = other != null ? other.getUserId() : null;
+            // A DIRECT conversation has no stored title — show the OTHER participant's name (per-viewer).
+            if (other != null && other.getUserName() != null && !other.getUserName().isBlank()) {
+                title = other.getUserName();
+            }
             canPost = permissionService.canDirectMessage(c.getInstituteId(), callerRole, other != null ? other.getUserRole() : null);
         } else if (ChatConversationType.BATCH_GROUP.name().equals(c.getType())) {
             canPost = permissionService.canPostToBatch(c.getInstituteId(), callerRole);
@@ -308,7 +316,7 @@ public class ChatConversationService {
                 .type(c.getType())
                 .instituteId(c.getInstituteId())
                 .referenceId(c.getReferenceId())
-                .title(c.getTitle())
+                .title(title)
                 .otherUserId(otherUserId)
                 .lastMessagePreview(c.getLastMessagePreview())
                 .lastMessageSenderId(c.getLastMessageSenderId())

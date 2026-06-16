@@ -826,9 +826,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
-                                        showCreateCourse:
-                                            prev.courseCreation?.showCreateCourse ??
-                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI: checked,
                                         requirePackageSelectionForNewChapter:
                                             prev.courseCreation
@@ -858,9 +856,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
-                                        showCreateCourse:
-                                            prev.courseCreation?.showCreateCourse ??
-                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -887,9 +883,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
-                                        showCreateCourse:
-                                            prev.courseCreation?.showCreateCourse ??
-                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -917,9 +911,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
-                                        showCreateCourse:
-                                            prev.courseCreation?.showCreateCourse ??
-                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,

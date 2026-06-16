@@ -106,6 +106,10 @@ export interface CourseContentTypeSettings {
 }
 
 export interface CourseCreationSettings {
+    // Allow a permission-gated custom role to see the "Add Course" button even
+    // without a CREATE_COURSE access mapping. Opt-in per role; undefined/false
+    // preserves the default gating (admins/CREATE_COURSE holders only).
+    showCreateCourse?: boolean;
     // Whether to expose the "Create Course with AI" entry points
     showCreateCourseWithAI: boolean;
     // Require selecting package sessions when creating a new chapter

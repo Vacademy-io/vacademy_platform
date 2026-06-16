@@ -79,15 +79,18 @@ public class BulkLearnerManagementController {
      */
     @PostMapping("/deassign")
     public ResponseEntity<BulkDeassignResponseDTO> bulkDeassign(
-            @RequestBody BulkDeassignRequestDTO request) {
+            @RequestBody BulkDeassignRequestDTO request,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
 
-        log.info("Bulk deassign request: instituteId={}, users={}, packageSessions={}, dryRun={}",
+        log.info("Bulk deassign request: instituteId={}, users={}, packageSessions={}, dryRun={}, admin={}",
                 request.getInstituteId(),
                 request.getUserIds() != null ? request.getUserIds().size() : 0,
                 request.getPackageSessionIds() != null ? request.getPackageSessionIds().size() : 0,
-                request.getOptions() != null && request.getOptions().isDryRun());
+                request.getOptions() != null && request.getOptions().isDryRun(),
+                userDetails != null ? userDetails.getUserId() : "unknown");
 
-        BulkDeassignResponseDTO response = bulkDeassignmentService.bulkDeassign(request);
+        String adminUserId = userDetails != null ? userDetails.getUserId() : null;
+        BulkDeassignResponseDTO response = bulkDeassignmentService.bulkDeassign(request, adminUserId);
 
         log.info("Bulk deassign complete: total={}, success={}, failed={}, skipped={}, dryRun={}",
                 response.getSummary().getTotalRequested(),

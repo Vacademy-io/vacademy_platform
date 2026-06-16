@@ -64,7 +64,12 @@ public class LearnerTerminationWorkflowHelper {
                         .orElse(null);
 
                 Map<String, Object> contextData = new HashMap<>();
+                // Expose the terminated learner under both "member" and "user" — the
+                // latter is what trigger configs reference (e.g. idempotency expression
+                // #ctx['user']['email'] and SEND_EMAIL templates), matching the
+                // user/member convention seeded for the learner workflows.
                 contextData.put("member", member);
+                contextData.put("user", member);
                 contextData.put("packageSessionIds", packageSessionId);
                 contextData.put("packageId", packageId);
                 contextData.put("admin", admin);

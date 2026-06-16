@@ -8,6 +8,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.manager.LearnerTerminationWorkflowHelper;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
@@ -36,6 +37,7 @@ public class BulkDeassignmentService {
     private final UserPlanService userPlanService;
     private final AuthService authService;
     private final PackageSessionService packageSessionService;
+    private final LearnerTerminationWorkflowHelper learnerTerminationWorkflowHelper;
 
     private static final String MODE_SOFT = "SOFT";
     private static final String MODE_HARD = "HARD";
@@ -43,7 +45,7 @@ public class BulkDeassignmentService {
     /**
      * Main entry point for bulk de-assignment.
      */
-    public BulkDeassignResponseDTO bulkDeassign(BulkDeassignRequestDTO request) {
+    public BulkDeassignResponseDTO bulkDeassign(BulkDeassignRequestDTO request, String adminUserId) {
         validateRequest(request);
 
         DeassignOptionsDTO options = request.getOptions() != null
@@ -67,17 +69,50 @@ public class BulkDeassignmentService {
         // 3. Process each (user × packageSession) pair
         List<BulkDeassignResponseDTO.DeassignResultItemDTO> results = new ArrayList<>();
 
+        // Track real (non-dry-run) successful de-assignments so we can fire the
+        // LEARNER_TERMINATION workflow once the writes are durable. Grouped by user
+        // so the helper resolves each user from auth-service only once.
+        Map<String, List<String>> terminatedPackageSessionsByUser = new LinkedHashMap<>();
+
         for (String packageSessionId : request.getPackageSessionIds()) {
             for (String userId : allUserIds) {
                 BulkDeassignResponseDTO.DeassignResultItemDTO result = processDeassignment(userId, userMap,
                         packageSessionId,
                         request.getInstituteId(), mode, dryRun);
                 results.add(result);
+
+                if (!dryRun && "SUCCESS".equals(result.getStatus())) {
+                    terminatedPackageSessionsByUser
+                            .computeIfAbsent(userId, k -> new ArrayList<>())
+                            .add(packageSessionId);
+                }
             }
         }
 
-        // 4. Build response
+        // 4. Fire LEARNER_TERMINATION workflows for the real de-assignments,
+        //    scoped by eventId=packageSessionId + instituteId.
+        fireTerminationWorkflows(terminatedPackageSessionsByUser, request.getInstituteId(), adminUserId);
+
+        // 5. Build response
         return buildResponse(dryRun, results);
+    }
+
+    /**
+     * Fire the LEARNER_TERMINATION workflow for each user that was actually
+     * de-assigned — one trigger per package session (eventId = packageSessionId),
+     * scoped to the institute.
+     *
+     * <p>Delegates to the {@code @Async} helper bean so firing runs off the request
+     * thread (a separate bean is required for Spring's async proxy to apply). Skipped
+     * for dry runs (no rows are collected). Best-effort: the de-assignment writes have
+     * already committed, so a workflow failure must never affect the API response —
+     * the helper swallows per-trigger errors internally.
+     */
+    private void fireTerminationWorkflows(Map<String, List<String>> terminatedPackageSessionsByUser,
+                                          String instituteId, String adminUserId) {
+        terminatedPackageSessionsByUser.forEach((userId, packageSessionIds) ->
+                learnerTerminationWorkflowHelper.fireTerminationWorkflows(
+                        userId, packageSessionIds, instituteId, adminUserId));
     }
 
     // ========================= PRIVATE METHODS =========================

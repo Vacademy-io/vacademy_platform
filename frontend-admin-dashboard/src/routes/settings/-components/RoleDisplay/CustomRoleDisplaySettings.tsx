@@ -60,6 +60,7 @@ const CUSTOM_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
 ];
 
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
+    showCreateCourse: false,
     showCreateCourseWithAI: false,
     requirePackageSelectionForNewChapter: true,
     showAdvancedSettings: true,
@@ -780,10 +781,40 @@ export default function CustomRoleDisplaySettings({
                 <CardHeader>
                     <CardTitle>Course Creation</CardTitle>
                     <CardDescription>
-                        Configure AI course creation entry points and chapter setup defaults.
+                        Control who can create courses, AI entry points, and chapter setup
+                        defaults.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            Allow creating courses (show &quot;Add Course&quot; button)
+                        </div>
+                        <Switch
+                            checked={settings.courseCreation?.showCreateCourse === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseCreation: {
+                                        showCreateCourse: checked,
+                                        showCreateCourseWithAI:
+                                            prev.courseCreation?.showCreateCourseWithAI ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
+                                        requirePackageSelectionForNewChapter:
+                                            prev.courseCreation
+                                                ?.requirePackageSelectionForNewChapter ??
+                                            COURSE_CREATION_DEFAULTS.requirePackageSelectionForNewChapter,
+                                        showAdvancedSettings:
+                                            prev.courseCreation?.showAdvancedSettings ??
+                                            COURSE_CREATION_DEFAULTS.showAdvancedSettings,
+                                        limitToSingleLevel:
+                                            prev.courseCreation?.limitToSingleLevel ??
+                                            COURSE_CREATION_DEFAULTS.limitToSingleLevel,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">Show &quot;Create Course with AI&quot;</div>
                         <Switch
@@ -795,6 +826,9 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse:
+                                            prev.courseCreation?.showCreateCourse ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
                                         showCreateCourseWithAI: checked,
                                         requirePackageSelectionForNewChapter:
                                             prev.courseCreation
@@ -824,6 +858,9 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse:
+                                            prev.courseCreation?.showCreateCourse ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -850,6 +887,9 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse:
+                                            prev.courseCreation?.showCreateCourse ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -877,6 +917,9 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse:
+                                            prev.courseCreation?.showCreateCourse ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,

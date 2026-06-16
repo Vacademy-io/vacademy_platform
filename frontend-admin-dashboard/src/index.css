@@ -870,3 +870,28 @@ body .yoopta-accordion-list-item-content [data-slate-placeholder='true'] {
     opacity: 1 !important;
 }
 
+/* Continuous numbered-list numbering in the Yoopta editor.
+   Yoopta computes each item's number from its position in a consecutive run and
+   RESETS after any non-list block — so a numbered list interrupted by an image
+   restarts at 1 (…, 4, [image], 1). We hide Yoopta's computed number and drive
+   it with a single continuous CSS counter instead, so the steps keep counting
+   across the image (…, 4, [image], 5, 6 …). Mirrors the learner-side fix in
+   DocumentWithMermaid so the editor and the published view agree.
+   Trade-offs (accepted): every numbered list in one document shares one
+   sequence — two genuinely separate numbered lists in the same doc continue
+   rather than restart, and a NESTED numbered list counts in the same sequence
+   as its parent. Both are fine for flat step-by-step content. */
+.yoopta-editor {
+    counter-reset: yoo-numbered-list;
+}
+.yoopta-editor .yoopta-numbered-list {
+    counter-increment: yoo-numbered-list;
+}
+.yoopta-editor .yoopta-numbered-list-count {
+    font-size: 0; /* hide Yoopta's own "N." text, keep the absolutely-positioned slot */
+}
+.yoopta-editor .yoopta-numbered-list-count::before {
+    content: counter(yoo-numbered-list) '.';
+    font-size: 16px; /* matches .yoopta-numbered-list font-size */
+}
+

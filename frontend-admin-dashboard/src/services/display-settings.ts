@@ -558,6 +558,13 @@ function mergeDisplayWithDefaults(
         };
     }
 
+    // Leads-filter custom fields (institute-wide: which custom fields show as
+    // filters on the leads views). Pass the saved list through so it survives
+    // this field-by-field merge — otherwise it's silently dropped on every read
+    // (and on the post-save cache write), so the toggles reset on refresh.
+    merged.leadsFilterCustomFields =
+        incoming?.leadsFilterCustomFields ?? defaults.leadsFilterCustomFields ?? [];
+
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
     // suddenly locked out of either flow.

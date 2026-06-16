@@ -1,6 +1,7 @@
 import { GET_CAMPAIGN_USERS } from '@/constants/urls';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import type { LeadCustomFieldFilter } from './get-lead-custom-field-values';
 
 export interface CampaignLeadUser {
     response_id?: string;
@@ -56,10 +57,11 @@ export interface CampaignLeadsResponse {
     content: CampaignLeadUser[];
 }
 
-export interface CustomFieldFilter {
-    field_id: string;
-    value: string;
-}
+/**
+ * @deprecated Use {@link LeadCustomFieldFilter} ({field_id, values[]}). Kept as a
+ * re-export so existing imports keep resolving.
+ */
+export type CustomFieldFilter = LeadCustomFieldFilter;
 
 export interface CampaignLeadsRequest {
     audience_id: string;
@@ -76,10 +78,11 @@ export interface CampaignLeadsRequest {
     lead_tier?: string;
     // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
     lead_status_id?: string;
-    // Per-dropdown-field filters. Each entry narrows the result to responses
-    // whose custom_field_values row matches ({field_id, value}). Multiple
-    // entries are AND-combined on the backend.
-    custom_field_filters?: CustomFieldFilter[];
+    // Per-custom-field filters. Each entry narrows the result to responses
+    // whose custom_field_values row matches ({field_id, one of values}). Within
+    // an entry the values are OR-combined; across entries the backend
+    // AND-combines them.
+    custom_field_filters?: LeadCustomFieldFilter[];
     // Conversion-state filter:
     //   undefined / 'EXCLUDE_CONVERTED' → hide leads who've been assigned to a course
     //   'ONLY_CONVERTED'                → only show those leads
@@ -162,10 +165,10 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
             payload.sla_filter ?? '',
             payload.assigned_counselor_id ?? '',
-            // Stable cache key for an order-independent set of dropdown filters.
+            // Stable cache key for an order-independent set of custom-field filters.
             payload.custom_field_filters
                 ? payload.custom_field_filters
-                      .map((f) => `${f.field_id}=${f.value}`)
+                      .map((f) => `${f.field_id}=${[...f.values].sort().join(',')}`)
                       .sort()
                       .join('|')
                 : '',

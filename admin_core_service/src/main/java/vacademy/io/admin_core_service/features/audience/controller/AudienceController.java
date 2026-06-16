@@ -148,6 +148,24 @@ public class AudienceController {
         return ResponseEntity.ok(lead);
     }
 
+    /**
+     * Distinct values a custom field actually holds across the institute's
+     * leads, searchable and paginated. Powers the multi-select custom-field
+     * dropdowns in the leads filter bar (e.g. listing every city leads have
+     * entered into a free-text "City" field). The frontend only calls this for
+     * custom fields the admin has enabled as leads filters in settings.
+     */
+    @GetMapping("/custom-field-values")
+    public ResponseEntity<Page<String>> getLeadCustomFieldValues(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("customFieldId") String customFieldId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
+        return ResponseEntity.ok(
+                audienceService.getLeadCustomFieldValues(instituteId, customFieldId, search, pageNo, pageSize));
+    }
+
     @DeleteMapping("/lead/{responseId}")
     public ResponseEntity<String> deleteLead(@PathVariable String responseId) {
         audienceService.deleteLead(responseId);

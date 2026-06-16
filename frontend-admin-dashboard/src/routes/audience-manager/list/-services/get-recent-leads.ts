@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_CAMPAIGN_USERS } from '@/constants/urls';
+import type { LeadCustomFieldFilter } from './get-lead-custom-field-values';
 
 // The backend endpoint POST /admin-core-service/v1/audience/leads accepts a
 // `LeadFilterDTO`. When `audience_id` is omitted it returns leads across every
@@ -86,6 +87,10 @@ export interface RecentLeadsRequest {
     /** Filter by lead source — WEBSITE / META / GOOGLE / ORGANIC / … Maps to
      *  LeadFilterDTO.sourceType. Omitted = all sources. */
     source_type?: string;
+    /** Per-custom-field filters. Each entry narrows results to leads whose
+     *  custom_field_values row for {field_id} matches one of {values} (OR within
+     *  the entry); across entries the backend AND-combines them. Omitted = none. */
+    custom_field_filters?: LeadCustomFieldFilter[];
     page: number;
     size: number;
 }

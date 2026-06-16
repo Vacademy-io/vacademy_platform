@@ -31,6 +31,7 @@ import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
+import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1981,6 +1982,19 @@ export default function AdminDisplaySettings() {
                     updateSettings((prev) => ({
                         ...prev,
                         learnerListColumns: next,
+                    }))
+                }
+            />
+
+            {/* Institute-wide (applies to all roles): which custom fields are leads
+                filters on the Lead List / Recent Leads. Persisted with the rest of
+                this blob via the shared unsaved-changes bar. */}
+            <LeadsFilterCustomFieldsCard
+                value={settings.leadsFilterCustomFields ?? []}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        leadsFilterCustomFields: next,
                     }))
                 }
             />

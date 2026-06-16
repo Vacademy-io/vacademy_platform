@@ -14,7 +14,7 @@ import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide
 import { UserActivity } from '@/types/study-library/activity-stats-response-type';
 import { useActivityStatsStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/activity-stats-store';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
-import { useGetPackageSessionId } from '@/utils/helpers/study-library-helpers.ts/get-list-from-stores/getPackageSessionId';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export const ActivityStatsSidebar = () => {
     const [open, setOpen] = useState(false);
@@ -49,9 +49,15 @@ export const ActivityStatsSidebar = () => {
         sessionId?: string;
     };
     const { activeItem } = useContentStore();
+    const { getPackageSessionId } = useInstituteDetailsStore();
     const slideId = routeSlideId || activeItem?.id || '';
     // The slide is shared across batches; scope the activity list to the batch being viewed.
-    const packageSessionId = useGetPackageSessionId(courseId ?? '', sessionId ?? '', levelId ?? '');
+    const packageSessionId =
+        getPackageSessionId({
+            courseId: courseId ?? '',
+            levelId: levelId ?? '',
+            sessionId: sessionId ?? '',
+        }) ?? undefined;
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,

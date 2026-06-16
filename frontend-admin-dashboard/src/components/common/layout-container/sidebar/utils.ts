@@ -304,6 +304,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'Chat',
+                subItemLink: '/chat',
+                subItemId: 'chat',
+            },
+            {
                 subItem: 'Notification Hub',
                 subItemLink: '/communication/notification-hub',
                 subItemId: 'notification-hub',

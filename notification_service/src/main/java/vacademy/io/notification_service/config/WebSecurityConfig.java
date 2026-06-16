@@ -76,6 +76,11 @@ public class WebSecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authz -> {
+                    // Chat endpoints require a valid authenticated principal. This MUST be registered
+                    // before the broad "/notification-service/v1/**" permitAll below, which would
+                    // otherwise swallow them. Scoped to /v1/chat/** only — no other endpoint is affected.
+                    authz.requestMatchers(AntPathRequestMatcher.antMatcher("/notification-service/v1/chat/**")).authenticated();
+
                     // Use AntPathRequestMatcher for Ant-style pattern matching (compatible with
                     // Spring 6)
                     for (String path : ALLOWED_PATHS) {

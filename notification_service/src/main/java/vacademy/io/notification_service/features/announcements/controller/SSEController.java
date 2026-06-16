@@ -197,7 +197,7 @@ public class SSEController {
     private boolean isValidModeType(String modeType) {
         try {
             // Check against valid mode types
-            return modeType.matches("^(SYSTEM_ALERT|DASHBOARD_PIN|DM|STREAM|RESOURCES|COMMUNITY|TASKS)$");
+            return modeType.matches("^(SYSTEM_ALERT|DASHBOARD_PIN|DM|STREAM|RESOURCES|COMMUNITY|TASKS|CHAT)$");
         } catch (Exception e) {
             return false;
         }

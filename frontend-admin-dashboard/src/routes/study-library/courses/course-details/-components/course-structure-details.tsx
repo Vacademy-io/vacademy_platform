@@ -116,6 +116,8 @@ import { useCopyCourseContent } from '@/services/study-library/course-operations
 import { handleGetSlideCountDetails } from '../-services/get-slides-count';
 import { CopyContentLineageBadge } from './CopyContentLineageBadge';
 import { BulkUploadDialogButton } from '@/components/common/study-library/bulk-content-uploading/bulk-upload-dialog-button';
+import { BatchChatPanel } from '@/components/chat/BatchChatPanel';
+import { getNotificationSettings } from '@/services/notification-settings';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -4552,6 +4554,13 @@ export const CourseStructureDetails = ({
                 <Activity packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
+        [TabType.DISCUSSION]: batchPackageSessionId ? (
+            <BatchChatPanel packageSessionId={batchPackageSessionId} />
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its discussion.
+            </div>
+        ),
     };
 
     const isLoading =
@@ -4562,9 +4571,33 @@ export const CourseStructureDetails = ({
         updateModuleMutation.isPending ||
         updateChapterMutation.isPending;
 
-    // Compute final visible/reordered tabs once for rendering below
+    // Chat-enabled gate for the Discussion tab. Defaults to showing the tab while
+    // loading or on error — the BatchChatPanel's CHAT_DISABLED empty-state is the
+    // backstop if chat is actually off.
+    const notificationSettingsQuery = useQuery({
+        queryKey: ['notification-settings'],
+        queryFn: getNotificationSettings,
+        refetchOnWindowFocus: false,
+    });
+    // Chat is OFF by default — only show the Discussion tab when an institute has explicitly enabled it.
+    const isChatEnabled =
+        notificationSettingsQuery.data?.settings?.chat?.enabled === true;
+
+    // If chat gets disabled while the Discussion tab is open, move off it so we don't leave an
+    // orphaned panel whose trigger has vanished from the tab strip.
+    useEffect(() => {
+        if (selectedTab === TabType.DISCUSSION && !isChatEnabled) {
+            setSelectedTab(TabType.OUTLINE);
+            localStorage.setItem(getStorageKey(), TabType.OUTLINE);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isChatEnabled, selectedTab]);
+
+    // Compute final visible/reordered tabs once for rendering below.
+    // Discussion is handled separately (gated on chat-enabled) and conditionally
+    // appended after the role/settings reorder pipeline below.
     const finalTabs = (() => {
-        let reorderedTabs = [...tabs];
+        let reorderedTabs = tabs.filter((tab) => tab.value !== TabType.DISCUSSION);
 
         const details = roleDisplay?.courseDetails;
         if (details?.tabs && details.tabs.length > 0) {
@@ -4606,6 +4639,12 @@ export const CourseStructureDetails = ({
                     }
                 }
             }
+        }
+
+        // Append the Discussion tab last, only when chat is enabled for the institute.
+        if (isChatEnabled) {
+            const discussionTab = tabs.find((tab) => tab.value === TabType.DISCUSSION);
+            if (discussionTab) reorderedTabs = [...reorderedTabs, discussionTab];
         }
 
         return reorderedTabs;

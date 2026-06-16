@@ -67,12 +67,13 @@ import { Preferences } from "@capacitor/preferences";
 // import { CODE_CIRCLE_INSTITUTE_ID } from "@/constants/urls";
 // import { getInstituteId } from "@/constants/urls";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { getChatEnabled } from "@/services/chat/getChatEnabled";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { useEnrollmentStatus } from "@/hooks/use-enrollment-status";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
-import { PackageSessionMessages } from "@/components/announcements";
+import { BatchChatPanel } from "@/components/chat/BatchChatPanel";
 import { calculateOverallCompletion } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getFilePublicUrlQuery } from "@/services/file-url-cache";
 import { getLatestResume } from "@/services/resume-thread";
@@ -344,7 +345,7 @@ export const CourseStructureDetails = ({
     // entries below are intentionally retained for when they go live).
     const placeholderTabs: string[] = [TabType.TEACHERS, TabType.ASSESSMENT];
 
-    getStudentDisplaySettings(false).then((settings) => {
+    getStudentDisplaySettings(false).then(async (settings) => {
       const tabsSetting = settings?.courseDetails?.tabs || [];
       const ordered = tabsSetting
         .filter((t) => t.visible !== false)
@@ -358,9 +359,13 @@ export const CourseStructureDetails = ({
         }))
         .filter((t) => !placeholderTabs.includes(t.value));
 
-      // Check if course discussion should be shown based on student display settings
-      const shouldShowCourseDiscussion =
-        settings?.notifications?.allowBatchStream === true;
+      // The Course Discussion tab is gated on chat being enabled for the
+      // institute (chat is OFF by default; getChatEnabled fails closed when
+      // the flag is unknown/loading/errored). chat.enabled is now the
+      // authoritative gate — the legacy notifications.allowBatchStream flag no
+      // longer controls this tab.
+      const chatEnabled = await getChatEnabled();
+      const shouldShowCourseDiscussion = chatEnabled === true;
       // setShowCourseDiscussion(shouldShowCourseDiscussion);
 
       // Fallback: ensure CONTENT_STRUCTURE appears if visible in settings but mapping missed
@@ -2735,7 +2740,7 @@ export const CourseStructureDetails = ({
     [TabType.COURSE_DISCUSSION]: (
       <div className="space-y-4">
         {packageSessionId ? (
-          <PackageSessionMessages packageSessionId={packageSessionId} />
+          <BatchChatPanel packageSessionId={packageSessionId} />
         ) : (
           <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
             <div className="flex items-center gap-3 mb-3">
@@ -2743,12 +2748,16 @@ export const CourseStructureDetails = ({
                 <span className="text-white text-xs font-bold">D</span>
               </div>
               <span className="font-medium text-neutral-700">
-                Course Discussion
+                {getTerminology(ContentTerms.Batch, SystemTerms.Batch)} Discussion
               </span>
             </div>
             <p className="text-neutral-500">
-              Course discussion will be available once you enroll in this
-              course.
+              Select a{" "}
+              {getTerminology(
+                ContentTerms.Batch,
+                SystemTerms.Batch,
+              ).toLowerCase()}{" "}
+              to view its discussion.
             </p>
           </div>
         )}

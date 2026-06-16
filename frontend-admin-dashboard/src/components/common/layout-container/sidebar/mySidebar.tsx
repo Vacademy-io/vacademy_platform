@@ -47,6 +47,7 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getNotificationSettings } from '@/services/notification-settings';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { cn } from '@/lib/utils';
 import { useNavigate, useRouter } from '@tanstack/react-router';
@@ -108,6 +109,19 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         ...getSubOrgInstituteQuery(selectedSubOrgId ?? null),
         enabled: !!selectedSubOrgId,
     });
+
+    // Chat-enabled gate for the Communications > Chat sidebar entry. Chat is OFF
+    // by default — only surface the entry when an institute has explicitly enabled
+    // it. Fail closed: isChatEnabled stays false while the query is loading or on
+    // error, so the entry is hidden until we confirm chat is on. Reuses the cached
+    // ['notification-settings'] query if it was already fetched elsewhere.
+    const notificationSettingsQuery = useQuery({
+        queryKey: ['notification-settings'],
+        queryFn: getNotificationSettings,
+        refetchOnWindowFocus: false,
+    });
+    const isChatEnabled =
+        notificationSettingsQuery.data?.settings?.chat?.enabled === true;
 
     useEffect(() => {
         setIsVoltSubdomain(
@@ -210,9 +224,19 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
 
     // Compute final sidebar items (same logic as before)
     const finalSidebarItems = (() => {
-        const base = isVoltSubdomain
+        const rawBase = isVoltSubdomain
             ? voltSidebarData
             : filterMenuItems(getSidebarItemsData(), data?.id || '', isTabVisible, isSubItemVisible);
+        // Chat is OFF by default. Strip the Communications > Chat sub-item unless the
+        // institute has explicitly enabled chat. Fail closed: isChatEnabled is false
+        // while the notification-settings query is loading/errored, so the entry stays
+        // hidden until we confirm chat is on.
+        const base = isChatEnabled
+            ? rawBase
+            : rawBase.map((item) => ({
+                  ...item,
+                  subItems: item.subItems?.filter((s) => s.subItemId !== 'chat'),
+              }));
         if (!roleDisplay) return base;
 
         // Build a lookup of what each sidebar item would look like with system

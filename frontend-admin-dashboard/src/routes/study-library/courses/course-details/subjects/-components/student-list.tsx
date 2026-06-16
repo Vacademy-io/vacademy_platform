@@ -1,5 +1,6 @@
 import { useStudentFilters } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { useStudentTable } from '@/routes/manage-students/students-list/-hooks/useStudentTable';
+import { useStudentCounts } from '@/routes/manage-students/students-list/-hooks/useStudentCounts';
 import { InviteFormProvider } from '@/routes/manage-students/invite/-context/useInviteFormContext';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { EmptyStudentListImage } from '@/assets/svgs';
@@ -153,6 +154,11 @@ const Students = ({
         handlePageChange,
     } = useStudentTable(appliedFilters, setAppliedFilters, [packageSessionId]);
 
+    // Header Total/Active/Inactive badges. appliedFilters already pins this batch's
+    // package_session_ids, so the counts match the table below (and the third arg is a
+    // belt-and-suspenders fallback for the hook's empty-batch path).
+    const studentCounts = useStudentCounts(appliedFilters, !loadingData, [packageSessionId]);
+
     // Fetch accessible invites for this package session (API-filtered by FSPSSM)
     const instituteId = getInstituteId();
     const { data: invitesForFilter } = useQuery({
@@ -242,7 +248,15 @@ const Students = ({
                     {/* <BulkDialogProvider>
                     <EnrollStudentsButton scale="medium" />
                 </BulkDialogProvider> */}
-                    <StudentListHeader currentSession={currentSession} titleSize="text-base" packageSessionId={packageSessionId} />
+                    <StudentListHeader
+                        currentSession={currentSession}
+                        titleSize="text-base"
+                        packageSessionId={packageSessionId}
+                        total={studentCounts.total}
+                        active={studentCounts.active}
+                        inactive={studentCounts.inactive}
+                        countsLoading={studentCounts.isLoading}
+                    />
                 </InviteFormProvider>
                 {/* Filter section here */}
                 <StudentFilters

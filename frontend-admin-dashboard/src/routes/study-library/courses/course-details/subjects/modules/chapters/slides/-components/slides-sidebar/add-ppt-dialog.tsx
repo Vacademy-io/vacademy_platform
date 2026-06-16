@@ -15,9 +15,10 @@ import * as pdfjs from 'pdfjs-dist';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CheckCircle, PresentationChart } from '@phosphor-icons/react';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
-import { CONVERT_PPT_TO_PDF_URL } from '@/constants/urls';
+import { CONVERT_PPT_TO_PDF_BY_ID_URL } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { UploadFileInS3 } from '@/services/upload_file';
 import {
     buildAppendReorderPayload,
     getNextSlideOrder,
@@ -33,19 +34,31 @@ interface FormData {
 /**
  * Converts a PPT/PPTX file to PDF using the media-service API.
  * Returns the PDF as a File object.
+ *
+ * The presentation is uploaded directly to S3 via a pre-signed URL and only its
+ * fileId is sent to media-service for conversion. This keeps the large upload off
+ * the nginx/Spring request path, which otherwise rejects big decks with a 413.
  */
 export async function convertPptToPdf(file: File): Promise<File> {
-    const formData = new globalThis.FormData();
-    formData.append('file', file);
-
     try {
+        // 1. Upload the presentation straight to S3 (bypasses the request-size limit).
+        const accessToken = getTokenFromCookie(TokenKey.accessToken);
+        const decoded = getTokenDecodedData(accessToken) as
+            | { userId?: string; sub?: string; authorities?: Record<string, unknown> }
+            | undefined;
+        const userId = decoded?.userId || decoded?.sub || '';
+        const instituteId = (decoded?.authorities && Object.keys(decoded.authorities)[0]) || 'STUDENTS';
+
+        const fileId = await UploadFileInS3(file, () => {}, userId, 'PPT_TO_PDF', instituteId, false);
+        if (!fileId) {
+            throw new Error('Failed to upload presentation for conversion.');
+        }
+
+        // 2. Convert the uploaded file by id (tiny request body, no 413).
         const response = await authenticatedAxiosInstance.post(
-            `${CONVERT_PPT_TO_PDF_URL}?quality=high`,
-            formData,
-            {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                responseType: 'blob',
-            }
+            `${CONVERT_PPT_TO_PDF_BY_ID_URL}?quality=high`,
+            { file_id: fileId, file_name: file.name },
+            { responseType: 'blob' }
         );
 
         const pdfBlob = new Blob([response.data], { type: 'application/pdf' });

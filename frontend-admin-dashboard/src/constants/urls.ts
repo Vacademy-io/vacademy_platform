@@ -212,6 +212,7 @@ export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/v1/refresh-token`;
 
 export const UPLOAD_DOCS_FILE_URL = `${BASE_URL}/media-service/convert/doc-to-html`;
 export const CONVERT_PPT_TO_PDF_URL = `${BASE_URL}/media-service/convert/ppt-to-pdf`;
+export const CONVERT_PPT_TO_PDF_BY_ID_URL = `${BASE_URL}/media-service/convert/ppt-to-pdf-by-id`;
 export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/rating`;
 export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/rating/get-source-ratings-admin`;
 export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/rating/summary`;

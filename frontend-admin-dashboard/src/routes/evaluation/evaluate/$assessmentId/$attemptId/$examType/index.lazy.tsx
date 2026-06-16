@@ -13,20 +13,40 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
+import { CaretLeft } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import {
+    readEvalReturnUrl,
+    clearEvalReturnUrl,
+} from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 
 export const Route = createLazyFileRoute('/evaluation/evaluate/$assessmentId/$attemptId/$examType/')({
     component: () => (
-        <LayoutContainer>
+        // Full-bleed workspace: the evaluator manages its own viewport-bounded
+        // height + internal scrolling, so we drop the standard page margins.
+        <LayoutContainer intrnalMargin={false}>
             <EvaluateAttemptComponent />
         </LayoutContainer>
     ),
 });
 
+// Return to wherever the admin launched the evaluator from (e.g. the assessment
+// slide); otherwise just go back in history.
+const goBack = () => {
+    const returnUrl = readEvalReturnUrl();
+    if (returnUrl) {
+        clearEvalReturnUrl();
+        window.location.assign(returnUrl);
+    } else {
+        window.history.back();
+    }
+};
+
 const EvaluateAttemptComponent = () => {
     const { attemptId, assessmentId, examType } = Route.useParams();
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
-    const [fileUrl, setFileUrl] = useState<string>();
     const [file, setFile] = useState<File | null>(null);
+    const [fetchError, setFetchError] = useState(false);
     const { data: attemptDetails, isLoading: isAttemptLoading } = useSuspenseQuery(
         getAttemptDetails(attemptId)
     );
@@ -46,38 +66,75 @@ const EvaluateAttemptComponent = () => {
         })
     );
 
+    const assessmentVisibility =
+        assessmentDetails?.[1]?.saved_data?.assessment_visibility ??
+        assessmentDetails?.[0]?.saved_data?.assessment_visibility;
+
     const { setNavHeading } = useNavHeadingStore();
 
+    // Resolve the student's answer file id → public URL → File. Extracted so the
+    // error state can offer a retry instead of an indefinite spinner.
+    const loadFile = () => {
+        setFetchError(false);
+        getPublicUrl(attemptDetails)
+            .then((url) => {
+                if (!url) throw new Error('No answer file available for this attempt');
+                return fetch(url);
+            })
+            .then((response) => response.blob())
+            .then((blob) => {
+                setFile(
+                    new File([blob], 'attempt_file', {
+                        type: blob.type || 'application/octet-stream',
+                    })
+                );
+            })
+            .catch((error) => {
+                console.error('Error fetching answer file:', error);
+                setFetchError(true);
+            });
+    };
+
     useEffect(() => {
-        setNavHeading('Evaluate Response');
+        setNavHeading(
+            <div className="flex items-center gap-2">
+                <CaretLeft onClick={goBack} className="cursor-pointer" />
+                <h1 className="text-lg">Evaluate Response</h1>
+            </div>
+        );
         if (!isAttemptLoading) {
-            console.log('fetching');
-            setTimeout(() => {
-                getPublicUrl(attemptDetails).then((url) => {
-                    fetch(url)
-                        .then((response) => response.blob())
-                        .then((blob) => {
-                            const file = new File([blob], 'attempt_file', {
-                                type: blob.type || 'application/octet-stream',
-                            });
-                            if (typeof setFile === 'function') {
-                                setFile(file);
-                            } else {
-                                setFileUrl(url);
-                                console.log(fileUrl);
-                            }
-                        })
-                        .catch((error) => {
-                            console.error('Error fetching file:', error);
-                        });
-                });
-            }, 100);
+            const timer = setTimeout(loadFile, 100);
+            return () => clearTimeout(timer);
         }
+        return undefined;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAttemptLoading]);
+
+    if (fetchError && !file) {
+        return (
+            <div className="flex min-h-screen flex-col items-center justify-center gap-y-3 p-6 text-center">
+                <h1 className="text-base font-semibold text-neutral-800">
+                    Couldn&apos;t load the answer sheet
+                </h1>
+                <p className="max-w-md text-sm text-neutral-500">
+                    The student&apos;s uploaded response could not be loaded. It may not have been
+                    submitted yet, or the file is temporarily unavailable.
+                </p>
+                <div className="mt-1 flex gap-2">
+                    <MyButton buttonType="secondary" scale="medium" onClick={goBack}>
+                        Back
+                    </MyButton>
+                    <MyButton buttonType="primary" scale="medium" onClick={loadFile}>
+                        Retry
+                    </MyButton>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoading || isQuestionsLoading || isAttemptLoading || !file)
         return (
-            <div className="flex h-full flex-col items-center justify-center gap-y-2">
+            <div className="flex min-h-screen flex-col items-center justify-center gap-y-2">
                 <h1>Getting response file please wait...</h1>
                 <DashboardLoader />
             </div>
@@ -101,6 +158,8 @@ const EvaluateAttemptComponent = () => {
                     assessmentId={assessmentId}
                     attemptId={attemptId}
                     instituteId={instituteDetails?.id}
+                    examType={examType}
+                    assessmentVisibility={assessmentVisibility}
                 />
             )}
         </>

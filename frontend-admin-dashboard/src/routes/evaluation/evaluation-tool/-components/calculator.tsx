@@ -120,7 +120,7 @@ export default function Calculator({
                 {/* Display */}
                 <div className="relative flex h-1/4 items-end justify-end bg-slate-100 p-6 text-black">
                     {operator && (
-                        <div className="absolute left-2 top-2 text-[22px] text-gray-500">
+                        <div className="absolute left-2 top-2 text-xl text-gray-500">
                             {operator}
                         </div>
                     )}

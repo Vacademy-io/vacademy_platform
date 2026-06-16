@@ -2,7 +2,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { Button } from '@/components/ui/button';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { Link } from '@tanstack/react-router';
-import { ArrowRight, CheckCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle } from '@phosphor-icons/react';
 
 export default function HeroSection() {
     return (
@@ -15,7 +15,7 @@ export default function HeroSection() {
                                 Evaluate Answer Sheets{' '}
                                 <span className="text-primary-400">Faster & Smarter</span>
                             </h1>
-                            <p className="max-w-[600px] text-gray-500 md:text-xl">
+                            <p className="max-w-xl text-gray-500 md:text-xl">
                                 Streamline your manual evaluation process with our smart answer
                                 sheet evaluation tool. Save time, reduce errors, and provide better
                                 feedback to your{' '}
@@ -52,7 +52,7 @@ export default function HeroSection() {
                         </div>
                     </div>
                     <div className="flex items-center justify-center">
-                        <div className="relative h-[400px] w-full overflow-hidden rounded-xl shadow-xl">
+                        <div className="relative h-96 w-full overflow-hidden rounded-xl shadow-xl">
                             <img
                                 src="/evaluation.jpg"
                                 alt="Answer sheet evaluation tool interface"

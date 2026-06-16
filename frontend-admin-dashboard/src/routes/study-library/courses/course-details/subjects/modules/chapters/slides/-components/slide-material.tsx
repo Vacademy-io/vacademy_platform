@@ -154,6 +154,7 @@ function estimatePageCount(htmlString: string): number {
 }
 import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
+import AssessmentCreateForm from './assessment-create-form';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -191,7 +192,7 @@ export const SlideMaterial = ({
         const sub = tab?.subTabs?.find((s) => s.id === 'doubt-management');
         return sub?.visible !== false;
     }, [roleDisplay]);
-    const { items, activeItem, setActiveItem } = useContentStore();
+    const { items, activeItem, setActiveItem, assessmentCreateMode } = useContentStore();
     const editor = useMemo(() => {
         const ed = createYooptaEditor();
         // Monkey-patch: wrap Slate's focus to suppress "Cannot resolve a DOM
@@ -2957,7 +2958,7 @@ export const SlideMaterial = ({
                         : 'overflow-hidden'
                 }`}
             >
-                {content}
+                {assessmentCreateMode ? <AssessmentCreateForm /> : content}
             </div>
 
             {/* ✅ Doubt Sidebar (mounted only if allowed) */}

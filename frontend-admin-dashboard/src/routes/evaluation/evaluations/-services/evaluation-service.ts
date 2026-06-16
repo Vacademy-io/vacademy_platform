@@ -10,6 +10,7 @@ interface SubimtRequest {
         question_id: string;
         status: string;
         marks: number;
+        evaluator_feedback?: string;
     }[];
 }
 

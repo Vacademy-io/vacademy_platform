@@ -268,6 +268,18 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideId") String slideId,
             Pageable pageable);
 
+    // Only activity logs that actually carry an assessment submission record
+    // (INNER JOIN) — completion-only logs for the same slide are excluded.
+    @Query("""
+            SELECT DISTINCT al FROM ActivityLog al
+            JOIN FETCH al.assessmentSlideTracked ast
+            WHERE (:userId IS NULL OR :userId = '' OR al.userId = :userId)
+              AND al.slideId = :slideId
+            """)
+    Page<ActivityLog> findActivityLogsWithAssessmentSlide(@Param("userId") String userId,
+            @Param("slideId") String slideId,
+            Pageable pageable);
+
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.quizSlideQuestionTracked qt

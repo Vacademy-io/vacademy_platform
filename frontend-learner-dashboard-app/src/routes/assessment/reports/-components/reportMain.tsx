@@ -17,7 +17,9 @@ import {
   ErrorState,
   LoadingState,
 } from "@/components/design-system/states";
-import { FileText } from "@phosphor-icons/react";
+import { FileText, Eye } from "@phosphor-icons/react";
+import { getPublicUrl } from "@/services/upload_file";
+import { toast } from "sonner";
 
 const PLAY_MODE_LABELS: Record<string, string> = {
   EXAM: "Exam",
@@ -111,9 +113,36 @@ const AssessmentReportList = ({
       state: {
         report,
         assessmentName: report.assessment_name,
+        evaluationType: report.evaluation_type,
       } as any,
     });
   };
+
+  // Open the evaluated copy (the teacher's annotated PDF) for a manual report.
+  const handleViewEvaluated = async (report: Report) => {
+    try {
+      const res = await authenticatedAxiosInstance.get(STUDENT_REPORT_DETAIL_URL, {
+        params: {
+          assessmentId: report.assessment_id,
+          attemptId: report.attempt_id,
+          instituteId: instituteDetails?.id,
+        },
+      });
+      const fileId = res.data?.evaluated_file_id;
+      if (!fileId) {
+        toast.error("Evaluated copy is not available yet.");
+        return;
+      }
+      const url = await getPublicUrl(fileId);
+      if (url) window.open(url, "_blank");
+      else toast.error("Could not open the evaluated copy.");
+    } catch {
+      toast.error("Could not open the evaluated copy.");
+    }
+  };
+
+  const isManualReport = (report: Report) =>
+    (report.evaluation_type || "").toUpperCase() === "MANUAL";
 
   const fetchReports = async () => {
     if (loading || !hasMore) return;
@@ -205,15 +234,6 @@ const AssessmentReportList = ({
   const isReportReleased = (report: Report) =>
     report.report_release_status !== "PENDING";
 
-  const formatDateTime = (dateString: string) => {
-    try {
-      return format(new Date(dateString), "dd/MM/yyyy hh:mm a");
-    } catch (err) {
-      console.error("Date formatting error:", err);
-      return dateString;
-    }
-  };
-
   if (error && reports.length === 0) {
     return (
       <div className="p-4 md:p-6 lg:p-8">
@@ -228,92 +248,69 @@ const AssessmentReportList = ({
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6 lg:p-8">
-      {reports.map((report: Report, index: number) => (
-        <div
-          key={report.attempt_id}
-          ref={index === reports.length - 1 ? lastReportElementRef : null}
-        >
-          <Card className="w-full transition-all hover:shadow-md">
-            <CardHeader className="pb-2">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <CardTitle className="text-base sm:text-lg font-semibold text-foreground">
-                  {report.assessment_name}
-                </CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  {report.evaluation_type && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs font-semibold px-2.5 py-0.5 border bg-slate-100 text-slate-700 border-slate-200"
-                    >
-                      {report.evaluation_type === "MANUAL" ? "Manual" : "Auto"}
-                    </Badge>
-                  )}
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs font-semibold px-2.5 py-0.5 border",
-                      isReportReleased(report)
-                        ? "bg-green-100 text-green-700 border-green-200"
-                        : "bg-amber-100 text-amber-700 border-amber-200"
-                    )}
-                  >
-                    {isReportReleased(report) ? "Released" : "Pending evaluation"}
-                  </Badge>
-                  {assessment_types !== "HOMEWORK" && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs font-semibold px-2.5 py-0.5 border",
-                        playModeStyles[report.play_mode as PlayMode]
-                      )}
-                    >
-                      {report.play_mode}
-                    </Badge>
-                  )}
+      {reports.map((report: Report, index: number) => {
+        const released = isReportReleased(report);
+        // The list API's `total_marks` is the attempt's achieved score
+        // (student_attempt.total_marks) — lead with it instead of burying it.
+        // Gated until the result is released (manual attempts await evaluation).
+        const score =
+          released && report.total_marks != null
+            ? Math.round(report.total_marks * 10) / 10
+            : null;
+        const metaParts = [
+          formatDateTime(report.attempt_date),
+          getSubjectNameById(
+            instituteDetails?.subjects || [],
+            report?.subject_id
+          ),
+          report.duration_in_seconds
+            ? formatDuration(report.duration_in_seconds)
+            : "",
+        ].filter(Boolean);
+
+        return (
+          <div
+            key={report.attempt_id}
+            ref={index === reports.length - 1 ? lastReportElementRef : null}
+          >
+            <Card className="w-full transition-shadow hover:shadow-sm [.ui-play_&]:rounded-2xl">
+              <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5 sm:p-5">
+                {/* Score first: the figure the learner came for */}
+                <div className="flex w-fit shrink-0 items-baseline gap-1.5 rounded-lg bg-primary-50 px-4 py-2 sm:w-24 sm:flex-col sm:items-center sm:gap-0 sm:py-3 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300">
+                  <span className="text-h2 font-bold tabular-nums text-primary-500 [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
+                    {score != null ? score : "-"}
+                  </span>
+                  <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground [.ui-play_&]:text-play-ink/70">
+                    marks
+                  </span>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-8 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      Attempt Date:
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-body font-semibold text-foreground">
+                      {report.assessment_name}
+                    </h3>
+                    {report.evaluation_type && (
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-2xs font-medium text-slate-700">
+                        {report.evaluation_type === "MANUAL"
+                          ? "Manual"
+                          : "Auto"}
+                      </span>
+                    )}
+                    <span
+                      className={
+                        released
+                          ? "inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2 py-0.5 text-2xs font-medium text-green-700"
+                          : "inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-2xs font-medium text-amber-700"
+                      }
+                    >
+                      {released ? "Released" : "Pending evaluation"}
                     </span>
-                    <span>{formatDateTime(report.attempt_date)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      {getTerminology(
-                        ContentTerms.Subjects,
-                        SystemTerms.Subjects
-                      )}
-                      :
-                    </span>
-                    <span>
-                      {getSubjectNameById(
-                        instituteDetails?.subjects || [],
-                        report?.subject_id
-                      ) || "-"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      Duration:
-                    </span>
-                    <span>
-                      {report.duration_in_seconds
-                        ? formatDuration(report.duration_in_seconds)
-                        : "N/A"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Marks:</span>
-                    <span>
-                      {isReportReleased(report)
-                        ? report.total_marks
-                        : "Awaiting evaluation"}
-                    </span>
+                    {assessment_types !== "HOMEWORK" && (
+                      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                        {PLAY_MODE_LABELS[report.play_mode] ?? report.play_mode}
+                      </span>
+                    )}
                   </div>
                   {metaParts.length > 0 && (
                     <p className="mt-1 text-caption text-muted-foreground">
@@ -323,21 +320,36 @@ const AssessmentReportList = ({
                 </div>
 
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                  <MyButton
-                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
-                    onClick={() => handleViewAIReport(report)}
-                    disable={!isReportReleased(report)}
-                  >
-                    View AI Report
-                  </MyButton>
+                  {!isManualReport(report) && (
+                    <MyButton
+                      className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                      onClick={() => handleViewAIReport(report)}
+                      disable={!released}
+                    >
+                      View AI Report
+                    </MyButton>
+                  )}
                   <MyButton
                     buttonType="secondary"
                     className="min-h-11 w-full sm:min-h-9 sm:w-auto"
                     onClick={() => handleViewComparison(report)}
-                    disabled={!isReportReleased(report)}
+                    disable={!released}
                   >
                     Report
                   </MyButton>
+                  {isManualReport(report) && (
+                    <MyButton
+                      buttonType="secondary"
+                      className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                      onClick={() => handleViewEvaluated(report)}
+                      disable={!released}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <Eye className="size-4" />
+                        View Evaluated
+                      </span>
+                    </MyButton>
+                  )}
                 </div>
               </CardContent>
             </Card>

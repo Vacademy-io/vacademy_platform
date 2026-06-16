@@ -1,8 +1,7 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
-import { toast } from 'sonner';
 import {
     ListChecks,
     ArrowSquareOut,
@@ -10,20 +9,18 @@ import {
     ListNumbers,
     Trophy,
     Users,
-    Warning,
 } from '@phosphor-icons/react';
 
-import { Slide, useSlidesMutations } from '../-hooks/use-slides';
+import { Slide } from '../-hooks/use-slides';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     GET_OVERVIEW_URL,
     GET_ASSESSMENT_TOTAL_MARKS_URL,
     GET_ASSESSMENT_LISTS,
-    PUBLISH_ASSESSMENT_URL,
 } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
-import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { MyButton } from '@/components/design-system/button';
+import AssessmentSubmissionsPanel from './assessment-submissions-panel';
 
 interface AssessmentSlidePreviewProps {
     activeItem: Slide;
@@ -61,7 +58,7 @@ const Stat = ({
     <div className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
         <span className="text-primary-500">{icon}</span>
         <div className="flex flex-col">
-            <span className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</span>
+            <span className="text-2xs uppercase tracking-wide text-neutral-500">{label}</span>
             <span className="text-sm font-semibold text-neutral-800">
                 {value ?? '—'}
             </span>
@@ -74,24 +71,6 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
     const assessmentSlide = activeItem.assessment_slide;
     const assessmentId = assessmentSlide?.assessment_id;
     const instituteId = getInstituteId();
-
-    // Slide-publish wiring (same as the add-assessment dialog) so the banner's
-    // Publish can also publish the slide.
-    const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } =
-        router.state.location.search;
-    const { getPackageSessionId } = useInstituteDetailsStore();
-    const packageSessionId =
-        getPackageSessionId({
-            courseId: courseId || '',
-            levelId: levelId || '',
-            sessionId: sessionId || '',
-        }) || '';
-    const { addUpdateAssessmentSlide } = useSlidesMutations(
-        chapterId || '',
-        moduleId || '',
-        subjectId || '',
-        packageSessionId
-    );
 
     const overviewQuery = useQuery<AssessmentOverviewResponse>({
         queryKey: ['ASSESSMENT_SLIDE_OVERVIEW_ADMIN', assessmentId, instituteId],
@@ -121,14 +100,13 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
         staleTime: 30 * 1000,
     });
 
-    // Resolve the assessment's play_mode + visibility so "Manage in Assessments"
-    // can deep-link to this assessment's details page. get-overview doesn't carry
-    // these, so look the assessment up by id in the assessment list (name-filtered
-    // to narrow the page, then matched by assessment_id).
+    // Resolve the assessment's play_mode + visibility so the deep-links can open
+    // this assessment's details page. get-overview doesn't carry these, so look
+    // the assessment up by id in the assessment list (name-filtered to narrow the
+    // page, then matched by assessment_id).
     const routeParamsQuery = useQuery<{
         playMode?: string | null;
         visibility?: string | null;
-        status?: string | null;
     } | null>({
         queryKey: ['ASSESSMENT_SLIDE_ROUTE_PARAMS_ADMIN', assessmentId, instituteId, activeItem.title],
         queryFn: async () => {
@@ -155,72 +133,17 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                 assessment_id: string;
                 play_mode?: string | null;
                 assessment_visibility?: string | null;
-                status?: string | null;
             }> = response?.data?.content ?? [];
             const match = rows.find((r) => r.assessment_id === assessmentId);
             return match
                 ? {
                       playMode: match.play_mode,
                       visibility: match.assessment_visibility,
-                      status: match.status,
                   }
                 : null;
         },
         enabled: Boolean(assessmentId && instituteId),
         staleTime: 60 * 1000,
-    });
-
-    // Publish the linked assessment directly from the slide so the admin doesn't
-    // have to open the assessment module just to make it available to learners.
-    const queryClient = useQueryClient();
-    const publishMutation = useMutation({
-        mutationFn: async () => {
-            // 1) Publish the assessment.
-            await authenticatedAxiosInstance({
-                method: 'POST',
-                url: PUBLISH_ASSESSMENT_URL,
-                params: {
-                    assessmentId,
-                    instituteId,
-                    type: routeParamsQuery.data?.playMode,
-                },
-                data: {},
-            });
-            // 2) Publish the slide too. This is one-way: the combined Publish here
-            //    publishes the slide, but publishing/unpublishing the slide on its
-            //    own (top action) never touches the assessment.
-            if (activeItem.assessment_slide) {
-                await addUpdateAssessmentSlide({
-                    id: activeItem.id,
-                    source_id: activeItem.assessment_slide.id,
-                    source_type: 'ASSESSMENT',
-                    title: activeItem.title,
-                    description: activeItem.description || '',
-                    image_file_id: activeItem.image_file_id || '',
-                    status: 'PUBLISHED',
-                    slide_order: activeItem.slide_order,
-                    notify: false,
-                    new_slide: false,
-                    assessment_slide: {
-                        id: activeItem.assessment_slide.id,
-                        assessment_id: activeItem.assessment_slide.assessment_id,
-                        allow_reattempt: activeItem.assessment_slide.allow_reattempt ?? true,
-                        show_result: activeItem.assessment_slide.show_result ?? true,
-                    },
-                });
-            }
-        },
-        onSuccess: () => {
-            toast.success('Assessment and slide published — learners can now take it.');
-            queryClient.invalidateQueries({
-                queryKey: ['ASSESSMENT_SLIDE_ROUTE_PARAMS_ADMIN'],
-            });
-        },
-        onError: () => {
-            toast.error(
-                'Could not publish. Open it in Assessments to finish setup, then publish.'
-            );
-        },
     });
 
     const overview = overviewQuery.data?.assessment_overview_dto;
@@ -237,7 +160,7 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
 
     if (!assessmentId) {
         return (
-            <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
+            <div className="flex h-96 flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
                 <ListChecks className="size-8 text-neutral-400" />
                 <p className="mt-3 text-sm text-neutral-500">
                     No assessment linked to this slide.
@@ -271,19 +194,6 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
     const submittedCount = overview?.total_attempted ?? 0;
     const participantCount = overview?.total_participants ?? 0;
 
-    // A linked-but-unpublished assessment isn't visible to learners until the
-    // admin adds questions and publishes it.
-    const isDraft = routeParamsQuery.data?.status === 'DRAFT';
-    const goToAddQuestions = () => {
-        const routeParams = routeParamsQuery.data;
-        if (!routeParams?.playMode) return;
-        router.navigate({
-            to: '/assessment/create-assessment/$assessmentId/$examtype',
-            params: { assessmentId, examtype: routeParams.playMode },
-            search: { currentStep: 1 },
-        });
-    };
-
     return (
         <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -292,7 +202,7 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                         <ListChecks className="size-5" />
                     </div>
                     <div className="flex flex-col">
-                        <span className="text-[11px] uppercase tracking-wide text-neutral-500">
+                        <span className="text-2xs uppercase tracking-wide text-neutral-500">
                             Linked assessment
                         </span>
                         <h3 className="text-base font-semibold text-neutral-900">
@@ -323,42 +233,6 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                     </MyButton>
                 </div>
             </div>
-
-            {isDraft && (
-                <div className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-2">
-                        <Warning className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                        <div className="flex flex-col">
-                            <span className="text-sm font-semibold text-amber-800">
-                                Draft — not visible to learners yet
-                            </span>
-                            <span className="text-xs text-amber-700/80">
-                                Add questions and publish this assessment to make it available.
-                            </span>
-                        </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            onClick={goToAddQuestions}
-                        >
-                            <span className="inline-flex items-center gap-1 text-xs">
-                                Add questions
-                                <ArrowSquareOut className="size-3.5" />
-                            </span>
-                        </MyButton>
-                        <MyButton
-                            buttonType="primary"
-                            scale="small"
-                            onClick={() => publishMutation.mutate()}
-                            disable={publishMutation.isPending}
-                        >
-                            {publishMutation.isPending ? 'Publishing…' : 'Publish'}
-                        </MyButton>
-                    </div>
-                </div>
-            )}
 
             {isError && (
                 <p className="text-xs text-red-500">
@@ -406,23 +280,14 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                 </span>
             </div>
 
-            <div className="rounded-md border border-neutral-100 bg-neutral-50 p-3 text-xs text-neutral-600">
-                <p className="font-medium text-neutral-800">Slide settings</p>
-                <ul className="mt-1 list-disc pl-4">
-                    <li>
-                        Re-attempt:{' '}
-                        <span className="font-semibold">
-                            {assessmentSlide?.allow_reattempt === false ? 'Disabled' : 'Allowed'}
-                        </span>
-                    </li>
-                    <li>
-                        Show result:{' '}
-                        <span className="font-semibold">
-                            {assessmentSlide?.show_result === false ? 'Hidden' : 'Visible'}
-                        </span>
-                    </li>
-                </ul>
-            </div>
+            {/* Per-student submissions with status + a deep-link into the PDF
+                evaluator (view answer + give marks/remarks). */}
+            <AssessmentSubmissionsPanel
+                assessmentId={assessmentId}
+                instituteId={instituteId}
+                playMode={routeParamsQuery.data?.playMode}
+                visibility={routeParamsQuery.data?.visibility}
+            />
         </div>
     );
 };

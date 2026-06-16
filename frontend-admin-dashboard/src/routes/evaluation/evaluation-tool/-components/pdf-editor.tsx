@@ -48,7 +48,7 @@ import { ProgressBar } from "@/components/design-system/progress-bar";
 import Evaluation from "./evaluation";
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { useTimerStore } from "@/stores/evaluation/timer-store";
-import { submitEvlauationMarks } from "../../evaluations/-services/evaluation-service";
+import { submitEvlauationMarks, releaseEvaluationResult } from "../../evaluations/-services/evaluation-service";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useInstituteQuery } from "@/services/student-list-section/getInstituteDetails";
 import { getTokenDecodedData, getTokenFromCookie } from "@/lib/auth/sessionUtility";
@@ -721,6 +721,16 @@ const PDFEvaluator = ({
                     payload,
                 );
                 console.log(response);
+
+                // Auto-release the result for this student so it's visible right
+                // after evaluation. Best-effort — a release failure shouldn't block
+                // the (already successful) marks submission.
+                try {
+                    await releaseEvaluationResult(assessmentId, instituteId, attemptId);
+                } catch (releaseError) {
+                    console.error("Failed to auto-release result:", releaseError);
+                }
+
                 resetMarks();
                 toast.success("Evaluation Submitted", {
                     description: "The answer sheet evaluation has been completed and submitted.",

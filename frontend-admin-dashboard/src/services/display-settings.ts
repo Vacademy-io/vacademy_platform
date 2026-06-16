@@ -443,12 +443,18 @@ function mergeDisplayWithDefaults(
     };
 
     const defCourseCreation = defaults.courseCreation || {
+        showCreateCourse: false,
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,
         showAdvancedSettings: true,
         limitToSingleLevel: false,
     };
     merged.courseCreation = {
+        // Carry the per-role "Allow creating courses" override through the merge.
+        // Without this, the saved flag was dropped on every fetch, so the
+        // Display Settings toggle never reached the Explore Courses page.
+        showCreateCourse:
+            incoming?.courseCreation?.showCreateCourse ?? defCourseCreation.showCreateCourse,
         showCreateCourseWithAI:
             incoming?.courseCreation?.showCreateCourseWithAI ??
             defCourseCreation.showCreateCourseWithAI,

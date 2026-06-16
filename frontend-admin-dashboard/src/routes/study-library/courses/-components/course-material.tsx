@@ -743,12 +743,14 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     const canCreateCourse =
         !isPermissionGated
         || hasFacultyPermission('CREATE_COURSE');
-    // Per-role override: an admin can explicitly grant course creation to a
-    // permission-gated custom role (e.g. a "Course Creator" role that carries
-    // HAS_FACULTY_ASSIGNED but has no CREATE_COURSE access mapping) via the
-    // role's Display Settings → Course Creation → "Allow creating courses".
-    const allowCreateCourseOverride = roleDisplay?.courseCreation?.showCreateCourse === true;
-    const canShowCreateCourse = canCreateCourse || allowCreateCourseOverride;
+    // Per-role override (Display Settings → Course Creation → "Allow creating
+    // courses"). It is AUTHORITATIVE when set: `true` always shows the button,
+    // `false` always hides it (even for admins / CREATE_COURSE holders). Only
+    // when the role never configured it (undefined) do we fall back to the
+    // default permission gating above.
+    const createCourseOverride = roleDisplay?.courseCreation?.showCreateCourse;
+    const canShowCreateCourse =
+        typeof createCourseOverride === 'boolean' ? createCourseOverride : canCreateCourse;
 
     if (availableTabs.length === 0) {
         return (

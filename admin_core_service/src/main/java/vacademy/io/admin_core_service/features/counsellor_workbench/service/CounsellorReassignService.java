@@ -4,8 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
@@ -49,6 +52,7 @@ public class CounsellorReassignService {
     private final CounsellorScopeService scopeService;
     private final AuthService authService;
     private final CounselorPoolMemberRepository counselorPoolMemberRepository;
+    private final LeadAssignmentNotifier leadAssignmentNotifier;
 
     @Transactional
     public ReassignResultDTO reassign(ReassignRequest req, CustomUserDetails actor) {
@@ -162,12 +166,42 @@ public class CounsellorReassignService {
         boolean flipped = !dryRun && shouldMarkInactive
                 && flipPoolMembersInactive(req.getInstituteId(), req.getFromUserId());
 
+        // Bell notifications: ONE per target counsellor ("3 leads reassigned
+        // to you"), never one per lead. Registered as an after-commit hook so
+        // a rollback (any single assignCounselor failure aborts the whole
+        // batch) never produces a phantom alert. Preview (dryRun) sends nothing.
+        if (!dryRun && !plan.isEmpty()) {
+            Map<String, Long> countByTarget = plan.stream()
+                    .collect(Collectors.groupingBy(Plan::toUserId, Collectors.counting()));
+            String instituteId = req.getInstituteId();
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        notifyReassignTargets(instituteId, countByTarget);
+                    }
+                });
+            } else {
+                notifyReassignTargets(instituteId, countByTarget);
+            }
+        }
+
         return ReassignResultDTO.builder()
                 .dryRun(dryRun)
                 .totalLeads(results.size())
                 .assignments(results)
                 .markedInactive(flipped)
                 .build();
+    }
+
+    /**
+     * One batched bell alert per target counsellor. The notifier is
+     * best-effort internally, so a notification-service blip can't disturb
+     * the (already committed) reassignment.
+     */
+    private void notifyReassignTargets(String instituteId, Map<String, Long> countByTarget) {
+        countByTarget.forEach((toUserId, count) -> leadAssignmentNotifier.notifyBatchAssigned(
+                instituteId, toUserId, count.intValue(), "workbench reassign"));
     }
 
     /**

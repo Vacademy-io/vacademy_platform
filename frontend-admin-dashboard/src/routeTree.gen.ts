@@ -14,6 +14,7 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
 import { Route as ErrorPageRouteImport } from "./routes/error-page"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
+import { Route as ChatRouteImport } from "./routes/chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
@@ -68,6 +69,7 @@ import { Route as StudyLibraryReportsIndexRouteImport } from "./routes/study-lib
 import { Route as StudyLibraryLiveSessionIndexRouteImport } from "./routes/study-library/live-session/index"
 import { Route as StudyLibraryDoubtManagementIndexRouteImport } from "./routes/study-library/doubt-management/index"
 import { Route as StudyLibraryCoursesIndexRouteImport } from "./routes/study-library/courses/index"
+import { Route as StudyLibraryBulkContentUploadingIndexRouteImport } from "./routes/study-library/bulk-content-uploading/index"
 import { Route as StudyLibraryAttendanceTrackerIndexRouteImport } from "./routes/study-library/attendance-tracker/index"
 import { Route as StudyLibraryAiCopilotIndexRouteImport } from "./routes/study-library/ai-copilot/index"
 import { Route as SignupOnboardingIndexRouteImport } from "./routes/signup/onboarding/index"
@@ -229,6 +231,11 @@ const AgentChatRoute = AgentChatRouteImport.update({
   path: "/agent-chat",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/agent-chat.lazy").then((d) => d.Route))
+const ChatRoute = ChatRouteImport.update({
+  id: "/chat",
+  path: "/chat",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import("./routes/chat.lazy").then((d) => d.Route))
 const VimIndexRoute = VimIndexRouteImport.update({
   id: "/vim/",
   path: "/vim/",
@@ -596,6 +603,16 @@ const StudyLibraryCoursesIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/study-library/courses/index.lazy").then((d) => d.Route),
+  )
+const StudyLibraryBulkContentUploadingIndexRoute =
+  StudyLibraryBulkContentUploadingIndexRouteImport.update({
+    id: "/study-library/bulk-content-uploading/",
+    path: "/study-library/bulk-content-uploading/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/study-library/bulk-content-uploading/index.lazy").then(
+      (d) => d.Route,
+    ),
   )
 const StudyLibraryAttendanceTrackerIndexRoute =
   StudyLibraryAttendanceTrackerIndexRouteImport.update({
@@ -1581,6 +1598,7 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -1692,6 +1710,7 @@ export interface FileRoutesByFullPath {
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker/": typeof StudyLibraryAttendanceTrackerIndexRoute
+  "/study-library/bulk-content-uploading/": typeof StudyLibraryBulkContentUploadingIndexRoute
   "/study-library/courses/": typeof StudyLibraryCoursesIndexRoute
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
@@ -1762,6 +1781,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -1872,6 +1892,7 @@ export interface FileRoutesByTo {
   "/signup/onboarding": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker": typeof StudyLibraryAttendanceTrackerIndexRoute
+  "/study-library/bulk-content-uploading": typeof StudyLibraryBulkContentUploadingIndexRoute
   "/study-library/courses": typeof StudyLibraryCoursesIndexRoute
   "/study-library/doubt-management": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session": typeof StudyLibraryLiveSessionIndexRoute
@@ -1943,6 +1964,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -2054,6 +2076,7 @@ export interface FileRoutesById {
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker/": typeof StudyLibraryAttendanceTrackerIndexRoute
+  "/study-library/bulk-content-uploading/": typeof StudyLibraryBulkContentUploadingIndexRoute
   "/study-library/courses/": typeof StudyLibraryCoursesIndexRoute
   "/study-library/doubt-management/": typeof StudyLibraryDoubtManagementIndexRoute
   "/study-library/live-session/": typeof StudyLibraryLiveSessionIndexRoute
@@ -2126,6 +2149,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2237,6 +2261,7 @@ export interface FileRouteTypes {
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/attendance-tracker/"
+    | "/study-library/bulk-content-uploading/"
     | "/study-library/courses/"
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
@@ -2307,6 +2332,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2417,6 +2443,7 @@ export interface FileRouteTypes {
     | "/signup/onboarding"
     | "/study-library/ai-copilot"
     | "/study-library/attendance-tracker"
+    | "/study-library/bulk-content-uploading"
     | "/study-library/courses"
     | "/study-library/doubt-management"
     | "/study-library/live-session"
@@ -2487,6 +2514,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2598,6 +2626,7 @@ export interface FileRouteTypes {
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/attendance-tracker/"
+    | "/study-library/bulk-content-uploading/"
     | "/study-library/courses/"
     | "/study-library/doubt-management/"
     | "/study-library/live-session/"
@@ -2669,6 +2698,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
+  ChatRoute: typeof ChatRoute
   ErrorPageRoute: typeof ErrorPageRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
@@ -2779,6 +2809,7 @@ export interface RootRouteChildren {
   SignupOnboardingIndexRoute: typeof SignupOnboardingIndexRoute
   StudyLibraryAiCopilotIndexRoute: typeof StudyLibraryAiCopilotIndexRoute
   StudyLibraryAttendanceTrackerIndexRoute: typeof StudyLibraryAttendanceTrackerIndexRoute
+  StudyLibraryBulkContentUploadingIndexRoute: typeof StudyLibraryBulkContentUploadingIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
   StudyLibraryDoubtManagementIndexRoute: typeof StudyLibraryDoubtManagementIndexRoute
   StudyLibraryLiveSessionIndexRoute: typeof StudyLibraryLiveSessionIndexRoute
@@ -2897,6 +2928,13 @@ declare module "@tanstack/react-router" {
       path: "/agent-chat"
       fullPath: "/agent-chat"
       preLoaderRoute: typeof AgentChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/chat": {
+      id: "/chat"
+      path: "/chat"
+      fullPath: "/chat"
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/": {
@@ -3275,6 +3313,13 @@ declare module "@tanstack/react-router" {
       path: "/study-library/courses"
       fullPath: "/study-library/courses/"
       preLoaderRoute: typeof StudyLibraryCoursesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/study-library/bulk-content-uploading/": {
+      id: "/study-library/bulk-content-uploading/"
+      path: "/study-library/bulk-content-uploading"
+      fullPath: "/study-library/bulk-content-uploading/"
+      preLoaderRoute: typeof StudyLibraryBulkContentUploadingIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/study-library/attendance-tracker/": {
@@ -4119,6 +4164,7 @@ const LearnerInsightsLazyRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
+  ChatRoute: ChatRoute,
   ErrorPageRoute: ErrorPageRoute,
   LockedFeatureRoute: LockedFeatureRoute,
   ExploreAiLazyRoute: ExploreAiLazyRoute,
@@ -4243,6 +4289,8 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryAiCopilotIndexRoute: StudyLibraryAiCopilotIndexRoute,
   StudyLibraryAttendanceTrackerIndexRoute:
     StudyLibraryAttendanceTrackerIndexRoute,
+  StudyLibraryBulkContentUploadingIndexRoute:
+    StudyLibraryBulkContentUploadingIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
   StudyLibraryDoubtManagementIndexRoute: StudyLibraryDoubtManagementIndexRoute,
   StudyLibraryLiveSessionIndexRoute: StudyLibraryLiveSessionIndexRoute,

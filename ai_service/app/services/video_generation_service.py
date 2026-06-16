@@ -4166,15 +4166,19 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         entry_id: str | None = None,
         entry_meta: Dict[str, Any] | None = None,
         html_model: str | None = None,
+        expected_revision: int | None = None,
     ) -> Dict[str, Any]:
         """
         Update a specific frame's HTML in the timeline and save back to S3.
-        
+
         Args:
             video_id: Video identifier
             frame_index: Index of the frame to update
             new_html: The valid HTML content
-            
+            expected_revision: optimistic-lock check against meta.revision
+                (see timeline_revision.py); raises TimelineRevisionConflict
+                on mismatch before anything is written
+
         Returns:
             Success status
         """
@@ -4208,11 +4212,28 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
 
             entry = entries[frame_index]
             if entry_id is not None and entry.get("id") != entry_id:
-                logger.warning(
-                    "update_video_frame: entry_id mismatch at index %d "
-                    "(expected %s, got %s) — proceeding by index",
-                    frame_index, entry_id, entry.get("id"),
+                # The caller's index view has drifted from the server (a
+                # concurrent reorder/delete landed since it last loaded the
+                # timeline). entry_id is the stable address — recover by id
+                # instead of overwriting whatever now sits at the stale index.
+                match_idx = next(
+                    (i for i, e in enumerate(entries)
+                     if isinstance(e, dict) and e.get("id") == entry_id),
+                    None,
                 )
+                if match_idx is None:
+                    raise ValueError(
+                        f"Entry {entry_id} not found in timeline for video "
+                        f"{video_id} (stale index {frame_index}) — the timeline "
+                        f"changed since it was loaded; reload the editor and retry"
+                    )
+                logger.warning(
+                    "update_video_frame: entry_id %s found at index %d, not "
+                    "the requested index %d — updating by id",
+                    entry_id, match_idx, frame_index,
+                )
+                frame_index = match_idx
+                entry = entries[match_idx]
             entry["html"] = new_html
             if in_time is not None:
                 entry["inTime"] = in_time
@@ -4240,6 +4261,12 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 if "display_name" in merged and merged["display_name"] in (None, ""):
                     merged.pop("display_name", None)
                 entry["entry_meta"] = merged
+
+            # Optimistic lock: verify the client's loaded revision and bump.
+            # Raises TimelineRevisionConflict (router → 409) before anything
+            # is written when another session has modified the timeline.
+            from .timeline_revision import check_and_bump_revision
+            new_revision = check_and_bump_revision(data, expected_revision)
 
             # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
@@ -4293,6 +4320,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "status": "success",
                 "video_id": video_id,
                 "updated_frame_index": frame_index,
+                "revision": new_revision,
                 "message": "Frame updated successfully. Player should reflect changes immediately."
             }
 
@@ -4302,6 +4330,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         video_id: str,
         entry_id: str,
         to_index: int,
+        expected_revision: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Move a frame to a new positional index in the timeline.
@@ -4364,6 +4393,9 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             else:
                 data = entries
 
+            from .timeline_revision import check_and_bump_revision
+            new_revision = check_and_bump_revision(data, expected_revision)
+
             self._save_timeline(data, file_path, bucket, key)
 
             return {
@@ -4372,6 +4404,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "entry_id": entry_id,
                 "from_index": from_index,
                 "to_index": clamped_to,
+                "revision": new_revision,
                 "message": "Frame reordered successfully.",
             }
 
@@ -4381,6 +4414,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         video_id: str,
         entry_id: Optional[str] = None,
         frame_index: Optional[int] = None,
+        expected_revision: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Remove a frame from the timeline and save back to S3.
@@ -4447,6 +4481,9 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             else:
                 data = entries
 
+            from .timeline_revision import check_and_bump_revision
+            new_revision = check_and_bump_revision(data, expected_revision)
+
             self._save_timeline(data, file_path, bucket, key)
 
             return {
@@ -4454,6 +4491,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "video_id": video_id,
                 "entry_id": removed_id,
                 "frame_index": removed_idx,
+                "revision": new_revision,
                 "message": "Frame deleted successfully.",
             }
 
@@ -4470,6 +4508,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         html_end_x: Optional[int] = None,
         html_end_y: Optional[int] = None,
         entry_meta: Optional[Dict[str, Any]] = None,
+        expected_revision: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Insert a new frame/entry into the video timeline and save back to S3.
@@ -4571,6 +4610,9 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             else:
                 data = entries
 
+            from .timeline_revision import check_and_bump_revision
+            new_revision = check_and_bump_revision(data, expected_revision)
+
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
 
             # Extract S3 key (same logic as update_video_frame)
@@ -4602,6 +4644,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "video_id": video_id,
                 "entry_id": new_id,
                 "frame_index": frame_index,
+                "revision": new_revision,
                 "message": "Frame added successfully.",
             }
 
@@ -4665,6 +4708,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         fade_in: float = 0.0,
         fade_out: float = 0.0,
         track_id: Optional[str] = None,
+        loop: bool = False,
     ) -> Dict[str, Any]:
         """Insert a new audio track into meta.audio_tracks and save back to S3."""
         from ..config import get_settings
@@ -4677,6 +4721,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             new_track = {
                 "id": new_id, "label": label, "url": url,
                 "volume": volume, "delay": delay, "fadeIn": fade_in, "fadeOut": fade_out,
+                "loop": bool(loop),
             }
 
             if is_wrapped:
@@ -4701,6 +4746,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         delay: Optional[float] = None,
         fade_in: Optional[float] = None,
         fade_out: Optional[float] = None,
+        loop: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """Update an existing audio track in meta.audio_tracks."""
         from ..config import get_settings
@@ -4729,6 +4775,8 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 track["fadeIn"] = fade_in
             if fade_out is not None:
                 track["fadeOut"] = fade_out
+            if loop is not None:
+                track["loop"] = bool(loop)
 
             data["meta"] = meta
             self._save_timeline(data, file_path, bucket, key)

@@ -52,29 +52,39 @@ public class TelephonyCallController {
     }
 
     /**
-     * Lead's call history — feeds the side-view "Calls" tab.
-     * {@code instituteId} is required so a counsellor with the permission
-     * can't fetch call history for a user in a different institute simply
-     * by knowing their UUID.
+     * Call history — feeds the lead side-view "Calls" panel (by {@code userId})
+     * and the counsellor workbench drawer's "Calls" coaching tab (by
+     * {@code counsellorUserId}). Exactly one of the two filters is used; when
+     * both are supplied the counsellor filter wins. {@code instituteId} is
+     * required so a counsellor with the permission can't fetch call history
+     * for a user in a different institute simply by knowing their UUID.
      */
     @GetMapping
     public ResponseEntity<Page<CallLogDTO>> list(
-            @RequestParam("userId") String userId,
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestAttribute("user") CustomUserDetails user) {
-        if (userId == null || userId.isBlank()) {
-            throw new VacademyException("userId is required");
-        }
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("instituteId is required");
         }
-        Page<CallLogDTO> result = callLogRepo
-                .findByUserIdAndInstituteIdOrderByCreatedAtDesc(
-                        userId, instituteId,
-                        PageRequest.of(page, Math.min(size, 100)))
-                .map(CallLogDTO::from);
+        PageRequest pageable = PageRequest.of(page, Math.min(size, 100));
+        Page<CallLogDTO> result;
+        if (counsellorUserId != null && !counsellorUserId.isBlank()) {
+            result = callLogRepo
+                    .findByCounsellorUserIdAndInstituteIdOrderByCreatedAtDesc(
+                            counsellorUserId, instituteId, pageable)
+                    .map(CallLogDTO::from);
+        } else if (userId != null && !userId.isBlank()) {
+            result = callLogRepo
+                    .findByUserIdAndInstituteIdOrderByCreatedAtDesc(
+                            userId, instituteId, pageable)
+                    .map(CallLogDTO::from);
+        } else {
+            throw new VacademyException("userId or counsellorUserId is required");
+        }
         return ResponseEntity.ok(result);
     }
 }

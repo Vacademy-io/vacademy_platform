@@ -50,8 +50,13 @@ WINDOW_SIZE_TOLERANCE = 0.5
 
 # Hook config.
 HOOK_LEAD_S = 2.5
+# True disfluencies / throat-clearing only. "I" and "today" are NOT here:
+# first-person claims ("I built a $1M business…") and educational framings
+# ("Today I'm going to show you…") are among the strongest creator hooks —
+# penalizing the token punishes exactly the openers we want. Hedge PHRASES
+# ("I think…") are still penalized via HEDGE_OPENERS below.
 BAD_OPENER_WORDS = {
-    "so", "yeah", "yep", "um", "uh", "i", "today", "okay", "ok",
+    "so", "yeah", "yep", "um", "uh", "okay", "ok",
     "alright", "right", "well", "anyway", "basically", "literally",
 }
 HEDGE_OPENERS = {"think", "guess", "feel", "kind", "sort"}  # "I think", "I guess", "kind of"
@@ -88,7 +93,6 @@ EMPHASIS_RATIO_PEAK = 1.5
 EMPHASIS_RATIO_CHAOTIC = 2.5
 
 # Hard rejects (§2.3).
-MAX_WORD_CUT_PCT = 0.20              # >20% surgery would mangle meaning
 MAX_SPEAKER_MOVES = 2                # ≥3 face_segments touching a window is jumpy
 
 # A1 — dead-zone pre-filter (2026-05-22). Before paying the cost of computing
@@ -212,6 +216,16 @@ def score_windows(
     tol = request.duration_tolerance_sec
     win_min = target * (1 - WINDOW_SIZE_TOLERANCE)
     win_max = target * (1 + WINDOW_SIZE_TOLERANCE)
+    # NOTE: there is intentionally no word-cut hard reject. The historical
+    # `cut_pct > MAX_WORD_CUT_PCT` gate rejected every window longer than
+    # ~1.25× target regardless of content (cut_pct is mechanically
+    # (post-silence length − target) / length, so it tracks window length,
+    # not disfluency) — that starved sparse-boundary regions of candidates.
+    # Excess duration is no longer handled by word surgery at all: the cut
+    # planner absorbs it via whole-sentence edge shrink + speed_multiplier,
+    # so "too much surgery" is not a failure mode. Long windows still pay in
+    # the pacing score's duration-match term, and the /scan LLM selection
+    # pass owns the final ordering with full window transcripts.
 
     # Enumerate candidate windows: slide a target-sized window, snap to
     # nearest sentence boundary, then explore ±50% width via sentence growth.
@@ -226,7 +240,6 @@ def score_windows(
     enum_count = 0
     drop_silence = 0
     drop_face_coverage = 0
-    drop_word_cut_pct = 0
     drop_speaker_moves = 0
     drop_no_snippet = 0
     t = 0.0
@@ -300,11 +313,8 @@ def score_windows(
             win_start, win_end, transcript, emphasis, pauses, scenes,
             target, tol, source_emphasis_density, breakdown,
         )
-        # Hard reject: too much word surgery needed (pinned ranges bypass).
-        if cut_pct > MAX_WORD_CUT_PCT and not is_pinned:
-            drop_word_cut_pct += 1
-            t += WINDOW_STRIDE_S
-            continue
+        # (No word-cut hard reject here — see the note above the enumeration
+        # loop. `cut_pct` still feeds the breakdown + pacing score.)
 
         # User-pinned ranges bypass the speaker_moves rejection (F4) — if the
         # caller explicitly said "include this timestamp", we honor the pin
@@ -375,11 +385,11 @@ def score_windows(
     # to see how the pre-filter is firing per source.
     logger.info(
         "[reels.scan] enumerated=%d passed=%d "
-        "drop_silence=%d drop_face_coverage=%d drop_word_cut_pct=%d "
+        "drop_silence=%d drop_face_coverage=%d "
         "drop_speaker_moves=%d drop_no_snippet=%d "
         "face_segments=%d duration_s=%.1f",
         enum_count, len(candidates),
-        drop_silence, drop_face_coverage, drop_word_cut_pct,
+        drop_silence, drop_face_coverage,
         drop_speaker_moves, drop_no_snippet,
         len(face_segments), duration_s,
     )
@@ -696,7 +706,12 @@ def _score_hook(
 ) -> float:
     """First 2.5s strength: opener + energy + completeness + vocal expressiveness."""
     hook_end = min(win_end, win_start + HOOK_LEAD_S)
-    opening_sentence = _sentence_at(transcript, win_start)
+    # The window start is frequently a punctuation-derived sentence start in
+    # the MIDDLE of a Whisper segment. `_sentence_at` would return the whole
+    # segment — including the tail of the PREVIOUS sentence — and opener
+    # scoring would judge text that isn't in the clip. `_opening_sentence_at`
+    # trims to the sentence actually starting at win_start.
+    opening_sentence = _opening_sentence_at(transcript, win_start)
 
     # 1. Opener quality (0 = filler opener, 100 = strong claim/question).
     opener_quality = _opener_quality(opening_sentence)
@@ -789,11 +804,13 @@ def _opener_quality(sentence: Optional[dict]) -> float:
     first = words[0]
     second = words[1] if len(words) > 1 else ""
 
+    # Hedge-phrase opener ("I think…", "I guess…") — the claim is pre-
+    # weakened before it lands. Checked as a two-token pattern so a bare
+    # first-person opener ("I built…") isn't collateral damage.
+    if first == "i" and second in HEDGE_OPENERS:
+        return 5.0
     # Heavy penalty for filler opener — research §12.2.
     if first in BAD_OPENER_WORDS:
-        # "I think", "I guess" — double-penalize the hedge phrase.
-        if first == "i" and second in HEDGE_OPENERS:
-            return 5.0
         return 15.0
 
     # Reward strong openers.
@@ -853,8 +870,10 @@ def _score_pacing(
     own baseline (R-tune-1). Absolute thresholds penalize entire sources
     unfairly.
 
-    word_cut_pct is the proportion of words we'd need to remove to hit
-    target ± tol after silence trim. Above MAX_WORD_CUT_PCT → caller rejects.
+    word_cut_pct is the proportion of words that would need to go to hit
+    target ± tol after silence trim. Diagnostic only (breakdown + pacing
+    inputs) — there is no hard reject on it; excess duration is absorbed
+    downstream by edge sentence shrink + speed_multiplier.
     """
     duration = win_end - win_start
 
@@ -1550,6 +1569,62 @@ def _sentence_at(
     return nearest_forward
 
 
+# Words starting up to this much before the window edge still count as the
+# window's first word — absorbs float rounding from the snap logic, which
+# records the boundary at the word's own start timestamp.
+_WINDOW_EDGE_EPS_S = 0.05
+
+
+def _opening_sentence_at(transcript: list[dict], win_start: float) -> Optional[dict]:
+    """The sentence that actually STARTS the window.
+
+    `_sentence_at` returns the whole Whisper segment covering `win_start` —
+    wrong text when the window was snapped to a punctuation-derived sentence
+    start mid-segment ("…and that is why it failed. Most people never…"
+    snapped at "Most" must be judged on "Most people…", not "and that is
+    why…"). This trims the covering segment to the words at/after
+    `win_start`, up to the first sentence terminator.
+
+    Returns the ORIGINAL segment dict when no trimming is needed (so callers
+    relying on identity against `transcript` entries keep working), or a
+    synthetic {text, start, end, words} dict for the trimmed case.
+    """
+    seg = _sentence_at(transcript, win_start)
+    if seg is None:
+        return None
+    words = seg.get("words") or []
+    if not words:
+        return seg  # no word timestamps — segment text is the best we have
+    inside = [
+        w for w in words
+        if float(w.get("start") or 0.0) >= win_start - _WINDOW_EDGE_EPS_S
+    ]
+    if not inside or len(inside) == len(words):
+        # Window starts at (or before) the segment's own start — the full
+        # segment text IS the opening sentence. `not inside` is defensive:
+        # a covering segment whose words all precede win_start has nothing
+        # better to offer than its own text.
+        return seg
+    # Trim to one sentence: stop at the first terminator-bearing word.
+    out_words: list[dict] = []
+    for w in inside:
+        out_words.append(w)
+        token = ((w.get("word") or "").strip())
+        if len(token) > 1 and token[-1] in _SENTENCE_TERMINATORS:
+            break
+    text = " ".join(
+        t for t in ((w.get("word") or "").strip() for w in out_words) if t
+    )
+    if not text:
+        return seg
+    return {
+        "text": text,
+        "start": float(out_words[0].get("start") or win_start),
+        "end": float(out_words[-1].get("end") or seg.get("end") or win_start),
+        "words": out_words,
+    }
+
+
 def _series_window_avg(series: list[dict], t_start: float, t_end: float) -> float:
     """Average of `v` / `rms` / `hz` over series samples falling in window.
     Returns 0.0 if no samples or all are None/NaN."""
@@ -1770,54 +1845,99 @@ def _strip_leading_filler(text: str) -> str:
     return rebuilt
 
 
+def _segment_text_in_window(seg: dict, t_start: float, t_end: float) -> str:
+    """Text of `seg`'s words that lie FULLY inside [t_start, t_end].
+
+    A boundary segment contributes only its in-window words — using the
+    segment's full `text` would show the user (and the selection LLM)
+    speech that the rendered clip does not contain. Returns "" for
+    segments without word timestamps; callers decide their own fallback.
+    """
+    words = seg.get("words") or []
+    parts: list[str] = []
+    for w in words:
+        try:
+            ws = float(w.get("start") or 0.0)
+            we = float(w.get("end") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if ws >= t_start - _WINDOW_EDGE_EPS_S and we <= t_end + _WINDOW_EDGE_EPS_S:
+            token = (w.get("word") or "").strip()
+            if token:
+                parts.append(token)
+    return " ".join(parts)
+
+
+# Word-less segments (no per-word timestamps) can't be split at a window
+# edge; they're included in the full-window text only when (almost) fully
+# inside the window. 0.25s slop absorbs indexer rounding.
+_WORDLESS_SEGMENT_SLOP_S = 0.25
+
+
+def window_transcript_text(
+    transcript: list[dict],
+    t_start: float,
+    t_end: float,
+) -> str:
+    """Full, un-elided text of the speech inside [t_start, t_end].
+
+    Word-level: boundary segments contribute only their in-window words, so
+    the result is exactly what the clipped window will say. Used to give the
+    /scan selection LLM the real window content (the display snippet stays
+    140-char capped). Segments without word timing are included whole, but
+    only when they sit fully inside the window.
+    """
+    parts: list[str] = []
+    for s in transcript:
+        if s.get("end", 0) < t_start or s.get("start", 1e9) > t_end:
+            continue
+        words = s.get("words") or []
+        if words:
+            txt = _segment_text_in_window(s, t_start, t_end)
+        elif (
+            float(s.get("start") or 0.0) >= t_start - _WORDLESS_SEGMENT_SLOP_S
+            and float(s.get("end") or 0.0) <= t_end + _WORDLESS_SEGMENT_SLOP_S
+        ):
+            txt = (s.get("text") or "").strip()
+        else:
+            txt = ""
+        if txt:
+            parts.append(txt)
+    return " ".join(parts)
+
+
 def _build_snippet(t_start: float, t_end: float, transcript: list[dict]) -> str:
     """First sentence + … + last sentence of the window, capped at 140 chars.
 
     Always returns a usable string even if transcript is empty or window
     falls in a silent stretch — FE shows the timestamp range as fallback.
 
-    Only includes sentences with at least one WORD inside the window. A
-    sentence-level overlap check alone (`s.start <= t_end AND s.end >= t_start`)
-    pulls in sentences that merely touch the window's edges — e.g. a sentence
-    whose start equals t_end has zero word content in the window, and a
-    sentence that only catches the window's first ~0.2s likely has all but
-    its last word outside. Both produce misleading snippets that disagree
-    with the words /preview's `_extract_window_words` extracts for the
-    same window. Word-level filtering keeps the two in sync.
+    Built ONLY from words fully inside the window (via
+    `_segment_text_in_window`). A segment-level overlap check pulls in text
+    outside the clip — the audited failure mode was a card showing "That is
+    why it failed. Most people …" for a window starting at "Most": the user
+    picks a clip based on a hook line the render will never contain. The
+    word-level filter also keeps the snippet in sync with the words
+    /preview's `_extract_window_words` extracts for the same window.
     """
-    inside: list[dict] = []
+    pieces: list[str] = []
     for s in transcript:
         if s.get("end", 0) < t_start or s.get("start", 1e9) > t_end:
             continue
-        # Require at least one word with non-trivial overlap. A sentence at
-        # start=t_end has all its words at t_end-or-later → strict `<` excludes
-        # it; a sentence at end=t_start has all its words at t_start-or-earlier
-        # → strict `>` excludes it.
-        words = s.get("words") or []
-        has_inside_word = any(
-            float(w.get("end", 0.0) or 0.0) > t_start
-            and float(w.get("start", 0.0) or 0.0) < t_end
-            for w in words
-        )
-        if not has_inside_word:
-            continue
-        inside.append(s)
-    if not inside:
+        txt = _segment_text_in_window(s, t_start, t_end)
+        if txt:
+            pieces.append(txt)
+    if not pieces:
         return ""
-    if len(inside) == 1:
-        text = (inside[0].get("text") or "").strip()
+    if len(pieces) == 1:
+        text = _strip_leading_filler(pieces[0])
     else:
-        first = (inside[0].get("text") or "").strip()
-        last = (inside[-1].get("text") or "").strip()
         # Clean leading filler from BOTH the first sentence and the last
         # sentence (Phase 2e fix) — the snippet shows "first … last" and
         # both halves benefit from a clean opener.
-        first = _strip_leading_filler(first)
-        last = _strip_leading_filler(last)
+        first = _strip_leading_filler(pieces[0])
+        last = _strip_leading_filler(pieces[-1])
         text = f"{first} … {last}"
-    # Single-sentence case: clean leading filler too.
-    if len(inside) == 1:
-        text = _strip_leading_filler(text)
     if len(text) > 140:
         text = text[:137] + "…"
     return text

@@ -77,6 +77,14 @@ async def _lifespan(app: FastAPI):
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
+    # Reels stuck-render reaper: sweeps PENDING/IN_PROGRESS rows orphaned by
+    # a deploy/crash (in-process asyncio renders die with the process) every
+    # 5 min. Lazy import so a reels-module issue can't block app boot.
+    try:
+        from .services.reels_render_orchestrator import start_reels_reaper
+        start_reels_reaper()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("reels reaper startup skipped: %s", exc)
     yield
 
 

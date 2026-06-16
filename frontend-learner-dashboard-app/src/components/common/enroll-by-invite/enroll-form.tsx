@@ -1872,10 +1872,14 @@ const EnrollByInvite = ({
             });
             setPaymentCompletionResponse(paymentResponse);
             setTimeout(async () => {
-              if (
-                paymentResponse?.payment_response?.response_data
-                  ?.paymentStatus === "PAID"
-              ) {
+              // cpo-pay-installments returns a flat PaymentResponseDTO (top-level
+              // `response_data`), unlike the non-CPO enroll endpoint which nests it under
+              // `payment_response`. Check both so the idempotent PAID short-circuit (when the
+              // settlement webhook already ran) is detected and we advance to success.
+              const cpoPaymentStatus =
+                paymentResponse?.payment_response?.response_data?.paymentStatus ??
+                paymentResponse?.response_data?.paymentStatus;
+              if (cpoPaymentStatus === "PAID") {
                 setCurrentStep(5);
                 await fetchAndHandleEnrollmentPolicy();
               } else setCurrentStep(4);

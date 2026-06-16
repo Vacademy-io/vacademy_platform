@@ -21,7 +21,10 @@ interface TemplateGalleryProps {
 export function TemplateGallery({ instituteId }: TemplateGalleryProps) {
     const [open, setOpen] = useState(false);
     const { data: templates, isLoading } = useQuery(getWorkflowTemplatesQuery(instituteId));
-    const { setNodes, setEdges, setWorkflowName, setWorkflowDescription, setWorkflowType } = useWorkflowBuilderStore();
+    const {
+        setNodes, setEdges, setWorkflowName, setWorkflowDescription, setWorkflowType,
+        setEditingWorkflowId, setEditingWorkflowStatus,
+    } = useWorkflowBuilderStore();
 
     const handleApplyTemplate = (template: WorkflowTemplateItem) => {
         try {
@@ -51,6 +54,10 @@ export function TemplateGallery({ instituteId }: TemplateGalleryProps) {
                 label: e.label ?? '',
             }));
 
+            // Applying a template starts a fresh workflow — drop any edit context so Save creates a
+            // new workflow instead of overwriting the one currently being edited.
+            setEditingWorkflowId(null);
+            setEditingWorkflowStatus(null);
             setNodes(rfNodes);
             setEdges(rfEdges);
             setWorkflowName(template.name);

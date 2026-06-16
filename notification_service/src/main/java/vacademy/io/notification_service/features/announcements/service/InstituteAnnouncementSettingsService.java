@@ -315,9 +315,53 @@ public class InstituteAnnouncementSettingsService {
         general.setRetentionDays(365);
         general.setEmailTrackingEnabled(true);
         defaultSettings.setGeneral(general);
-        
+
+        // Chat defaults (conversation-centric DM/batch/community). All open by default.
+        defaultSettings.setChat(createDefaultChatSettings());
+
         response.setSettings(defaultSettings);
         return response;
+    }
+
+    /**
+     * Default chat settings — everything open, with empty community-rule scaffolding.
+     */
+    private vacademy.io.notification_service.features.chat.dto.ChatSettings createDefaultChatSettings() {
+        var chat = new vacademy.io.notification_service.features.chat.dto.ChatSettings();
+        chat.setEnabled(false); // OFF by default — an institute admin opts in via Settings
+
+        var batch = new vacademy.io.notification_service.features.chat.dto.ChatSettings.BatchGroupSettings();
+        batch.setStudentsCanPost(true);
+        batch.setTeachersCanPost(true);
+        chat.setBatchGroup(batch);
+
+        var community = new vacademy.io.notification_service.features.chat.dto.ChatSettings.CommunityChatSettings();
+        community.setStudentsCanPost(true);
+        community.setTeachersCanPost(true);
+        community.setAdminsCanPost(true);
+        var rules = new vacademy.io.notification_service.features.chat.dto.ChatRulesDto();
+        rules.setAcknowledgementRequired(false);
+        var guidelines = new vacademy.io.notification_service.features.chat.dto.ChatRulesDto.Guidelines();
+        guidelines.setTitle("Community Guidelines");
+        rules.setGuidelines(guidelines);
+        rules.setPosting(new vacademy.io.notification_service.features.chat.dto.ChatRulesDto.Posting());
+        rules.setAutoModeration(new vacademy.io.notification_service.features.chat.dto.ChatRulesDto.AutoModeration());
+        community.setRules(rules);
+        chat.setCommunity(community);
+
+        var direct = new vacademy.io.notification_service.features.chat.dto.ChatSettings.DirectSettings();
+        direct.setEnabled(true);
+        for (String sender : java.util.List.of("student", "teacher", "admin")) {
+            java.util.Map<String, Boolean> row = new java.util.HashMap<>();
+            for (String target : java.util.List.of("student", "teacher", "admin")) {
+                row.put(target, true);
+            }
+            direct.getMatrix().put(sender, row);
+        }
+        chat.setDirect(direct);
+
+        chat.setAttachments(new vacademy.io.notification_service.features.chat.dto.ChatSettings.AttachmentSettings());
+        return chat;
     }
 
     /**

@@ -10,10 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash, Users, ArrowsClockwise, X, Check, CaretUpDown, SpinnerGap, UploadSimple } from '@phosphor-icons/react';
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { Plus, Trash, Users, ArrowsClockwise, SpinnerGap, UploadSimple } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
@@ -27,6 +24,10 @@ interface SubOrgLearnersComponentProps {
   adminMappings: AdminMappings[];
   instituteDetails: any;
 }
+
+// Sub-org members added here are always staff. The backend models staff as the
+// LEARNER org-role, so we always send LEARNER — the role is no longer user-selectable.
+const STAFF_ORG_ROLE = 'LEARNER';
 
 export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: SubOrgLearnersComponentProps) {
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
@@ -53,8 +54,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     mobile_number: '',
     full_name: '',
     username: '',
-    status: 'ACTIVE',
-    comma_separated_org_roles: ''
+    status: 'ACTIVE'
   });
 
 
@@ -142,11 +142,6 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const handleAddMember = async () => {
     if (!selectedPackageSession) {
       toast.error('Please select a package session');
-      return;
-    }
-
-    if (!formData.comma_separated_org_roles) {
-      toast.error('At least one organization role is required');
       return;
     }
 
@@ -249,7 +244,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         sub_org_id: selectedMapping.sub_org_id,
         institute_id: selectedMapping.institute_id,
         status: 'ACTIVE',
-        comma_separated_org_roles: formData.comma_separated_org_roles,
+        comma_separated_org_roles: STAFF_ORG_ROLE,
         custom_field_values: customFieldValues.length > 0 ? customFieldValues : undefined
       };
 
@@ -258,7 +253,6 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       // Reset form
       setFormData({
         status: 'ACTIVE',
-        comma_separated_org_roles: '',
       });
 
       setIsAddModalOpen(false);
@@ -552,85 +546,6 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   </>
                 )}
 
-                {/* Organization Roles - Always shown */}
-                <div>
-                  <Label htmlFor="roles">Organization Roles *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <div className="flex min-h-10 w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
-                        <div className="flex flex-wrap gap-1">
-                          {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
-                            formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
-                              <Badge key={role} variant="secondary" className="mr-1 mb-1">
-                                {role}
-                                <button
-                                  className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      const currentRoles = formData.comma_separated_org_roles.split(',').filter(Boolean);
-                                      const newRoles = currentRoles.filter((r: string) => r !== role);
-                                      setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
-                                    }
-                                  }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={() => {
-                                    const currentRoles = formData.comma_separated_org_roles.split(',').filter(Boolean);
-                                    const newRoles = currentRoles.filter((r: string) => r !== role);
-                                    setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
-                                  }}
-                                >
-                                  <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                </button>
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-muted-foreground">Select the Roles</span>
-                          )}
-                        </div>
-                        <CaretUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </div>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-radix-popover p-0 z-50" align="start">
-                      <Command>
-                        <CommandList>
-                          <CommandEmpty>No role found.</CommandEmpty>
-                          <CommandGroup>
-                            {['LEARNER', 'ADMIN'].map((role) => {
-                              const currentRoles = formData.comma_separated_org_roles.split(',').filter(Boolean);
-                              const isSelected = currentRoles.includes(role);
-                              return (
-                                <CommandItem
-                                  key={role}
-                                  value={role}
-                                  onSelect={() => {
-                                    let newRoles;
-                                    if (isSelected) {
-                                      newRoles = currentRoles.filter((r: string) => r !== role);
-                                    } else {
-                                      newRoles = [...currentRoles, role];
-                                    }
-                                    setFormData((prev: any) => ({ ...prev, comma_separated_org_roles: newRoles.join(',') }));
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      isSelected ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  {role}
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
                 <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setIsAddModalOpen(false)} className="w-full sm:w-auto" disabled={isAdding}>
                     Cancel

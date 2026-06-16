@@ -95,6 +95,22 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
 
     const isValid = !isTimeDriven || inTime < exitTime;
 
+    // B17: existing non-branding entries the new [inTime, exitTime) range
+    // would overlap. Overlapping is allowed (the new shot stacks on top at
+    // the same z until the user retimes it) but must never be silent — "At
+    // current time" with a 5s duration routinely lands on top of the shot
+    // under the playhead.
+    const overlapping = useMemo(() => {
+        if (!isTimeDriven || !isValid) return [];
+        return entries.filter((e) => {
+            if (e.id.startsWith('branding-')) return false;
+            const s = e.inTime ?? e.start;
+            const t = e.exitTime ?? e.end;
+            if (typeof s !== 'number' || typeof t !== 'number') return false;
+            return s < exitTime - 0.01 && t > inTime + 0.01;
+        });
+    }, [entries, inTime, exitTime, isTimeDriven, isValid]);
+
     const handleAdd = useCallback(() => {
         if (!isValid) return;
 
@@ -297,6 +313,21 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
                                     )}
                                 </div>
                             )}
+
+                            {/* B17: overlap warning — adding is still allowed
+                                (the new shot stacks on top until retimed) but
+                                the collision is called out instead of silent. */}
+                            {isValid &&
+                                overlapping.length > 0 &&
+                                !(position === 'end' && existingUnsavedBlankAtEnd) && (
+                                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                                        This range overlaps {overlapping.length} existing{' '}
+                                        {overlapping.length === 1 ? 'shot' : 'shots'} — the new shot
+                                        will sit on top of{' '}
+                                        {overlapping.length === 1 ? 'it' : 'them'} until you retime
+                                        it on the timeline.
+                                    </div>
+                                )}
                         </>
                     ) : (
                         <p className="text-xs text-gray-500">

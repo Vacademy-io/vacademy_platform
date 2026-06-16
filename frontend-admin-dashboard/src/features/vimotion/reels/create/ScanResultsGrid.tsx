@@ -14,6 +14,9 @@ import { ReelCandidateCard } from './ReelCandidateCard';
 
 interface ScanResultsGridProps {
     candidates: ReelCandidate[];
+    /** Playable URL of the source video — enables click-to-play segment
+     *  previews on every card. Null while the asset record loads. */
+    sourceVideoUrl: string | null;
     /** Called when the user clicks "Preview selected". Slice 3 wires this
      *  to the PreviewTray. For slice 2 we just toast. */
     onPreview: (candidateIds: string[]) => void;
@@ -32,6 +35,7 @@ const MAX_SELECTION = 10;
 
 export function ScanResultsGrid({
     candidates,
+    sourceVideoUrl,
     onPreview,
     onBack,
     busy = false,
@@ -66,8 +70,8 @@ export function ScanResultsGrid({
                     No usable clips found
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
-                    We couldn’t find engaging moments at the default settings. Try a different
-                    source video, or relax the filters in slice 4.
+                    We couldn’t find strong moments at these settings. Try a longer
+                    target duration, different topic keywords, or another source video.
                 </p>
                 {onBack && (
                     <button
@@ -133,6 +137,7 @@ export function ScanResultsGrid({
                     <ReelCandidateCard
                         key={c.candidate_id}
                         candidate={c}
+                        sourceVideoUrl={sourceVideoUrl}
                         selected={selectedIds.has(c.candidate_id)}
                         onToggle={() => toggle(c.candidate_id)}
                     />

@@ -276,6 +276,18 @@ public class InvoiceService {
      */
     @Transactional
     public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId) {
+        return generateInvoice(userPlan, paymentLog, instituteId, true);
+    }
+
+    /**
+     * Overload that controls whether the invoice email is sent. The online CPO/SCHOOL payment
+     * webhook generates the invoice purely so a real, downloadable {@code INV-} record exists,
+     * but it already sends its own fee receipt — so it passes {@code sendEmail=false} to avoid a
+     * duplicate learner email. All existing callers use the 3-arg overload and keep emailing.
+     *
+     * @param sendEmail whether to email the generated invoice PDF to the learner
+     */
+    public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId, boolean sendEmail) {
         try {
             log.info("Starting invoice generation for userPlanId: {}, paymentLogId: {}, instituteId: {}",
                     userPlan.getId(), paymentLog.getId(), instituteId);
@@ -317,11 +329,13 @@ public class InvoiceService {
                     paymentLogs, instituteId);
 
             // 8. Send email with PDF attached (don't fail if email fails)
-            try {
-                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
-            } catch (Exception e) {
-                log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
-                        invoiceNumber, e);
+            if (sendEmail) {
+                try {
+                    sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
+                } catch (Exception e) {
+                    log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
+                            invoiceNumber, e);
+                }
             }
 
             log.info("Invoice generated successfully: {} with {} payment log(s)",
@@ -687,34 +701,44 @@ public class InvoiceService {
             BigDecimal paymentAmount) {
         List<InvoiceLineItemData> lineItems = new ArrayList<>();
 
-        // For multi-package enrollments, try to get package session details
-        String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
+        // CPO / fee-installment payments are allocated across specific StudentFeePayment
+        // installments (tracked in StudentFeeAllocationLedger). When that's the case, list the
+        // installment(s) actually settled by THIS payment instead of a single course/plan line —
+        // the package name was misleading on an installment invoice. Regular SUBSCRIPTION/ONE_TIME
+        // payments create no ledger rows, so they fall through to the plan line item unchanged.
+        List<InvoiceLineItemData> installmentItems = buildInstallmentLineItems(paymentLogId);
+        if (!installmentItems.isEmpty()) {
+            lineItems.addAll(installmentItems);
+        } else {
+            // For multi-package enrollments, try to get package session details
+            String description = buildPackageSessionDescription(paymentPlan, paymentLogId);
 
-        // Ensure description is never null or empty
-        if (description == null || description.trim().isEmpty()) {
-            description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
-                    : "Package Enrollment";
-            log.warn("Using fallback description for payment log: {}", paymentLogId);
+            // Ensure description is never null or empty
+            if (description == null || description.trim().isEmpty()) {
+                description = paymentPlan != null && paymentPlan.getName() != null ? paymentPlan.getName()
+                        : "Package Enrollment";
+                log.warn("Using fallback description for payment log: {}", paymentLogId);
+            }
+
+            // Main plan item — show GROSS plan price (actualPrice) here so the
+            // discount line items can subtract from it visually. Using the net
+            // gateway-captured amount instead would render as
+            // "Course ₹450, Coupon −₹50" which sums to ₹400 instead of the ₹450
+            // actually charged. Falls back to paymentAmount when paymentPlan is
+            // unavailable so we don't blank the line.
+            BigDecimal grossUnitPrice = paymentPlan != null
+                    ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                    : paymentAmount;
+            InvoiceLineItemData planItem = InvoiceLineItemData.builder()
+                    .itemType("PLAN")
+                    .description(description.trim())
+                    .quantity(1)
+                    .unitPrice(grossUnitPrice)
+                    .amount(grossUnitPrice)
+                    .sourceId(paymentLogId) // Store payment log ID as source
+                    .build();
+            lineItems.add(planItem);
         }
-
-        // Main plan item — show GROSS plan price (actualPrice) here so the
-        // discount line items can subtract from it visually. Using the net
-        // gateway-captured amount instead would render as
-        // "Course ₹450, Coupon −₹50" which sums to ₹400 instead of the ₹450
-        // actually charged. Falls back to paymentAmount when paymentPlan is
-        // unavailable so we don't blank the line.
-        BigDecimal grossUnitPrice = paymentPlan != null
-                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
-                : paymentAmount;
-        InvoiceLineItemData planItem = InvoiceLineItemData.builder()
-                .itemType("PLAN")
-                .description(description.trim())
-                .quantity(1)
-                .unitPrice(grossUnitPrice)
-                .amount(grossUnitPrice)
-                .sourceId(paymentLogId) // Store payment log ID as source
-                .build();
-        lineItems.add(planItem);
 
         // Discount items for this plan
         for (PaymentLogLineItem item : paymentLogLineItems) {
@@ -745,6 +769,80 @@ public class InvoiceService {
         }
 
         return lineItems;
+    }
+
+    /**
+     * Builds one invoice line item per StudentFeePayment installment actually settled by the
+     * given payment log, sourced from {@link StudentFeeAllocationLedger}. This is what turns a
+     * CPO / fee-installment invoice from a single "course name" line into the specific
+     * installments paid in that transaction.
+     *
+     * <p>Returns an empty list when the payment log has no ledger rows (i.e. it is not a
+     * fee/CPO payment), so the caller falls back to the plan line item and regular
+     * SUBSCRIPTION/ONE_TIME invoices are unaffected. Any failure here also returns empty so
+     * invoice generation degrades gracefully to the plan line rather than breaking.</p>
+     *
+     * @param paymentLogId the payment log whose allocations should be itemized
+     * @return per-installment line items (possibly empty)
+     */
+    private List<InvoiceLineItemData> buildInstallmentLineItems(String paymentLogId) {
+        List<InvoiceLineItemData> items = new ArrayList<>();
+        if (paymentLogId == null) {
+            return items;
+        }
+        try {
+            List<vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger> ledgers =
+                    studentFeeAllocationLedgerRepository.findByPaymentLogId(paymentLogId);
+            if (ledgers == null || ledgers.isEmpty()) {
+                return items;
+            }
+
+            // A single installment can receive multiple ledger rows; sum what THIS payment
+            // allocated to each, preserving first-seen order.
+            Map<String, BigDecimal> allocatedBySfp = new java.util.LinkedHashMap<>();
+            for (vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger ledger : ledgers) {
+                if (ledger.getStudentFeePaymentId() == null) {
+                    continue;
+                }
+                BigDecimal amt = ledger.getAmountAllocated() != null ? ledger.getAmountAllocated() : BigDecimal.ZERO;
+                allocatedBySfp.merge(ledger.getStudentFeePaymentId(), amt, BigDecimal::add);
+            }
+            if (allocatedBySfp.isEmpty()) {
+                return items;
+            }
+
+            List<StudentFeePayment> sfps = studentFeePaymentRepository.findAllById(allocatedBySfp.keySet());
+            // Stable, human-friendly order: by due date ascending (mirrors the fee receipt).
+            sfps.sort((a, b) -> {
+                java.util.Date da = a.getDueDate();
+                java.util.Date db = b.getDueDate();
+                if (da == null && db == null) return 0;
+                if (da == null) return 1;
+                if (db == null) return -1;
+                return da.compareTo(db);
+            });
+
+            java.text.SimpleDateFormat dueFmt = new java.text.SimpleDateFormat("dd MMM yyyy");
+            int index = 1;
+            for (StudentFeePayment sfp : sfps) {
+                BigDecimal amt = allocatedBySfp.getOrDefault(sfp.getId(), BigDecimal.ZERO);
+                String due = sfp.getDueDate() != null ? dueFmt.format(sfp.getDueDate()) : "N/A";
+                items.add(InvoiceLineItemData.builder()
+                        .itemType("FEE_INSTALLMENT")
+                        .description("Installment #" + index + " (Due: " + due + ")")
+                        .quantity(1)
+                        .unitPrice(amt)
+                        .amount(amt)
+                        .sourceId(sfp.getId())
+                        .build());
+                index++;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to build CPO installment line items for paymentLog {}: {}. "
+                    + "Falling back to plan line item.", paymentLogId, e.getMessage());
+            return new ArrayList<>();
+        }
+        return items;
     }
 
     /**

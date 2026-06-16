@@ -58,14 +58,25 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
 
     /**
      * Same filter set as {@link #findDoubtsWithFilter}, additionally restricted to doubts
-     * that are visible to the given viewer user. A doubt is visible if any of:
+     * that are visible to the given viewer (teacher / student / non-admin staff). A doubt is
+     * visible if any of:
      *   - the viewer raised the doubt themselves (d.user_id = :viewerUserId), so students still
      *     see their own questions and can follow replies
-     *   - the viewer is directly assigned via doubt_assignee (source='USER', status='ACTIVE')
-     *   - the viewer has an ACTIVE batch-level FSPSSM (subject_id IS NULL) for the doubt's
-     *     package_session (covering both legacy package_session_id and access_type='PACKAGE_SESSION')
-     *   - the viewer has an ACTIVE subject-level FSPSSM (subject_id IS NOT NULL) where the doubt's
-     *     slide maps back to the mapping's subject via module_chapter_mapping/subject_module_mapping
+     *   - the viewer is assigned via doubt_assignee (source='USER', status='ACTIVE') — this is the
+     *     setting-driven path (DOUBT_MANAGEMENT_SETTING routes new doubts to subject/batch teachers,
+     *     a role, or specific staff), and it ALWAYS applies regardless of the scope flags below
+     *   - {@code scopeBatch} is on AND the viewer has an ACTIVE FSPSSM mapping (any subject) to the
+     *     doubt's package_session — i.e. "batch teacher sees the whole batch"
+     *   - {@code scopeSubject} is on AND either the viewer has an ACTIVE batch-level FSPSSM
+     *     (subject_id IS NULL) for the doubt's package_session, or an ACTIVE subject-level FSPSSM
+     *     whose subject maps (via subject_module_mapping/module_chapter_mapping/chapter_to_slides)
+     *     back to the doubt's slide — i.e. "subject teacher sees their subject's doubts"
+     *
+     * {@code scopeBatch}/{@code scopeSubject} are derived by {@code DoubtsManager#getAllDoubts} from
+     * the institute's DOUBT_MANAGEMENT_SETTING default_assignee_source so live FSPSSM visibility
+     * MIRRORS what the admin configured: BATCH_TEACHER/BOTH (and the no-setting default) → scopeBatch;
+     * SUBJECT_TEACHER → scopeSubject; NONE/ROLE/SPECIFIC_USERS → neither (assignment-only). The
+     * doubt_assignee path above still covers role/specific-user routing and any manual assignment.
      */
     @Query(value = """
         SELECT d.* FROM doubts d
@@ -89,30 +100,47 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
                   AND da.source_id = :viewerUserId
                   AND da.status = 'ACTIVE'
             )
-            OR EXISTS (
-                SELECT 1 FROM faculty_subject_package_session_mapping fm
-                WHERE fm.user_id = :viewerUserId
-                  AND fm.status = 'ACTIVE'
-                  AND fm.subject_id IS NULL
-                  AND (
-                      fm.package_session_id = d.package_session_id
-                      OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
-                  )
+            OR (
+                CAST(:scopeBatch AS boolean) = true
+                AND EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping fm
+                    WHERE fm.user_id = :viewerUserId
+                      AND fm.status = 'ACTIVE'
+                      AND (
+                          fm.package_session_id = d.package_session_id
+                          OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                      )
+                )
             )
-            OR EXISTS (
-                SELECT 1 FROM faculty_subject_package_session_mapping fm
-                JOIN subject_module_mapping smm ON smm.subject_id = fm.subject_id
-                JOIN module_chapter_mapping mcm ON mcm.module_id = smm.module_id
-                JOIN chapter_to_slides cs ON cs.chapter_id = mcm.chapter_id
-                WHERE fm.user_id = :viewerUserId
-                  AND fm.status = 'ACTIVE'
-                  AND fm.subject_id IS NOT NULL
-                  AND (
-                      fm.package_session_id = d.package_session_id
-                      OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
-                  )
-                  AND cs.slide_id = d.source_id
-                  AND d.source = 'SLIDE'
+            OR (
+                CAST(:scopeSubject AS boolean) = true
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping fm
+                        WHERE fm.user_id = :viewerUserId
+                          AND fm.status = 'ACTIVE'
+                          AND fm.subject_id IS NULL
+                          AND (
+                              fm.package_session_id = d.package_session_id
+                              OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                          )
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping fm
+                        JOIN subject_module_mapping smm ON smm.subject_id = fm.subject_id
+                        JOIN module_chapter_mapping mcm ON mcm.module_id = smm.module_id
+                        JOIN chapter_to_slides cs ON cs.chapter_id = mcm.chapter_id
+                        WHERE fm.user_id = :viewerUserId
+                          AND fm.status = 'ACTIVE'
+                          AND fm.subject_id IS NOT NULL
+                          AND (
+                              fm.package_session_id = d.package_session_id
+                              OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                          )
+                          AND cs.slide_id = d.source_id
+                          AND d.source = 'SLIDE'
+                    )
+                )
             )
           )
         """,
@@ -138,30 +166,47 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
                   AND da.source_id = :viewerUserId
                   AND da.status = 'ACTIVE'
             )
-            OR EXISTS (
-                SELECT 1 FROM faculty_subject_package_session_mapping fm
-                WHERE fm.user_id = :viewerUserId
-                  AND fm.status = 'ACTIVE'
-                  AND fm.subject_id IS NULL
-                  AND (
-                      fm.package_session_id = d.package_session_id
-                      OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
-                  )
+            OR (
+                CAST(:scopeBatch AS boolean) = true
+                AND EXISTS (
+                    SELECT 1 FROM faculty_subject_package_session_mapping fm
+                    WHERE fm.user_id = :viewerUserId
+                      AND fm.status = 'ACTIVE'
+                      AND (
+                          fm.package_session_id = d.package_session_id
+                          OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                      )
+                )
             )
-            OR EXISTS (
-                SELECT 1 FROM faculty_subject_package_session_mapping fm
-                JOIN subject_module_mapping smm ON smm.subject_id = fm.subject_id
-                JOIN module_chapter_mapping mcm ON mcm.module_id = smm.module_id
-                JOIN chapter_to_slides cs ON cs.chapter_id = mcm.chapter_id
-                WHERE fm.user_id = :viewerUserId
-                  AND fm.status = 'ACTIVE'
-                  AND fm.subject_id IS NOT NULL
-                  AND (
-                      fm.package_session_id = d.package_session_id
-                      OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
-                  )
-                  AND cs.slide_id = d.source_id
-                  AND d.source = 'SLIDE'
+            OR (
+                CAST(:scopeSubject AS boolean) = true
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping fm
+                        WHERE fm.user_id = :viewerUserId
+                          AND fm.status = 'ACTIVE'
+                          AND fm.subject_id IS NULL
+                          AND (
+                              fm.package_session_id = d.package_session_id
+                              OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                          )
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM faculty_subject_package_session_mapping fm
+                        JOIN subject_module_mapping smm ON smm.subject_id = fm.subject_id
+                        JOIN module_chapter_mapping mcm ON mcm.module_id = smm.module_id
+                        JOIN chapter_to_slides cs ON cs.chapter_id = mcm.chapter_id
+                        WHERE fm.user_id = :viewerUserId
+                          AND fm.status = 'ACTIVE'
+                          AND fm.subject_id IS NOT NULL
+                          AND (
+                              fm.package_session_id = d.package_session_id
+                              OR (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id = d.package_session_id)
+                          )
+                          AND cs.slide_id = d.source_id
+                          AND d.source = 'SLIDE'
+                    )
+                )
             )
           )
         """, nativeQuery = true)
@@ -178,6 +223,8 @@ public interface DoubtsRepository extends JpaRepository<Doubts, String> {
                                                @Param("startDate") Date startDate,
                                                @Param("endDate") Date endDate,
                                                @Param("viewerUserId") String viewerUserId,
+                                               @Param("scopeBatch") boolean scopeBatch,
+                                               @Param("scopeSubject") boolean scopeSubject,
                                                Pageable pageable);
 
     List<Doubts> findByParentIdAndStatusNotIn(String doubtId, List<String> name);

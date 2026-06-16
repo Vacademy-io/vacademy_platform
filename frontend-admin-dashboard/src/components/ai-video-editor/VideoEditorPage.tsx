@@ -32,6 +32,8 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { AddMediaOverlayDialog } from './AddMediaOverlayDialog';
 import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
+import { SilentTailNotice } from './SilentTailNotice';
+import { SaveConflictNotice } from './SaveConflictNotice';
 import { CaptionSettingsPanel } from './CaptionSettingsPanel';
 import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
@@ -146,8 +148,12 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const [renderProgress, setRenderProgress] = useState(0);
     const [renderDownloadUrl, setRenderDownloadUrl] = useState<string | null>(null);
     const [, setRenderJobId] = useState<string | null>(null);
+    // Consecutive failed status checks (B12): drives both the exponential
+    // backoff between polls and the visible "status check failing" hint.
+    const [pollFailures, setPollFailures] = useState(0);
 
     const pollCountRef = useRef(0);
+    const pollFailuresRef = useRef(0);
     const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isMountedRef = useRef(true); // C5: guard setState after unmount
 
@@ -246,6 +252,9 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     // ── Resume render job on mount ─────────────────────────────────────────
     useEffect(() => {
         if (!props.apiKey || !props.videoId) return;
+        // Studio builds render from the project detail page via the studio
+        // pipeline — the AI-video render endpoints can't resolve a build id.
+        if (props.kind === 'studio') return;
 
         // Check API for existing render job
         getVideoUrls(props.videoId, props.apiKey)
@@ -287,6 +296,8 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         (jobId: string) => {
             if (!props.apiKey) return;
             pollCountRef.current = 0;
+            pollFailuresRef.current = 0;
+            setPollFailures(0);
 
             const poll = async () => {
                 if (!isMountedRef.current) return; // C5
@@ -301,6 +312,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     const status = await getRenderStatus(jobId, props.apiKey!, props.videoId);
                     if (!isMountedRef.current) return; // C5: guard after await
 
+                    if (pollFailuresRef.current > 0) {
+                        pollFailuresRef.current = 0;
+                        setPollFailures(0);
+                    }
                     if (status.progress != null) {
                         setRenderProgress(Math.round(status.progress));
                     }
@@ -323,8 +338,17 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     pollTimerRef.current = setTimeout(poll, RENDER_POLL_INTERVAL);
                 } catch {
                     if (!isMountedRef.current) return; // C5
-                    // Network hiccup — keep polling
-                    pollTimerRef.current = setTimeout(poll, RENDER_POLL_INTERVAL);
+                    // Status check failed — keep polling, but back off
+                    // exponentially (10s → 20s → 40s → 60s cap) so a down
+                    // backend isn't hammered, and surface the failure in the
+                    // render chip instead of pretending all is well (B12).
+                    pollFailuresRef.current++;
+                    setPollFailures(pollFailuresRef.current);
+                    const backoff = Math.min(
+                        RENDER_POLL_INTERVAL * 2 ** (pollFailuresRef.current - 1),
+                        60_000
+                    );
+                    pollTimerRef.current = setTimeout(poll, backoff);
                 }
             };
 
@@ -355,6 +379,13 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             ) {
                 try {
                     await saveChanges();
+                    // A revision conflict aborts the save quietly and shows the
+                    // conflict strip. Don't render with unsaved edits — let the
+                    // user resolve the conflict first.
+                    if (useVideoEditorStore.getState().saveConflict) {
+                        toast.error('Resolve the timeline conflict above before rendering.');
+                        return;
+                    }
                     toast.info('Saved pending edits before rendering');
                 } catch (err) {
                     toast.error(
@@ -426,6 +457,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const handleSave = useCallback(async () => {
         try {
             await saveChanges();
+            // saveChanges aborts quietly on a revision conflict and sets
+            // saveConflict — the SaveConflictNotice strip handles that case,
+            // so don't claim success.
+            if (useVideoEditorStore.getState().saveConflict) return;
             toast.success('Changes saved successfully');
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -456,6 +491,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
 
     // ── Render button (toolbar slot) ───────────────────────────────────────
     const renderButton = (() => {
+        // Studio builds render from the project detail page (studio pipeline);
+        // the /external/video/v1/render endpoints 400 on a build id.
+        if (props.kind === 'studio') return null;
+
         if (!props.apiKey) {
             return (
                 <Button
@@ -501,14 +540,35 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         }
 
         if (renderState === 'rendering') {
+            const checksFailing = pollFailures > 0;
             return (
                 <div
-                    className="flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3"
-                    title={`Rendering: ${renderProgress}%`}
+                    className={`flex h-7 items-center gap-1.5 rounded-md border px-3 ${
+                        checksFailing
+                            ? 'border-amber-200 bg-amber-50'
+                            : 'border-blue-200 bg-blue-50'
+                    }`}
+                    title={
+                        checksFailing
+                            ? `Rendering — last ${pollFailures} status check${
+                                  pollFailures === 1 ? '' : 's'
+                              } failed; retrying with backoff`
+                            : `Rendering: ${renderProgress}%`
+                    }
                 >
-                    <Loader2 className="size-3 animate-spin text-blue-500" />
-                    <span className="text-xs text-blue-700">
-                        {renderProgress > 0 ? `${renderProgress}%` : 'Queued…'}
+                    <Loader2
+                        className={`size-3 animate-spin ${
+                            checksFailing ? 'text-amber-500' : 'text-blue-500'
+                        }`}
+                    />
+                    <span
+                        className={`text-xs ${checksFailing ? 'text-amber-700' : 'text-blue-700'}`}
+                    >
+                        {checksFailing
+                            ? 'Status check failed — retrying…'
+                            : renderProgress > 0
+                              ? `${renderProgress}%`
+                              : 'Queued…'}
                     </span>
                     {/* Mini progress bar */}
                     <div className="h-1 w-14 overflow-hidden rounded-full bg-blue-100">
@@ -651,8 +711,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
 
             {/* Thumbnail picker — opens a popover with the selected option +
                 alternates + regenerate. Lives next to the export group because
-                thumbnails are part of "ship this video" workflow. */}
-            {props.videoId && props.apiKey && (
+                thumbnails are part of "ship this video" workflow. AI-gen
+                videos only — the thumbnail endpoints can't resolve a studio
+                build id. */}
+            {props.videoId && props.apiKey && props.kind !== 'studio' && (
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
@@ -862,6 +924,7 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
     return (
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-gray-50 text-gray-900">
             {toolbar}
+            <SaveConflictNotice />
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Entry list — collapsible left panel */}
@@ -881,6 +944,7 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
             </div>
 
             <PlaybackBar />
+            <SilentTailNotice />
             <div data-tour="editor-timeline">
                 <TimelineScrubber />
             </div>

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
@@ -41,6 +42,7 @@ public class CounselorPoolService {
     private final UserLeadProfileService userLeadProfileService;
     private final TimelineEventService timelineEventService;
     private final AuthService authService;
+    private final LeadAssignmentNotifier leadAssignmentNotifier;
 
     // ────────────────────────────────────────────────────────────────
     // Pool CRUD
@@ -367,7 +369,9 @@ public class CounselorPoolService {
      * journey-timeline event is logged for each, with the acting admin as
      * the actor — that way Charlie picking up Bhavna's 12 leads shows up
      * on each of those leads' timelines, matching the audit trail produced
-     * by clicking Reassign by hand.
+     * by clicking Reassign by hand. The backup also gets a single batched
+     * bell notification ("N leads reassigned to you") — one alert for the
+     * whole operation, not one per lead.
      */
     private void reassignOpenLeadsToBackup(CounselorPool pool, String fromCounselorUserId,
                                            String backupUserId, CustomUserDetails admin) {
@@ -416,6 +420,14 @@ public class CounselorPoolService {
                         userId, pool.getId(), e.getMessage());
             }
         }
+
+        // ONE bell alert to the backup ("12 leads reassigned to you"), never
+        // one per lead. Best-effort inside the notifier, so a notification
+        // blip can't roll back the reassignment — same fire-inside-transaction
+        // posture as the pool auto-assign alert in CounselorAssignmentService.
+        leadAssignmentNotifier.notifyBatchAssigned(
+                instituteId, backupUserId, userIds.size(),
+                "backup for pool \"" + pool.getName() + "\"");
 
         log.info("Reassigned {} open leads from counselor={} to backup={} in pool={} (institute={})",
                 userIds.size(), fromCounselorUserId, backupUserId, pool.getId(), instituteId);

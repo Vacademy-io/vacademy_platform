@@ -76,6 +76,47 @@ export const DEFAULT_RENDER_CONFIG: RenderConfigValue = {
     },
 };
 
+// ---------------------------------------------------------------------------
+// Persistence — render config survives sessions, scoped per institute like
+// the other vimotion localStorage keys (api key, tour flags, onboarding).
+// ---------------------------------------------------------------------------
+
+const STORAGE_KEY_PREFIX = 'vimotion_reel_render_config_';
+
+const storageKey = (instituteId: string | undefined) =>
+    `${STORAGE_KEY_PREFIX}${instituteId ?? 'anon'}`;
+
+/** Hydrate the stored config, merged over defaults so a stale snapshot
+ *  (saved before a field existed) can never produce an incomplete shape.
+ *  Any storage failure (private mode, corrupt JSON) falls back to defaults. */
+export function loadStoredRenderConfig(instituteId: string | undefined): RenderConfigValue {
+    try {
+        const raw = window.localStorage.getItem(storageKey(instituteId));
+        if (!raw) return DEFAULT_RENDER_CONFIG;
+        const parsed = JSON.parse(raw) as Partial<RenderConfigValue>;
+        return {
+            ...DEFAULT_RENDER_CONFIG,
+            ...parsed,
+            pace: { ...DEFAULT_RENDER_CONFIG.pace, ...(parsed.pace ?? {}) },
+            captions: { ...DEFAULT_RENDER_CONFIG.captions, ...(parsed.captions ?? {}) },
+        };
+    } catch {
+        return DEFAULT_RENDER_CONFIG;
+    }
+}
+
+export function persistRenderConfig(
+    instituteId: string | undefined,
+    config: RenderConfigValue
+): void {
+    try {
+        window.localStorage.setItem(storageKey(instituteId), JSON.stringify(config));
+    } catch {
+        // localStorage unavailable (private mode / quota) — config simply
+        // won't survive the session, which is the pre-persistence behavior.
+    }
+}
+
 /** Layouts the FE surfaces in the picker. The schema knows about more
  *  options (split, lower_third, book_quote) but only these are shipped.
  *  `pip_corner_speaker` ships in its rectangular form here; alpha-matte

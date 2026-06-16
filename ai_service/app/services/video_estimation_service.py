@@ -366,6 +366,11 @@ def estimate_video_generation(
             _ltx_fps = int(avatar_cfg.get("avatar_fps") or 24)
             _ltx_w, _ltx_h = (1280, 720) if (avatar_cfg.get("quality") == "720p") else (854, 480)
             host_per_sec = round(0.0024075 * (_ltx_w * _ltx_h * _ltx_fps) / 1_000_000.0, 6)
+        elif host_model == "bytedance/seedance-2.0/reference-to-video":
+            # Seedance reference-to-video is priced PER-SECOND by resolution
+            # ($0.3034/s @480p–720p, $0.682/s @1080p). The avatar quality picker
+            # only exposes 480p/720p, so the 720p rate is representative.
+            host_per_sec = 0.682 if (avatar_cfg.get("quality") == "1080p") else 0.3034
         else:
             host_per_sec = _get_video_second_price(db, host_model)
         if host_per_sec is not None and approx_seconds > 0:

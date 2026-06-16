@@ -17,7 +17,7 @@ import {
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
-import { createWorkflow, testRunWorkflow, validateWorkflow, getTriggerEventsCatalogQuery } from '@/services/workflow-service';
+import { createWorkflow, updateWorkflow, testRunWorkflow, validateWorkflow, getTriggerEventsCatalogQuery } from '@/services/workflow-service';
 import { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
 import { getUserId } from '@/utils/userDetails';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
@@ -852,7 +852,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
     const navigate = useNavigate();
     const {
         nodes, edges, workflowName, workflowDescription, workflowType,
-        scheduleConfig, triggerConfig, isSaving, selectedNodeId,
+        scheduleConfig, triggerConfig, isSaving, selectedNodeId, editingWorkflowId, editingWorkflowStatus,
         onNodesChange, onEdgesChange, onConnect, selectNode,
         setWorkflowName, setWorkflowDescription, setIsSaving, setSetupComplete,
     } = useWorkflowBuilderStore();
@@ -873,6 +873,8 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
     const onPaneClick = useCallback(() => selectNode(null), [selectNode]);
 
     const buildDTO = (status: string): WorkflowBuilderDTO => ({
+        // Carry the id when editing so the backend updates in place instead of cloning.
+        ...(editingWorkflowId ? { id: editingWorkflowId } : {}),
         name: workflowName,
         description: workflowDescription,
         status,
@@ -963,14 +965,26 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                     }
                 } catch { /* proceed */ }
             }
-            await createWorkflow(dto, getUserId());
-            // Invalidate workflow list cache so the new/edited workflow appears immediately.
+            if (editingWorkflowId) {
+                await updateWorkflow(editingWorkflowId, dto, getUserId());
+            } else {
+                await createWorkflow(dto, getUserId());
+            }
+            // Invalidate caches so the new/edited workflow appears immediately.
             // refetchType: 'all' forces refetch even for inactive (suspended) queries on the
             // list page — without it, navigating back may render stale 5-min cached data.
             await queryClient.invalidateQueries({
                 queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES'],
                 refetchType: 'all',
             });
+            if (editingWorkflowId) {
+                // Detail-page surfaces (diagram, raw config editor, edit loader) must refetch.
+                await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['GET_WORKFLOW_DIAGRAM', editingWorkflowId] }),
+                    queryClient.invalidateQueries({ queryKey: ['WORKFLOW_RAW', editingWorkflowId] }),
+                    queryClient.invalidateQueries({ queryKey: ['WORKFLOW_EDIT', editingWorkflowId] }),
+                ]);
+            }
             navigate({ to: '/workflow/list' });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -989,11 +1003,21 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
         setTestRunResult(null);
         setValidationErrors([]);
         try {
-            const dto = buildDTO('DRAFT');
-            const saved = await createWorkflow(dto, getUserId());
-            if (saved.id) {
-                const result = await testRunWorkflow(saved.id);
+            if (editingWorkflowId) {
+                // Persist current edits in place (keeping the live status — never downgrade to
+                // DRAFT), then dry-run the saved workflow.
+                const dto = buildDTO(editingWorkflowStatus || 'DRAFT');
+                await updateWorkflow(editingWorkflowId, dto, getUserId());
+                const result = await testRunWorkflow(editingWorkflowId);
                 setTestRunResult(result);
+            } else {
+                // New workflow: persist a DRAFT to get an id, then dry-run it.
+                const dto = buildDTO('DRAFT');
+                const saved = await createWorkflow(dto, getUserId());
+                if (saved.id) {
+                    const result = await testRunWorkflow(saved.id);
+                    setTestRunResult(result);
+                }
             }
         } catch (err) {
             console.error('Test run failed:', err);
@@ -1155,7 +1179,11 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                     try {
                         const parsed = JSON.parse(templateJson);
                         if (parsed.nodes) {
-                            const { setNodes, setEdges, setWorkflowName } = useWorkflowBuilderStore.getState();
+                            const { setNodes, setEdges, setWorkflowName, setEditingWorkflowId, setEditingWorkflowStatus } = useWorkflowBuilderStore.getState();
+                            // Applying a template starts a fresh workflow — drop any edit context so
+                            // Save creates a new workflow instead of overwriting the one being edited.
+                            setEditingWorkflowId(null);
+                            setEditingWorkflowStatus(null);
                             setWorkflowName(name);
                             const rfNodes = parsed.nodes.map((n: Record<string, unknown>) => ({
                                 id: n.id ?? `node-${Math.random().toString(36).slice(2)}`,

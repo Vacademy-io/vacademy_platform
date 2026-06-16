@@ -62,5 +62,15 @@ public enum EventType {
     /**
      * Heartbeat event to keep SSE connections alive
      */
-    HEARTBEAT
+    HEARTBEAT,
+
+    /**
+     * A new chat message has been delivered to a conversation
+     */
+    CHAT_MESSAGE,
+
+    /**
+     * A chat conversation has been read up to a point (read-cursor advanced)
+     */
+    CHAT_READ
 }

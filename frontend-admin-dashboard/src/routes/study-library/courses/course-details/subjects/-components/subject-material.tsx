@@ -877,6 +877,10 @@ export const SubjectMaterial = () => {
                 <Activity packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
+        // The Discussion (batch chat) tab is rendered only from course-details;
+        // this view filters it out of its tab strip below. Map entry kept so the
+        // exhaustive Record<TabType, ReactNode> type still compiles.
+        [TabType.DISCUSSION]: null,
     };
 
     if (courseId === '' || levelId === '') {
@@ -914,7 +918,9 @@ export const SubjectMaterial = () => {
                         className="h-auto min-w-max flex-nowrap bg-transparent p-0"
                         style={{ display: 'flex', justifyContent: 'left' }}
                     >
-                        {tabs.map((tab) => (
+                        {tabs
+                            .filter((tab) => tab.value !== TabType.DISCUSSION)
+                            .map((tab) => (
                             <TabsTrigger
                                 key={tab.value}
                                 value={tab.value}

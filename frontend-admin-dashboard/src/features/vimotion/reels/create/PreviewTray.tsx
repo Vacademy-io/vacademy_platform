@@ -5,37 +5,51 @@
  *   1. Mounts open with `candidateIds` set → fires `usePreview` mutation
  *   2. Loading state until LLM enrichment lands (typically 2-5s for N
  *      candidates running in parallel server-side)
- *   3. Renders one expanded card per enriched candidate showing title,
- *      rationale, cut-plan visualization, predicted output duration
- *   4. Per-card "Render this clip" button fires `useRender` with the
- *      tray-level `renderConfig` and navigates to /vim/reels/$reelId
+ *   3. Renders one expanded card per enriched candidate showing a playable
+ *      source-segment preview, title, rationale, cut-plan visualization,
+ *      predicted output duration
+ *   4. Renders are fire-and-forget: "Render all (N)" in the header or the
+ *      per-card "Render this clip" button POSTs /render WITHOUT navigating
+ *      away or closing the tray. Each card then shows a live status chip
+ *      (Queued / Rendering N% / Done / Failed) fed by the reels-list
+ *      poller, so the user can queue many renders in one pass and keep
+ *      their selection + config the whole time.
  *
  * Config: one shared `RenderConfigPanel` sits above the cards. The same
- * config is applied to whichever candidate the user renders — matches how
+ * config is applied to whichever candidates the user renders — matches how
  * scan params work and how every competing product (Opus / Vizard / Klap)
- * frames it.
+ * frames it. The config is persisted per institute so it survives sessions.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import {
     AlertCircle,
+    ArrowUpRight,
     CheckCircle2,
+    Clapperboard,
+    Clock,
+    Film,
     Scissors,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { getInstituteId } from '@/constants/helper';
 import type {
     CutSpan,
     EnrichedCandidate,
     ReelCandidate,
+    ReelResponse,
 } from '../services/reels-api';
 import { usePreview } from '../hooks/usePreview';
 import { useRender } from '../hooks/useRender';
+import { useReelsList } from '../hooks/useReelsList';
 import { VimotionLoader } from '../../brand/VimotionLoader';
+import { SegmentPlayer } from './SegmentPlayer';
 import { WordImportanceTimeline } from './WordImportanceTimeline';
 import {
-    DEFAULT_RENDER_CONFIG,
+    loadStoredRenderConfig,
+    persistRenderConfig,
     RenderConfigPanel,
     type RenderConfigValue,
 } from './RenderConfigPanel';
@@ -50,7 +64,19 @@ interface PreviewTrayProps {
     candidatesById: Map<string, ReelCandidate>;
     /** User's picked candidate_ids (from ScanResultsGrid selection). */
     candidateIds: string[];
+    /** Playable URL of the source video — powers the per-card segment
+     *  preview. Null while the asset record is still loading (or when the
+     *  asset has no playable URL); the cards degrade to poster-only. */
+    sourceVideoUrl: string | null;
 }
+
+/** Where a candidate's render currently stands, from the tray's view.
+ *  `starting` = POST /render in flight; `started` = accepted, tracked by
+ *  reel id via the list poller; `start_failed` = the POST itself errored. */
+type RenderLaunch =
+    | { phase: 'starting' }
+    | { phase: 'started'; reelId: string }
+    | { phase: 'start_failed'; error: string };
 
 export function PreviewTray({
     open,
@@ -59,17 +85,66 @@ export function PreviewTray({
     inputAssetId,
     candidatesById,
     candidateIds,
+    sourceVideoUrl,
 }: PreviewTrayProps) {
-    const navigate = useNavigate();
+    const instituteId = getInstituteId();
     const preview = usePreview({ apiKey });
     const render = useRender({ apiKey });
 
-    // Tray-level render config — applies to whichever card the user renders.
-    // Default mirrors what we used to hardcode (9:16 / silence-trim on / 1.0× /
-    // hormozi captions / speaker-only). The panel sits above the cards.
-    const [renderConfig, setRenderConfig] = useState<RenderConfigValue>(
-        DEFAULT_RENDER_CONFIG
+    // Tray-level render config — applies to whichever cards the user renders.
+    // Hydrated from localStorage (per institute) so the user's choices stick
+    // across visits; every change is written back immediately.
+    const [renderConfig, setRenderConfig] = useState<RenderConfigValue>(() =>
+        loadStoredRenderConfig(instituteId)
     );
+    const handleConfigChange = useCallback(
+        (next: RenderConfigValue) => {
+            setRenderConfig(next);
+            persistRenderConfig(instituteId, next);
+        },
+        [instituteId]
+    );
+
+    // Per-candidate render launches. The tray stays mounted while the page
+    // lives (it early-returns null when closed), so chips survive the user
+    // closing/reopening the tray mid-batch.
+    const [launches, setLaunches] = useState<Record<string, RenderLaunch>>({});
+    const setLaunch = useCallback((candidateId: string, launch: RenderLaunch) => {
+        setLaunches((prev) => ({ ...prev, [candidateId]: launch }));
+    }, []);
+
+    // Live reel statuses for this asset. The list poller stops by itself
+    // once every reel reaches a terminal state, so keeping it always-on is
+    // one cheap GET when nothing is rendering — and it lets status chips
+    // reappear for renders started in an earlier session.
+    const reelsList = useReelsList({
+        apiKey,
+        instituteId,
+        inputAssetId,
+    });
+
+    // candidate_id → freshest matching reel. Launch-tracked reel ids are
+    // authoritative (they came straight from the POST /render response);
+    // candidate_id matching backfills reels started in an earlier session
+    // so chips reappear after a page reload.
+    const reelByCandidate = useMemo(() => {
+        const map = new Map<string, ReelResponse>();
+        const reels = reelsList.data ?? [];
+        const byReelId = new Map(reels.map((r) => [r.reel_id, r]));
+        for (const r of reels) {
+            if (!r.candidate_id) continue;
+            const existing = map.get(r.candidate_id);
+            if (!existing || (r.created_at ?? '') > (existing.created_at ?? '')) {
+                map.set(r.candidate_id, r);
+            }
+        }
+        for (const [candidateId, launch] of Object.entries(launches)) {
+            if (launch.phase !== 'started') continue;
+            const reel = byReelId.get(launch.reelId);
+            if (reel) map.set(candidateId, reel);
+        }
+        return map;
+    }, [reelsList.data, launches]);
 
     // Fire the /preview mutation when the drawer opens with a non-empty
     // selection. Idempotent via the backend's `enriched` cache — re-opening
@@ -85,23 +160,18 @@ export function PreviewTray({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, candidateIds.join('|'), inputAssetId, apiKey]);
 
-    // Synchronous guard against double-click on "Render this clip".
-    // `render.isPending` flips on the next React render after `mutate()`,
-    // which leaves a small window where a fast second click can fire a
-    // duplicate POST. The ref-based check closes it: any second invocation
-    // for the same candidate within the in-flight window is a no-op. The
-    // backend dedup catches anything that slips past (different tab, etc.).
-    const renderingCandidateRef = useRef<string | null>(null);
+    // Synchronous guard against double-submitting one candidate. `launches`
+    // updates on the next React render after `mutate()`, which leaves a
+    // small window where a fast second click can fire a duplicate POST.
+    // The ref-based set closes it; the backend dedup catches anything that
+    // slips past (different tab, etc.).
+    const inFlightRef = useRef<Set<string>>(new Set());
 
-    const handleRender = (
-        enriched: EnrichedCandidate,
-        cutPlanOverrides?: CutSpan[],
-    ) => {
-        if (renderingCandidateRef.current === enriched.candidate_id) return;
-        // Soft validation: nudge the user to fill in URLs they asked for.
-        // Backend would silently fall back to defaults if these are missing,
-        // but that's a worse UX than telling them why their choice didn't
-        // take effect.
+    /** Soft validation shared by per-card and batch renders: nudge the user
+     *  to fill in URLs they asked for. Backend would silently fall back to
+     *  defaults if these are missing, but that's a worse UX than telling
+     *  them why their choice didn't take effect. */
+    const validateConfig = (): boolean => {
         if (
             renderConfig.audio_strategy === 'keep_speaker_plus_bgm'
             && !renderConfig.background_music_url
@@ -109,7 +179,7 @@ export function PreviewTray({
             toast.error(
                 'Add a background music URL or switch back to "Speaker only".'
             );
-            return;
+            return false;
         }
         if (
             (renderConfig.layout === 'stacked_speaker_with_broll'
@@ -124,44 +194,114 @@ export function PreviewTray({
             toast.error(
                 'Add a b-roll video URL or switch to "Auto" source.'
             );
-            return;
+            return false;
         }
-        renderingCandidateRef.current = enriched.candidate_id;
-        render.mutate(
-            {
-                input_asset_id: inputAssetId,
-                candidate_id: enriched.candidate_id,
-                layout: renderConfig.layout,
-                aspect: renderConfig.aspect,
-                pace: renderConfig.pace,
-                audio_strategy: renderConfig.audio_strategy,
-                background_music_url: renderConfig.background_music_url,
-                background_video_url: renderConfig.background_video_url,
-                ducking: renderConfig.ducking,
-                captions: renderConfig.captions,
-                cut_plan_overrides:
-                    cutPlanOverrides && cutPlanOverrides.length > 0
-                        ? cutPlanOverrides
-                        : undefined,
-            },
-            {
-                onSuccess: (reel) => {
-                    toast.success('Render started — tracking on detail page');
-                    onClose();
-                    navigate({
-                        to: '/vim/reels/$reelId',
-                        params: { reelId: reel.reel_id },
-                    });
-                },
-                onError: (e) => {
-                    toast.error(`Couldn't start render: ${e.message}`);
-                },
-                onSettled: () => {
-                    renderingCandidateRef.current = null;
-                },
-            }
-        );
+        return true;
     };
+
+    /** Fire one render POST and track its lifecycle. Never navigates.
+     *  Resolves to `null` on success, an error message on failure. */
+    const startRender = useCallback(
+        async (
+            enriched: EnrichedCandidate,
+            cutPlanOverrides?: CutSpan[],
+        ): Promise<string | null> => {
+            const candidateId = enriched.candidate_id;
+            if (inFlightRef.current.has(candidateId)) return null;
+            inFlightRef.current.add(candidateId);
+            setLaunch(candidateId, { phase: 'starting' });
+            try {
+                const reel = await render.mutateAsync({
+                    input_asset_id: inputAssetId,
+                    candidate_id: candidateId,
+                    layout: renderConfig.layout,
+                    aspect: renderConfig.aspect,
+                    pace: renderConfig.pace,
+                    audio_strategy: renderConfig.audio_strategy,
+                    background_music_url: renderConfig.background_music_url,
+                    background_video_url: renderConfig.background_video_url,
+                    ducking: renderConfig.ducking,
+                    captions: renderConfig.captions,
+                    cut_plan_overrides:
+                        cutPlanOverrides && cutPlanOverrides.length > 0
+                            ? cutPlanOverrides
+                            : undefined,
+                });
+                setLaunch(candidateId, { phase: 'started', reelId: reel.reel_id });
+                return null;
+            } catch (e) {
+                const message =
+                    e instanceof Error ? e.message : 'Render failed to start';
+                setLaunch(candidateId, { phase: 'start_failed', error: message });
+                return message;
+            } finally {
+                inFlightRef.current.delete(candidateId);
+            }
+        },
+        [inputAssetId, render, renderConfig, setLaunch]
+    );
+
+    const handleRenderOne = (
+        enriched: EnrichedCandidate,
+        cutPlanOverrides?: CutSpan[],
+    ) => {
+        if (!validateConfig()) return;
+        void startRender(enriched, cutPlanOverrides).then((error) => {
+            if (error === null) {
+                toast.success('Render started — progress shows on the card.');
+            } else {
+                toast.error(`Couldn't start render: ${error}`);
+            }
+        });
+    };
+
+    /** Candidates "Render all" would still submit: never launched, or whose
+     *  previous attempt failed (start error or FAILED reel). Queued/active/
+     *  completed candidates — including ones rendered in an earlier session —
+     *  are left alone; re-rendering those is an explicit per-card action. */
+    const remainingForBatch = useMemo(() => {
+        const enriched = preview.data?.enriched ?? [];
+        return enriched.filter((e) => {
+            const launch = launches[e.candidate_id];
+            if (launch?.phase === 'starting') return false;
+            const reel = reelByCandidate.get(e.candidate_id);
+            if (reel) return reel.status === 'FAILED';
+            // No reel visible yet: a successfully-started launch is already
+            // in flight on the backend even if the poller hasn't caught up;
+            // never-launched and failed-to-start candidates are fair game.
+            return launch?.phase !== 'started';
+        });
+    }, [preview.data, launches, reelByCandidate]);
+
+    const [batchRunning, setBatchRunning] = useState(false);
+    const handleRenderAll = async () => {
+        if (batchRunning || remainingForBatch.length === 0) return;
+        if (!validateConfig()) return;
+        setBatchRunning(true);
+        let started = 0;
+        try {
+            // Sequential on purpose: each POST returns in well under a second
+            // and ordering keeps the toasts/chips deterministic. The backend
+            // renders the queue in parallel regardless.
+            for (const enriched of remainingForBatch) {
+                const error = await startRender(enriched);
+                if (error === null) started += 1;
+            }
+        } finally {
+            setBatchRunning(false);
+        }
+        if (started > 0) {
+            toast.success(
+                `${started} render${started === 1 ? '' : 's'} started — track progress on the cards or in the Reels tab.`
+            );
+        } else {
+            toast.error("Couldn't start any renders — check the card statuses.");
+        }
+    };
+
+    const anyStarting =
+        batchRunning
+        || Object.values(launches).some((l) => l.phase === 'starting');
 
     if (!open) return null;
 
@@ -186,20 +326,22 @@ export function PreviewTray({
                 <PreviewTrayHeader
                     count={candidateIds.length}
                     enrichedCount={preview.data?.enriched.length ?? 0}
+                    renderAllCount={remainingForBatch.length}
+                    renderAllBusy={anyStarting}
+                    onRenderAll={() => void handleRenderAll()}
                     onClose={onClose}
                 />
                 <div className="flex-1 overflow-y-auto px-6 py-5">
                     <PreviewTrayBody
                         preview={preview}
                         candidatesById={candidatesById}
-                        onRender={handleRender}
-                        speedMultiplier={renderConfig.pace?.speed_multiplier ?? 1.0}
-                        renderInflight={render.isPending}
-                        renderingCandidateId={
-                            render.isPending ? render.variables?.candidate_id ?? null : null
-                        }
+                        sourceVideoUrl={sourceVideoUrl}
+                        onRender={handleRenderOne}
+                        launches={launches}
+                        reelByCandidate={reelByCandidate}
+                        configLocked={anyStarting}
                         renderConfig={renderConfig}
-                        onConfigChange={setRenderConfig}
+                        onConfigChange={handleConfigChange}
                     />
                 </div>
             </aside>
@@ -214,31 +356,67 @@ export function PreviewTray({
 function PreviewTrayHeader({
     count,
     enrichedCount,
+    renderAllCount,
+    renderAllBusy,
+    onRenderAll,
     onClose,
 }: {
     count: number;
     enrichedCount: number;
+    renderAllCount: number;
+    renderAllBusy: boolean;
+    onRenderAll: () => void;
     onClose: () => void;
 }) {
     return (
-        <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-            <div>
+        <div className="flex items-center justify-between gap-4 border-b border-neutral-200 px-6 py-4">
+            <div className="min-w-0">
                 <h2 className="text-base font-semibold text-neutral-900">
                     Preview {enrichedCount > 0 ? enrichedCount : count} clip
                     {count === 1 ? '' : 's'}
                 </h2>
                 <p className="mt-0.5 text-xs text-neutral-500">
-                    Review the AI-generated cut plan before triggering a render.
+                    Play each clip and review its cut plan — then render the ones you like.
+                    You stay right here while they render.
                 </p>
             </div>
-            <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-100"
-                aria-label="Close preview"
-            >
-                <X className="size-5" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+                {enrichedCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={onRenderAll}
+                        disabled={renderAllBusy || renderAllCount === 0}
+                        className={cn(
+                            'inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors',
+                            renderAllBusy || renderAllCount === 0
+                                ? 'cursor-not-allowed bg-neutral-400'
+                                : 'bg-neutral-900 hover:bg-neutral-800'
+                        )}
+                        title={
+                            renderAllCount === 0
+                                ? 'Every clip here is already rendering or done'
+                                : 'Start a render for every clip below with the current settings'
+                        }
+                    >
+                        {renderAllBusy ? (
+                            <VimotionLoader size={16} className="text-white" label="Starting" />
+                        ) : (
+                            <Clapperboard className="size-4" />
+                        )}
+                        {renderAllBusy
+                            ? 'Starting…'
+                            : `Render all (${renderAllCount})`}
+                    </button>
+                )}
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-100"
+                    aria-label="Close preview"
+                >
+                    <X className="size-5" />
+                </button>
+            </div>
         </div>
     );
 }
@@ -250,19 +428,21 @@ function PreviewTrayHeader({
 function PreviewTrayBody({
     preview,
     candidatesById,
+    sourceVideoUrl,
     onRender,
-    speedMultiplier,
-    renderInflight,
-    renderingCandidateId,
+    launches,
+    reelByCandidate,
+    configLocked,
     renderConfig,
     onConfigChange,
 }: {
     preview: ReturnType<typeof usePreview>;
     candidatesById: Map<string, ReelCandidate>;
+    sourceVideoUrl: string | null;
     onRender: (enriched: EnrichedCandidate, cutPlanOverrides?: CutSpan[]) => void;
-    speedMultiplier: number;
-    renderInflight: boolean;
-    renderingCandidateId: string | null;
+    launches: Record<string, RenderLaunch>;
+    reelByCandidate: Map<string, ReelResponse>;
+    configLocked: boolean;
     renderConfig: RenderConfigValue;
     onConfigChange: (next: RenderConfigValue) => void;
 }) {
@@ -270,9 +450,9 @@ function PreviewTrayBody({
         return (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-neutral-500">
                 <VimotionLoader size={56} className="text-neutral-900" label="Enriching with AI" />
-                <p className="font-medium text-neutral-900">Enriching with AI…</p>
+                <p className="font-medium text-neutral-900">Preparing your clips…</p>
                 <p className="max-w-md text-center text-xs">
-                    Generating titles, rationales, and surgical cut plans for each clip.
+                    Writing titles and planning the tightest cut for each clip.
                     Usually takes a couple seconds.
                 </p>
             </div>
@@ -306,8 +486,8 @@ function PreviewTrayBody({
     if (enriched.length === 0) {
         return (
             <div className="rounded-2xl border border-dashed border-neutral-300 bg-white p-10 text-center text-sm text-neutral-500">
-                No candidates were enriched. Some may have been silently filtered (e.g. expired
-                cache). Try a fresh scan.
+                These clips are no longer available — they may have aged out since the
+                scan. Run a fresh scan and pick again.
             </div>
         );
     }
@@ -317,17 +497,17 @@ function PreviewTrayBody({
             <RenderConfigPanel
                 value={renderConfig}
                 onChange={onConfigChange}
-                disabled={renderInflight}
+                disabled={configLocked}
             />
             {enriched.map((e) => (
                 <EnrichedCard
                     key={e.candidate_id}
                     enriched={e}
                     source={candidatesById.get(e.candidate_id)}
-                    speedMultiplier={speedMultiplier}
+                    sourceVideoUrl={sourceVideoUrl}
                     onRender={(overrides) => onRender(e, overrides)}
-                    busy={renderInflight}
-                    isRenderingThis={renderingCandidateId === e.candidate_id}
+                    launch={launches[e.candidate_id]}
+                    reel={reelByCandidate.get(e.candidate_id)}
                 />
             ))}
         </div>
@@ -379,17 +559,17 @@ function buildUserCutSpans(
 function EnrichedCard({
     enriched,
     source,
-    speedMultiplier,
+    sourceVideoUrl,
     onRender,
-    busy,
-    isRenderingThis,
+    launch,
+    reel,
 }: {
     enriched: EnrichedCandidate;
     source: ReelCandidate | undefined;
-    speedMultiplier: number;
+    sourceVideoUrl: string | null;
     onRender: (overrides?: CutSpan[]) => void;
-    busy: boolean;
-    isRenderingThis: boolean;
+    launch: RenderLaunch | undefined;
+    reel: ReelResponse | undefined;
 }) {
     // We need the original source window to compute the cut-plan timeline's
     // 0..100% domain. Falls back to the kept/cut spans' min-max if the
@@ -446,136 +626,267 @@ function EnrichedCard({
         enriched.predicted_output_duration_s - overrideRawSeconds,
     );
 
+    // Render lifecycle for THIS card only — other cards stay interactive.
+    const isStarting = launch?.phase === 'starting';
+    const startError = launch?.phase === 'start_failed' ? launch.error : null;
+    const isQueuedOrRendering =
+        !!reel && (reel.status === 'PENDING' || reel.status === 'IN_PROGRESS');
+    const isDone = reel?.status === 'COMPLETED';
+    const isFailed = reel?.status === 'FAILED' || !!startError;
+    const renderButtonLabel = isStarting
+        ? 'Starting…'
+        : isFailed
+            ? 'Try again'
+            : isDone
+                ? 'Render again'
+                : 'Render this clip';
+    // Re-submitting while the backend is already rendering this candidate
+    // would just hit the dedup check — disable until it lands.
+    const renderDisabled = isStarting || isQueuedOrRendering;
+
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                    <h3 className="text-base font-semibold text-neutral-900">
-                        {enriched.title}
-                    </h3>
-                    <p className="mt-1 text-sm text-neutral-600">{enriched.rationale}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
-                        <span>
-                            Predicted output:{' '}
-                            <span
+            <div className="flex flex-col gap-4 sm:flex-row">
+                {/* Playable source segment in a vertical frame approximating
+                    the 9:16 crop. object-cover center-crops the 16:9 source,
+                    which is where the renderer's default framing lands.
+                    Layout-only inline aspect-ratio — Tailwind has no built-in
+                    9/16 utility and arbitrary values are off-limits. */}
+                <div
+                    className="w-36 shrink-0 self-start overflow-hidden rounded-lg bg-neutral-100"
+                    style={{ aspectRatio: '9 / 16' }}
+                >
+                    {sourceVideoUrl ? (
+                        <SegmentPlayer
+                            src={sourceVideoUrl}
+                            tStart={sourceStartS}
+                            tEnd={sourceEndS}
+                            poster={source?.thumbnail_strip_url}
+                            className="size-full"
+                        />
+                    ) : (
+                        <div className="flex size-full items-center justify-center text-neutral-400">
+                            <Film className="size-8" />
+                        </div>
+                    )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-base font-semibold text-neutral-900">
+                                    {enriched.title}
+                                </h3>
+                                <RenderStatusChip
+                                    isStarting={isStarting}
+                                    startError={startError}
+                                    reel={reel}
+                                />
+                            </div>
+                            <p className="mt-1 text-sm text-neutral-600">{enriched.rationale}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
+                                <span>
+                                    Predicted output:{' '}
+                                    <span
+                                        className={cn(
+                                            'font-medium',
+                                            overrides.length > 0
+                                                ? 'text-orange-700'
+                                                : 'text-neutral-900',
+                                        )}
+                                    >
+                                        {liveDuration.toFixed(1)}s
+                                    </span>
+                                    {overrides.length > 0 && (
+                                        <span className="ml-1 text-neutral-500">
+                                            (was {enriched.predicted_output_duration_s.toFixed(1)}s)
+                                        </span>
+                                    )}
+                                </span>
+                                <span>·</span>
+                                <span>
+                                    {enriched.word_importance.length} word
+                                    {enriched.word_importance.length === 1 ? '' : 's'}
+                                </span>
+                                <span>·</span>
+                                <span>
+                                    {enriched.cut_plan.length} auto cut
+                                    {enriched.cut_plan.length === 1 ? '' : 's'}
+                                </span>
+                                {overrides.length > 0 && (
+                                    <>
+                                        <span>·</span>
+                                        <span className="text-orange-700">
+                                            {overrides.length} user cut
+                                            {overrides.length === 1 ? '' : 's'}
+                                        </span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                            {editMode && userCutIndices.size > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => setUserCutIndices(new Set())}
+                                    disabled={isStarting}
+                                    className={cn(
+                                        'inline-flex h-10 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50',
+                                        isStarting && 'cursor-not-allowed opacity-60',
+                                    )}
+                                    title="Clear all user cuts on this clip"
+                                >
+                                    Clear cuts
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setEditMode((v) => !v)}
+                                disabled={isStarting}
                                 className={cn(
-                                    'font-medium',
-                                    overrides.length > 0
-                                        ? 'text-orange-700'
-                                        : 'text-neutral-900',
+                                    'inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
+                                    editMode
+                                        ? 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100'
+                                        : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50',
+                                    isStarting && 'cursor-not-allowed opacity-60',
+                                )}
+                                title={
+                                    editMode
+                                        ? 'Exit edit-cuts mode (cuts are preserved)'
+                                        : 'Click low-importance words in the transcript to add user cuts'
+                                }
+                            >
+                                <Scissors className="size-4" />
+                                {editMode ? 'Done editing' : 'Edit cuts'}
+                            </button>
+                            {isDone && reel && (
+                                <Link
+                                    to="/vim/reels/$reelId"
+                                    params={{ reelId: reel.reel_id }}
+                                    className="inline-flex h-10 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                                >
+                                    <ArrowUpRight className="size-4" />
+                                    View reel
+                                </Link>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // PB5: pre-check span durations match server's
+                                    // MIN_CUT_SPAN_S so the user gets an actionable
+                                    // toast instead of a 400 response.
+                                    const shortSpan = overrides.find(
+                                        (s) => s.t_end - s.t_start < MIN_USER_CUT_SPAN_S,
+                                    );
+                                    if (shortSpan) {
+                                        const ms = Math.round(
+                                            (shortSpan.t_end - shortSpan.t_start) * 1000,
+                                        );
+                                        toast.error(
+                                            `One of your cuts is only ${ms}ms long. Include adjacent words to extend the cut to at least ${MIN_USER_CUT_SPAN_S * 1000}ms.`,
+                                        );
+                                        return;
+                                    }
+                                    onRender(overrides.length > 0 ? overrides : undefined);
+                                }}
+                                disabled={renderDisabled}
+                                className={cn(
+                                    'inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors',
+                                    renderDisabled
+                                        ? 'cursor-not-allowed bg-neutral-400'
+                                        : 'bg-neutral-900 hover:bg-neutral-800'
                                 )}
                             >
-                                {liveDuration.toFixed(1)}s
-                            </span>
-                            {overrides.length > 0 && (
-                                <span className="ml-1 text-neutral-500">
-                                    (was {enriched.predicted_output_duration_s.toFixed(1)}s)
-                                </span>
-                            )}
-                        </span>
-                        <span>·</span>
-                        <span>
-                            {enriched.word_importance.length} word
-                            {enriched.word_importance.length === 1 ? '' : 's'}
-                        </span>
-                        <span>·</span>
-                        <span>
-                            {enriched.cut_plan.length} auto cut
-                            {enriched.cut_plan.length === 1 ? '' : 's'}
-                        </span>
-                        {overrides.length > 0 && (
-                            <>
-                                <span>·</span>
-                                <span className="text-orange-700">
-                                    {overrides.length} user cut
-                                    {overrides.length === 1 ? '' : 's'}
-                                </span>
-                            </>
-                        )}
+                                {isStarting ? (
+                                    <VimotionLoader size={16} className="text-white" label="Starting" />
+                                ) : (
+                                    <CheckCircle2 className="size-4" />
+                                )}
+                                {renderButtonLabel}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-4">
+                        <WordImportanceTimeline
+                            sourceStartS={sourceStartS}
+                            sourceEndS={sourceEndS}
+                            words={enriched.word_importance}
+                            cuts={enriched.cut_plan}
+                            editable={editMode}
+                            userCutIndices={userCutIndices}
+                            onToggleWordCut={handleToggleWord}
+                        />
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                    {editMode && userCutIndices.size > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => setUserCutIndices(new Set())}
-                            disabled={busy}
-                            className={cn(
-                                'inline-flex h-10 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50',
-                                busy && 'cursor-not-allowed opacity-60',
-                            )}
-                            title="Clear all user cuts on this clip"
-                        >
-                            Clear cuts
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={() => setEditMode((v) => !v)}
-                        disabled={busy}
-                        className={cn(
-                            'inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
-                            editMode
-                                ? 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100'
-                                : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50',
-                            busy && 'cursor-not-allowed opacity-60',
-                        )}
-                        title={
-                            editMode
-                                ? 'Exit edit-cuts mode (cuts are preserved)'
-                                : 'Click low-importance words in the transcript to add user cuts'
-                        }
-                    >
-                        <Scissors className="size-4" />
-                        {editMode ? 'Done editing' : 'Edit cuts'}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            // PB5: pre-check span durations match server's
-                            // MIN_CUT_SPAN_S so the user gets an actionable
-                            // toast instead of a 400 response.
-                            const shortSpan = overrides.find(
-                                (s) => s.t_end - s.t_start < MIN_USER_CUT_SPAN_S,
-                            );
-                            if (shortSpan) {
-                                const ms = Math.round(
-                                    (shortSpan.t_end - shortSpan.t_start) * 1000,
-                                );
-                                toast.error(
-                                    `One of your cuts is only ${ms}ms long. Include adjacent words to extend the cut to at least ${MIN_USER_CUT_SPAN_S * 1000}ms.`,
-                                );
-                                return;
-                            }
-                            onRender(overrides.length > 0 ? overrides : undefined);
-                        }}
-                        disabled={busy}
-                        className={cn(
-                            'inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors',
-                            busy ? 'cursor-not-allowed bg-neutral-400' : 'bg-neutral-900 hover:bg-neutral-800'
-                        )}
-                    >
-                        {isRenderingThis ? (
-                            <VimotionLoader size={16} className="text-white" label="Starting" />
-                        ) : (
-                            <CheckCircle2 className="size-4" />
-                        )}
-                        {isRenderingThis ? 'Starting…' : 'Render this clip'}
-                    </button>
-                </div>
-            </div>
-
-            <div className="mt-4">
-                <WordImportanceTimeline
-                    sourceStartS={sourceStartS}
-                    sourceEndS={sourceEndS}
-                    words={enriched.word_importance}
-                    cuts={enriched.cut_plan}
-                    editable={editMode}
-                    userCutIndices={userCutIndices}
-                    onToggleWordCut={handleToggleWord}
-                />
             </div>
         </div>
+    );
+}
+
+/** Live render status for one card: Queued → Rendering N% → Done / Failed.
+ *  Nothing is shown before the first render attempt. */
+function RenderStatusChip({
+    isStarting,
+    startError,
+    reel,
+}: {
+    isStarting: boolean;
+    startError: string | null;
+    reel: ReelResponse | undefined;
+}) {
+    if (isStarting) {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                <VimotionLoader size={11} className="text-neutral-700" label="Starting" />
+                Starting…
+            </span>
+        );
+    }
+    if (startError) {
+        return (
+            <span
+                className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700"
+                title={startError}
+            >
+                <AlertCircle className="size-3" />
+                Couldn&rsquo;t start
+            </span>
+        );
+    }
+    if (!reel) return null;
+    if (reel.status === 'PENDING') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                <Clock className="size-3" />
+                Queued
+            </span>
+        );
+    }
+    if (reel.status === 'IN_PROGRESS') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                <VimotionLoader size={11} className="text-blue-700" label="Rendering" />
+                Rendering {reel.progress || 0}%
+            </span>
+        );
+    }
+    if (reel.status === 'COMPLETED') {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                <CheckCircle2 className="size-3" />
+                Done
+            </span>
+        );
+    }
+    return (
+        <span
+            className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700"
+            title={reel.error_message ?? undefined}
+        >
+            <AlertCircle className="size-3" />
+            Failed
+        </span>
     );
 }

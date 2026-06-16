@@ -123,6 +123,15 @@ public class SSEConnectionManager {
     }
 
     /**
+     * Whether the user currently has at least one live SSE connection. Read-only; used to decide
+     * whether a chat message needs an offline push fallback.
+     */
+    public boolean isUserOnline(String userId) {
+        Set<SseEmitter> connections = userConnections.get(userId);
+        return connections != null && !connections.isEmpty();
+    }
+
+    /**
      * Subscribe a specific emitter to a mode filter so it only receives events for that mode
      */
     public void subscribeEmitterToMode(SseEmitter emitter, String modeType) {

@@ -47,9 +47,12 @@ public class InstituteAnnouncementSettingsRequest {
         
         @Valid
         private GeneralSettings general;
-        
+
         @Valid
         private FirebaseSettings firebase;
+
+        @Valid
+        private vacademy.io.notification_service.features.chat.dto.ChatSettings chat;
     }
     
     @Data

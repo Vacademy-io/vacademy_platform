@@ -2,26 +2,31 @@
 Studio render-to-MP4 — submit a built timeline to the render worker + poll.
 
 Mirrors reels_render_finalize_service (submit + poll, no callback endpoint).
-The wrinkle: Studio has no TTS narration. Audio is the source clips' own
-audio, captured by the worker from the unmuted <video> elements. But the
-worker REQUIRES an `audio_url` (master narration), so we generate a SILENT
-MP3 of the timeline duration and pass it — the final mix is then just the
-source-clip audio over silence.
+Audio: the worker REQUIRES an `audio_url` (master narration) and it never
+extracts SOURCE_CLIP audio (compositing is pixels-only — the unmuted <video>
+in the entry HTML is audible only in the editor). P7's ASSEMBLE_AUDIO stage
+therefore bakes the real soundtrack at build time (`s3_urls.audio`,
+master_audio.mp3 on the composed clock) and we pass THAT. The silent-MP3
+fallback remains only for image-only builds and pre-P7 builds that have no
+master track. BGM rides separately in `meta.audio_tracks` (worker mixes it).
 
-⚠️ STAGING-VERIFICATION-NEEDED: the ffmpeg silence generation + render-worker
-submit/poll can't run in dev (no ffmpeg invocation + no worker here). The shape
-mirrors the proven reels finalize path; verify end-to-end on staging.
+⚠️ STAGING-VERIFICATION-NEEDED: ffmpeg + the render worker can't run in dev.
+The P5 silent path and the P7 master-audio path both need an end-to-end
+staging render (audio audible, captions aligned, BGM mixed).
+
+Render failures do NOT brick the build: the poll flips the row back to
+AWAITING_EDIT with a `[RENDER] …` error_message, so the user can retry from
+the project page (the timeline/words/audio artifacts are all still intact).
 
 Flow:
   1. Fetch the build's timeline.json → meta.source_video_urls + total_duration + dims.
-  2. ffmpeg anullsrc → silent.mp3 (total_duration) → upload to S3.
-  3. RenderService.submit(timeline_url, audio_url=silent, source_video_urls, w/h/fps).
+  2. audio_url = s3_urls.audio (P7 master track) or a generated silent MP3.
+  3. RenderService.submit(timeline_url, audio_url, source_video_urls, w/h/fps).
   4. Background poll → on completed, build.update_on_render(video_url) → RENDERED.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import shutil
 import subprocess
@@ -110,16 +115,19 @@ def _prepare_and_submit(build: AiStudioBuild, body: StudioRenderRequest) -> str:
     total_duration = float(meta.get("total_duration") or 0) or 1.0
     width, height = _resolve_dims(meta, body.resolution)
 
-    # Silent master narration (the worker requires audio_url; source-clip audio
-    # rides the browser-captured channel).
-    with tempfile.TemporaryDirectory(prefix="studio-render-") as tmp:
-        silent = Path(tmp) / "silent.mp3"
-        _make_silent_mp3(total_duration, silent)
-        audio_url = S3Service().upload_file(
-            silent,
-            s3_key=f"ai-studio/{build.id}/silent_narration.mp3",
-            content_type="audio/mpeg",
-        )
+    # Master soundtrack: P7's ASSEMBLE_AUDIO bakes the source-clip audio into
+    # s3_urls.audio. Fall back to a silent MP3 only when no master track exists
+    # (image-only builds, pre-P7 builds) — the worker requires SOME audio_url.
+    audio_url = (build.s3_urls or {}).get("audio")
+    if not audio_url:
+        with tempfile.TemporaryDirectory(prefix="studio-render-") as tmp:
+            silent = Path(tmp) / "silent.mp3"
+            _make_silent_mp3(total_duration, silent)
+            audio_url = S3Service().upload_file(
+                silent,
+                s3_key=f"ai-studio/{build.id}/silent_narration.mp3",
+                content_type="audio/mpeg",
+            )
 
     rs = RenderService(settings.render_server_url, settings.render_server_key)
     caption_font_size = _CAPTION_SIZE_PX.get(body.caption_size) if body.caption_size else None
@@ -174,12 +182,33 @@ async def _poll_until_done(build_id: str, job_id: str) -> None:
                 repo.update_on_render(build_id, video_url=video_url,
                                       extra_metadata={"render_job_id": job_id})
                 logger.info(f"[StudioRender] {build_id} RENDERED → {video_url}")
+            else:
+                # "completed" with no URL used to leave the build in silent
+                # limbo — record it so the FE can surface a retry.
+                repo.update_stage(
+                    build_id, status="AWAITING_EDIT",
+                    error_message=f"[RENDER] worker reported completed without a video URL — retry (job {job_id})",
+                )
+                logger.warning(f"[StudioRender] {build_id} completed with no video URL")
             return
         if state in ("failed", "error"):
-            repo.update_stage(build_id, status="FAILED",
-                              error_message=f"[RENDER] {status.get('error', 'render failed')}"[:500])
-            logger.warning(f"[StudioRender] {build_id} render FAILED")
+            # A failed RENDER must not brick the BUILD: the timeline/words/audio
+            # artifacts are intact, so return to AWAITING_EDIT (renderable) with
+            # the error surfaced. (Pre-fix this set FAILED, which the render
+            # endpoint rejects forever.) The job id makes each failure's
+            # message unique — the FE detects a retry's failure by comparing
+            # against the previous error_message.
+            err = str(status.get("error", "render failed"))[:400]
+            repo.update_stage(
+                build_id, status="AWAITING_EDIT",
+                error_message=f"[RENDER] {err} (job {job_id})"[:500],
+            )
+            logger.warning(f"[StudioRender] {build_id} render FAILED (build back to AWAITING_EDIT)")
             return
+    repo.update_stage(
+        build_id, status="AWAITING_EDIT",
+        error_message=f"[RENDER] timed out after 30 minutes — retry (job {job_id})",
+    )
     logger.warning(f"[StudioRender] {build_id} render poll timed out after {_POLL_MAX_TRIES} tries")
 
 

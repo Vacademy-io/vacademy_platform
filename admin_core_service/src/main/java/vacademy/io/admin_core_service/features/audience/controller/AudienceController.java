@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
@@ -32,6 +33,9 @@ public class AudienceController {
     @Autowired
     private TimelineEventService timelineEventService;
 
+    @Autowired
+    private LeadAssignmentNotifier leadAssignmentNotifier;
+
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
      * to. When the institute has configured a leads_team_id AND the caller
@@ -50,6 +54,21 @@ public class AudienceController {
             @RequestParam(value = "query", required = false) String query,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(audienceService.eligibleAssignees(instituteId, query, user));
+    }
+
+    /**
+     * Counsellor options for the CRM Leads "All counsellors" filter. When the institute has a
+     * leads_team_id configured AND the caller is in that subtree, the list is scoped to the
+     * caller's team hierarchy (themselves + reports + reports' reports) — matching the leads
+     * they can actually see. Otherwise {@code scoped=false} and the frontend falls back to its
+     * institute-wide counsellor list (admin behaviour). Used by the Recent Leads / per-campaign
+     * leads / Follow-ups filter bars.
+     */
+    @GetMapping("/lead-counsellor-options")
+    public ResponseEntity<LeadCounsellorOptionsDTO> leadCounsellorOptions(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user));
     }
 
     @PostMapping("/campaign")
@@ -127,6 +146,24 @@ public class AudienceController {
     public ResponseEntity<LeadDetailDTO> getLeadById(@PathVariable String responseId) {
         LeadDetailDTO lead = audienceService.getLeadById(responseId);
         return ResponseEntity.ok(lead);
+    }
+
+    /**
+     * Distinct values a custom field actually holds across the institute's
+     * leads, searchable and paginated. Powers the multi-select custom-field
+     * dropdowns in the leads filter bar (e.g. listing every city leads have
+     * entered into a free-text "City" field). The frontend only calls this for
+     * custom fields the admin has enabled as leads filters in settings.
+     */
+    @GetMapping("/custom-field-values")
+    public ResponseEntity<Page<String>> getLeadCustomFieldValues(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("customFieldId") String customFieldId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
+        return ResponseEntity.ok(
+                audienceService.getLeadCustomFieldValues(instituteId, customFieldId, search, pageNo, pageSize));
     }
 
     @DeleteMapping("/lead/{responseId}")
@@ -378,6 +415,13 @@ public class AudienceController {
                     userId);
         } catch (Exception e) {
             // best-effort — don't fail the assignment if logging fails
+        }
+        try {
+            // Bell notification to the counsellor — manual assignment should
+            // light up the bell exactly like pool auto-assignment does.
+            leadAssignmentNotifier.notifyAssigned(instituteId, counselorId, null, null);
+        } catch (Exception e) {
+            // best-effort — don't fail the assignment if notification fails
         }
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }

@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
+import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
 import {
     MagnifyingGlass,
@@ -135,18 +137,37 @@ const CampaignUsersContent = ({
     // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
     const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
     const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
-    const counsellorOptionsQuery = useQuery({
-        queryKey: ['counsellor-options', 'campaign-users'],
-        queryFn: fetchCounselors,
-        staleTime: 5 * 60 * 1000,
-    });
-    const counsellorOptions = counsellorOptionsQuery.data ?? [];
+    // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
+    // the institute-wide list. See useLeadCounsellorOptions.
+    const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
+        useLeadCounsellorOptions();
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
         from: '',
         to: '',
     });
+
+    // Custom-field filters — keyed by custom_field_id → selected values (multi-select).
+    // Only fields the admin enabled in Lead Settings render a control.
+    const { fields: filterCustomFields } = useLeadFilterCustomFields(instituteId);
+    const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string[]>>({});
+    const setCustomFieldFilter = (fieldId: string, values: string[]) => {
+        setPage(0);
+        setCustomFieldFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[fieldId];
+            else next[fieldId] = values;
+            return next;
+        });
+    };
+    const customFieldFiltersPayload = useMemo(
+        () =>
+            Object.entries(customFieldFilters)
+                .filter(([, vals]) => vals.length > 0)
+                .map(([field_id, values]) => ({ field_id, values })),
+        [customFieldFilters]
+    );
 
     // ── Dialog state ─────────────────────────────────────────
     const [showBulkImport, setShowBulkImport] = useState(false);
@@ -184,6 +205,7 @@ const CampaignUsersContent = ({
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
+        setCustomFieldFilters({});
     }, [campaignId]);
 
     // ── Custom-field setup (drives the side panel's response card) ───────────
@@ -272,6 +294,9 @@ const CampaignUsersContent = ({
             sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
             assigned_counselor_id:
                 counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+            custom_field_filters: customFieldFiltersPayload.length
+                ? customFieldFiltersPayload
+                : undefined,
         };
     }, [
         campaignId,
@@ -282,6 +307,7 @@ const CampaignUsersContent = ({
         leadStatusFilter,
         slaFilter,
         counsellorFilter,
+        customFieldFiltersPayload,
     ]);
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
@@ -428,6 +454,7 @@ const CampaignUsersContent = ({
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
+        setCustomFieldFilters({});
     };
 
     const isDateFilterActive = !!appliedRange.from || !!appliedRange.to;
@@ -437,7 +464,8 @@ const CampaignUsersContent = ({
         tierFilter !== ALL_VALUE ||
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
-        counsellorFilter !== ALL_COUNSELLORS_VALUE;
+        counsellorFilter !== ALL_COUNSELLORS_VALUE ||
+        customFieldFiltersPayload.length > 0;
 
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
@@ -471,6 +499,14 @@ const CampaignUsersContent = ({
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
         });
     }
+    customFieldFiltersPayload.forEach((f) => {
+        const fieldName =
+            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
+        chips.push({
+            label: `${fieldName}: ${f.values.join(', ')}`,
+            onRemove: () => setCustomFieldFilter(f.field_id, []),
+        });
+    });
 
     // ── CSV export ───────────────────────────────────────────
     const handleExport = async () => {
@@ -712,9 +748,19 @@ const CampaignUsersContent = ({
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
                             options={counsellorOptions}
-                            isLoading={counsellorOptionsQuery.isLoading}
+                            isLoading={counsellorOptionsLoading}
                         />
                     )}
+                    {filterCustomFields.map((f) => (
+                        <CustomFieldMultiSelectFilter
+                            key={f.customFieldId}
+                            instituteId={instituteId ?? ''}
+                            fieldId={f.customFieldId}
+                            fieldName={f.fieldName}
+                            selected={customFieldFilters[f.customFieldId] ?? []}
+                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                        />
+                    ))}
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">

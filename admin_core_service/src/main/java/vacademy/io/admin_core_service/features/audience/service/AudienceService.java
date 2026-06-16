@@ -171,6 +171,10 @@ public class AudienceService {
     @Autowired
     private UserLeadProfileService userLeadProfileService;
 
+    /** Shared bell-alert sender — same notification every assignment path uses. */
+    @Autowired
+    private LeadAssignmentNotifier leadAssignmentNotifier;
+
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
 
@@ -524,7 +528,8 @@ public class AudienceService {
                     try {
                         assignManualCounsellor(
                                 leadUserIdForAssignment, instituteIdForAssignment,
-                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName());
+                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                                userForNotification.getFullName(), audience.getCampaignName());
                     } catch (Exception e) {
                         logger.error("Failed to assign manual counsellor for response {}: {}",
                                 savedResponse.getId(), e.getMessage());
@@ -785,9 +790,11 @@ public class AudienceService {
      * and assigned_counselor_name (the fields the leads table renders) via the same service
      * the manual-assign UI uses. Looks the display name up from auth_service when the caller
      * didn't supply one, so the Counsellor column shows a name rather than "Unassigned".
+     * Also sends the standard new-lead bell alert to the owner ({@code leadName} /
+     * {@code campaignName} just flavour the alert text; both may be null).
      */
     private void assignManualCounsellor(String leadUserId, String instituteId,
-            String counsellorId, String counsellorName) {
+            String counsellorId, String counsellorName, String leadName, String campaignName) {
         if (!StringUtils.hasText(leadUserId) || !StringUtils.hasText(counsellorId)) {
             return;
         }
@@ -804,6 +811,11 @@ public class AudienceService {
             }
         }
         userLeadProfileService.assignCounselor(leadUserId, instituteId, counsellorId, name);
+
+        // Bell notification to the new owner — mirrors the pool auto-assign
+        // alert so a bulk-imported lead owner hears about their lead too.
+        // Best-effort inside the notifier; never fails the import row.
+        leadAssignmentNotifier.notifyAssigned(instituteId, counsellorId, leadName, campaignName);
     }
 
     /**
@@ -1561,6 +1573,17 @@ public class AudienceService {
                     logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
                             enquiry.getId(), e.getMessage());
                 }
+
+                // Bell to the counsellor — same alert every other assignment path sends.
+                try {
+                    String campaignName = audienceId != null
+                            ? audienceRepository.findById(audienceId).map(Audience::getCampaignName).orElse(null)
+                            : null;
+                    leadAssignmentNotifier.notifyAssigned(instituteId, finalCounsellorId, null, campaignName);
+                } catch (Exception e) {
+                    logger.warn("Failed to notify counsellor {} for enquiry {}: {}",
+                            finalCounsellorId, enquiry.getId(), e.getMessage());
+                }
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);
                 enquiry.setAssignedUserId(false);
@@ -1778,6 +1801,40 @@ public class AudienceService {
         return authService.autosuggestUsers(instituteId, query);
     }
 
+    /**
+     * Counsellor options for the CRM Leads "All counsellors" filter, scoped the SAME way
+     * {@link #getLeads} scopes the visible leads. When the institute has a leads_team_id
+     * configured AND the caller is in that subtree, returns the caller + their user-to-user
+     * descendants (self + reports + reports' reports) — so the filter only lists counsellors
+     * whose leads the caller can actually see. A team head sees their whole downstream; a
+     * mid-level manager sees their reports; a leaf counsellor sees only themselves.
+     *
+     * <p>Outside that gate (admin, or no leads team configured) returns {@code scoped=false}
+     * with an empty list; the frontend then falls back to its institute-wide counsellor list,
+     * preserving the existing admin behaviour.</p>
+     */
+    public LeadCounsellorOptionsDTO leadCounsellorOptions(String instituteId, CustomUserDetails caller) {
+        boolean rbac = caller != null && caller.getUserId() != null
+                && instituteId != null && !instituteId.isBlank()
+                && workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
+                && counsellorScopeService.isCallerInLeadsSubtree(instituteId, caller.getUserId());
+
+        if (!rbac) {
+            return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
+        }
+
+        List<String> userIds = counsellorScopeService
+                .descendantUserIdsForCaller(instituteId, caller.getUserId());
+        if (userIds.isEmpty()) {
+            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(List.of()).build();
+        }
+        // Full user records (name/email/mobile) for the scope — no limit, unlike the
+        // assignment picker; a filter dropdown wants the complete team, not a top-10.
+        List<vacademy.io.common.auth.dto.UserDTO> users =
+                authService.getUsersFromAuthServiceByUserIds(userIds);
+        return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(users).build();
+    }
+
     private static boolean matchesAutosuggest(vacademy.io.common.auth.dto.UserDTO u, String qLower) {
         if (u == null) return false;
         String name = u.getFullName();
@@ -1844,6 +1901,14 @@ public class AudienceService {
             // leads, not just their own).
             filterDTO.setAssignedCounselorId(user.getUserId());
         }
+
+        // "Only leads assigned to COUNSELLOR" display setting enforcement. The
+        // leads themselves stay RBAC-scoped (subtree visibility is preserved);
+        // this setting governs ONLY the shared unassigned pool. In COUNSELOR mode
+        // we drop unassigned leads (no counsellor on either linked_users or
+        // user_lead_profile) from the result; any other mode keeps them visible
+        // to anyone in scope, as before.
+        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR;
 
         String allowedAudienceIdsCsv = null;
         if (access.getMode() == Mode.AUDIENCE_LIST) {
@@ -1915,6 +1980,7 @@ public class AudienceService {
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
                     assignedCounselorIdsCsv,
+                    includeUnassigned,
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -1943,6 +2009,7 @@ public class AudienceService {
                 filterDTO.getLeadTier(),
                 filterDTO.getAssignedCounselorId(),
                 assignedCounselorIdsCsv,
+                includeUnassigned,
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldFiltersJson,

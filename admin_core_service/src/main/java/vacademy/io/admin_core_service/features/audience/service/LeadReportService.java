@@ -18,7 +18,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +28,10 @@ import java.util.stream.Collectors;
  * Builds the two read-only Lead Reports endpoints: a summary (KPIs + breakdowns + daily trend)
  * and per-counsellor performance. Pure aggregation over existing tables — never writes anything,
  * so it can never break any business rule. Date range defaults to the last 30 days when omitted.
+ *
+ * Every report is RBAC-scoped to the caller via {@link ReportScopeResolver} (same rules as
+ * the sales dashboard), and optionally narrowed by team, counsellor, audience/campaign and
+ * source-type dimensions.
  */
 @Slf4j
 @Service
@@ -39,6 +42,7 @@ public class LeadReportService {
     private final LeadStatusRepository leadStatusRepository;
     private final LeadSlaConfigService leadSlaConfigService;
     private final AuthService authService;
+    private final ReportScopeResolver reportScopeResolver;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
 
@@ -47,23 +51,37 @@ public class LeadReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public LeadReportSummaryDTO getLeadSummary(String instituteId, String fromDate, String toDate) {
+    public LeadReportSummaryDTO getLeadSummary(String instituteId, String fromDate, String toDate,
+                                               String teamId, String counsellorUserId,
+                                               String audienceId, String sourceType,
+                                               String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
         Integer tatHours = resolveTatHours(instituteId); // null when TAT disabled
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
+        String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
+        String audienceFilter = trimToNull(audienceId);
+        String sourceFilter = trimToNull(sourceType);
+
         LeadReportProjections.TotalsProjection totals =
-                audienceResponseRepository.findReportTotals(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportTotals(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         LeadReportProjections.ResponseStatsProjection response =
-                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatHoursParam);
+                audienceResponseRepository.findReportResponseStats(instituteId, range.from, range.to, tatHoursParam,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.StatusCountProjection> statusRows =
-                audienceResponseRepository.findReportStatusBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportStatusBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.SourceCountProjection> sourceRows =
-                audienceResponseRepository.findReportSourceBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportSourceBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.TierCountProjection> tierRows =
-                audienceResponseRepository.findReportTierBreakdown(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportTierBreakdown(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
         List<LeadReportProjections.DailyTrendProjection> trendRows =
-                audienceResponseRepository.findReportDailyTrend(instituteId, range.from, range.to);
+                audienceResponseRepository.findReportDailyTrend(instituteId, range.from, range.to,
+                        scopeCsv, audienceFilter, sourceFilter);
 
         long total = nz(totals != null ? totals.getTotalLeads() : null);
         long converted = nz(totals != null ? totals.getConvertedLeads() : null);
@@ -143,13 +161,20 @@ public class LeadReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public CounselorPerformanceDTO getCounselorPerformance(String instituteId, String fromDate, String toDate) {
+    public CounselorPerformanceDTO getCounselorPerformance(String instituteId, String fromDate, String toDate,
+                                                           String teamId, String counsellorUserId,
+                                                           String audienceId, String sourceType,
+                                                           String callerUserId) {
         DateRange range = resolveRange(fromDate, toDate);
         Integer tatHours = resolveTatHours(instituteId);
         Integer tatHoursParam = tatHours != null ? tatHours : 0;
 
+        String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
+
         List<LeadReportProjections.CounselorRowProjection> raw = audienceResponseRepository
-                .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam);
+                .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam,
+                        scopeCsv, trimToNull(audienceId), trimToNull(sourceType));
 
         // Batch-resolve counsellor names (one call to auth-service for all ids in the result).
         Map<String, String> nameById = Collections.emptyMap();
@@ -217,6 +242,10 @@ public class LeadReportService {
     // ─────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────
+
+    private static String trimToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
 
     /** Read tat_hours when TAT is enabled; null otherwise (drives "is TAT shown?" downstream). */
     private Integer resolveTatHours(String instituteId) {

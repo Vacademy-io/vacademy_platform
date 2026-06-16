@@ -101,9 +101,16 @@ Stored under `institute.setting → LEAD_SETTING → data`. Read/written via `GE
       "min_sample_size": 5
     }
   }
+  "reports": {                                 // Reports Center config (2026-06-12)
+    "timezone": "Asia/Kolkata",                // day/hour bucketing TZ for all report SQL
+    "connected_call_statuses": ["COMPLETED"],  // which CallStatus values count as "connected"
+    "interested_status_keys": ["INTERESTED"]   // which lead statuses count as "interested" in the Source report
+  }
   // sibling sub-trees under LEAD_SETTING.data owned by other features (tat legacy, doubts query_types, …)
 }
 ```
+
+The `reports` subtree is edited via the **Reports card** in Lead Settings → Config ([`LeadReportSettings.tsx`](../../frontend-admin-dashboard/src/routes/settings/-components/LeadReportSettings.tsx) — read-modify-write merge, never clobbers siblings) and read by [`LeadReportSettingService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/audience/service/LeadReportSettingService.java) (5-min Caffeine cache; invalid/empty values fall back to the defaults shown).
 
 Frontend hook: [`use-lead-settings.ts`](../../frontend-admin-dashboard/src/hooks/use-lead-settings.ts) (query key `['lead-settings-config']`) with client-side defaults when the institute has never saved the setting.
 
@@ -130,7 +137,7 @@ Score **storage** is the `counsellor_rating` table (**V328** — one row per cou
 Defined in [`constants/display-settings/admin-defaults.ts`](../../frontend-admin-dashboard/src/constants/display-settings/admin-defaults.ts), toggled in the Display Settings admin UI, persisted via `display-settings.ts` service (API + localStorage fallback).
 
 - Sidebar **Leads** section (category CRM, [`sidebar/utils.ts:379`](../../frontend-admin-dashboard/src/components/common/layout-container/sidebar/utils.ts#L379)) sub-items: `lead-list-leads` (→ `/audience-manager/list`), `recent-leads`, `follow-ups`, `counsellors` (→ `/counsellors`), `sales-dashboard`. **`counsellors` and `sales-dashboard` are hidden by default** (`SUB_ITEMS_HIDDEN_BY_DEFAULT`) — typically enabled once a leads team is configured.
-- `/audience-manager/reports` has **no sidebar entry** — URL only.
+- `/audience-manager/reports` has a sidebar entry (`lead-reports`, visible by default) since 2026-06-12.
 - The "Lead Profile Tab" in the student side-view is off by default (`leadTab: false`).
 - Independently of display settings, `LEAD_SETTING.enabled = false` hides all lead UI (columns, actions, tabs).
 - Routes behind a disabled gate render `FeatureDisabledNotice`-style lock cards rather than 404s.

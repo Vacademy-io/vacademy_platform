@@ -11,10 +11,12 @@ import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.Zo
 import vacademy.io.common.media.service.FileService;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
+import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,19 +48,30 @@ class ZoomRecordingS3ServiceTest {
                 .recordingStorage(storage).expiresAt(expiresAt).build();
     }
 
+    /**
+     * Stub the network methods (download-to-temp + presigned PUT) on the spy plus the
+     * presigned-URL endpoint, for the happy path. Same presigned mechanism as BBB.
+     */
+    private void stubStreamingOk(ZoomRecordingS3Service service, String fileId) throws Exception {
+        doReturn(100L).when(service).downloadToFile(anyString(), anyString(), any(File.class));
+        doNothing().when(service).putFileToPresignedUrl(anyString(), any(File.class), anyString());
+        when(fileService.getPresignedUploadUrl(any(), any(), any(), any()))
+                .thenReturn(Map.of("id", fileId, "url", "https://s3/presigned-put"));
+    }
+
     @Test
-    void mirrorsUnmirroredCloudRecordingAndFlipsToS3() throws Exception {
+    void mirrorsUnmirroredCloudRecordingViaPresignedPut() throws Exception {
         ZoomRecordingS3Service service = newSpyService();
         MeetingRecordingDTO cloud = rec("r1", null, "https://zoom/dl1", "ZOOM_CLOUD",
                 Instant.now().plus(10, ChronoUnit.DAYS).toString());
+        cloud.setPasscode("abc123");
         MeetingRecordingDTO already = rec("r2", "existing-file", "https://zoom/dl2", "S3", null);
         List<MeetingRecordingDTO> recordings = new ArrayList<>(List.of(cloud, already));
 
         when(zoomAccountStore.findById("acct-1")).thenReturn(Optional.of(mock(ZoomAccount.class)));
         when(zoomRecordingService.getStoredRecordings(any())).thenReturn(recordings);
         when(accessTokenService.getAccessToken(any())).thenReturn("tok");
-        doReturn(new byte[]{1, 2, 3}).when(service).downloadBytes(anyString(), anyString());
-        when(fileService.uploadDataToS3(any())).thenReturn("file-xyz");
+        stubStreamingOk(service, "file-xyz");
 
         int mirrored = service.mirrorToS3(schedule(), false, 0);
 
@@ -66,9 +79,13 @@ class ZoomRecordingS3ServiceTest {
         assertEquals("file-xyz", cloud.getFileId());
         assertEquals("S3", cloud.getRecordingStorage());
         assertNull(cloud.getExpiresAt()); // cleared — on our storage now
+        // URL + passcode cleared — resolved from the fileId on demand, exactly like BBB.
+        assertNull(cloud.getDownloadUrl());
+        assertNull(cloud.getPlaybackUrl());
+        assertNull(cloud.getPasscode());
         assertEquals("existing-file", already.getFileId()); // untouched
         verify(zoomRecordingService, times(1)).replaceRecordings(any(), eq(recordings));
-        verify(service, times(1)).downloadBytes(anyString(), anyString()); // only the un-mirrored one
+        verify(service, times(1)).downloadToFile(anyString(), anyString(), any(File.class)); // only the un-mirrored one
     }
 
     @Test
@@ -81,7 +98,7 @@ class ZoomRecordingS3ServiceTest {
         int mirrored = service.mirrorToS3(schedule(), false, 0);
 
         assertEquals(0, mirrored);
-        verify(service, never()).downloadBytes(anyString(), anyString());
+        verify(service, never()).downloadToFile(anyString(), anyString(), any(File.class));
         verify(zoomRecordingService, never()).replaceRecordings(any(), any());
     }
 
@@ -96,14 +113,35 @@ class ZoomRecordingS3ServiceTest {
         when(zoomRecordingService.getStoredRecordings(any()))
                 .thenReturn(new ArrayList<>(List.of(far, soon)));
         when(accessTokenService.getAccessToken(any())).thenReturn("tok");
-        doReturn(new byte[]{9}).when(service).downloadBytes(anyString(), anyString());
-        when(fileService.uploadDataToS3(any())).thenReturn("file-soon");
+        stubStreamingOk(service, "file-soon");
 
         int mirrored = service.mirrorToS3(schedule(), true, 5); // rescue window 5 days
 
         assertEquals(1, mirrored);
         assertNull(far.getFileId());           // 20d out — not rescued
         assertEquals("file-soon", soon.getFileId()); // 2d out — rescued
+    }
+
+    @Test
+    void reMirrorsLegacyUrlAsFileId() throws Exception {
+        // A row from the old buggy mirror stored the S3 URL in the fileId field.
+        // It must be treated as un-mirrored and repaired on re-run.
+        ZoomRecordingS3Service service = newSpyService();
+        MeetingRecordingDTO legacy = rec("r1",
+                "https://pub-bucket.s3.amazonaws.com/old.mp4", // URL-as-fileId (legacy bug)
+                "https://zoom/dl1", "S3", null);
+        List<MeetingRecordingDTO> recordings = new ArrayList<>(List.of(legacy));
+
+        when(zoomAccountStore.findById("acct-1")).thenReturn(Optional.of(mock(ZoomAccount.class)));
+        when(zoomRecordingService.getStoredRecordings(any())).thenReturn(recordings);
+        when(accessTokenService.getAccessToken(any())).thenReturn("tok");
+        stubStreamingOk(service, "real-id");
+
+        int mirrored = service.mirrorToS3(schedule(), false, 0);
+
+        assertEquals(1, mirrored);
+        assertEquals("real-id", legacy.getFileId());   // repaired to a real id
+        assertNull(legacy.getDownloadUrl());           // cleared — resolved from fileId
     }
 
     @Test
@@ -115,7 +153,8 @@ class ZoomRecordingS3ServiceTest {
         when(zoomRecordingService.getStoredRecordings(any()))
                 .thenReturn(new ArrayList<>(List.of(cloud)));
         when(accessTokenService.getAccessToken(any())).thenReturn("tok");
-        doThrow(new RuntimeException("network")).when(service).downloadBytes(anyString(), anyString());
+        doThrow(new RuntimeException("network")).when(service)
+                .downloadToFile(anyString(), anyString(), any(File.class));
 
         int mirrored = service.mirrorToS3(schedule(), false, 0);
 

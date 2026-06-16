@@ -1,5 +1,6 @@
 import { useStudentFilters } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { useStudentTable } from '@/routes/manage-students/students-list/-hooks/useStudentTable';
+import { useStudentCounts } from '@/routes/manage-students/students-list/-hooks/useStudentCounts';
 import { InviteFormProvider } from '@/routes/manage-students/invite/-context/useInviteFormContext';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { EmptyStudentListImage } from '@/assets/svgs';
@@ -9,7 +10,10 @@ import { StudentTable } from '@/types/student-table-types';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { MyPagination } from '@/components/design-system/pagination';
 import { IndividualShareCredentialsDialog } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/bulk-actions/individual-share-credentials-dialog';
-import { myColumns } from '@/components/design-system/utils/constants/table-column-data';
+import {
+    getColumnsVisibility,
+    getCustomColumns,
+} from '@/components/design-system/utils/constants/table-column-data';
 import { STUDENT_LIST_COLUMN_WIDTHS } from '@/components/design-system/utils/constants/table-layout';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -25,6 +29,12 @@ import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INVITE_LINKS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import {
+    getCustomFieldSettingsFromCache,
+    getCustomFieldSettings,
+} from '@/services/custom-field-settings';
 
 const Students = ({
     packageSessionId,
@@ -38,6 +48,50 @@ const Students = ({
     const [rowSelections, setRowSelections] = useState<Record<number, Record<string, boolean>>>({});
     const tableRef = useRef<HTMLDivElement>(null);
     const [allPagesData, setAllPagesData] = useState<Record<number, StudentTable[]>>({});
+
+    // Prime the custom-field settings cache so getCustomColumns() (which appends the
+    // custom-field columns) and the visibility readers below have data on first mount —
+    // mirrors the main Learner List. On a cold cache the tab would otherwise render no
+    // custom columns. Bump a version after fetch to recompute the column visibility.
+    const [, bumpCustomFieldsVersion] = useState(0);
+    useEffect(() => {
+        getCustomFieldSettings()
+            .then(() => bumpCustomFieldsVersion((v) => v + 1))
+            .catch(() => {});
+    }, []);
+
+    // Role-based column visibility — identical layering to the main Learner List
+    // (students-list-section.tsx) so this tab shows the SAME columns the admin sees
+    // there, including the custom fields the active role has opted into.
+    const roleHiddenColumns = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return new Set(cached?.learnerListColumns?.hiddenColumns ?? []);
+    }, []);
+    const roleEnabledCustomFields = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return new Set(cached?.learnerListColumns?.enabledCustomFields ?? []);
+    }, []);
+    // Every custom-field accessor known for this institute. Anything here that is NOT in
+    // roleEnabledCustomFields gets force-hidden (custom fields are opt-in per role).
+    const allCustomFieldAccessors = useMemo(() => {
+        const cache = getCustomFieldSettingsFromCache();
+        if (!cache) return new Set<string>();
+        const all = [
+            ...cache.instituteFields,
+            ...cache.customFields,
+            ...cache.fieldGroups.flatMap((g) => g.fields),
+        ];
+        return new Set(all.map((f) => f.id).filter(Boolean));
+    }, []);
+    const hasOrgAssociatedBatches = useMemo(
+        () =>
+            (instituteDetails?.batches_for_sessions || []).some(
+                (b) => b.is_org_associated === true
+            ),
+        [instituteDetails]
+    );
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -99,6 +153,11 @@ const Students = ({
         handleSort,
         handlePageChange,
     } = useStudentTable(appliedFilters, setAppliedFilters, [packageSessionId]);
+
+    // Header Total/Active/Inactive badges. appliedFilters already pins this batch's
+    // package_session_ids, so the counts match the table below (and the third arg is a
+    // belt-and-suspenders fallback for the hook's empty-batch path).
+    const studentCounts = useStudentCounts(appliedFilters, !loadingData, [packageSessionId]);
 
     // Fetch accessible invites for this package session (API-filtered by FSPSSM)
     const instituteId = getInstituteId();
@@ -189,7 +248,15 @@ const Students = ({
                     {/* <BulkDialogProvider>
                     <EnrollStudentsButton scale="medium" />
                 </BulkDialogProvider> */}
-                    <StudentListHeader currentSession={currentSession} titleSize="text-base" packageSessionId={packageSessionId} />
+                    <StudentListHeader
+                        currentSession={currentSession}
+                        titleSize="text-base"
+                        packageSessionId={packageSessionId}
+                        total={studentCounts.total}
+                        active={studentCounts.active}
+                        inactive={studentCounts.inactive}
+                        countsLoading={studentCounts.isLoading}
+                    />
                 </InviteFormProvider>
                 {/* Filter section here */}
                 <StudentFilters
@@ -244,7 +311,57 @@ const Students = ({
                                             total_elements: studentTableData.total_elements,
                                             last: studentTableData.last,
                                         }}
-                                        columns={myColumns}
+                                        columns={getCustomColumns(
+                                            // Show approval actions if INVITED or
+                                            // PENDING_FOR_APPROVAL is in the status filter.
+                                            appliedFilters.statuses?.some((s) =>
+                                                ['INVITED', 'PENDING_FOR_APPROVAL'].includes(s)
+                                            ) || false
+                                        )}
+                                        tableState={{
+                                            columnVisibility: (() => {
+                                                // Same layering as the main Learner List:
+                                                // institute system-field visibility, then role
+                                                // hidden columns, then force-hide custom fields
+                                                // not opted in for this role, then filter-driven
+                                                // overrides.
+                                                const base = getColumnsVisibility();
+                                                roleHiddenColumns.forEach((accessor) => {
+                                                    base[accessor] = false;
+                                                });
+                                                allCustomFieldAccessors.forEach((accessor) => {
+                                                    if (!roleEnabledCustomFields.has(accessor)) {
+                                                        base[accessor] = false;
+                                                    }
+                                                });
+                                                const paymentFilterApplied =
+                                                    (appliedFilters.payment_statuses?.length ?? 0) >
+                                                    0;
+                                                const enrollInviteFilterApplied =
+                                                    (appliedFilters.enroll_invite_ids?.length ?? 0) >
+                                                    0;
+                                                return {
+                                                    ...base,
+                                                    // This tab is already scoped to one batch, so
+                                                    // the batch column is redundant here.
+                                                    package_session_id: false,
+                                                    enroll_invite_name: enrollInviteFilterApplied,
+                                                    plan_type: paymentFilterApplied,
+                                                    amount_paid: paymentFilterApplied,
+                                                    preffered_batch: false,
+                                                    membership_role:
+                                                        hasOrgAssociatedBatches &&
+                                                        roleEnabledCustomFields.has(
+                                                            'membership_role'
+                                                        ),
+                                                    membership_type:
+                                                        hasOrgAssociatedBatches &&
+                                                        roleEnabledCustomFields.has(
+                                                            'membership_type'
+                                                        ),
+                                                };
+                                            })(),
+                                        }}
                                         isLoading={loadingData}
                                         error={loadingError}
                                         onSort={handleSort}

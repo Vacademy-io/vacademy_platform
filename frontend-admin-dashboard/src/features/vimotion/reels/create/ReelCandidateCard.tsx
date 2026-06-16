@@ -2,8 +2,10 @@
  * Single scan-candidate card. Shows enough signal for the user to decide
  * whether this clip is worth previewing:
  *
- *   - Thumbnail (from backend's async `thumbnail_strip_url`; placeholder
- *     if it hasn't landed yet — backend generates these in the background
+ *   - Playable source segment (click-to-play with sound via SegmentPlayer)
+ *     when the source video URL is available; falls back to the thumbnail
+ *     (from backend's async `thumbnail_strip_url`; placeholder if it
+ *     hasn't landed yet — backend generates these in the background
  *     after /scan returns)
  *   - Timestamp range in source (e.g. "12:40 → 13:35")
  *   - 5-axis score bars (Hook / Pacing / Info / Loop / Topic) — research
@@ -20,19 +22,28 @@
  *   - Transcript snippet (first sentence … last sentence)
  *   - Low-confidence badge when composite < 60
  *   - Checkbox for multi-select
+ *
+ * Interaction split: the media area plays/pauses the segment; the checkbox
+ * overlay and the text body toggle selection. The card can't be a single
+ * <button> anymore — nested interactive elements are invalid and the two
+ * intents (watch vs select) must not collide.
  */
 import { Check, Film, Scissors } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReelCandidate } from '../services/reels-api';
+import { SegmentPlayer } from './SegmentPlayer';
 
 interface ReelCandidateCardProps {
     candidate: ReelCandidate;
+    /** Playable URL of the source video; null degrades to thumbnail-only. */
+    sourceVideoUrl: string | null;
     selected: boolean;
     onToggle: () => void;
 }
 
 export function ReelCandidateCard({
     candidate,
+    sourceVideoUrl,
     selected,
     onToggle,
 }: ReelCandidateCardProps) {
@@ -41,19 +52,24 @@ export function ReelCandidateCard({
     const predicted = `${candidate.predicted_output_duration_s.toFixed(1)}s`;
 
     return (
-        <button
-            type="button"
-            onClick={onToggle}
+        <div
             className={cn(
                 'group relative flex flex-col overflow-hidden rounded-xl border bg-white text-left transition-all',
                 selected
                     ? 'border-neutral-900 shadow-md ring-2 ring-neutral-900'
                     : 'border-neutral-200 hover:border-neutral-400'
             )}
-            aria-pressed={selected}
         >
             <div className="relative aspect-video w-full bg-neutral-100">
-                {candidate.thumbnail_strip_url ? (
+                {sourceVideoUrl ? (
+                    <SegmentPlayer
+                        src={sourceVideoUrl}
+                        tStart={candidate.source_t_start}
+                        tEnd={candidate.source_t_end}
+                        poster={candidate.thumbnail_strip_url}
+                        className="size-full"
+                    />
+                ) : candidate.thumbnail_strip_url ? (
                     <img
                         src={candidate.thumbnail_strip_url}
                         alt=""
@@ -66,8 +82,16 @@ export function ReelCandidateCard({
                     </div>
                 )}
 
-                {/* Selection checkbox — overlay top-left */}
-                <span
+                {/* Selection checkbox — overlay top-left. Its own button so
+                    clicking it never starts/stops playback. */}
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggle();
+                    }}
+                    aria-pressed={selected}
+                    aria-label={selected ? 'Deselect clip' : 'Select clip'}
                     className={cn(
                         'absolute left-2 top-2 inline-flex size-6 items-center justify-center rounded-md border transition-colors',
                         selected
@@ -76,28 +100,34 @@ export function ReelCandidateCard({
                     )}
                 >
                     <Check className="size-4" />
-                </span>
+                </button>
 
-                {/* Composite score — overlay top-right */}
-                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-xs font-bold text-white backdrop-blur-sm">
+                {/* Composite score — overlay top-right. pointer-events-none so
+                    clicks fall through to the player. */}
+                <span className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-xs font-bold text-white backdrop-blur-sm">
                     {Math.round(candidate.score.composite)}
                 </span>
 
                 {/* Predicted output duration — overlay bottom-right */}
-                <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
+                <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
                     <Scissors className="size-3" />
                     {predicted}
                 </span>
 
                 {/* Low-confidence badge */}
                 {candidate.low_confidence && (
-                    <span className="absolute bottom-2 left-2 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                    <span className="pointer-events-none absolute bottom-2 left-2 rounded-md bg-amber-500/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                         Low confidence
                     </span>
                 )}
             </div>
 
-            <div className="flex flex-col gap-2.5 p-3.5">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-pressed={selected}
+                className="flex flex-col gap-2.5 p-3.5 text-left"
+            >
                 <p className="text-xs font-medium text-neutral-500">
                     {start} → {end}
                 </p>
@@ -124,10 +154,10 @@ export function ReelCandidateCard({
                 )}
 
                 <p className="line-clamp-3 text-xs leading-snug text-neutral-600">
-                    {candidate.transcript_snippet || '(silent window)'}
+                    {candidate.transcript_snippet || '(no speech in this clip)'}
                 </p>
-            </div>
-        </button>
+            </button>
+        </div>
     );
 }
 

@@ -72,30 +72,39 @@ public class PushNotificationService {
                 messageBuilder.putAllData(data);
             }
 
-            // Configure web push options
-            messageBuilder.setWebpushConfig(WebpushConfig.builder()
-                .setFcmOptions(WebpushFcmOptions.builder()
-                    .setLink("https://your-app.com/dashboard") // Your app URL
-                    .build())
-                .build());
+            // NOTE: we intentionally do NOT set a hardcoded WebpushFcmOptions link. This service is
+            // multi-tenant (many frontends/origins) so a server-side absolute URL is wrong and a
+            // fixed placeholder broke click-through entirely. The notification carries `data`
+            // (type/action/conversationId/...) and the client (service worker / push-tap handler)
+            // routes the click — see frontend push-notification handling.
 
             Message message = messageBuilder.build();
             String response = firebaseMessaging.send(message);
-            
-            logger.info("Successfully sent message to token {}: {}", 
-                fcmToken.substring(0, 20) + "...", response);
-                
+
+            logger.debug("Successfully sent message to token {}: {}", maskToken(fcmToken), response);
+
         } catch (FirebaseMessagingException e) {
-            logger.error("Failed to send notification to token {}: {}", 
-                fcmToken.substring(0, 20) + "...", e.getMessage());
-                
-            // If token is invalid, deactivate it
-            if ("UNREGISTERED".equals(e.getErrorCode()) ||
-                "INVALID_ARGUMENT".equals(e.getErrorCode())) {
+            logger.error("Failed to send notification to token {}: {}", maskToken(fcmToken), e.getMessage());
+
+            // If the token is no longer valid, deactivate it so we stop pushing to it. Use the
+            // FCM-specific MessagingErrorCode enum — e.getErrorCode() returns the generic platform
+            // ErrorCode (no UNREGISTERED value), so the old String comparison was always false and
+            // dead tokens were never cleaned up.
+            MessagingErrorCode code = e.getMessagingErrorCode();
+            if (code == MessagingErrorCode.UNREGISTERED || code == MessagingErrorCode.INVALID_ARGUMENT) {
                 fcmTokenRepository.deactivateTokenByToken(fcmToken);
-                logger.info("Deactivated invalid FCM token: {}", fcmToken.substring(0, 20) + "...");
+                logger.info("Deactivated invalid FCM token: {}", maskToken(fcmToken));
             }
+        } catch (Exception e) {
+            // Never let one bad token (or a null/short token) abort the rest of a bulk send.
+            logger.error("Unexpected error sending notification to token {}: {}", maskToken(fcmToken), e.getMessage());
         }
+    }
+
+    /** Mask an FCM token for logging without risking StringIndexOutOfBounds on short/null tokens. */
+    private static String maskToken(String token) {
+        if (token == null) return "null";
+        return token.length() > 8 ? token.substring(0, 8) + "…" : "***";
     }
 
     /**

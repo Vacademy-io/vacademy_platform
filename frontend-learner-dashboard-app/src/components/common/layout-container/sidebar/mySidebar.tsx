@@ -34,6 +34,7 @@ import useStore from "./useSidebar";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { getChatEnabled } from "@/services/chat/getChatEnabled";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
   House,
@@ -47,6 +48,7 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
+  ChatCircle,
 } from "@phosphor-icons/react";
 import type {
   SidebarItemsType,
@@ -162,6 +164,7 @@ export const MySidebar = ({
       "learning-center": BookOpen,
       homework: NotePencil,
       "assessment-center": Scroll,
+      chat: ChatCircle,
     }),
     []
   );
@@ -171,6 +174,7 @@ export const MySidebar = ({
       dashboard: "/dashboard",
       referral: "/referral",
       attendance: "/learning-centre/attendance",
+      chat: "/chat",
     }),
     []
   );
@@ -183,6 +187,7 @@ export const MySidebar = ({
       "assessment-center": "Assessment Centre",
       referral: "Referral",
       attendance: "Attendance",
+      chat: "Chat",
     }),
     []
   );
@@ -229,14 +234,46 @@ export const MySidebar = ({
       });
   };
 
+  // The Chat tab is gated on the institute's chat-enabled flag (chat is OFF
+  // by default — see getChatEnabled, which fails closed). When chat is enabled
+  // we inject a default visible chat tab right after the dashboard tab whenever
+  // the settings omit it, so it appears in a sensible position without
+  // depending on saved config. When chat is disabled we strip any chat tab the
+  // saved config may have carried, so no entry point leaks through.
+  const ensureChatTab = (
+    tabs: StudentSidebarTabConfig[],
+    chatEnabled: boolean
+  ): StudentSidebarTabConfig[] => {
+    if (!chatEnabled) return tabs.filter((t) => t.id !== "chat");
+    if (tabs.some((t) => t.id === "chat")) return tabs;
+    const dashboardIndex = tabs.findIndex((t) => t.id === "dashboard");
+    const chatTab: StudentSidebarTabConfig = {
+      id: "chat",
+      label: "Chat",
+      route: "/chat",
+      order: 0,
+      visible: true,
+    };
+    const next = tabs.slice();
+    next.splice(dashboardIndex >= 0 ? dashboardIndex + 1 : next.length, 0, chatTab);
+    return next;
+  };
+
   useEffect(() => {
-    // Load display settings and compute sidebar items
-    getStudentDisplaySettings(false).then((settings) => {
-      const shouldHide = settings?.sidebar?.visible === false;
-      setHideSidebar(!!shouldHide);
-      const tabs = (settings?.sidebar?.tabs || []).slice();
-      setFilteredSidebarItems(transformTabsToSidebarItems(tabs));
-    });
+    // Load display settings + chat-enabled flag and compute sidebar items.
+    // getChatEnabled fails closed (chat hidden) when the flag is
+    // unknown/loading/errored, matching chat being off by default.
+    Promise.all([getStudentDisplaySettings(false), getChatEnabled()]).then(
+      ([settings, chatEnabled]) => {
+        const shouldHide = settings?.sidebar?.visible === false;
+        setHideSidebar(!!shouldHide);
+        const tabs = ensureChatTab(
+          (settings?.sidebar?.tabs || []).slice(),
+          chatEnabled
+        );
+        setFilteredSidebarItems(transformTabsToSidebarItems(tabs));
+      }
+    );
 
     if (sideBarState === sideBarStateType.HAMBURGER) {
       // Filter hamburger menu items based on permissions

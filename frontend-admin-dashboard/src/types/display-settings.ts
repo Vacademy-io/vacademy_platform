@@ -106,6 +106,10 @@ export interface CourseContentTypeSettings {
 }
 
 export interface CourseCreationSettings {
+    // Allow a permission-gated custom role to see the "Add Course" button even
+    // without a CREATE_COURSE access mapping. Opt-in per role; undefined/false
+    // preserves the default gating (admins/CREATE_COURSE holders only).
+    showCreateCourse?: boolean;
     // Whether to expose the "Create Course with AI" entry points
     showCreateCourseWithAI: boolean;
     // Require selecting package sessions when creating a new chapter
@@ -397,6 +401,13 @@ export interface DisplaySettingsData {
     //      Independent from the institute-wide custom-field settings — this is the
     //      per-role overlay that admins use to hide columns from teachers etc.
     learnerListColumns?: LearnerListColumnSettings;
+
+    // 12c) custom_field_ids exposed as filters on the leads views (open Lead List
+    //      + Recent Leads). Each enabled field renders a searchable multi-select
+    //      in the filter bar; empty/absent = no custom-field filters and the
+    //      distinct-values API is never called. Saved with the rest of this blob
+    //      via the display-settings unsaved-changes bar.
+    leadsFilterCustomFields?: string[];
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

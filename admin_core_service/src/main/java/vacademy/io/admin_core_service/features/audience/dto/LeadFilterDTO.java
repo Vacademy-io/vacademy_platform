@@ -62,12 +62,16 @@ public class LeadFilterDTO {
     // Plus 'ANY_OVERDUE' which matches TAT_OVERDUE OR FOLLOW_UP_OVERDUE. Null/empty = no filter.
     private String slaFilter;
 
-    // ── Custom-field dropdown filters ──
+    // ── Custom-field filters ──
     // Each entry narrows the result set so a response only matches when there
-    // is a {custom_field_id, value} row in custom_field_values for it. Multiple
-    // entries are AND-combined. Built specifically for the Lead List dropdown
-    // filters (per-campaign), where the available fields and option values
-    // come from the campaign's own custom_fields config.
+    // is a {custom_field_id, value} row in custom_field_values for it whose
+    // value is one of the entry's `values`. Within a single entry the values
+    // are OR-combined (e.g. city = Pune OR Mumbai); across entries they are
+    // AND-combined (city in {...} AND grade in {...}). Drives the multi-select
+    // custom-field dropdowns on both the per-campaign Lead List and the
+    // cross-campaign Recent Leads view; the candidate fields and their option
+    // values come from the institute's custom_fields config / distinct stored
+    // values.
     private java.util.List<CustomFieldFilter> customFieldFilters;
 
     // Pagination
@@ -82,7 +86,9 @@ public class LeadFilterDTO {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class CustomFieldFilter {
         private String fieldId;
-        private String value;
+        // Selected values for this field (multi-select). A response matches the
+        // field when ANY of these values is present (OR within the field).
+        private java.util.List<String> values;
     }
 }
 

@@ -10,7 +10,7 @@ export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';
 export { LeadEmptyState } from './lead-empty-state';
 export { LeadSourcePill } from './lead-source-pill';
-export { LeadTable } from './lead-table';
+export { LeadTable, type LeadTableExtraColumn } from './lead-table';
 export { LeadPagination } from './lead-pagination';
 export {
     LeadInlineSelect,
@@ -29,7 +29,23 @@ export { LeadViewToggle, type LeadView } from './lead-view-toggle';
 export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';
 export { usePlaceCall } from './use-place-call';
-export { LeadCallHistory } from './lead-call-history';
+export {
+    openPostCallDisposition,
+    isPostCallAutoOpenDisabled,
+    type PostCallDispositionPayload,
+    type PostCallTerminalStatus,
+} from './post-call-disposition-sheet';
+export {
+    LeadCallHistory,
+    CallStatusPill,
+    CallRecordingPlayButton,
+    formatCallDuration,
+} from './lead-call-history';
+export {
+    CompleteFollowUpPopover,
+    fetchLeadFollowups,
+    type LeadFollowup,
+} from './complete-followup-popover';
 export {
     fetchCallHistory,
     fetchCallRecordingUrl,

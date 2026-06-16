@@ -29,6 +29,7 @@ import {
 } from '@/routes/settings/-components/NamingSettings';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
+import { isBulkContentUploadEnabled } from '@/components/common/study-library/bulk-content-uploading/feature-gate';
 
 // Utility function to get naming settings from localStorage
 const getNamingSettings = (): NamingSettingsType[] => {
@@ -303,6 +304,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'Chat',
+                subItemLink: '/chat',
+                subItemId: 'chat',
+            },
+            {
                 subItem: 'Notification Hub',
                 subItemLink: '/communication/notification-hub',
                 subItemId: 'notification-hub',
@@ -404,6 +410,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/sales-dashboard',
                 subItemId: 'sales-dashboard',
             },
+            {
+                subItem: 'Reports',
+                subItemLink: '/audience-manager/reports',
+                subItemId: 'lead-reports',
+            },
         ],
     },
     {
@@ -445,6 +456,16 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/study-library/ai-copilot',
                 subItemId: 'create-course-ai',
             },
+            // Hidden by default — per-institute gate (see bulk-content-uploading/feature-gate.ts)
+            ...(isBulkContentUploadEnabled()
+                ? [
+                      {
+                          subItem: 'Bulk Content Upload',
+                          subItemLink: '/study-library/bulk-content-uploading',
+                          subItemId: 'bulk-content-uploading',
+                      },
+                  ]
+                : []),
         ],
     },
     {

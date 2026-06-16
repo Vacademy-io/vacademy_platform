@@ -89,6 +89,22 @@ public class WorkflowController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * Update an existing workflow IN PLACE (reuses the same workflow id — not a clone). The old
+     * flow re-POSTed to {@code POST /workflow}, which always inserted a brand-new workflow and left
+     * the original behind. Use this when saving edits from the visual builder.
+     */
+    @PutMapping("/{workflowId}")
+    public ResponseEntity<WorkflowBuilderDTO> updateWorkflow(
+            @PathVariable String workflowId,
+            @RequestBody WorkflowBuilderDTO dto,
+            @RequestParam(value = "userId") String userId) {
+
+        log.info("Updating workflow '{}' ({}) by user: {}", dto.getName(), workflowId, userId);
+        WorkflowBuilderDTO result = workflowBuilderService.updateWorkflow(workflowId, dto, userId);
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/{workflowId}/edit")
     public ResponseEntity<WorkflowBuilderDTO> getWorkflowForEditing(
             @PathVariable String workflowId) {
@@ -105,6 +121,39 @@ public class WorkflowController {
         log.info("Soft-deleting workflow: {}", workflowId);
         workflowBuilderService.deleteWorkflow(workflowId);
         return ResponseEntity.noContent().build();
+    }
+
+    // =================== In-place node-config editor (workflow detail page) ===================
+
+    /**
+     * Loss-less view of a workflow's nodes for the in-place "Configuration" editor on the detail
+     * page. Returns each node template's raw {@code config_json} (routing intact) plus its name,
+     * type, status, version, retry config, order, and start/end flags. Unlike {@code /edit}, this
+     * does NOT strip routing or reconstruct edges, so complex workflows round-trip safely.
+     */
+    @GetMapping("/{workflowId}/raw")
+    public ResponseEntity<WorkflowRawDTO> getWorkflowRaw(
+            @PathVariable String workflowId) {
+
+        log.info("Fetching raw workflow config: {}", workflowId);
+        return ResponseEntity.ok(workflowBuilderService.getWorkflowRaw(workflowId));
+    }
+
+    /**
+     * In-place partial update of one node template within a workflow. Only non-null fields on the
+     * body are applied. {@code config_json}/{@code retry_config} are validated as JSON objects and
+     * {@code node_type} against the {@code NodeType} enum, so a bad edit returns 400 instead of
+     * persisting an unrunnable node. The running workflow picks up the change on its next execution.
+     */
+    @PutMapping("/{workflowId}/node-template/{nodeTemplateId}")
+    public ResponseEntity<WorkflowRawDTO.RawNodeDTO> updateNodeTemplate(
+            @PathVariable String workflowId,
+            @PathVariable String nodeTemplateId,
+            @RequestBody NodeTemplateUpdateDTO dto) {
+
+        log.info("Updating node template {} of workflow {}", nodeTemplateId, workflowId);
+        return ResponseEntity.ok(
+                workflowBuilderService.updateNodeTemplate(workflowId, nodeTemplateId, dto));
     }
 
     @PostMapping("/validate")

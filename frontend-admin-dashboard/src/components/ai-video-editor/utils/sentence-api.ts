@@ -43,6 +43,51 @@ function headers(apiKey: string) {
     return { 'Content-Type': 'application/json', 'X-Institute-Key': apiKey };
 }
 
+export interface FriendlyError {
+    /** Short, user-readable sentence — safe for toasts and inline display. */
+    message: string;
+    /** Raw backend text when it differs from `message` — for a "Technical
+     *  details" disclosure and bug reports, never for toasts. */
+    detail?: string;
+}
+
+/**
+ * Narration endpoints surface raw render-worker output on failure (hundreds
+ * of characters of ffmpeg stream metadata). Map the known failure families
+ * to one readable sentence and keep the raw text as `detail`.
+ *
+ * Safe-to-retry wording is justified by the server's ordering: TTS, splice,
+ * and the implausible-delta sanity guard all run BEFORE the timeline JSON or
+ * audio pointer is persisted, so those failures leave the video unchanged.
+ * Network failures get weaker wording — the request may have landed.
+ */
+export function humanizeNarrationError(
+    raw: string,
+    fallback = 'Re-narration failed'
+): FriendlyError {
+    const text = (raw || '').trim();
+    if (!text) return { message: fallback };
+    const lower = text.toLowerCase();
+    let message: string | null = null;
+    if (/splice_audio|slice_audio|silence_audio|ffmpeg|acrossfade/.test(lower)) {
+        message =
+            'The narration audio could not be rebuilt. Your video was not changed — please try again.';
+    } else if (lower.includes('implausible')) {
+        message =
+            'The audio service returned an unexpected result. Your video was not changed — please try again.';
+    } else if (/tts|synthes|voice provider/.test(lower)) {
+        message = 'Voice generation failed. Please try again in a moment.';
+    } else if (/timeout|timed out|failed to fetch|networkerror|load failed/.test(lower)) {
+        message =
+            'Network problem while updating the narration — check your connection, then reload the editor to see the current state.';
+    } else if (text.length > 160) {
+        message = `${fallback} — please try again.`;
+    }
+    // Short server messages ("Shot 3 not found") are already readable.
+    if (!message) return { message: text };
+    return { message, detail: text };
+}
+
 async function readError(res: Response): Promise<string> {
     try {
         const text = await res.text();

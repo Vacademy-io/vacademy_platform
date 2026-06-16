@@ -8,10 +8,11 @@ reused for request-scope reads.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Sequence
 
-from sqlalchemy import select, update, delete
+from sqlalchemy import Text, cast, delete, func, select, update
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, OperationalError, PendingRollbackError
 
@@ -325,6 +326,13 @@ class AiReelRepository:
         FE's polling lands on a row that's still progressing.
         """
         session = self._get_session()
+        # Staleness cutoff: a row that hasn't written progress in 30 min is
+        # a zombie (orphaned by a deploy/crash mid-render), not an active
+        # render. Without this cutoff a single orphan permanently blocked
+        # re-rendering its candidate+config (2026-06-12 audit). The reaper
+        # flips such rows to FAILED on its next sweep; until then we simply
+        # don't dedup against them.
+        freshness_cutoff = datetime.utcnow() - timedelta(minutes=30)
         stmt = (
             select(AiReel)
             .where(
@@ -334,6 +342,7 @@ class AiReelRepository:
                 # config_hash is stashed inside the JSONB config blob — this
                 # avoids a schema migration. JSONB '->>' returns text.
                 AiReel.config["render_config_hash"].astext == render_config_hash,
+                AiReel.updated_at >= freshness_cutoff,
             )
             .order_by(AiReel.created_at.desc())
             .limit(1)
@@ -344,6 +353,58 @@ class AiReelRepository:
             if _is_connection_error(e):
                 return self._get_fresh_session().execute(stmt).scalar_one_or_none()
             raise
+
+    def reap_stuck(
+        self,
+        stale_minutes: int = 30,
+        exclude_reel_ids: Optional[Sequence[str]] = None,
+    ) -> int:
+        """Flip non-terminal reels with no DB write in `stale_minutes` to
+        FAILED and return how many were reaped.
+
+        The render pipeline runs as an in-process asyncio task — a deploy,
+        crash, or OOMKill mid-render leaves the row PENDING/IN_PROGRESS
+        forever with the FE polling a corpse. Every healthy stage writes
+        progress far more often than the cutoff, and updated_at is touched
+        on each write (Column onupdate), so staleness is replica-safe — a
+        sweep on instance B can't kill an in-flight render on instance A.
+
+        `exclude_reel_ids` carries the reels with a LIVE asyncio task in
+        the calling process: even if such a row somehow went silent past
+        the cutoff (a hung stage), failing it while its task is alive
+        would let a /retry dispatch a second pipeline against the same row.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=stale_minutes)
+        session = self._get_fresh_session()
+        try:
+            conditions = [
+                AiReel.status.in_(("PENDING", "IN_PROGRESS")),
+                AiReel.updated_at < cutoff,
+            ]
+            if exclude_reel_ids:
+                conditions.append(AiReel.reel_id.notin_(list(exclude_reel_ids)))
+            stmt = (
+                update(AiReel)
+                .where(*conditions)
+                .values(
+                    status="FAILED",
+                    error_message=(
+                        "[REAPER] render orphaned — no progress for "
+                        f"{stale_minutes} min (service restart or stalled pipeline). "
+                        "Re-render to try again."
+                    ),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            res = session.execute(stmt)
+            session.commit()
+            return int(res.rowcount or 0)
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Reel reaper sweep failed: {e}")
+            return 0
+        finally:
+            session.close()
 
     def list_by_institute(
         self,
@@ -367,6 +428,10 @@ class AiReelRepository:
 
     # ── UPDATE ────────────────────────────────────────────────────────────
 
+    # Sentinel distinguishing "don't touch stage_note" (default) from an
+    # explicit clear (stage_note=None) — None is a meaningful value here.
+    _STAGE_NOTE_UNSET: Any = object()
+
     def update_stage(
         self,
         reel_pk: str,
@@ -375,9 +440,17 @@ class AiReelRepository:
         stages: Optional[List[Dict[str, Any]]] = None,
         status: Optional[str] = None,
         error_message: Optional[str] = None,
+        stage_note: Any = _STAGE_NOTE_UNSET,
     ) -> None:
         """Update during a render run. Uses a fresh session for safety in
-        background tasks."""
+        background tasks.
+
+        `stage_note` is a short user-facing line surfaced via the response's
+        `metadata.stage_note` while the reel is running (e.g. "Waiting for a
+        render slot…"). Pass a string to set it, None to remove it; omit to
+        leave the metadata blob untouched. Stored as a single JSONB key so
+        it never clobbers the rest of `metadata` (cut-plan echo etc.).
+        """
         session = self._get_fresh_session()
         try:
             values: Dict[str, Any] = {
@@ -390,12 +463,64 @@ class AiReelRepository:
                 values["status"] = status
             if error_message is not None:
                 values["error_message"] = error_message
+            if stage_note is not self._STAGE_NOTE_UNSET:
+                if stage_note is None:
+                    values["extra_metadata"] = AiReel.extra_metadata.op("-")(
+                        cast("stage_note", Text)
+                    )
+                else:
+                    values["extra_metadata"] = func.jsonb_set(
+                        AiReel.extra_metadata,
+                        # Explicit text[] cast — psycopg3 binds parameters
+                        # server-side with their declared type, and a plain
+                        # text param won't implicitly coerce to jsonb_set's
+                        # text[] path argument.
+                        cast(["stage_note"], ARRAY(Text)),
+                        func.to_jsonb(cast(str(stage_note), Text)),
+                    )
             stmt = update(AiReel).where(AiReel.id == reel_pk).values(**values)
             session.execute(stmt)
             session.commit()
         except Exception as e:
             session.rollback()
             logger.error(f"Error updating reel stage: {e}")
+        finally:
+            session.close()
+
+    def reset_for_retry(self, reel_pk: str) -> bool:
+        """Reset a FAILED reel to a fresh PENDING state ahead of re-dispatch.
+
+        The WHERE clause re-checks status so two concurrent /retry calls
+        can't both reset + dispatch — only the one that flips FAILED→PENDING
+        wins (returns True); the loser sees rowcount 0 and should 409.
+        """
+        session = self._get_fresh_session()
+        try:
+            stmt = (
+                update(AiReel)
+                .where(AiReel.id == reel_pk, AiReel.status == "FAILED")
+                .values(
+                    status="PENDING",
+                    current_stage="PENDING",
+                    progress=0,
+                    stages=[],
+                    error_message=None,
+                    completed_at=None,
+                    # Drop any waiting/queued note left over from the failed
+                    # run so the fresh attempt doesn't show a stale banner.
+                    extra_metadata=AiReel.extra_metadata.op("-")(
+                        cast("stage_note", Text)
+                    ),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            res = session.execute(stmt)
+            session.commit()
+            return int(res.rowcount or 0) > 0
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error resetting reel for retry: {e}")
+            raise
         finally:
             session.close()
 

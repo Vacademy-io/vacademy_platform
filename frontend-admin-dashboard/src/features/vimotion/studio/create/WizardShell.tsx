@@ -13,7 +13,7 @@ export const WIZARD_STEPS = [
     { id: 'arrangement', label: 'Arrangement', subtitle: 'Order + slice clips' },
     { id: 'cuts', label: 'Cuts', subtitle: 'Trim silences + fillers' },
     { id: 'overlays', label: 'Overlays', subtitle: 'Titles, captions, graphics' },
-    { id: 'audio', label: 'Audio', subtitle: 'Music + SFX + transitions' },
+    { id: 'audio', label: 'Audio', subtitle: 'Music + sound effects' },
     { id: 'build', label: 'Build', subtitle: 'Assemble + open editor' },
 ] as const;
 

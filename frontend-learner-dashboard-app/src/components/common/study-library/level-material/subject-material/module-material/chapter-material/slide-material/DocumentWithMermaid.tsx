@@ -354,6 +354,43 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             mergeConsecutiveLists(tempDiv);
 
+            // Carry ordered-list numbering ACROSS interrupting blocks that hold
+            // no text (an illustrative image, or an empty spacer paragraph).
+            // mergeConsecutiveLists only joins lists that are DIRECT siblings, so
+            // an <img> between steps leaves the list after it a fresh <ol> that
+            // restarts at 1 (…, 4, [image], 1). The displayed number comes from a
+            // CSS counter (`.document-with-mermaid ol { counter-reset: item }` +
+            // `li { counter-increment: item }`), NOT native <ol> numbering — so a
+            // `start` attribute is ignored. Instead, seed each continuing <ol>'s
+            // counter inline (`counter-reset: item N`, which the first <li> then
+            // increments to N+1) so steps keep counting (…, 4, [image], 5, 6 …).
+            // Walk recursively (Yoopta wraps the body in one <div>, so the real
+            // blocks are GRANDchildren). Only a block that actually contains TEXT
+            // (a paragraph, heading, another list) resets the count, so genuinely
+            // separate numbered lists still start at 1.
+            const continueOrderedNumbering = (root: Element) => {
+                let running = 0;
+                for (const child of Array.from(root.children)) {
+                    if (child.tagName === 'OL') {
+                        const liCount = Array.from(child.children).filter(
+                            (c) => c.tagName === 'LI'
+                        ).length;
+                        if (running > 0)
+                            (child as HTMLElement).style.setProperty(
+                                'counter-reset',
+                                `item ${running}`
+                            );
+                        running += liCount;
+                    } else if ((child.textContent || '').trim() !== '') {
+                        running = 0;
+                    }
+                    // Each recursive call keeps its own running count, so nested
+                    // lists number independently of the outer sequence.
+                    continueOrderedNumbering(child);
+                }
+            };
+            continueOrderedNumbering(tempDiv);
+
             // First, check for div.mermaid elements (most common pattern for mermaid)
             const mermaidDivs = tempDiv.querySelectorAll('div.mermaid');
 

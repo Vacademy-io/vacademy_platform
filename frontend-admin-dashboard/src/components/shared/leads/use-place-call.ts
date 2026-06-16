@@ -38,6 +38,18 @@ const TERMINAL: ReadonlySet<CallStatus> = new Set<CallStatus>([
     'CANCELLED',
 ]);
 
+/**
+ * Terminal statuses that warrant a post-call disposition. CANCELLED is
+ * excluded — the counsellor never reached the lead's line, nothing to log.
+ * A no-answer/busy/failed attempt IS a disposition (retry context matters).
+ */
+const DISPOSITION_STATUSES: ReadonlySet<CallStatus> = new Set<CallStatus>([
+    'COMPLETED',
+    'NO_ANSWER',
+    'BUSY',
+    'FAILED',
+]);
+
 const formatDuration = (s?: number | null): string => {
     if (!s || s <= 0) return '';
     const m = Math.floor(s / 60);
@@ -89,13 +101,19 @@ interface UsePlaceCallOptions {
  *      terminal. Toast becomes the live status surface; no polling.
  *   4. On terminal status, close the stream, swap to success/error toast,
  *      invalidate caller-supplied query keys so the row reflects the new call.
+ *   5. For real outcomes (COMPLETED / NO_ANSWER / BUSY / FAILED) open the
+ *      post-call disposition sheet (see post-call-disposition-sheet.tsx) so the
+ *      counsellor logs outcome + status + note + follow-up in one submit.
  */
 export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) {
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? '';
 
     const onSuccess = useCallback(
-        (resp: PlaceCallResponse, vars: { responseId: string; userId?: string }) => {
+        (
+            resp: PlaceCallResponse,
+            vars: { responseId: string; userId?: string; leadName?: string }
+        ) => {
             // One toast id, updated in place so the sales person sees one
             // continuously-evolving status row instead of stacked toasts.
             // Initial text matches the QUEUED label so the first SSE event
@@ -178,6 +196,37 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
                 }
             };
 
+            // Post-call disposition capture: once the toast has resolved with a
+            // real outcome, open the disposition sheet (outcome + status + note +
+            // next follow-up in one submit). Lazy import keeps the sheet bundle
+            // off the hot call path; failures are swallowed — disposition capture
+            // is best-effort and must never block the calling flow. Fires at most
+            // once per call regardless of which channel (SSE / poll / recovery)
+            // delivered the terminal status.
+            let dispositionFired = false;
+            const maybeCaptureDisposition = (
+                status: CallStatus,
+                durationSeconds?: number | null
+            ) => {
+                if (dispositionFired || !DISPOSITION_STATUSES.has(status)) return;
+                dispositionFired = true;
+                void import('./post-call-disposition-sheet')
+                    .then((m) =>
+                        m.openPostCallDisposition({
+                            callLogId: resp.callLogId,
+                            status: status as 'COMPLETED' | 'NO_ANSWER' | 'BUSY' | 'FAILED',
+                            durationSeconds: durationSeconds ?? null,
+                            leadUserId: vars.userId,
+                            leadName: vars.leadName,
+                            responseId: vars.responseId,
+                            queryClient,
+                        })
+                    )
+                    .catch(() => {
+                        /* best-effort — never block the next call */
+                    });
+            };
+
             es.addEventListener('status', (e) => {
                 let ev: CallEvent;
                 try {
@@ -190,8 +239,10 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
                 const text = labelFor(ev.status, ev.durationSeconds);
                 if (ev.status === 'COMPLETED') {
                     resolveAs('success', text);
+                    maybeCaptureDisposition(ev.status, ev.durationSeconds);
                 } else if (TERMINAL.has(ev.status)) {
                     resolveAs('error', text);
+                    maybeCaptureDisposition(ev.status, ev.durationSeconds);
                 } else {
                     toast.loading(text, { id: toastId, duration: Infinity });
                 }
@@ -215,9 +266,11 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
                         // Row not yet visible — keep polling.
                     } else if (row.status === 'COMPLETED') {
                         resolveAs('success', labelFor('COMPLETED', row.durationSeconds));
+                        maybeCaptureDisposition('COMPLETED', row.durationSeconds);
                         return;
                     } else if (TERMINAL.has(row.status as CallStatus)) {
                         resolveAs('error', labelFor(row.status as CallStatus, row.durationSeconds));
+                        maybeCaptureDisposition(row.status as CallStatus, row.durationSeconds);
                         return;
                     } else if (!receivedAnyEvent) {
                         // Mid-call status from the DB — SSE clearly isn't
@@ -278,8 +331,13 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
                         const text = labelFor(row.status as CallStatus, row.durationSeconds);
                         if (row.status === 'COMPLETED') {
                             resolveAs('success', text);
+                            maybeCaptureDisposition('COMPLETED', row.durationSeconds);
                         } else if (TERMINAL.has(row.status as CallStatus)) {
                             resolveAs('error', text);
+                            maybeCaptureDisposition(
+                                row.status as CallStatus,
+                                row.durationSeconds
+                            );
                         } else if (receivedAnyEvent) {
                             // We saw events but the row isn't terminal yet —
                             // SSE genuinely dropped mid-call. Soft message.
@@ -308,6 +366,9 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
             responseId: string;
             userId?: string;
             preferredNumberId?: string;
+            /** Lead's display name — shown on the post-call disposition sheet
+             *  header. Optional; the sheet falls back to a generic label. */
+            leadName?: string;
         }) =>
             placeCall({
                 instituteId,

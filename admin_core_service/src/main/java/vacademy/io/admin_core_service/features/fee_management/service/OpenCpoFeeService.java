@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.fee_management.service;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.fee_management.dto.ComplexPaymentOptionDTO;
 import vacademy.io.admin_core_service.features.fee_management.dto.OpenCpoPayInstallmentsRequestDTO;
@@ -23,8 +24,11 @@ import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentType;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -117,8 +121,11 @@ public class OpenCpoFeeService {
             throw new VacademyException("One or more StudentFeePayment ids not found");
         }
 
-        // Ownership validation: every SFP must belong to the caller's userId AND userPlanId
+        // Ownership validation: every SFP must belong to the caller's userId AND userPlanId.
+        // Partition into still-pending vs already-settled (PAID/WAIVED) rather than hard-failing
+        // on the first settled row — see the idempotency guard below for why.
         Set<String> userPlanIds = new HashSet<>();
+        List<String> pendingSfpIds = new ArrayList<>();
         for (StudentFeePayment sfp : rows) {
             if (!callerUserId.equals(sfp.getUserId())) {
                 throw new VacademyException(
@@ -128,27 +135,59 @@ public class OpenCpoFeeService {
                 throw new VacademyException(
                         "StudentFeePayment " + sfp.getId() + " does not belong to userPlan " + callerUserPlanId);
             }
-            if ("PAID".equalsIgnoreCase(sfp.getStatus()) || "WAIVED".equalsIgnoreCase(sfp.getStatus())) {
-                throw new VacademyException(
-                        "StudentFeePayment " + sfp.getId() + " is already " + sfp.getStatus());
-            }
             userPlanIds.add(sfp.getUserPlanId());
+            if (!("PAID".equalsIgnoreCase(sfp.getStatus()) || "WAIVED".equalsIgnoreCase(sfp.getStatus()))) {
+                pendingSfpIds.add(sfp.getId());
+            }
         }
         if (userPlanIds.size() > 1) {
             throw new VacademyException(
                     "All studentFeePaymentIds must belong to the same UserPlan; got " + userPlanIds);
         }
 
+        // Idempotency / webhook-race guard.
+        // Settlement for this flow happens out-of-band in the gateway success webhook
+        // (RazorpayWebHookService order.paid/payment.captured -> FeeLedgerAllocationService
+        // .allocatePayment), which marks these StudentFeePayment rows PAID. The learner
+        // dashboard fires a *second* "confirm" call to this endpoint right after checkout.
+        // When that confirm call loses the race to the webhook, every requested installment
+        // is already PAID. Previously we threw "StudentFeePayment <id> is already PAID" ->
+        // HTTP 510, so a *successful* payment surfaced to the learner as an error. Treat a
+        // fully-settled set as an idempotent success instead.
+        boolean isRazorpayConfirmCall = request.getPaymentInitiationRequest().getRazorpayRequest() != null
+                && StringUtils.hasText(
+                        request.getPaymentInitiationRequest().getRazorpayRequest().getRazorpayPaymentId());
+
+        if (pendingSfpIds.isEmpty()) {
+            log.info("Open CPO payInstallments: all {} installment(s) already settled for userPlan={} "
+                    + "(webhook won the race or duplicate confirm) — returning idempotent PAID",
+                    rows.size(), callerUserPlanId);
+            return buildStatusResponse("PAID", "Installments already settled");
+        }
+
+        // A post-checkout Razorpay confirm call (carries a razorpay_payment_id) where some
+        // installments are still pending means the webhook simply hasn't landed yet. Do NOT
+        // re-initiate payment here: RazorpayPaymentManager.initiatePayment always creates a
+        // fresh order, which would leave a phantom unpaid order on every payment. Report
+        // PROCESSING and let the webhook finish; the dashboard's PaymentPendingStep polls
+        // the original order's payment-log status and advances to success on its own.
+        if (isRazorpayConfirmCall) {
+            log.info("Open CPO payInstallments: Razorpay confirm call for userPlan={} but {} of {} "
+                    + "installment(s) still pending — webhook in flight, not initiating a new order",
+                    callerUserPlanId, pendingSfpIds.size(), rows.size());
+            return buildStatusResponse("PAYMENT_PENDING", "Payment is being processed");
+        }
+
         UserPlan userPlan = userPlanRepository.findById(callerUserPlanId)
                 .orElseThrow(() -> new VacademyException("UserPlan not found: " + callerUserPlanId));
 
-        // Determine the amount to charge
+        // Determine the amount to charge (only the still-pending installments)
         BigDecimal outstanding;
         if (request.getCustomAmount() != null && request.getCustomAmount() > 0) {
             outstanding = BigDecimal.valueOf(request.getCustomAmount());
             log.info("Using caller-supplied customAmount={} for userPlan={}", outstanding, callerUserPlanId);
         } else {
-            outstanding = cpoDuesCalculator.computeOutstandingForSfpIds(request.getStudentFeePaymentIds());
+            outstanding = cpoDuesCalculator.computeOutstandingForSfpIds(pendingSfpIds);
         }
 
         if (outstanding.signum() <= 0) {
@@ -205,6 +244,25 @@ public class OpenCpoFeeService {
                 paymentRequest.getInstituteId(),
                 enrollInvite,
                 userPlan);
+    }
+
+    /**
+     * Builds a minimal {@link PaymentResponseDTO} carrying just a payment status, used by the
+     * idempotent / webhook-race short-circuits in {@link #payInstallments}. The learner
+     * dashboard reads {@code response_data.paymentStatus} to decide between the success and
+     * pending screens.
+     *
+     * @param paymentStatus e.g. {@code "PAID"} or {@code "PAYMENT_PENDING"}
+     * @param message       human-readable note for logs/UX
+     */
+    private PaymentResponseDTO buildStatusResponse(String paymentStatus, String message) {
+        PaymentResponseDTO response = new PaymentResponseDTO();
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("paymentStatus", paymentStatus);
+        response.setResponseData(responseData);
+        response.setStatus(paymentStatus);
+        response.setMessage(message);
+        return response;
     }
 
     /**

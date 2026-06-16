@@ -21,6 +21,10 @@ export const Route = createFileRoute('/vim/edit/$videoId/')({
         const kindRaw = search.kind == null ? undefined : String(search.kind);
         const kind: 'reel' | 'studio' | undefined =
             kindRaw === 'reel' ? 'reel' : kindRaw === 'studio' ? 'studio' : undefined;
+        // Studio builds belong to a project — the detail page passes its id so
+        // the editor's Back returns to /vim/studio/$projectId instead of the
+        // AI-video production view (which can't resolve a build id).
+        const projectId = search.projectId ? String(search.projectId) : undefined;
         return {
             htmlUrl: String(search.htmlUrl ?? ''),
             audioUrl: search.audioUrl ? String(search.audioUrl) : undefined,
@@ -29,6 +33,7 @@ export const Route = createFileRoute('/vim/edit/$videoId/')({
             apiKey: search.apiKey ? String(search.apiKey) : undefined,
             orientation: String(search.orientation ?? 'landscape'),
             kind,
+            projectId,
             focusTime,
         };
     },

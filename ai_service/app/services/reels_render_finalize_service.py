@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Optional
 
@@ -30,6 +31,7 @@ from ..repositories.ai_reel_repository import AiReelRepository
 from ..services.render_service import RenderService
 from ..services.reels_render_orchestrator import (
     RenderContext,
+    STAGE_PIPELINE,
     STAGE_RENDER,
     register_stage_handler,
 )
@@ -50,14 +52,41 @@ RENDER_DEADLINE_S = 600
 INITIAL_POLL_INTERVAL_S = 3
 MAX_POLL_INTERVAL_S = 15
 
-# RENDER stage occupies overall progress 90-100. We map the worker's
-# 0-100 progress into this band for intermediate writes.
-STAGE_PROGRESS_FLOOR = 90
-STAGE_PROGRESS_CEILING = 100
+# The worker's 0-100 progress maps into the RENDER band of the overall bar.
+# Derived from the orchestrator's pipeline so the two can't drift apart —
+# the orchestrator already wrote `start_pct` when this stage began.
+_RENDER_BAND = next(s for s in STAGE_PIPELINE if s.name == STAGE_RENDER)
+STAGE_PROGRESS_FLOOR = _RENDER_BAND.start_pct
+STAGE_PROGRESS_CEILING = _RENDER_BAND.end_pct
 
-# How often to write intermediate progress back to ai_reels. Don't churn
-# the DB on every poll — write only on meaningful change.
-PROGRESS_WRITE_THRESHOLD = 5  # % overall (i.e., 50% worker progress)
+# The shared render worker caps concurrent jobs (render + indexing + PDF
+# OCR all share the slots) and answers 429 when full. A slot frees in
+# 1-3 min, so capacity exhaustion is transient by nature — failing the
+# reel terminally after the user already sat through every prior stage is
+# the worst outcome. Backoff schedule per retry; total wait fits well
+# inside the reaper's staleness cutoff because we write a heartbeat before
+# each sleep.
+SUBMIT_BUSY_BACKOFF_S = (15, 30, 60)
+
+# User-facing notes surfaced via `metadata.stage_note` while we wait for a
+# worker slot, so the FE shows why the bar is parked instead of silence.
+_WAITING_NOTE = "Waiting for a render slot — the render worker is at capacity. Retrying automatically."
+_QUEUED_NOTE = "Waiting for a render slot — your reel is queued and will start shortly."
+
+# Submit failures surface as RuntimeError("Render server returned <status>: …")
+# from RenderService.submit — there's no typed status on the exception, so
+# busy-detection parses the message. 429 = explicit capacity response;
+# 503 = worker restarting/behind a draining LB, equally transient.
+_SUBMIT_STATUS_RE = re.compile(r"Render server returned (\d{3})")
+_BUSY_STATUSES = {429, 503}
+
+
+def _is_worker_busy_error(exc: Exception) -> bool:
+    msg = str(exc)
+    m = _SUBMIT_STATUS_RE.search(msg)
+    if m and int(m.group(1)) in _BUSY_STATUSES:
+        return True
+    return "busy" in msg.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -108,25 +137,74 @@ class ReelsRenderFinalizeService:
         # the timeline JSON to local paths after downloading the URLs in
         # source_video_urls. show_captions=False because OUR captions are
         # entries in the timeline — we don't want a second overlay track.
-        try:
-            job_id = rs.submit(
-                video_id=ctx.reel_id,
-                timeline_url=timeline_url,
-                audio_url=audio_url,
-                source_video_urls=[speaker_clip_url],
-                width=width,
-                height=height,
-                show_captions=False,
-                show_branding=False,
-                audio_delay=0.0,
-            )
-        except RuntimeError as e:
-            raise RuntimeError(f"render worker submission failed: {e}")
+        reel_repo = AiReelRepository()
+        job_id = self._submit_with_retry(
+            rs,
+            ctx,
+            reel_repo,
+            video_id=ctx.reel_id,
+            timeline_url=timeline_url,
+            audio_url=audio_url,
+            source_video_urls=[speaker_clip_url],
+            width=width,
+            height=height,
+            show_captions=False,
+            show_branding=False,
+            audio_delay=0.0,
+        )
 
         logger.info(f"[Render3e] {ctx.reel_id} submitted as job {job_id} ({width}x{height})")
 
         # 3. Poll until completion / failure / deadline.
-        self._poll_until_done(rs, job_id, ctx)
+        self._poll_until_done(rs, job_id, ctx, reel_repo)
+
+    # ── Submission with busy-retry ────────────────────────────────────────
+
+    def _submit_with_retry(
+        self,
+        rs: RenderService,
+        ctx: RenderContext,
+        reel_repo: AiReelRepository,
+        **submit_kwargs,
+    ) -> str:
+        """Submit the job, retrying on worker-busy (429/503) with backoff.
+
+        Non-busy failures (bad payload, auth, network exhaustion inside the
+        client) raise immediately — only capacity contention is worth
+        waiting out. Each wait writes a `stage_note` heartbeat so the FE
+        explains the parked bar and the reaper sees a live updated_at."""
+        attempts = len(SUBMIT_BUSY_BACKOFF_S) + 1
+        waited = False
+        for attempt in range(attempts):
+            try:
+                submit_result = rs.submit(**submit_kwargs)
+                if waited:
+                    # Drop the waiting note now that a slot was secured.
+                    reel_repo.update_stage(
+                        ctx.reel_pk,
+                        current_stage=STAGE_RENDER,
+                        progress=STAGE_PROGRESS_FLOOR,
+                        stage_note=None,
+                    )
+                return submit_result
+            except RuntimeError as e:
+                if not _is_worker_busy_error(e) or attempt == attempts - 1:
+                    raise RuntimeError(f"render worker submission failed: {e}")
+                delay_s = SUBMIT_BUSY_BACKOFF_S[attempt]
+                logger.warning(
+                    f"[Render3e] {ctx.reel_id} worker busy on submit "
+                    f"(attempt {attempt + 1}/{attempts}) — retrying in {delay_s}s: {e}"
+                )
+                reel_repo.update_stage(
+                    ctx.reel_pk,
+                    current_stage=STAGE_RENDER,
+                    progress=STAGE_PROGRESS_FLOOR,
+                    stage_note=_WAITING_NOTE,
+                )
+                waited = True
+                time.sleep(delay_s)
+        # Unreachable — the last loop iteration either returns or raises.
+        raise RuntimeError("render worker submission failed: retries exhausted")
 
     # ── Polling loop ──────────────────────────────────────────────────────
 
@@ -135,14 +213,18 @@ class ReelsRenderFinalizeService:
         rs: RenderService,
         job_id: str,
         ctx: RenderContext,
+        reel_repo: AiReelRepository,
     ) -> None:
         """Block on the worker until terminal state. Intermediate progress
         writes go back to ai_reels via the AiReelRepository so the FE's
-        status poll advances the bar from 90→100 as the worker progresses."""
-        reel_repo = AiReelRepository()
+        status poll advances the bar through the RENDER band as the worker
+        progresses."""
         started_at = time.monotonic()
         interval = INITIAL_POLL_INTERVAL_S
         last_written_progress = STAGE_PROGRESS_FLOOR
+        # Whether metadata.stage_note currently shows the queued message —
+        # written/cleared only on transitions to avoid jsonb churn per poll.
+        queued_note_shown = False
 
         while True:
             elapsed = time.monotonic() - started_at
@@ -190,7 +272,9 @@ class ReelsRenderFinalizeService:
                 )
                 continue
 
-            # Intermediate progress write. Map worker's 0-100 into 90-100.
+            # Intermediate progress write. Map worker's 0-100 into the
+            # RENDER band, monotonic (a transient "unknown" status reports
+            # progress 0 — never walk the bar backwards for it).
             wp_raw = resp.get("progress")
             try:
                 worker_progress = int(wp_raw) if wp_raw is not None else 0
@@ -206,23 +290,40 @@ class ReelsRenderFinalizeService:
             # Cap at one-below-ceiling so we don't appear "done" until the
             # orchestrator's COMPLETED write fires.
             overall = min(overall, STAGE_PROGRESS_CEILING - 1)
+            overall = max(overall, last_written_progress)
 
-            if overall - last_written_progress >= PROGRESS_WRITE_THRESHOLD:
-                try:
-                    # Note: we ONLY update current_stage + progress here.
-                    # The orchestrator owns the `stages` list; updating it
-                    # mid-flight from a stage handler would race the
-                    # orchestrator's bookkeeping.
-                    reel_repo.update_stage(
-                        ctx.reel_pk,
-                        current_stage=STAGE_RENDER,
-                        progress=overall,
-                    )
-                    last_written_progress = overall
-                except Exception as e:
-                    logger.warning(
-                        f"[Render3e] {ctx.reel_id} intermediate progress write failed: {e}"
-                    )
+            # Queued jobs sit at zero progress for as long as the worker's
+            # backlog lasts — tell the user why instead of a parked bar.
+            note_kwargs: dict = {}
+            if worker_status == "queued" and not queued_note_shown:
+                note_kwargs["stage_note"] = _QUEUED_NOTE
+                queued_note_shown = True
+            elif worker_status != "queued" and queued_note_shown:
+                note_kwargs["stage_note"] = None
+                queued_note_shown = False
+
+            # Heartbeat: write EVERY poll iteration, even when progress
+            # hasn't moved. The reaper fails rows whose updated_at goes
+            # stale — a long worker queue (job accepted but not started)
+            # produces zero progress movement for minutes, and a healthy-
+            # but-queued render must never look reapable. Poll cadence is
+            # 3-15s, so the write volume is trivial.
+            try:
+                # Note: we ONLY update current_stage + progress (+ the
+                # stage_note metadata key) here. The orchestrator owns the
+                # `stages` list; updating it mid-flight from a stage
+                # handler would race the orchestrator's bookkeeping.
+                reel_repo.update_stage(
+                    ctx.reel_pk,
+                    current_stage=STAGE_RENDER,
+                    progress=overall,
+                    **note_kwargs,
+                )
+                last_written_progress = overall
+            except Exception as e:
+                logger.warning(
+                    f"[Render3e] {ctx.reel_id} intermediate progress write failed: {e}"
+                )
 
 
 # ---------------------------------------------------------------------------

@@ -129,9 +129,25 @@ Closing a follow-up happens from the side-view / add-note flows (`PUT /v1/lead-f
 
 ---
 
-## 5. Lead Reports page
+## 5. Reports Center
 
-Route `/audience-manager/reports` → [`lead-reports-page.tsx`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-components/lead-reports-page.tsx) + [`get-lead-reports.ts`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-services/get-lead-reports.ts). **No sidebar entry currently** — navigate by URL.
+Route `/audience-manager/reports` (sidebar entry `lead-reports`) is a **tabbed Reports Center** since 2026-06-12: `?tab=` overview | sources | funnel | dispositions | calling | activity | followups | counsellors | manager (9 tabs), with a shared filter bar (date presets + custom range, `TeamPicker` from `@/components/shared/crm/`, counsellor select) feeding every tab. Shell + tabs in [`reports/-components/`](../../frontend-admin-dashboard/src/routes/audience-manager/reports/-components/); fetchers in `-services/get-crm-reports.ts` (Calling / Manager / Activity tabs have co-located local services pending a merge); CSV export per tab.
+
+| Tab | Backend | Content |
+|---|---|---|
+| Overview | `/v1/reports/leads/summary` | original KPIs / donut / trend / breakdowns, now team+counsellor filterable |
+| Sources | `/v1/reports/source-performance` | leads → connected → interested → won → conv% per source (spend/CPL/ROI columns reserved — Revenue wave deferred) |
+| Funnel | `/v1/reports/funnel-velocity` | per-stage entered / stock / median days-in-stage / advanced% / regressed + overall velocity |
+| Dispositions | `/v1/reports/dispositions` | actor × status-change matrix + counsellor × call-outcome matrix |
+| Calling | `/v1/reports/calls-daily` + `/calls-heatmap` | KPI row, daily dials-vs-connected series, per-counsellor table, 7×24 hour heatmap (institute TZ) |
+| Activity | `/v1/reports/activity-timeline` | per-counsellor activity volume (notes / calls / status changes / followups created+closed) + daily total strip |
+| Follow-ups | `/v1/reports/followup-aging` | aging buckets (today / 1–3 / 4–7 / 8+ / upcoming) per counsellor + closure reasons |
+| Counsellors | `/v1/reports/counselor-performance` | the performance table (moved from Overview), drill-through intact |
+| Manager | `/v1/reports/team-rollup` | per-team rollup (counsellors, leads, conversions, conv%, open, overdue, avg response, target, attainment%) for team-vs-team comparison |
+
+Counsellor rows / status legend / source rows / funnel stages drill through to Recent Leads or Follow-ups with matching URL filters. Tabs degrade to a retryable error state when the backend predates the endpoints. The org-team model is **flat** (no parent/child), so Manager's "team rollup" lists every institute team (or the one picked in TeamPicker), RBAC-narrowed to the caller's scope.
+
+**Post-call disposition capture** (2026-06-12): when a click-to-call hits a terminal state, [`post-call-disposition-sheet.tsx`](../../frontend-admin-dashboard/src/components/shared/leads/post-call-disposition-sheet.tsx) auto-opens (per-user opt-out in localStorage `crm-postcall-sheet-disabled`) and logs status change + call note + next follow-up in one submit via the existing three endpoints — this is what feeds the Dispositions data.
 
 - Date-range filter (default last 30 days) + refresh.
 - KPI cards: total leads, conversion rate, avg response time, TAT met %.

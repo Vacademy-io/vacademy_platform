@@ -374,6 +374,15 @@ function injectShotWrapper(
     return `<div data-vx-shot="1" style="${styles.join(';')}">${keyframeBlock}${inner}</div>`;
 }
 
+/** Save-abort signal: the server rejected a write with HTTP 409 because the
+ *  timeline was modified by another session (optimistic-lock revision check,
+ *  see TimelineMeta.revision). Caught in saveChanges to abort the remaining
+ *  ops immediately — every later op would conflict too. */
+class TimelineConflictError extends Error {}
+
+export const TIMELINE_CONFLICT_MESSAGE =
+    'This video was changed in another tab or session since you opened it. Your unsaved edits are safe here — choose how to continue.';
+
 interface HistorySnapshot {
     entries: Entry[];
     entryTransforms: Record<string, EntryTransform>;
@@ -412,6 +421,22 @@ export interface VideoEditorState {
     meta: TimelineMeta;
     isLoading: boolean;
     error: string | null;
+
+    /** Server-side optimistic-lock counter (meta.revision) for the loaded
+     *  timeline. Sent as `expected_revision` on every `/frame/*` write and
+     *  refreshed from each response, so a save from a stale tab gets a 409
+     *  instead of silently overwriting another session's changes. `null` =
+     *  unknown (legacy plain-array timeline, or reel/studio kinds) — the
+     *  check is skipped. Lives outside HistorySnapshot: it's server state,
+     *  not an undoable edit. */
+    timelineRevision: number | null;
+
+    /** Set true when the last save aborted on a revision conflict (HTTP 409):
+     *  another session changed this video's timeline. Unsaved edits are kept
+     *  in memory; the SaveConflictNotice strip lets the user "Save anyway"
+     *  (overwrite) or reload the server version. Cleared at the start of every
+     *  save attempt and on resolution. */
+    saveConflict: boolean;
 
     // Scrub state (seconds for time_driven; index for user_driven)
     currentTime: number;
@@ -526,6 +551,13 @@ export interface VideoEditorState {
     // Actions
     init: (params: InitParams) => void;
     loadTimeline: () => Promise<void>;
+    /** Resolve a save conflict by overwriting: refetch the live revision,
+     *  then retry the save so the user's version wins (last-writer-wins, but
+     *  user-initiated). Keeps all unsaved edits. */
+    saveAnyway: () => Promise<void>;
+    /** Resolve a save conflict by discarding local edits and reloading the
+     *  server's current timeline. */
+    reloadFromServer: () => Promise<void>;
     seek: (time: number) => void;
     selectEntry: (id: string | null) => void;
     selectLayer: (path: number[] | null) => void;
@@ -803,6 +835,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     kind: 'video',
     entries: [],
     meta: getDefaultMeta('VIDEO'),
+    timelineRevision: null,
+    saveConflict: false,
     isLoading: false,
     error: null,
     currentTime: 0,
@@ -844,6 +878,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             kind: params.kind ?? 'video',
             entries: [],
             meta: getDefaultMeta('VIDEO'),
+            timelineRevision: null,
+            saveConflict: false,
             isLoading: false,
             error: null,
             currentTime: 0,
@@ -879,12 +915,18 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
 
         set({ isLoading: true, error: null });
         try {
-            const res = await fetch(htmlUrl);
+            // no-store: the editor must never render a stale CDN copy of its
+            // own editable document — matters most when reloading after a
+            // conflict to pick up another session's just-saved changes.
+            const res = await fetch(htmlUrl, { cache: 'no-store' });
             if (!res.ok) throw new Error(`Failed to load timeline: ${res.status}`);
             const raw: unknown = await res.json();
 
             let entries: Entry[];
             let meta: TimelineMeta;
+            // Legacy plain-array timelines have no meta to carry the
+            // optimistic-lock counter — null disables the revision check.
+            let timelineRevision: number | null = null;
 
             if (Array.isArray(raw)) {
                 entries = raw as Entry[];
@@ -902,6 +944,9 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     ...getDefaultMeta(rawMeta.content_type ?? 'VIDEO'),
                     ...rawMeta,
                 };
+                // Missing revision on a wrapped timeline means "never written
+                // by a revision-aware endpoint" — the server treats that as 0.
+                timelineRevision = typeof rawMeta.revision === 'number' ? rawMeta.revision : 0;
             } else {
                 throw new Error('Unrecognized timeline format');
             }
@@ -940,6 +985,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             set({
                 entries,
                 meta,
+                timelineRevision,
                 audioTracks: meta.audio_tracks ?? [],
                 isLoading: false,
                 naturalDurations,
@@ -1565,6 +1611,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => ({ audioTracks: s.audioTracks.filter((t) => t.id !== trackId) })),
 
     saveChanges: async () => {
+        // Re-entrancy guard: a second concurrent save (double-clicked Save, or
+        // the auto-save-before-render racing a manual save) would capture the
+        // same `timelineRevision` and 409 against the first save's own bump.
+        // The in-flight save covers everything currently dirty.
+        if (get().isSaving) return;
         const {
             videoId,
             apiKey,
@@ -1577,6 +1628,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             entryTransforms,
             entryBackgrounds,
             entryTransitions,
+            timelineRevision,
         } = get();
 
         // Reels and AI-gen videos live in different DB tables, so frame
@@ -1594,6 +1646,18 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
               : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
         const idField = isReel ? 'reel_id' : isStudio ? 'build_id' : 'video_id';
 
+        // Optimistic locking (video kind only — reels/studio backends don't
+        // track revisions): send the loaded meta.revision with every write
+        // and refresh it from each response so sequential ops in this loop
+        // keep matching. A 409 means another session changed the timeline —
+        // the whole save aborts (every later op would conflict too).
+        let revision = !isReel && !isStudio ? timelineRevision : null;
+        const revisionBody = () => (revision != null ? { expected_revision: revision } : {});
+        const trackRevision = async (res: Response) => {
+            const j = (await res.json().catch(() => null)) as { revision?: unknown } | null;
+            if (j && typeof j.revision === 'number') revision = j.revision;
+        };
+
         // Collect entries that need saving
         const toSave = entries.filter(
             (e) =>
@@ -1606,7 +1670,12 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         if (toSave.length === 0 && deletedEntryIds.length === 0 && pendingReorders.length === 0)
             return;
 
-        set({ isSaving: true });
+        // Clear any prior conflict flag — this is a fresh attempt.
+        set({ isSaving: true, saveConflict: false });
+        // Set true by the first op that hits a 409; aborts the remaining ops
+        // (every later one would conflict too) and routes to the conflict UI
+        // instead of throwing.
+        let conflictHit = false;
 
         // B7: collect failures instead of aborting on the first one. Each
         // operation is tracked independently so a partial-save (e.g. delete
@@ -1631,6 +1700,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // refer to the post-deletion timeline. Delete by entry_id (order-
             // independent), so the order within deletedEntryIds doesn't matter.
             for (const entryId of deletedEntryIds) {
+                if (conflictHit) break;
                 try {
                     const res = await fetch(`${frameBase}/delete`, {
                         method: 'POST',
@@ -1641,14 +1711,21 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                         body: JSON.stringify({
                             [idField]: videoId,
                             entry_id: entryId,
+                            ...revisionBody(),
                         }),
                     });
                     if (!res.ok) {
                         const text = await res.text().catch(() => res.statusText);
+                        if (res.status === 409) throw new TimelineConflictError(text);
                         throw new Error(text);
                     }
+                    await trackRevision(res);
                     succeededDeletes.add(entryId);
                 } catch (err) {
+                    if (err instanceof TimelineConflictError) {
+                        conflictHit = true;
+                        break;
+                    }
                     failedDeletes.push({
                         id: entryId,
                         message: err instanceof Error ? err.message : String(err),
@@ -1664,6 +1741,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // updates would destroy entries at the target positions, which is
             // why we route through this dedicated endpoint.
             for (const op of pendingReorders) {
+                if (conflictHit) break;
                 try {
                     const res = await fetch(`${frameBase}/reorder`, {
                         method: 'POST',
@@ -1675,14 +1753,21 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             [idField]: videoId,
                             entry_id: op.entry_id,
                             to_index: op.to_index,
+                            ...revisionBody(),
                         }),
                     });
                     if (!res.ok) {
                         const text = await res.text().catch(() => res.statusText);
+                        if (res.status === 409) throw new TimelineConflictError(text);
                         throw new Error(text);
                     }
+                    await trackRevision(res);
                     succeededReorders.add(op.entry_id);
                 } catch (err) {
+                    if (err instanceof TimelineConflictError) {
+                        conflictHit = true;
+                        break;
+                    }
                     failedReorders.push({
                         id: op.entry_id,
                         message: err instanceof Error ? err.message : String(err),
@@ -1693,6 +1778,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // Send to backend sequentially to avoid S3 concurrent-write race (C26).
             // New entries (never persisted) use frame/add; existing use frame/update.
             for (const entry of toSave) {
+                if (conflictHit) break;
                 try {
                     const t = entryTransforms[entry.id];
                     const bg = entryBackgrounds[entry.id];
@@ -1740,12 +1826,15 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                                 z: entry.z ?? 0,
                                 entry_id: entry.id,
                                 ...(addEntryMetaPayload ? { entry_meta: addEntryMetaPayload } : {}),
+                                ...revisionBody(),
                             }),
                         });
                         if (!res.ok) {
                             const text = await res.text().catch(() => res.statusText);
+                            if (res.status === 409) throw new TimelineConflictError(text);
                             throw new Error(`Add frame failed: ${text}`);
                         }
+                        await trackRevision(res);
                         succeededSaves.add(entry.id);
                     } else {
                         const frameIndex = entries.indexOf(entry);
@@ -1796,15 +1885,22 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                                 // Read at regen time so "Remake with AI" uses
                                 // the same model on next edit.
                                 ...(entry.html_model ? { html_model: entry.html_model } : {}),
+                                ...revisionBody(),
                             }),
                         });
                         if (!res.ok) {
                             const text = await res.text().catch(() => res.statusText);
+                            if (res.status === 409) throw new TimelineConflictError(text);
                             throw new Error(`Frame ${frameIndex}: ${text}`);
                         }
+                        await trackRevision(res);
                         succeededSaves.add(entry.id);
                     }
                 } catch (err) {
+                    if (err instanceof TimelineConflictError) {
+                        conflictHit = true;
+                        break;
+                    }
                     failedSaves.push({
                         id: entry.id,
                         message: err instanceof Error ? err.message : String(err),
@@ -1853,20 +1949,26 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                         (op) => !succeededReorders.has(op.entry_id)
                     ),
                     // Undo history is cleared only on a fully-successful save
-                    // — preserving it for partial-fail lets the user step
-                    // back if they want to inspect what they edited.
+                    // — preserving it for partial-fail / conflict lets the
+                    // user step back if they want to inspect what they edited.
                     past:
+                        !conflictHit &&
                         failedSaves.length === 0 &&
                         failedDeletes.length === 0 &&
                         failedReorders.length === 0
                             ? []
                             : s.past,
                     future:
+                        !conflictHit &&
                         failedSaves.length === 0 &&
                         failedDeletes.length === 0 &&
                         failedReorders.length === 0
                             ? []
                             : s.future,
+                    // Whatever the last successful write returned — keeps the
+                    // next save's expected_revision in step with the server.
+                    timelineRevision: revision ?? s.timelineRevision,
+                    saveConflict: conflictHit,
                     isSaving: false,
                 };
             });
@@ -1875,6 +1977,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // offline buffer when nothing failed — partial-fail keeps the
             // unsaved names on disk so a reload doesn't lose them.
             if (
+                !conflictHit &&
                 failedSaves.length === 0 &&
                 failedDeletes.length === 0 &&
                 failedReorders.length === 0
@@ -1885,6 +1988,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     /* private mode — fine */
                 }
             }
+
+            // Conflict: abort quietly — unsaved edits stay in memory and the
+            // SaveConflictNotice strip (driven by saveConflict) is the UI. Do
+            // NOT throw, so the caller doesn't surface a generic save error.
+            if (conflictHit) return;
             // Surface failures through the existing toast.error path. The
             // caller's catch will format the message; succeeded changes are
             // already persisted locally so it's safe to "throw" after the
@@ -1908,6 +2016,46 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             set({ isSaving: false });
             throw err;
         }
+    },
+
+    saveAnyway: async () => {
+        const { htmlUrl } = get();
+        // Adopt the server's current revision so the retried save's
+        // expected_revision matches and the user's version wins. Cache-busted
+        // so we read the live timeline, not a stale CDN copy.
+        if (htmlUrl) {
+            try {
+                const res = await fetch(htmlUrl, { cache: 'no-store' });
+                if (res.ok) {
+                    const raw = (await res.json()) as { meta?: { revision?: unknown } };
+                    const rev = raw?.meta?.revision;
+                    if (typeof rev === 'number') set({ timelineRevision: rev });
+                }
+            } catch {
+                // Refetch failed — retry with the current revision; if it's
+                // still stale the save just re-raises the conflict.
+            }
+        }
+        // saveChanges clears saveConflict itself; retry now overwrites.
+        await get().saveChanges();
+    },
+
+    reloadFromServer: async () => {
+        // Discard all local unsaved edits and take the server's timeline.
+        set({
+            saveConflict: false,
+            dirtyEntryIds: [],
+            htmlEditedEntryIds: [],
+            newEntryIds: [],
+            deletedEntryIds: [],
+            pendingReorders: [],
+            entryTransforms: {},
+            entryBackgrounds: {},
+            entryTransitions: {},
+            past: [],
+            future: [],
+        });
+        await get().loadTimeline();
     },
 
     regenerateSentence: async (sentenceId, newText) => {

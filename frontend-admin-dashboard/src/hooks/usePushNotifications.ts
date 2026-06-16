@@ -99,9 +99,12 @@ export function usePushNotifications() {
                     'New notification';
                 const body =
                     payload.notification?.body || (payload.data?.body as string | undefined);
+                const conversationId = payload.data?.conversationId as string | undefined;
                 const clickAction =
-                    (payload.data?.click_action as string | undefined) ||
-                    (payload.fcmOptions?.link as string | undefined);
+                    payload.data?.type === 'chat'
+                        ? `/chat${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`
+                        : (payload.data?.click_action as string | undefined) ||
+                          (payload.fcmOptions?.link as string | undefined);
 
                 toast.info(title, {
                     description: body,

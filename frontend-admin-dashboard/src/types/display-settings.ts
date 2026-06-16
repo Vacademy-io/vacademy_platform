@@ -366,6 +366,10 @@ export interface DisplaySettingsData {
         // raw IDs (course / package session / session / level) with copy.
         // Off by default — intended for admins debugging configuration.
         showAdvancedCourseIds?: boolean;
+        // When true, the "Bulk Upload (ZIP)" button is shown in the Course
+        // Structure header. Off by default for every role — opt-in per role
+        // from Display Settings.
+        showBulkUpload?: boolean;
     };
 
     // 10) Slide view action visibility toggles

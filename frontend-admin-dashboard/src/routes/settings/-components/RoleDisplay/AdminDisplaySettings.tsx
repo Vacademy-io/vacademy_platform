@@ -515,6 +515,8 @@ export default function AdminDisplaySettings() {
                                                 prev.coursePage?.canDeleteCourseStructure ?? true,
                                             showAdvancedCourseIds:
                                                 prev.coursePage?.showAdvancedCourseIds ?? false,
+                                            showBulkUpload:
+                                                prev.coursePage?.showBulkUpload ?? false,
                                             [key]: checked,
                                         },
                                     }))
@@ -550,6 +552,8 @@ export default function AdminDisplaySettings() {
                                             prev.coursePage?.canEditCourseStructure ?? true,
                                         canDeleteCourseStructure:
                                             prev.coursePage?.canDeleteCourseStructure ?? true,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         showAdvancedCourseIds: checked,
                                     },
                                 }))
@@ -594,6 +598,8 @@ export default function AdminDisplaySettings() {
                                             prev.coursePage?.canDeleteCourseStructure ?? true,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         directEditPublishedCourse: checked,
                                     },
                                 }))
@@ -657,6 +663,8 @@ export default function AdminDisplaySettings() {
                                             prev.coursePage?.canDeleteCourseStructure ?? true,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canEditCourseStructure: checked,
                                     },
                                 }))
@@ -688,7 +696,44 @@ export default function AdminDisplaySettings() {
                                             prev.coursePage?.canEditCourseStructure ?? true,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canDeleteCourseStructure: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            Show Bulk Upload (ZIP) button
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.showBulkUpload === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? true,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? true,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? true,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload: checked,
                                     },
                                 }))
                             }

@@ -1963,6 +1963,20 @@ public class AudienceService {
                                     .map(Audience::getInstituteId).orElse(null)
                             : null));
 
+        // Pre-resolve the custom-field filters into matching audience_response IDs
+        // using one indexed lookup per field (intersected across fields). This
+        // replaces a per-row correlated jsonb subquery that scanned
+        // custom_field_values for every candidate lead and timed out on the
+        // institute-wide Recent Leads query. null = no filter; empty list =
+        // filters set but nothing matches → short-circuit to an empty page.
+        List<String> customFieldMatchedIds =
+                resolveCustomFieldMatchedResponseIds(filterDTO.getCustomFieldFilters());
+        if (customFieldMatchedIds != null && customFieldMatchedIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        String customFieldMatchedIdsCsv =
+                customFieldMatchedIds == null ? null : String.join(",", customFieldMatchedIds);
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
         // view.
@@ -1985,14 +1999,10 @@ public class AudienceService {
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
                     filterTatHours,
+                    customFieldMatchedIdsCsv,
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
-
-        // Serialize dropdown filters to a JSON array string the native query
-        // can introspect via jsonb_array_elements. Empty list / null both
-        // disable the predicate so existing behaviour is preserved.
-        String customFieldFiltersJson = serializeCustomFieldFilters(filterDTO.getCustomFieldFilters());
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
@@ -2012,7 +2022,7 @@ public class AudienceService {
                 includeUnassigned,
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
-                customFieldFiltersJson,
+                customFieldMatchedIdsCsv,
                 conversionStatusFilter,
                 filterDTO.getSlaFilter(),
                 filterTatHours,
@@ -2033,26 +2043,70 @@ public class AudienceService {
         return mapResponsesToLeadDetails(responses, campaignInstituteId);
     }
 
-    private String serializeCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
+    /**
+     * Resolves the audience_response IDs that match the custom-field filters:
+     * for each field, the response IDs whose stored value is one of the selected
+     * values (OR within a field), intersected across fields (AND across fields).
+     * Each field is one indexed lookup, so this scales far better than a per-row
+     * correlated subquery in the leads query.
+     *
+     * @return {@code null} when there are no usable filters (predicate disabled);
+     *         an empty list when filters are set but nothing matches (caller
+     *         short-circuits to an empty page); otherwise the matched IDs.
+     */
+    private List<String> resolveCustomFieldMatchedResponseIds(
+            List<LeadFilterDTO.CustomFieldFilter> filters) {
         if (filters == null || filters.isEmpty()) {
             return null;
         }
-        // Drop entries that are missing either side; the SQL EXISTS check
-        // would otherwise reduce the result set to zero on bad input.
-        List<LeadFilterDTO.CustomFieldFilter> sanitized = filters.stream()
-                .filter(f -> f != null
-                        && f.getFieldId() != null && !f.getFieldId().isBlank()
-                        && f.getValue() != null && !f.getValue().isEmpty())
-                .collect(Collectors.toList());
-        if (sanitized.isEmpty()) {
-            return null;
+        Set<String> matched = null;
+        for (LeadFilterDTO.CustomFieldFilter f : filters) {
+            if (f == null || f.getFieldId() == null || f.getFieldId().isBlank()
+                    || f.getValues() == null) {
+                continue;
+            }
+            // Strip blank values; a whitespace/empty option would otherwise widen
+            // or zero out the IN (...) match unexpectedly.
+            List<String> values = f.getValues().stream()
+                    .filter(v -> v != null && !v.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (values.isEmpty()) {
+                continue;
+            }
+            Set<String> ids = new HashSet<>(
+                    customFieldValuesRepository.findAudienceResponseIdsByCustomFieldValue(
+                            f.getFieldId(), values));
+            if (matched == null) {
+                matched = ids;
+            } else {
+                matched.retainAll(ids);
+            }
+            if (matched.isEmpty()) {
+                return Collections.emptyList();
+            }
         }
-        try {
-            return new ObjectMapper().writeValueAsString(sanitized);
-        } catch (Exception e) {
-            logger.warn("Failed to serialize customFieldFilters; ignoring filter", e);
-            return null;
+        // matched stays null when every entry was blank → treat as "no filter".
+        return matched == null ? null : new ArrayList<>(matched);
+    }
+
+    /**
+     * Searchable, paginated list of the distinct values a custom field holds
+     * across an institute's leads — feeds the multi-select dropdowns in the leads
+     * filter bar (e.g. every city leads have entered into a free-text "City"
+     * field). Scoped to the institute; the frontend only calls this for fields
+     * the admin has enabled as leads filters.
+     */
+    public Page<String> getLeadCustomFieldValues(String instituteId, String customFieldId,
+            String search, int pageNo, int pageSize) {
+        if (instituteId == null || instituteId.isBlank()
+                || customFieldId == null || customFieldId.isBlank()) {
+            return Page.empty(PageRequest.of(Math.max(pageNo, 0), pageSize > 0 ? pageSize : 20));
         }
+        Pageable pageable = PageRequest.of(Math.max(pageNo, 0), pageSize > 0 ? pageSize : 20);
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return audienceResponseRepository.findDistinctLeadCustomFieldValues(
+                instituteId, customFieldId, normalizedSearch, pageable);
     }
 
     /**

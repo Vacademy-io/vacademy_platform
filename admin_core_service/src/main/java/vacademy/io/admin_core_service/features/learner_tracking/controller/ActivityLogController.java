@@ -18,11 +18,12 @@ public class ActivityLogController {
     @GetMapping("/learner-activity")
     public ResponseEntity<Page<LearnerActivityProjection>> getStudentActivity(
             @RequestParam String slideId,
+            @RequestParam(required = false) String packageSessionId,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size,
             @RequestAttribute("user") CustomUserDetails user) {
 
-        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, page, size, user);
+        Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, packageSessionId, page, size, user);
         return ResponseEntity.ok(studentActivities);
     }
 

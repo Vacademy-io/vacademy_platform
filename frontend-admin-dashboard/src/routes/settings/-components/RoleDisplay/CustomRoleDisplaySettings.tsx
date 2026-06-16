@@ -19,6 +19,7 @@ import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
+import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -524,6 +525,8 @@ export default function CustomRoleDisplaySettings({
                                                 prev.coursePage?.canDeleteCourseStructure ?? false,
                                             showAdvancedCourseIds:
                                                 prev.coursePage?.showAdvancedCourseIds ?? false,
+                                            showBulkUpload:
+                                                prev.coursePage?.showBulkUpload ?? false,
                                             [key]: checked,
                                         },
                                     }))
@@ -559,6 +562,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canEditCourseStructure ?? false,
                                         canDeleteCourseStructure:
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         showAdvancedCourseIds: checked,
                                     },
                                 }))
@@ -603,6 +608,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         directEditPublishedCourse: checked,
                                     },
                                 }))
@@ -666,6 +673,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canEditCourseStructure: checked,
                                     },
                                 }))
@@ -697,7 +706,44 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canEditCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canDeleteCourseStructure: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            Show Bulk Upload (ZIP) button
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.showBulkUpload === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? false,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? false,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload: checked,
                                     },
                                 }))
                             }
@@ -1959,6 +2005,18 @@ export default function CustomRoleDisplaySettings({
                     updateSettings((prev) => ({
                         ...prev,
                         learnerListColumns: next,
+                    }))
+                }
+            />
+
+            {/* Which custom fields show as filters on the leads views — per this role.
+                Saved with the rest of this blob via the shared unsaved-changes bar. */}
+            <LeadsFilterCustomFieldsCard
+                value={settings.leadsFilterCustomFields ?? []}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        leadsFilterCustomFields: next,
                     }))
                 }
             />

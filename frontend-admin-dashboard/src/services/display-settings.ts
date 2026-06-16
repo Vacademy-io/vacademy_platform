@@ -361,6 +361,7 @@ function mergeDisplayWithDefaults(
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showAdvancedCourseIds: false,
+        showBulkUpload: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -392,6 +393,8 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.showAdvancedCourseIds ??
             defCoursePage.showAdvancedCourseIds ??
             false,
+        showBulkUpload:
+            incoming?.coursePage?.showBulkUpload ?? defCoursePage.showBulkUpload ?? false,
     };
 
     // Redirect

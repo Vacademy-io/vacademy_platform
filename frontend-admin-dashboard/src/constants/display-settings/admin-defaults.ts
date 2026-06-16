@@ -110,6 +110,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         directEditPublishedCourse: true,
         canEditCourseStructure: true,
         canDeleteCourseStructure: true,
+        showBulkUpload: false,
     },
     courseList: {
         tabs: [

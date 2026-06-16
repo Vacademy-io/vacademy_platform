@@ -223,5 +223,6 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowSendResetPasswordMail: true,
         showApprovalToggle: true,
     },
+    leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

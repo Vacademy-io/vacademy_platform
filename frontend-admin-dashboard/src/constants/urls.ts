@@ -144,6 +144,9 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
+// Distinct values a custom field holds across the institute's leads — searchable
+// + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
+export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;

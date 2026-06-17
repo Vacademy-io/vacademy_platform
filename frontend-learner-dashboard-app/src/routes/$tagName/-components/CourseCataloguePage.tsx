@@ -223,11 +223,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   useEffect(() => {
     const handleOpenLeadCollection = () => {
       console.log("[CourseCataloguePage] Received openLeadCollection event");
-      // Only show lead collection if it's enabled in JSON
-      if (catalogueData?.globalSettings.leadCollection.enabled) {
+      // Open lead collection whenever it's configured. This matches the mobile
+      // fixed-bottom-bar Get Started button and the modal's own render condition
+      // below, both of which open it regardless of the leadCollection.enabled flag.
+      if (catalogueData?.globalSettings?.leadCollection) {
         setShowLeadCollection(true);
       } else {
-        console.log("[CourseCataloguePage] Lead collection is disabled, ignoring openLeadCollection event");
+        console.log("[CourseCataloguePage] Lead collection is not configured, ignoring openLeadCollection event");
       }
     };
 
@@ -393,6 +395,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   globalSettings={catalogueData.globalSettings}
                   instituteId={instituteId}
                   tagName={tagName}
+                  catalogueData={catalogueData}
                   isPreviewMode={isPreviewMode}
                   selectedComponentId={selectedComponentId}
                   onComponentClick={handlePreviewComponentClick}

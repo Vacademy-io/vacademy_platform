@@ -361,6 +361,7 @@ function mergeDisplayWithDefaults(
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showAdvancedCourseIds: false,
+        showBulkUpload: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -392,6 +393,8 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.showAdvancedCourseIds ??
             defCoursePage.showAdvancedCourseIds ??
             false,
+        showBulkUpload:
+            incoming?.coursePage?.showBulkUpload ?? defCoursePage.showBulkUpload ?? false,
     };
 
     // Redirect
@@ -443,12 +446,18 @@ function mergeDisplayWithDefaults(
     };
 
     const defCourseCreation = defaults.courseCreation || {
+        showCreateCourse: false,
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,
         showAdvancedSettings: true,
         limitToSingleLevel: false,
     };
     merged.courseCreation = {
+        // Carry the per-role "Allow creating courses" override through the merge.
+        // Without this, the saved flag was dropped on every fetch, so the
+        // Display Settings toggle never reached the Explore Courses page.
+        showCreateCourse:
+            incoming?.courseCreation?.showCreateCourse ?? defCourseCreation.showCreateCourse,
         showCreateCourseWithAI:
             incoming?.courseCreation?.showCreateCourseWithAI ??
             defCourseCreation.showCreateCourseWithAI,
@@ -551,6 +560,13 @@ function mergeDisplayWithDefaults(
                 true,
         };
     }
+
+    // Leads-filter custom fields (institute-wide: which custom fields show as
+    // filters on the leads views). Pass the saved list through so it survives
+    // this field-by-field merge — otherwise it's silently dropped on every read
+    // (and on the post-save cache write), so the toggles reset on refresh.
+    merged.leadsFilterCustomFields =
+        incoming?.leadsFilterCustomFields ?? defaults.leadsFilterCustomFields ?? [];
 
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't

@@ -325,6 +325,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             JOIN student s ON a.user_id = s.user_id
             LEFT JOIN assignment_slide_tracked ast ON ast.activity_id = a.id
             WHERE a.slide_id = :slideId
+              AND (CAST(:packageSessionId AS text) IS NULL OR EXISTS (
+                    SELECT 1 FROM student_session_institute_group_mapping ssigm
+                    WHERE ssigm.user_id = a.user_id
+                      AND ssigm.package_session_id = :packageSessionId
+                      AND ssigm.status IN (:statusList)
+                  ))
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
              """,
@@ -333,9 +339,18 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             FROM activity_log a
             JOIN student s ON a.user_id = s.user_id
             WHERE a.slide_id = :slideId
+              AND (CAST(:packageSessionId AS text) IS NULL OR EXISTS (
+                    SELECT 1 FROM student_session_institute_group_mapping ssigm
+                    WHERE ssigm.user_id = a.user_id
+                      AND ssigm.package_session_id = :packageSessionId
+                      AND ssigm.status IN (:statusList)
+                  ))
             """,
             nativeQuery = true)
-    Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
+    Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId,
+            @Param("packageSessionId") String packageSessionId,
+            @Param("statusList") List<String> statusList,
+            Pageable pageable);
 
     @Query(value = """
             WITH individual_slide_progress AS (

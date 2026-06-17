@@ -111,7 +111,8 @@ const editableRowToNewUser = (r: EditableRow): NewUserRow => {
         email: r.email.trim(),
         full_name: r.full_name.trim(),
         mobile_number: r.mobile_number?.trim() || undefined,
-        username: r.username?.trim() || undefined,
+        // Usernames must never contain spaces — strip all whitespace, not just ends
+        username: r.username?.replace(/\s/g, '') || undefined,
         password: r.password?.trim() || undefined,
         gender: r.gender?.trim() || undefined,
         date_of_birth: r.date_of_birth?.trim() || undefined,
@@ -420,7 +421,10 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
                                 <Input
                                     placeholder="auto-generated if blank"
                                     value={row.username}
-                                    onChange={(e) => update(idx, 'username', e.target.value)}
+                                    // Usernames cannot contain spaces — strip whitespace as it's typed/pasted
+                                    onChange={(e) =>
+                                        update(idx, 'username', e.target.value.replace(/\s/g, ''))
+                                    }
                                 />
                             </div>
                             <div>

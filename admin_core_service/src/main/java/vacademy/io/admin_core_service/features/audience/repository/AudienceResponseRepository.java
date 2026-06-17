@@ -199,19 +199,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.is_closed = false
                                                  AND lf.schedule_time IS NOT NULL
                                                  AND lf.schedule_time < NOW()))))
-                              AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
-                                   NOT EXISTS (
-                                       SELECT 1
-                                       FROM jsonb_array_elements(CAST(:customFieldFiltersJson AS jsonb)) AS flt
-                                       WHERE NOT EXISTS (
-                                           SELECT 1
-                                           FROM custom_field_values cfv
-                                           WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
-                                             AND cfv.source_id = ar.id
-                                             AND cfv.custom_field_id = (flt->>'field_id')
-                                             AND cfv.value = (flt->>'value')
-                                       )
-                                   ))
+                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
+                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                             ORDER BY
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN COALESCE(ls.raw_score, 0) END DESC,
@@ -347,19 +336,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.is_closed = false
                                                  AND lf.schedule_time IS NOT NULL
                                                  AND lf.schedule_time < NOW()))))
-                              AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
-                                   NOT EXISTS (
-                                       SELECT 1
-                                       FROM jsonb_array_elements(CAST(:customFieldFiltersJson AS jsonb)) AS flt
-                                       WHERE NOT EXISTS (
-                                           SELECT 1
-                                           FROM custom_field_values cfv
-                                           WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
-                                             AND cfv.source_id = ar.id
-                                             AND cfv.custom_field_id = (flt->>'field_id')
-                                             AND cfv.value = (flt->>'value')
-                                       )
-                                   ))
+                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
+                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -379,7 +357,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("includeUnassigned") Boolean includeUnassigned,
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
-                        @Param("customFieldFiltersJson") String customFieldFiltersJson,
+                        @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
@@ -526,6 +504,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.is_closed = false
                                                  AND lf.schedule_time IS NOT NULL
                                                  AND lf.schedule_time < NOW()))))
+                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
+                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                             ORDER BY ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -645,6 +625,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.is_closed = false
                                                  AND lf.schedule_time IS NOT NULL
                                                  AND lf.schedule_time < NOW()))))
+                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
+                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
@@ -661,6 +643,44 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
+                        @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        Pageable pageable);
+
+        /**
+         * Distinct values a custom field holds across an institute's leads —
+         * powers the searchable, paginated multi-select dropdowns in the leads
+         * filter bar. Scoped to the institute via custom_field_values →
+         * audience_response → audience; backed by idx_cfv_field_source_value.
+         * `:search` is a case-insensitive substring (blank = all values).
+         */
+        @Query(value = """
+                            SELECT DISTINCT cfv.value
+                            FROM custom_field_values cfv
+                            JOIN audience_response ar ON ar.id = cfv.source_id
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                              AND a.institute_id = :instituteId
+                              AND cfv.custom_field_id = :customFieldId
+                              AND cfv.value IS NOT NULL
+                              AND cfv.value <> ''
+                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                            ORDER BY cfv.value ASC
+                        """, countQuery = """
+                            SELECT COUNT(DISTINCT cfv.value)
+                            FROM custom_field_values cfv
+                            JOIN audience_response ar ON ar.id = cfv.source_id
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                              AND a.institute_id = :instituteId
+                              AND cfv.custom_field_id = :customFieldId
+                              AND cfv.value IS NOT NULL
+                              AND cfv.value <> ''
+                              AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                        """, nativeQuery = true)
+        Page<String> findDistinctLeadCustomFieldValues(
+                        @Param("instituteId") String instituteId,
+                        @Param("customFieldId") String customFieldId,
+                        @Param("search") String search,
                         Pageable pageable);
 
         /**

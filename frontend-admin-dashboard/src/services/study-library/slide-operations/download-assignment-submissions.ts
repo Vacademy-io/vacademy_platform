@@ -14,14 +14,22 @@ const csvEscape = (v: string | number | null | undefined) => {
 const PAGE_SIZE = 50;
 const MAX_PAGES = 1000;
 
-export const downloadAllAssignmentSubmissions = async (slideId: string) => {
+export const downloadAllAssignmentSubmissions = async (
+    slideId: string,
+    packageSessionId?: string
+) => {
     if (!slideId) return;
 
     const allUsers: UserActivity[] = [];
     let currentPage = 0;
     let lastPage = false;
     while (!lastPage && currentPage < MAX_PAGES) {
-        const statsPage = await fetchSlideActivityStats(slideId, currentPage, PAGE_SIZE);
+        const statsPage = await fetchSlideActivityStats(
+            slideId,
+            currentPage,
+            PAGE_SIZE,
+            packageSessionId
+        );
         const batch = statsPage.content ?? [];
         allUsers.push(...batch);
         lastPage = statsPage.last;

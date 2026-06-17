@@ -1430,7 +1430,10 @@ export const CourseStructureDetails = ({
                             <CopyContentLineageBadge packageSessionId={batchPackageSessionId} />
                         </div>
                         <div className="flex items-center gap-2">
-                            {!readOnly && canEditStructure && !!packageSessionIds && (
+                            {roleDisplay?.coursePage?.showBulkUpload === true &&
+                                !readOnly &&
+                                canEditStructure &&
+                                !!packageSessionIds && (
                                 <BulkUploadDialogButton
                                     context={{
                                         courseId,

@@ -155,6 +155,34 @@ public class LevelService {
     public void addOrUpdateLevel(AddLevelWithSessionDTO addLevelWithSessionDTO,Session session,PackageEntity packageEntity,String instituteId,CustomUserDetails user){
         Level level = createOrAddLevel(addLevelWithSessionDTO.getId(), addLevelWithSessionDTO.getNewLevel(), addLevelWithSessionDTO.getLevelName(), addLevelWithSessionDTO.getDurationInDays(), addLevelWithSessionDTO.getThumbnailFileId(),instituteId);
         if (addLevelWithSessionDTO.isNewPackageSession()) {
+            // Idempotency guard: the (package, session, level) triple must be unique.
+            // A re-save of the same course/edit can re-send this batch flagged as
+            // "new" (isNewPackageSession=true) even though a non-deleted batch already
+            // exists for it. Creating another one spawns a duplicate course card in the
+            // catalog (and an orphan if the old session is later deleted). If an existing
+            // non-deleted batch is found for this exact triple, reuse it instead of
+            // creating a second one.
+            Optional<PackageSession> existing = packageSessionRepository
+                    .findByPackageIdAndSessionIdAndLevelIdAndStatusIn(
+                            packageEntity.getId(), session.getId(), level.getId(),
+                            List.of(PackageSessionStatusEnum.ACTIVE.name(),
+                                    PackageSessionStatusEnum.HIDDEN.name(),
+                                    PackageSessionStatusEnum.DRAFT.name()));
+            if (existing.isPresent()) {
+                PackageSession existingPs = existing.get();
+                // Preserve the existing batch's status when the payload doesn't
+                // specify one. A "new batch" payload often omits packageSessionStatus,
+                // and updatePackageSession sets status unconditionally — passing null
+                // would blank out a live batch.
+                String status = StringUtils.hasText(addLevelWithSessionDTO.getPackageSessionStatus())
+                        ? addLevelWithSessionDTO.getPackageSessionStatus()
+                        : existingPs.getStatus();
+                packageSessionService.updatePackageSession(existingPs.getId(), status, instituteId, addLevelWithSessionDTO.getAddFacultyToCourse());
+                if (addLevelWithSessionDTO.getSubgroups() != null && !addLevelWithSessionDTO.getSubgroups().isEmpty()) {
+                    packageSessionService.syncSubgroupsForParent(existingPs.getId(), addLevelWithSessionDTO.getSubgroups(), instituteId);
+                }
+                return;
+            }
             PackageSession created = packageSessionService.createPackageSession(level, session, packageEntity, null, session.getStartDate(),
                     instituteId, user, addLevelWithSessionDTO.getAddFacultyToCourse(), null,
                     addLevelWithSessionDTO.getIsParent(), addLevelWithSessionDTO.getParentId());

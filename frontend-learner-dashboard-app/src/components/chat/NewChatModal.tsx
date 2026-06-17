@@ -120,7 +120,7 @@ export function NewChatModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>New chat</DialogTitle>
+          <DialogTitle>New message</DialogTitle>
         </DialogHeader>
 
         <div className="relative">

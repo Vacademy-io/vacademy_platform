@@ -635,7 +635,7 @@ export function ChatScreen({
       >
         <ChatSlash size={40} weight="duotone" className="text-muted-foreground" />
         <p className="text-body font-medium text-foreground">
-          Chat is turned off for your institute
+          In-App Messages are turned off for your institute
         </p>
         <p className="max-w-xs text-caption text-muted-foreground">
           Messaging isn't available right now. Check back later or reach out to
@@ -660,7 +660,7 @@ export function ChatScreen({
         )}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h1 className="text-h3 font-semibold text-foreground">Chat</h1>
+          <h1 className="text-h3 font-semibold text-foreground">Messages</h1>
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -675,7 +675,7 @@ export function ChatScreen({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="New chat"
+              aria-label="New message"
               onClick={() => setNewChatOpen(true)}
             >
               <PencilSimpleLine size={18} />
@@ -707,12 +707,12 @@ export function ChatScreen({
               Select a conversation
             </p>
             <p className="max-w-xs text-caption text-muted-foreground">
-              Pick a chat from the list, open the community channel, or start a
-              new direct message.
+              Pick a conversation from the list, open the community channel, or
+              start a new direct message.
             </p>
             <Button type="button" onClick={() => setNewChatOpen(true)}>
               <PencilSimpleLine size={18} className="mr-1.5" />
-              New chat
+              New message
             </Button>
           </div>
         ) : (
@@ -747,7 +747,7 @@ export function ChatScreen({
                   {selectedConv.type === "COMMUNITY"
                     ? "Institute community"
                     : selectedConv.type === "BATCH_GROUP"
-                      ? "Group chat"
+                      ? "Group messages"
                       : "Direct message"}
                 </p>
               </div>

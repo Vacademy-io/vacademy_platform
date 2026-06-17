@@ -8,7 +8,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import vacademy.io.common.auth.entity.User;
 import vacademy.io.notification_service.features.announcements.client.AdminCoreServiceClient;
+import vacademy.io.notification_service.features.announcements.client.AuthServiceClient;
 import vacademy.io.notification_service.features.announcements.dto.AnnouncementEvent;
 import vacademy.io.notification_service.features.announcements.enums.EventType;
 import vacademy.io.notification_service.features.announcements.enums.ModeType;
@@ -36,6 +38,7 @@ public class ChatConversationService {
     private final ChatConversationMemberRepository memberRepo;
     private final ChatMessageRepository messageRepo;
     private final AdminCoreServiceClient adminCoreServiceClient;
+    private final AuthServiceClient authServiceClient;
     private final ChatPermissionService permissionService;
     private final ChatRulesService rulesService;
     private final ApplicationEventPublisher eventPublisher;
@@ -239,7 +242,10 @@ public class ChatConversationService {
     // Listing
     // ---------------------------------------------------------------------
 
-    @Transactional(readOnly = true)
+    // Intentionally NOT @Transactional: the reads are independent SELECTs that don't need one
+    // snapshot, and title resolution makes external HTTP calls. Wrapping this in a transaction would
+    // pin a Hikari connection (pool=3/pod) across that I/O — a real saturation risk. Keep DB and
+    // network work unbound from a single connection.
     public List<ChatConversationResponse> listConversations(String userId, String instituteId, String callerRole,
                                                             String typeFilter, int limit) {
         if (!permissionService.isChatEnabled(instituteId)) {
@@ -280,9 +286,14 @@ public class ChatConversationService {
                 : memberRepo.findByConversationIdInAndIsActiveTrue(visibleIds).stream()
                         .collect(Collectors.groupingBy(ChatConversationMember::getConversationId));
 
+        // Resolve display titles for the whole page in bulk (one batch-name call, one institute-name
+        // call, one DM-name call) so mapConversation never does a per-row external lookup.
+        Map<String, String> titleByConv = resolveTitlesBulk(visible, userId, instituteId, activeByConv);
+
         return visible.stream()
                 .map(c -> mapConversation(c, userId, callerRole, memberByConv.get(c.getId()),
-                        activeByConv.getOrDefault(c.getId(), Collections.emptyList())))
+                        activeByConv.getOrDefault(c.getId(), Collections.emptyList()),
+                        titleByConv.get(c.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -292,34 +303,35 @@ public class ChatConversationService {
         List<ChatConversationMember> activeMembers = ChatConversationType.DIRECT.name().equals(c.getType())
                 ? memberRepo.findByConversationIdAndIsActiveTrue(c.getId())
                 : Collections.emptyList();
-        return mapConversation(c, callerId, callerRole, callerMember, activeMembers);
+        String resolvedTitle = resolveTitleSingle(c, callerId, activeMembers);
+        return mapConversation(c, callerId, callerRole, callerMember, activeMembers, resolvedTitle);
     }
 
     public ChatConversationResponse mapConversation(ChatConversation c, String callerId, String callerRole,
                                                     ChatConversationMember callerMember,
-                                                    List<ChatConversationMember> activeMembers) {
+                                                    List<ChatConversationMember> activeMembers,
+                                                    String resolvedTitle) {
         // Unread is pure arithmetic off the denormalized counters — zero queries, capped.
         long lastSeq = c.getLastMessageSeq() == null ? 0L : c.getLastMessageSeq();
         long readSeq = callerMember == null || callerMember.getLastReadSeq() == null ? 0L : callerMember.getLastReadSeq();
         long unread = Math.max(0, Math.min(UNREAD_CAP, lastSeq - readSeq));
 
         String otherUserId = null;
-        String title = c.getTitle();
         boolean canPost;
         if (ChatConversationType.DIRECT.name().equals(c.getType())) {
             ChatConversationMember other = activeMembers.stream()
                     .filter(m -> !m.getUserId().equals(callerId)).findFirst().orElse(null);
             otherUserId = other != null ? other.getUserId() : null;
-            // A DIRECT conversation has no stored title — show the OTHER participant's name (per-viewer).
-            if (other != null && other.getUserName() != null && !other.getUserName().isBlank()) {
-                title = other.getUserName();
-            }
             canPost = permissionService.canDirectMessage(c.getInstituteId(), callerRole, other != null ? other.getUserRole() : null);
         } else if (ChatConversationType.BATCH_GROUP.name().equals(c.getType())) {
             canPost = permissionService.canPostToBatch(c.getInstituteId(), callerRole);
         } else {
             canPost = permissionService.canPostToCommunity(c.getInstituteId(), callerRole);
         }
+
+        // Resolved title (other member's name / batch name / "{Institute} Community") wins; if it
+        // couldn't be resolved, fall back to whatever is stored on the row (FE adds its own fallback).
+        String title = (resolvedTitle != null && !resolvedTitle.isBlank()) ? resolvedTitle : c.getTitle();
 
         return ChatConversationResponse.builder()
                 .id(c.getId())
@@ -337,6 +349,115 @@ public class ChatConversationService {
                 .rulesVersion(c.getRulesVersion())
                 .canPost(canPost)
                 .build();
+    }
+
+    // ---------------------------------------------------------------------
+    // Display-title resolution
+    //
+    // A conversation's display title is computed per-viewer at read time (not stored), so it always
+    // reflects current data and works for rows created before titles existed:
+    //   DIRECT      -> the OTHER participant's name (stored member name; auth-service lookup if absent)
+    //   BATCH_GROUP -> the batch's real name ("{Level} {Course}") from admin-core
+    //   COMMUNITY   -> "{Institute name} Community"
+    // Every external call is cached and fail-soft (null/empty -> FE shows its own generic fallback).
+    // ---------------------------------------------------------------------
+
+    /** Bulk title resolution for a page of conversations — one external call per source, not per row. */
+    private Map<String, String> resolveTitlesBulk(List<ChatConversation> convs, String callerId,
+                                                  String instituteId,
+                                                  Map<String, List<ChatConversationMember>> activeByConv) {
+        Map<String, String> titles = new HashMap<>();
+
+        // Batch names — one bulk call for every batch group on the page.
+        List<String> psIds = convs.stream()
+                .filter(c -> ChatConversationType.BATCH_GROUP.name().equals(c.getType()))
+                .map(ChatConversation::getReferenceId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct().collect(Collectors.toList());
+        Map<String, String> batchNames = psIds.isEmpty()
+                ? Collections.emptyMap() : adminCoreServiceClient.getBatchNames(psIds);
+
+        // Institute name — single lookup (the page is institute-scoped); only if a community channel is shown.
+        boolean hasCommunity = convs.stream()
+                .anyMatch(c -> ChatConversationType.COMMUNITY.name().equals(c.getType()));
+        String instituteName = hasCommunity ? adminCoreServiceClient.getInstituteName(instituteId) : null;
+
+        // DM names — fast path is the stored member name; only legacy rows (null name) need a lookup,
+        // and those are batched into ONE auth-service call.
+        Map<String, ChatConversationMember> otherByConv = new HashMap<>();
+        Set<String> missingNameUserIds = new HashSet<>();
+        for (ChatConversation c : convs) {
+            if (!ChatConversationType.DIRECT.name().equals(c.getType())) continue;
+            ChatConversationMember other = activeByConv.getOrDefault(c.getId(), Collections.emptyList()).stream()
+                    .filter(m -> !m.getUserId().equals(callerId)).findFirst().orElse(null);
+            if (other == null) continue;
+            otherByConv.put(c.getId(), other);
+            if (other.getUserName() == null || other.getUserName().isBlank()) {
+                missingNameUserIds.add(other.getUserId());
+            }
+        }
+        Map<String, String> nameById = missingNameUserIds.isEmpty()
+                ? Collections.emptyMap() : lookupUserNames(missingNameUserIds);
+
+        for (ChatConversation c : convs) {
+            String type = c.getType();
+            if (ChatConversationType.DIRECT.name().equals(type)) {
+                ChatConversationMember other = otherByConv.get(c.getId());
+                if (other == null) continue;
+                String name = (other.getUserName() != null && !other.getUserName().isBlank())
+                        ? other.getUserName() : nameById.get(other.getUserId());
+                if (name != null) titles.put(c.getId(), name);
+            } else if (ChatConversationType.BATCH_GROUP.name().equals(type)) {
+                String name = c.getReferenceId() != null ? batchNames.get(c.getReferenceId()) : null;
+                if (name != null) titles.put(c.getId(), name);
+            } else {
+                titles.put(c.getId(), communityTitle(instituteName, c.getTitle()));
+            }
+        }
+        return titles;
+    }
+
+    /** Single-conversation title resolution (open/describe path). */
+    private String resolveTitleSingle(ChatConversation c, String callerId,
+                                      List<ChatConversationMember> activeMembers) {
+        String type = c.getType();
+        if (ChatConversationType.DIRECT.name().equals(type)) {
+            ChatConversationMember other = activeMembers.stream()
+                    .filter(m -> !m.getUserId().equals(callerId)).findFirst().orElse(null);
+            if (other == null) return null;
+            if (other.getUserName() != null && !other.getUserName().isBlank()) {
+                return other.getUserName();
+            }
+            return lookupUserNames(Set.of(other.getUserId())).get(other.getUserId());
+        }
+        if (ChatConversationType.BATCH_GROUP.name().equals(type)) {
+            if (c.getReferenceId() == null || c.getReferenceId().isBlank()) return c.getTitle();
+            String name = adminCoreServiceClient.getBatchNames(List.of(c.getReferenceId())).get(c.getReferenceId());
+            return name != null ? name : c.getTitle();
+        }
+        // COMMUNITY
+        return communityTitle(adminCoreServiceClient.getInstituteName(c.getInstituteId()), c.getTitle());
+    }
+
+    private String communityTitle(String instituteName, String storedTitle) {
+        return (instituteName != null && !instituteName.isBlank())
+                ? instituteName + " Community" : storedTitle;
+    }
+
+    /** Resolve userId -> full name via auth-service. Fail-soft: missing/blank names are omitted. */
+    private Map<String, String> lookupUserNames(Set<String> userIds) {
+        Map<String, String> nameById = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) return nameById;
+        try {
+            for (User u : authServiceClient.getUsersByIds(new ArrayList<>(userIds))) {
+                if (u != null && u.getId() != null && u.getFullName() != null && !u.getFullName().isBlank()) {
+                    nameById.put(u.getId(), u.getFullName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve DM display names for {} users: {}", userIds.size(), e.getMessage());
+        }
+        return nameById;
     }
 
     // ---------------------------------------------------------------------
@@ -439,7 +560,7 @@ public class ChatConversationService {
     // Helpers
     // ---------------------------------------------------------------------
 
-    @Transactional(readOnly = true)
+    // Not @Transactional: resolveTitleSingle makes external HTTP calls; don't hold a connection across them.
     public ChatConversationResponse describe(ChatConversation conv, String userId, String userRole) {
         ChatConversationMember member = memberRepo.findByConversationIdAndUserId(conv.getId(), userId).orElse(null);
         return mapConversation(conv, userId, userRole, member);

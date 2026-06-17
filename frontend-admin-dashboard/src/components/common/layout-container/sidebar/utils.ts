@@ -304,7 +304,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
-                subItem: 'Chat',
+                subItem: 'In-App Messages',
                 subItemLink: '/chat',
                 subItemId: 'chat',
             },

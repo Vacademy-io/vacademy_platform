@@ -850,13 +850,13 @@ function ChatSection({
         <Card className="rounded-lg border-gray-200">
             <CardHeader className="py-3">
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <Bell className="size-5" /> Chat
+                    <Bell className="size-5" /> In-App Messages
                 </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
                 {/* Master toggle */}
                 <ToggleRow
-                    label="Chat enabled"
+                    label="In-App Messages enabled"
                     checked={chat.enabled}
                     onChange={(checked) => onChange((c) => ({ ...c, enabled: checked }))}
                 />

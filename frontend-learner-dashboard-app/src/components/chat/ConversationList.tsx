@@ -55,7 +55,7 @@ export function ConversationList({
         <ChatCircle size={32} className="text-muted-foreground" />
         <p className="text-body font-medium text-foreground">No conversations yet</p>
         <p className="text-caption text-muted-foreground">
-          Start a new chat or open the community channel.
+          Start a new conversation or open the community channel.
         </p>
       </div>
     );

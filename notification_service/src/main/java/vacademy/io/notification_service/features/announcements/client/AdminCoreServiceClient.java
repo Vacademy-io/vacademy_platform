@@ -126,6 +126,72 @@ public class AdminCoreServiceClient {
     }
 
     /**
+     * Resolve display names for package sessions (batches) — packageSessionId -> "{Level} {Course}".
+     * Used to title batch-group chats with the batch's real name instead of a generic "Group" label.
+     * Ids with no resolvable name are simply absent from the map. Never throws — returns an empty map
+     * on any failure so the caller falls back to its generic label.
+     */
+    @Cacheable(value = "batchNamesByPackageSessions", key = "#packageSessionIds.hashCode()")
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public Map<String, String> getBatchNames(List<String> packageSessionIds) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/package-sessions/names";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = Map.of("packageSessionIds", packageSessionIds);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<Map<String, String>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<Map<String, String>>() {}
+            );
+
+            Map<String, String> names = response.getBody();
+            return names != null ? names : new HashMap<>();
+        } catch (Exception e) {
+            log.error("Error calling admin-core service for batch names by package sessions", e);
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * Resolve an institute's display name by id via the internal HMAC endpoint. Cached (names are
+     * stable). Returns null on any failure so the caller can fall back. The internal DTO is camelCase
+     * by default; we read both spellings to be resilient to a future snake_case switch.
+     */
+    @Cacheable(value = "instituteNameById", key = "#instituteId")
+    public String getInstituteName(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return null;
+        }
+        try {
+            String route = "/admin-core-service/internal/institute/v1/" + instituteId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.GET.name(), adminCoreServiceBaseUrl, route, null);
+
+            if (response == null || response.getBody() == null || response.getBody().isBlank()) {
+                return null;
+            }
+            Map<String, Object> body = new ObjectMapper()
+                    .readValue(response.getBody(), new TypeReference<Map<String, Object>>() {});
+            Object name = body.get("instituteName");
+            if (name == null) {
+                name = body.get("institute_name");
+            }
+            return name != null && !name.toString().isBlank() ? name.toString() : null;
+        } catch (Exception e) {
+            log.warn("Failed to resolve institute name for {}: {}", instituteId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Get user IDs by tags for a given institute
      */
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))

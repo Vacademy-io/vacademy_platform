@@ -388,6 +388,31 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             """, nativeQuery = true)
     List<PackageSessionDetailProjection> findPackageSessionDetailsByIds(@Param("ids") List<String> ids);
 
+    interface BatchNameProjection {
+        String getPackageSessionId();
+        String getPackageName();
+        String getLevelId();
+        String getLevelName();
+    }
+
+    /**
+     * Batch display-name components for the given package sessions. LEFT JOINs (vs. the INNER JOINs
+     * of findPackageSessionDetailsByIds) so a batch whose level/package row is missing is still
+     * returned rather than silently dropped — the caller composes a name from whatever is present.
+     * Includes level_id so callers can detect the canonical DEFAULT level by id, not by display name.
+     */
+    @Query(value = """
+            SELECT ps.id AS packageSessionId,
+                   p.package_name AS packageName,
+                   l.id AS levelId,
+                   l.level_name AS levelName
+            FROM package_session ps
+            LEFT JOIN package p ON ps.package_id = p.id
+            LEFT JOIN level l ON ps.level_id = l.id
+            WHERE ps.id IN (:ids)
+            """, nativeQuery = true)
+    List<BatchNameProjection> findBatchNameComponentsByIds(@Param("ids") List<String> ids);
+
     /**
      * Find child package sessions (subgroups) for a given parent batch.
      * Used when syncing subgroups on edit course.

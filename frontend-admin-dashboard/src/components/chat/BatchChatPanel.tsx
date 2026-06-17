@@ -336,7 +336,7 @@ export function BatchChatPanel({ packageSessionId, className }: BatchChatPanelPr
                 <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
                     <Prohibit size={48} weight="duotone" className="mb-3 text-neutral-300" />
                     <p className="text-sm font-medium text-neutral-600">
-                        Group chat is turned off for this institute
+                        Messaging is turned off for this institute
                     </p>
                     {disabledMessage && (
                         <p className="mt-1 max-w-xs text-xs text-neutral-400">{disabledMessage}</p>
@@ -355,7 +355,7 @@ export function BatchChatPanel({ packageSessionId, className }: BatchChatPanelPr
                         Couldn&apos;t load the discussion
                     </p>
                     <p className="mt-1 max-w-xs text-xs text-neutral-400">
-                        Something went wrong opening this batch&apos;s group chat. Please try again
+                        Something went wrong opening these messages. Please try again
                         later.
                     </p>
                 </div>
@@ -394,9 +394,9 @@ export function BatchChatPanel({ packageSessionId, className }: BatchChatPanelPr
                 </div>
                 <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-neutral-700">
-                        Discussion
+                        {conversation.title?.trim() || 'Discussion'}
                     </div>
-                    <div className="text-xs text-neutral-400">Batch group chat</div>
+                    <div className="text-xs text-neutral-400">Group messages</div>
                 </div>
             </header>
 

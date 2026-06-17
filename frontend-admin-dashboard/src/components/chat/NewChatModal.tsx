@@ -101,7 +101,7 @@ export function NewChatModal({ open, onOpenChange, onConversationReady }: NewCha
             <DialogContent className="w-full max-w-lg p-0">
                 <DialogHeader className="border-b border-neutral-200 px-5 py-4">
                     <DialogTitle className="text-base font-semibold text-neutral-700">
-                        New chat
+                        New message
                     </DialogTitle>
                 </DialogHeader>
 

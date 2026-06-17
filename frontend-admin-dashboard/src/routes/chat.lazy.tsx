@@ -19,7 +19,7 @@ function ChatRoute() {
     const { conversationId } = routeApi.useSearch();
 
     useEffect(() => {
-        setNavHeading('Chat');
+        setNavHeading('In-App Messages');
     }, [setNavHeading]);
 
     return <ChatScreen initialConversationId={conversationId} />;

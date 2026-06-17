@@ -150,7 +150,7 @@ export function BatchChatPanel({
         if (isChatDisabled(err)) {
           setDisabledMessage(
             reasonOf(err) ||
-              "Group chat is turned off for this institute",
+              "Messaging is turned off for this institute",
           );
           setError("disabled");
         } else {
@@ -432,7 +432,7 @@ export function BatchChatPanel({
       >
         <ChatSlash size={40} weight="duotone" className="text-muted-foreground" />
         <p className="text-body font-medium text-foreground">
-          {disabledMessage || "Group chat is turned off for this institute"}
+          {disabledMessage || "Messaging is turned off for this institute"}
         </p>
       </div>
     );
@@ -456,7 +456,7 @@ export function BatchChatPanel({
           Couldn't load the discussion
         </p>
         <p className="max-w-xs text-caption text-muted-foreground">
-          Something went wrong opening this group chat. Please try again later.
+          Something went wrong opening these messages. Please try again later.
         </p>
       </div>
     );
@@ -509,10 +509,10 @@ export function BatchChatPanel({
         </span>
         <div className="min-w-0">
           <p className="truncate text-body font-semibold text-foreground">
-            {conversation.title?.trim() || "Group chat"}
+            {conversation.title?.trim() || "Group messages"}
           </p>
           <p className="truncate text-caption text-muted-foreground">
-            Group chat
+            Group messages
           </p>
         </div>
       </header>

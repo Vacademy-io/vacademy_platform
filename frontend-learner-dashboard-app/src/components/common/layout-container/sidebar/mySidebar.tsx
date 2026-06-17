@@ -187,7 +187,7 @@ export const MySidebar = ({
       "assessment-center": "Assessment Centre",
       referral: "Referral",
       attendance: "Attendance",
-      chat: "Chat",
+      chat: "In-App Messages",
     }),
     []
   );
@@ -249,7 +249,7 @@ export const MySidebar = ({
     const dashboardIndex = tabs.findIndex((t) => t.id === "dashboard");
     const chatTab: StudentSidebarTabConfig = {
       id: "chat",
-      label: "Chat",
+      label: "In-App Messages",
       route: "/chat",
       order: 0,
       visible: true,

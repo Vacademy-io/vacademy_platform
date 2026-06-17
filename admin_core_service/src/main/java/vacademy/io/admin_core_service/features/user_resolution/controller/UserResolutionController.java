@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.institute_learner.service.CustomF
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/v1")
@@ -55,6 +56,23 @@ public class UserResolutionController {
             
         } catch (Exception e) {
             log.error("Error getting students by package sessions", e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Resolve display names for package sessions (batches).
+     * Used by notification service to title batch-group chats with the batch's real name.
+     */
+    @PostMapping("/package-sessions/names")
+    public ResponseEntity<Map<String, String>> getBatchNamesByPackageSessions(
+            @Valid @RequestBody PackageSessionsRequest request) {
+        try {
+            Map<String, String> names = userResolutionService
+                    .getBatchNamesByPackageSessions(request.getPackageSessionIds());
+            return ResponseEntity.ok(names);
+        } catch (Exception e) {
+            log.error("Error getting batch names by package sessions", e);
             return ResponseEntity.badRequest().build();
         }
     }

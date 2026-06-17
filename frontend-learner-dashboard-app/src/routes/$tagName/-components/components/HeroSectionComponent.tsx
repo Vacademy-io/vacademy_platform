@@ -63,7 +63,7 @@ const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "righ
       {tags.map((tag, i) => (
         <span
           key={`${tag}-${i}`}
-          className="catalogue-badge catalogue-badge-primary rounded-full uppercase tracking-wide"
+          className="inline-flex items-center rounded-full bg-primary-50 border border-primary-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-500"
         >
           {tag}
         </span>
@@ -93,7 +93,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
     <div>
       <div
         ref={ref}
-        className={`text-lg sm:text-xl text-catalogue-text-secondary leading-relaxed ${
+        className={`text-lg sm:text-xl text-gray-600 leading-relaxed ${
           expanded ? "" : "line-clamp-4"
         }`}
         dangerouslySetInnerHTML={{ __html: html }}
@@ -280,42 +280,18 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
-      style={{ textAlign, ...(backgroundColor ? { backgroundColor } : {}) }} // design-lint-ignore: dynamic admin alignment + colour
+      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      style={{ textAlign, backgroundColor: backgroundColor || undefined }} // design-lint-ignore: page-builder background color
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Content */}
-            {(left || courseData) && (
-              <div className="space-y-5">
-                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
-                {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
-                    {heroTitle}
-                  </h1>
-                )}
-                <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
-                  >
-                    {left.button.text}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Centered Layout */
-          <div className="text-center space-y-5 max-w-3xl mx-auto">
+          /* No media in placeholder — span content full width, centered for balance */
+          <div className="mx-auto max-w-3xl space-y-4">
             {(left || courseData) && (
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -324,8 +300,33 @@ const HeroSectionPlaceholder: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                  >
+                    {left.button.text}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          /* Centered Layout */
+          <div className="text-center space-y-4 max-w-3xl mx-auto">
+            {(left || courseData) && (
+              <>
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
+                {heroTitle && (
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
+                    {heroTitle}
+                  </h1>
+                )}
+                <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
+                <HeroDescription html={heroDescription} />
+                {isHeroButtonEnabled(left?.button) && left?.button && (
+                  <button
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>
@@ -543,16 +544,20 @@ const HeroSectionWithState: React.FC<{
         ? [{ src: resolvedImageUrl || heroImage, alt: heroImageAlt }]
         : [];
 
-  // Course-details hero (gets courseData) uses the new wider 5/7 split + meta.
-  // The homepage / landing hero (no courseData) keeps the original 50/50 split.
+  // Course-details hero (gets courseData) uses the new wider 5/7 split + bigger
+  // title + meta. The homepage / landing hero (no courseData) keeps the
+  // original 50/50 split and title.
   const isCourseDetail = !!courseData;
+  const titleClass = isCourseDetail
+    ? "text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight"
+    : "text-h1 font-bold text-gray-900 leading-tight tracking-tight";
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
-      style={{ // design-lint-ignore: dynamic admin alignment + background image/colour
+      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      style={{
         textAlign,
-        backgroundColor: !hasBgImage && backgroundColor ? backgroundColor : undefined,
+        backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -574,7 +579,7 @@ const HeroSectionWithState: React.FC<{
               <div className={cn("space-y-4", isCourseDetail ? (heroMedia.length > 0 ? "lg:col-span-5" : "lg:col-span-12") : "")}>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className={titleClass}>
                     {heroTitle}
                   </h1>
                 )}
@@ -583,8 +588,8 @@ const HeroSectionWithState: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>
@@ -606,7 +611,7 @@ const HeroSectionWithState: React.FC<{
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -615,8 +620,8 @@ const HeroSectionWithState: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>

@@ -434,14 +434,27 @@ public class AudienceService {
      * what makes catalogue leads appear in Audience Manager → Recent Leads (they
      * previously landed in student_session_institute_group_mapping, which no lead
      * screen reads).
+     *
+     * NOTE: deliberately NOT @Transactional. submitLeadV2 runs several "non-blocking"
+     * @Transactional sub-calls (lead score, counsellor assignment, workflow trigger)
+     * inside its own try/catch. On a freshly auto-provisioned audience (no pool /
+     * scoring / field config) one of those can throw; the catch swallows it, but the
+     * throw has already marked any *surrounding* transaction rollback-only — so an
+     * outer @Transactional here would fail the commit with "Transaction silently
+     * rolled back" and lose the lead. Without an outer transaction, the audience_
+     * response save commits on its own and a failing sub-op only rolls back its own
+     * tiny transaction. (submitLeadV2's own @Transactional is bypassed here anyway,
+     * since this is a same-bean self-invocation.)
      */
-    @Transactional
     public String submitCatalogueLead(CatalogueLeadRequestDTO dto) {
         if (dto == null || !StringUtils.hasText(dto.getInstituteId())) {
             throw new VacademyException("instituteId is required");
         }
-        if (!StringUtils.hasText(dto.getEmail()) && !StringUtils.hasText(dto.getMobileNumber())) {
-            throw new VacademyException("Email or mobile number is required");
+        // submitLeadV2 builds the lead's user from the email; without an email it
+        // saves nothing and returns an error sentinel. The catalogue form already
+        // makes email mandatory, so require it here too rather than silently drop.
+        if (!StringUtils.hasText(dto.getEmail())) {
+            throw new VacademyException("Email is required to capture a lead");
         }
 
         Audience audience = getOrCreateCatalogueAudience(dto.getInstituteId());
@@ -476,7 +489,14 @@ public class AudienceService {
                 .customFieldValues(customFieldValues)
                 .build();
 
-        return submitLeadV2(submitRequest);
+        String result = submitLeadV2(submitRequest);
+        // submitLeadV2 swallows internal failures and returns this sentinel string;
+        // surface it as an error so the form shows a real failure rather than a
+        // false "thank you" success (the masking bug this whole change removes).
+        if ("Error in submitting the response".equals(result)) {
+            throw new VacademyException("Failed to submit catalogue lead");
+        }
+        return result;
     }
 
     /**

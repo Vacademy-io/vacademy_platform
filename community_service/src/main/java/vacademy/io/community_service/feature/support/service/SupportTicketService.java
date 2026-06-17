@@ -30,6 +30,7 @@ import vacademy.io.community_service.feature.support.enums.TicketStatus;
 import vacademy.io.community_service.feature.support.repository.SupportTicketMessageRepository;
 import vacademy.io.community_service.feature.support.repository.SupportTicketRepository;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -42,6 +43,10 @@ import java.util.stream.Collectors;
 public class SupportTicketService {
 
     private static final long HOUR_MS = 3_600_000L;
+    private static final int MAX_ATTACHMENTS = 10;
+    private static final int MAX_ATTACHMENT_FIELD_LEN = 2048;
+    private static final int MAX_CONTEXT_KEYS = 50;
+    private static final int MAX_CONTEXT_JSON_LEN = 16384;
     private static final TypeReference<List<AttachmentDto>> ATTACHMENT_LIST = new TypeReference<>() {
     };
 
@@ -416,12 +421,51 @@ public class SupportTicketService {
         }
     }
 
-    private String writeAttachments(List<AttachmentDto> attachments) {
+    /**
+     * Attachment descriptors arrive from the client body, so they are untrusted: keep only http(s)
+     * URLs (drops {@code javascript:}/{@code data:} which would otherwise be an XSS sink when later
+     * rendered into an href/src — including in the privileged super-admin console), bound the field
+     * lengths, and cap the count.
+     */
+    private List<AttachmentDto> sanitizeAttachments(List<AttachmentDto> attachments) {
         if (attachments == null || attachments.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<AttachmentDto> cleaned = new ArrayList<>();
+        for (AttachmentDto a : attachments) {
+            if (a == null) {
+                continue;
+            }
+            String url = a.getUrl();
+            if (url != null && !url.matches("(?i)^https?://.*")) {
+                url = null; // reject non-http(s) schemes outright
+            }
+            cleaned.add(AttachmentDto.builder()
+                    .fileId(truncate(a.getFileId(), MAX_ATTACHMENT_FIELD_LEN))
+                    .fileName(truncate(a.getFileName(), MAX_ATTACHMENT_FIELD_LEN))
+                    .url(truncate(url, MAX_ATTACHMENT_FIELD_LEN))
+                    .build());
+            if (cleaned.size() >= MAX_ATTACHMENTS) {
+                break;
+            }
+        }
+        return cleaned;
+    }
+
+    private String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() > max ? value.substring(0, max) : value;
+    }
+
+    private String writeAttachments(List<AttachmentDto> attachments) {
+        List<AttachmentDto> cleaned = sanitizeAttachments(attachments);
+        if (cleaned.isEmpty()) {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(attachments);
+            return objectMapper.writeValueAsString(cleaned);
         } catch (Exception e) {
             return null;
         }
@@ -432,7 +476,21 @@ public class SupportTicketService {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(ctx);
+            // Bound the client-supplied diagnostics blob: cap key count and total serialized size
+            // so an admin can't bloat the shared DB with a multi-MB / deeply-nested context.
+            Map<String, Object> bounded = ctx;
+            if (ctx.size() > MAX_CONTEXT_KEYS) {
+                bounded = new LinkedHashMap<>();
+                int i = 0;
+                for (Map.Entry<String, Object> e : ctx.entrySet()) {
+                    if (i++ >= MAX_CONTEXT_KEYS) {
+                        break;
+                    }
+                    bounded.put(e.getKey(), e.getValue());
+                }
+            }
+            String json = objectMapper.writeValueAsString(bounded);
+            return json.length() > MAX_CONTEXT_JSON_LEN ? null : json;
         } catch (Exception e) {
             return null;
         }

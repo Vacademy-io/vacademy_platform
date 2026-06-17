@@ -180,8 +180,11 @@ function AttachmentInput({
 
 function AttachmentView({ attachment }: { attachment: SupportAttachment }) {
     const name = attachment.fileName ?? '';
-    const url = attachment.url ?? '';
-    if (!url) return null;
+    // Only trust http(s) URLs — never render javascript:/data: into href/src.
+    const url = /^https?:\/\//i.test(attachment.url ?? '') ? (attachment.url as string) : '';
+    if (!url) {
+        return name ? <span className="text-xs text-neutral-400">{name}</span> : null;
+    }
     if (IMAGE_EXT.test(name)) {
         return (
             <a href={url} target="_blank" rel="noreferrer">

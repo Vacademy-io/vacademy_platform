@@ -122,6 +122,15 @@ public class CacheConfig {
                         .recordStats()
                         .build());
 
+        // Teacher -> mapped batch ids, consulted on every teacher chat list/search load.
+        CaffeineCache facultyPackageSessions = new CaffeineCache(
+                "facultyPackageSessions",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(2000)
+                        .recordStats()
+                        .build());
+
         cacheManager.setCaches(java.util.List.of(
                 usersByRole,
                 usersById,
@@ -134,7 +143,8 @@ public class CacheConfig {
                 engagementLeaderboard,
                 completionCohort,
                 batchNamesByPackageSessions,
-                instituteNameById));
+                instituteNameById,
+                facultyPackageSessions));
 
         return cacheManager;
     }

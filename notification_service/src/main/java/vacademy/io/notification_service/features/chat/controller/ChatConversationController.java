@@ -12,6 +12,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.notification_service.features.chat.dto.*;
 import vacademy.io.notification_service.features.chat.entity.ChatConversation;
 import vacademy.io.notification_service.features.chat.security.ChatIdentity;
+import vacademy.io.notification_service.features.chat.service.ChatBatchService;
 import vacademy.io.notification_service.features.chat.service.ChatConversationService;
 import vacademy.io.notification_service.features.chat.service.ChatMessageService;
 
@@ -34,6 +35,7 @@ public class ChatConversationController {
 
     private final ChatConversationService conversationService;
     private final ChatMessageService messageService;
+    private final ChatBatchService batchService;
 
     @GetMapping("/conversations")
     public ResponseEntity<List<ChatConversationResponse>> listConversations(
@@ -118,6 +120,23 @@ public class ChatConversationController {
         ChatConversation conv = provisionWithRetry(
                 () -> conversationService.getOrProvisionBatch(id.instituteId(), packageSessionId, id.userId(), id.role(), id.name()));
         return ResponseEntity.ok(conversationService.describe(conv, id.userId(), id.role()));
+    }
+
+    /**
+     * Search batches to start/open a batch conversation. Role-scoped: admin = all institute batches,
+     * teacher = faculty-mapped batches, students = none. Returns batches with an existing conversation
+     * id when one already exists (else the FE provisions on open via /conversations/batch/{id}).
+     */
+    @PostMapping("/batches/search")
+    public ResponseEntity<ChatBatchSearchResponse> searchBatches(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestHeader(value = "clientId", required = false) String clientId,
+            @RequestBody(required = false) ChatBatchSearchRequest request) {
+        ChatIdentity id = ChatIdentity.from(user, clientId);
+        String nameQuery = request != null ? request.getNameQuery() : null;
+        int pageSize = request != null ? request.getPageSize() : 30;
+        return ResponseEntity.ok(
+                batchService.search(id.instituteId(), id.userId(), id.role(), nameQuery, pageSize));
     }
 
     @PostMapping("/conversations/community")

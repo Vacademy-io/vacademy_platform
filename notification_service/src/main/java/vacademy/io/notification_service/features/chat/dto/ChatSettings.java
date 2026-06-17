@@ -48,6 +48,9 @@ public class ChatSettings {
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class CommunityChatSettings {
+        // Community channel visibility. On by default — an institute can flag it off to keep DMs +
+        // batch groups while hiding the all-institute community channel.
+        private Boolean enabled = true;
         @JsonProperty("students_can_post")
         private Boolean studentsCanPost = true;
         @JsonProperty("teachers_can_post")

@@ -43,6 +43,19 @@ public class ChatPermissionService {
         return chat != null && Boolean.TRUE.equals(chat.getEnabled());
     }
 
+    /**
+     * The community channel is ON by default (when chat is enabled) and can be flagged off per
+     * institute via {@code settings.chat.community.enabled = false}. Chat off implies community off.
+     */
+    public boolean isCommunityEnabled(String instituteId) {
+        ChatSettings chat = getChatSettings(instituteId);
+        if (chat == null || !Boolean.TRUE.equals(chat.getEnabled())) {
+            return false;
+        }
+        ChatSettings.CommunityChatSettings c = chat.getCommunity();
+        return c == null || !Boolean.FALSE.equals(c.getEnabled());
+    }
+
     public boolean canDirectMessage(String instituteId, String senderRole, String targetRole) {
         ChatSettings chat = getChatSettings(instituteId);
         if (chat == null) return true;
@@ -61,6 +74,7 @@ public class ChatPermissionService {
         ChatSettings chat = getChatSettings(instituteId);
         if (chat == null || chat.getCommunity() == null) return true;
         ChatSettings.CommunityChatSettings c = chat.getCommunity();
+        if (Boolean.FALSE.equals(c.getEnabled())) return false; // channel turned off for the institute
         return switch (normalizeRole(role)) {
             case "student" -> !Boolean.FALSE.equals(c.getStudentsCanPost());
             case "teacher" -> !Boolean.FALSE.equals(c.getTeachersCanPost());

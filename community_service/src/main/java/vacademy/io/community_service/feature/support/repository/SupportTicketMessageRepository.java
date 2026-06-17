@@ -1,0 +1,15 @@
+package vacademy.io.community_service.feature.support.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+import vacademy.io.community_service.feature.support.entity.SupportTicketMessage;
+
+import java.util.List;
+
+@Repository
+public interface SupportTicketMessageRepository extends JpaRepository<SupportTicketMessage, String> {
+
+    List<SupportTicketMessage> findByTicketIdOrderByCreatedAtAsc(String ticketId);
+
+    void deleteByTicketId(String ticketId);
+}

@@ -161,6 +161,72 @@ public class AdminCoreServiceClient {
     }
 
     /**
+     * Forward faculty mapping: package-session (batch) ids a faculty user is mapped to in an institute.
+     * Used to scope a teacher's chat batch list/search. Never throws — empty list on failure.
+     */
+    @Cacheable(value = "facultyPackageSessions", key = "#userId + '_' + #instituteId",
+            unless = "#result == null || #result.isEmpty()")
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public List<String> getFacultyPackageSessions(String userId, String instituteId) {
+        if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/faculty/package-sessions";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("userId", userId);
+            requestBody.put("instituteId", instituteId);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<List<String>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, new ParameterizedTypeReference<List<String>>() {});
+            List<String> ids = response.getBody();
+            return ids != null ? ids : new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Error resolving faculty package sessions for user {} institute {}", userId, instituteId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Search an institute's batches by name -> list of {packageSessionId, name}. Pass packageSessionIds
+     * to scope to a teacher's mapped batches (null = all institute batches). Never throws.
+     */
+    public List<Map<String, String>> searchBatches(String instituteId, String nameQuery,
+                                                   List<String> packageSessionIds, int limit) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/package-sessions/search";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("instituteId", instituteId);
+            if (nameQuery != null && !nameQuery.isBlank()) {
+                requestBody.put("nameQuery", nameQuery.trim());
+            }
+            if (packageSessionIds != null) {
+                requestBody.put("packageSessionIds", packageSessionIds);
+            }
+            requestBody.put("limit", limit);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<List<Map<String, String>>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, new ParameterizedTypeReference<List<Map<String, String>>>() {});
+            List<Map<String, String>> batches = response.getBody();
+            return batches != null ? batches : new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Error searching batches for institute {}", instituteId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
      * Resolve an institute's display name by id via the internal HMAC endpoint. Cached (names are
      * stable). Returns null on any failure so the caller can fall back. The internal DTO is camelCase
      * by default; we read both spellings to be resilient to a future snake_case switch.

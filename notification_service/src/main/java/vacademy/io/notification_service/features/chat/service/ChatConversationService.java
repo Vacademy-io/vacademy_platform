@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -150,6 +151,9 @@ public class ChatConversationService {
         if (!permissionService.isChatEnabled(instituteId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "CHAT_DISABLED");
         }
+        if (!permissionService.isCommunityEnabled(instituteId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "COMMUNITY_DISABLED");
+        }
         Optional<ChatConversation> existing = convRepo.findByInstituteIdAndType(instituteId, ChatConversationType.COMMUNITY.name());
         ChatConversation conv;
         if (existing.isPresent()) {
@@ -262,13 +266,23 @@ public class ChatConversationService {
                 ? new ArrayList<>()
                 : new ArrayList<>(convRepo.findByIdInOrderByLastMessageAtDesc(convIds));
 
-        // Always surface the institute community channel, even if not yet opened.
-        convRepo.findByInstituteIdAndType(instituteId, ChatConversationType.COMMUNITY.name())
-                .ifPresent(community -> {
-                    if (convs.stream().noneMatch(c -> c.getId().equals(community.getId()))) {
-                        convs.add(community);
-                    }
-                });
+        // Surface the institute community channel (to every role), unless it's flagged off.
+        if (permissionService.isCommunityEnabled(instituteId)) {
+            convRepo.findByInstituteIdAndType(instituteId, ChatConversationType.COMMUNITY.name())
+                    .ifPresent(community -> {
+                        if (convs.stream().noneMatch(c -> c.getId().equals(community.getId()))) {
+                            convs.add(community);
+                        }
+                    });
+        }
+
+        // Role-derived batch channels (beyond the ones the caller has personally joined):
+        //   admin   -> every active batch group in the institute
+        //   teacher -> batch groups for the package sessions they are faculty-mapped to
+        //   student -> none here (their enrolled batches already come in via membership above)
+        // Only batches that already have a conversation are surfaced ("active" batches); a not-yet-
+        // provisioned batch is reachable via the batch search ("start a new conversation").
+        addRoleVisibleBatches(convs, instituteId, userId, callerRole, limit <= 0 ? 30 : limit);
 
         List<ChatConversation> visible = convs.stream()
                 .filter(c -> instituteId.equals(c.getInstituteId()))
@@ -297,6 +311,40 @@ public class ChatConversationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Merge role-derived batch channels into the candidate list (deduped by conversation id), so an
+     * admin sees every institute batch and a teacher sees their faculty-mapped batches — even ones
+     * they never personally opened. Fail-soft: a failed faculty/roster lookup just adds nothing.
+     */
+    private void addRoleVisibleBatches(List<ChatConversation> convs, String instituteId, String userId,
+                                       String callerRole, int limit) {
+        String role = ChatPermissionService.normalizeRole(callerRole);
+        List<ChatConversation> extra;
+        if ("admin".equals(role)) {
+            // Bounded top-N by recency so a big institute doesn't hydrate every batch to fill one page.
+            extra = convRepo.findActiveByInstituteAndTypeTopN(
+                    instituteId, ChatConversationType.BATCH_GROUP.name(), PageRequest.of(0, Math.max(1, limit)));
+        } else if ("teacher".equals(role)) {
+            List<String> mappedPackageSessionIds = adminCoreServiceClient.getFacultyPackageSessions(userId, instituteId);
+            if (mappedPackageSessionIds == null || mappedPackageSessionIds.isEmpty()) {
+                return;
+            }
+            extra = convRepo.findByInstituteIdAndTypeAndReferenceIdInAndIsActiveTrue(
+                    instituteId, ChatConversationType.BATCH_GROUP.name(), mappedPackageSessionIds);
+        } else {
+            return; // students: enrolled batches already arrive via membership
+        }
+        if (extra == null || extra.isEmpty()) {
+            return;
+        }
+        Set<String> seen = convs.stream().map(ChatConversation::getId).collect(Collectors.toSet());
+        for (ChatConversation c : extra) {
+            if (seen.add(c.getId())) {
+                convs.add(c);
+            }
+        }
+    }
+
     public ChatConversationResponse mapConversation(ChatConversation c, String callerId, String callerRole,
                                                     ChatConversationMember callerMember) {
         // Self-contained path (describe): resolve active members for this single conversation lazily.
@@ -312,9 +360,11 @@ public class ChatConversationService {
                                                     List<ChatConversationMember> activeMembers,
                                                     String resolvedTitle) {
         // Unread is pure arithmetic off the denormalized counters — zero queries, capped.
+        // No member row = caller is OBSERVING (e.g. an admin seeing every batch they never joined):
+        // there's no read cursor, so report 0 rather than blasting a full-unread badge on every channel.
         long lastSeq = c.getLastMessageSeq() == null ? 0L : c.getLastMessageSeq();
-        long readSeq = callerMember == null || callerMember.getLastReadSeq() == null ? 0L : callerMember.getLastReadSeq();
-        long unread = Math.max(0, Math.min(UNREAD_CAP, lastSeq - readSeq));
+        long unread = callerMember == null ? 0L
+                : Math.max(0, Math.min(UNREAD_CAP, lastSeq - (callerMember.getLastReadSeq() == null ? 0L : callerMember.getLastReadSeq())));
 
         String otherUserId = null;
         boolean canPost;
@@ -467,8 +517,12 @@ public class ChatConversationService {
     @Transactional
     public void markRead(String conversationId, String userId, String upToMessageId) {
         ChatConversation conv = getConversationOrThrow(conversationId);
-        ChatConversationMember member = memberRepo.findByConversationIdAndUserId(conversationId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_A_MEMBER"));
+        ChatConversationMember member = memberRepo.findByConversationIdAndUserId(conversationId, userId).orElse(null);
+        if (member == null) {
+            // Observer with no read cursor (e.g. an admin who can see a batch but never joined it).
+            // There's nothing to advance — treat as a no-op rather than 403 so read never errors.
+            return;
+        }
 
         long fallbackSeq = conv.getLastMessageSeq() == null ? 0L : conv.getLastMessageSeq();
         long targetSeq;

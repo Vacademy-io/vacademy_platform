@@ -216,9 +216,19 @@ public class ChatMessageService {
             return conversationService.ensureMember(conv, userId, userRole, role);
         }
         // DIRECT / BATCH_GROUP: caller must already be an active member (re-validated at send-time).
-        return memberRepo.findByConversationIdAndUserId(conv.getId(), userId)
-                .filter(m -> Boolean.TRUE.equals(m.getIsActive()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_A_MEMBER"));
+        ChatConversationMember member = memberRepo.findByConversationIdAndUserId(conv.getId(), userId)
+                .filter(m -> Boolean.TRUE.equals(m.getIsActive())).orElse(null);
+        if (member != null) {
+            return member;
+        }
+        // An admin posting into a batch they can see but never opened: self-heal as MODERATOR (mirrors
+        // getOrProvisionBatch), so the "admin sees every batch + can post" flow never 403s even if the
+        // FE didn't provision membership first.
+        if (ChatConversationType.BATCH_GROUP.name().equals(conv.getType())
+                && "admin".equals(ChatPermissionService.normalizeRole(userRole))) {
+            return conversationService.ensureMember(conv, userId, userRole, ChatMemberRole.MODERATOR);
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_A_MEMBER");
     }
 
     private void enforcePostPermission(ChatConversation conv, String callerRole, ChatConversationMember member) {

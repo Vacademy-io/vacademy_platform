@@ -1,8 +1,11 @@
 /**
  * Catalogue Design Tokens
  * ========================
- * Clean, minimal design system for course catalogue components.
- * No shadows, no gradients — flat, modern UI.
+ * Design system for course catalogue components.
+ * Defaults to a clean, minimal flat UI; the "default" catalogue theme layers
+ * on "Modern EdTech depth" (tinted elevation, hero mesh gradient, hover lift)
+ * via the tokens + utility classes below. All depth is token-driven so it
+ * adapts to light/dark and every colour preset, and stays admin-configurable.
  */
 
 @layer base {
@@ -142,6 +145,33 @@
     --catalogue-z-modal: 50;
     --catalogue-z-popover: 60;
     --catalogue-z-tooltip: 70;
+
+    /* =============================================
+       ELEVATION / DEPTH (Modern EdTech depth)
+       Layered, ink-tinted shadows (not pure black) + a
+       primary-keyed glow so every preset themes the hover state.
+       ============================================= */
+    --catalogue-shadow-color: 222 47% 11%;
+    --catalogue-elevation-1: 0 1px 2px 0 hsl(var(--catalogue-shadow-color) / 0.04),
+                             0 1px 3px 0 hsl(var(--catalogue-shadow-color) / 0.06);
+    --catalogue-elevation-2: 0 2px 4px -1px hsl(var(--catalogue-shadow-color) / 0.06),
+                             0 6px 16px -3px hsl(var(--catalogue-shadow-color) / 0.08);
+    --catalogue-elevation-3: 0 8px 16px -4px hsl(var(--catalogue-shadow-color) / 0.10),
+                             0 16px 32px -8px hsl(var(--catalogue-shadow-color) / 0.12);
+    --catalogue-card-hover-ring: 0 0 0 1px hsl(var(--primary-200) / 0.6);
+    --catalogue-card-glow: 0 14px 34px -10px hsl(var(--primary-400) / 0.30);
+
+    /* =============================================
+       HERO SURFACE (Modern EdTech depth)
+       The linear base reads catalogue surface tokens; the two mesh blobs
+       are keyed to the ACTIVE primary so every theme/preset gets a subtle
+       branded gradient. The "default" theme bumps them up; dark tones down.
+       ============================================= */
+    --catalogue-hero-from: var(--catalogue-bg);
+    --catalogue-hero-via: var(--catalogue-bg);
+    --catalogue-hero-to: var(--catalogue-bg-subtle);
+    --catalogue-hero-mesh-1: hsl(var(--primary-200) / 0.30);
+    --catalogue-hero-mesh-2: hsl(var(--primary-400) / 0.12);
   }
 
   /* Dark mode overrides */
@@ -170,6 +200,20 @@
 
     --catalogue-interactive-hover: 217.2 32.6% 14%;
     --catalogue-interactive-active: 217.2 32.6% 18%;
+
+    /* Deepen elevation on the dark canvas (pure-black tint reads better). */
+    --catalogue-shadow-color: 0 0% 0%;
+    --catalogue-elevation-1: 0 1px 2px 0 hsl(0 0% 0% / 0.20),
+                             0 1px 3px 0 hsl(0 0% 0% / 0.30);
+    --catalogue-elevation-2: 0 2px 4px -1px hsl(0 0% 0% / 0.30),
+                             0 6px 16px -3px hsl(0 0% 0% / 0.40);
+    --catalogue-elevation-3: 0 8px 16px -4px hsl(0 0% 0% / 0.40),
+                             0 16px 32px -8px hsl(0 0% 0% / 0.50);
+    --catalogue-card-glow: 0 14px 34px -10px hsl(var(--primary-400) / 0.22);
+
+    /* Tone the hero mesh down on the dark canvas. */
+    --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.16);
+    --catalogue-hero-mesh-2: hsl(var(--primary-500) / 0.12);
   }
 }
 
@@ -253,6 +297,141 @@
 
   .catalogue-card-interactive:active {
     transform: translateY(0);
+  }
+
+  /* =============================================
+     MODERN EDTECH DEPTH
+     Elevated card, image zoom, rating chip, eyebrow,
+     hero surface, toolbar, shimmer skeleton.
+     All token-driven → adapt to light/dark + presets.
+     ============================================= */
+  .catalogue-card-elevated {
+    background-color: hsl(var(--catalogue-card-bg));
+    border: 1px solid hsl(var(--catalogue-card-border));
+    border-radius: var(--catalogue-radius-xl);
+    box-shadow: var(--catalogue-elevation-1);
+    overflow: hidden;
+    transition: box-shadow var(--catalogue-transition-base),
+                border-color var(--catalogue-transition-base),
+                transform var(--catalogue-transition-base);
+  }
+
+  .catalogue-card-elevated:hover {
+    border-color: hsl(var(--catalogue-card-hover-border));
+    box-shadow: var(--catalogue-elevation-3), var(--catalogue-card-glow);
+    transform: translateY(-4px);
+  }
+
+  /* Image zoom-on-hover: wrapper clips, inner <img> scales on card hover. */
+  .catalogue-img-zoom {
+    overflow: hidden;
+  }
+
+  .catalogue-img-zoom img {
+    transition: transform var(--catalogue-transition-slow);
+    will-change: transform;
+  }
+
+  .catalogue-card-elevated:hover .catalogue-img-zoom img {
+    transform: scale(1.06);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalogue-card-elevated,
+    .catalogue-card-elevated:hover {
+      transform: none;
+    }
+    .catalogue-card-elevated:hover .catalogue-img-zoom img {
+      transform: none;
+    }
+  }
+
+  /* Rating chip — warm, pill-shaped, paired with a Phosphor star. */
+  .catalogue-chip-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--catalogue-font-xs);
+    font-weight: 600;
+    line-height: 1;
+    border-radius: var(--catalogue-radius-full);
+    background-color: hsl(var(--warning-50));
+    color: hsl(var(--warning-600));
+    border: 1px solid hsl(var(--warning-200));
+  }
+
+  /* Section eyebrow — uppercase accent label with a leading rule. */
+  .catalogue-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--catalogue-font-xs);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--primary-500));
+  }
+
+  .catalogue-eyebrow::before {
+    content: "";
+    width: var(--space-6);
+    height: 2px;
+    border-radius: var(--catalogue-radius-full);
+    background-color: hsl(var(--primary-400));
+  }
+
+  /* Hero surface — token-driven mesh + linear gradient (dark/preset safe). */
+  .catalogue-hero-surface {
+    position: relative;
+    background-color: hsl(var(--catalogue-hero-via));
+    background-image:
+      radial-gradient(60% 80% at 85% 0%, var(--catalogue-hero-mesh-1), transparent 60%),
+      radial-gradient(55% 70% at 0% 100%, var(--catalogue-hero-mesh-2), transparent 55%),
+      linear-gradient(180deg, hsl(var(--catalogue-hero-from)), hsl(var(--catalogue-hero-to)));
+  }
+
+  /* Toolbar surface — search/sort bar with subtle elevation. */
+  .catalogue-toolbar {
+    background-color: hsl(var(--catalogue-card-bg));
+    border: 1px solid hsl(var(--catalogue-border-subtle));
+    border-radius: var(--catalogue-radius-lg);
+    box-shadow: var(--catalogue-elevation-1);
+  }
+
+  /* Shimmer skeleton — richer loading state than the plain pulse. */
+  .catalogue-skeleton-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: hsl(var(--catalogue-bg-muted));
+    border-radius: var(--catalogue-radius-lg);
+  }
+
+  .catalogue-skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--catalogue-bg) / 0.6),
+      transparent
+    );
+    animation: catalogue-shimmer 1.6s infinite;
+  }
+
+  @keyframes catalogue-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalogue-skeleton-shimmer::after {
+      animation: none;
+    }
   }
 
   /* =============================================

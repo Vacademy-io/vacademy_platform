@@ -102,7 +102,7 @@ export function ChatThread({
     <div
       role="log"
       aria-live="polite"
-      className="flex-1 overflow-y-auto px-3 py-3 sm:px-4"
+      className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"
     >
       {hasMore && (
         <div className="mb-3 flex justify-center">

@@ -303,17 +303,17 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
   if (error || !catalogueData) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+      <div className="min-h-screen flex items-center justify-center bg-catalogue-bg px-4">
+        <div className="catalogue-card flex max-w-md flex-col items-center gap-3 p-8 text-center">
+          <h2 className="text-xl font-semibold text-catalogue-text-primary">
             {error || "Course catalogue not found"}
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-sm text-catalogue-text-secondary">
             The requested course catalogue could not be loaded.
           </p>
           <button
             onClick={() => navigate({ to: "/courses" })}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="catalogue-btn catalogue-btn-primary mt-1"
           >
             Go to Courses
           </button>
@@ -335,7 +335,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   return (
     <div
       ref={wrapperRef}
-      className={`min-h-screen bg-white w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
+      className={`min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 md:pt-0${isDarkMode ? ' dark' : ''}`}
       data-catalogue-theme={themePreset}
       data-catalogue-radius={themeRadius}
       data-heading-scale={catalogueData?.globalSettings?.theme?.headingScale || 'default'}
@@ -445,7 +445,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
           <div className="flex flex-col gap-3">
             {/* Get Started Button */}
             {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
@@ -473,7 +473,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                <span className="text-black">Already have an account?</span>
+                <span className="text-catalogue-text-secondary">Already have an account?</span>
                 <span
                   className="underline"
                   style={{

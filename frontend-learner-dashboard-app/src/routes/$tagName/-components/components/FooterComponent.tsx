@@ -124,19 +124,19 @@ export const FooterComponent: React.FC<FooterProps & {
   };
 
   // Link styles - neutral with primary accent on hover
-  const linkClasses = "text-sm text-gray-600 hover:text-primary-600 transition-colors cursor-pointer";
-  const linkClassesLeft = "text-sm text-gray-600 hover:text-primary-600 transition-colors cursor-pointer text-left";
+  const linkClasses = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer";
+  const linkClassesLeft = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer text-left";
 
   return (
-    <footer className="border-t border-gray-200 bg-gray-50">
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-8">
+    <footer className="catalogue-footer">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         <div className={`grid ${getGridCols()} gap-6 lg:gap-8`}>
           {/* Left Section - Company Info */}
           <div>
             {/* PRIMARY ACCENT: Section title uses primary color */}
-            <h3 className="text-sm font-semibold mb-3 text-primary-700">{leftSection.title}</h3>
+            <h3 className="text-sm font-semibold mb-3 text-primary-500">{leftSection.title}</h3>
             {/* NEUTRAL: Body text */}
-            <div className="text-sm text-gray-600 mb-3" dangerouslySetInnerHTML={{ __html: leftSection.text }} />
+            <div className="text-sm text-catalogue-text-secondary mb-3" dangerouslySetInnerHTML={{ __html: leftSection.text }} />
 
             {/* Social Media Links - PRIMARY ACCENT on hover */}
             {leftSection.socials && leftSection.socials.length > 0 && (
@@ -145,7 +145,7 @@ export const FooterComponent: React.FC<FooterProps & {
                   <button
                     key={linkIndex}
                     onClick={() => handleSocialLinkNavigation(social.url, social.openInSameTab)}
-                    className="text-gray-500 hover:text-primary-600 transition-colors"
+                    className="text-catalogue-text-muted hover:text-primary-500 transition-colors"
                     title={social.platform}
                   >
                     {getSocialIcon(social.icon)}
@@ -157,13 +157,13 @@ export const FooterComponent: React.FC<FooterProps & {
             {/* Legacy Social Media Section */}
             {socialsSection && !leftSection.socials && (
               <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2 text-gray-800">{socialsSection.title}</h4>
+                <h4 className="text-sm font-medium mb-2 text-catalogue-text-primary">{socialsSection.title}</h4>
                 <div className="flex gap-3">
                   {socialsSection.links.map((social, linkIndex) => (
                     <a
                       key={linkIndex}
                       href={social.url}
-                      className="text-gray-500 hover:text-primary-600 transition-colors"
+                      className="text-catalogue-text-muted hover:text-primary-500 transition-colors"
                       target="_blank"
                       rel="noopener noreferrer"
                       title={social.platform}
@@ -180,7 +180,7 @@ export const FooterComponent: React.FC<FooterProps & {
           {rightSection1 && (
             <div>
               {/* PRIMARY ACCENT: Section title */}
-              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection1.title}</h3>
+              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection1.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection1.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -210,7 +210,7 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Right Section 2 */}
           {rightSection2 && (
             <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection2.title}</h3>
+              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection2.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection2.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -240,7 +240,7 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Right Section 3 */}
           {rightSection3 && (
             <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection3.title}</h3>
+              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection3.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection3.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -270,7 +270,7 @@ export const FooterComponent: React.FC<FooterProps & {
           {/* Legacy Support - Single Right Section */}
           {rightSection && !rightSection1 && !rightSection2 && !rightSection3 && (
             <div>
-              <h3 className="text-sm font-semibold mb-3 text-primary-700">{rightSection.title}</h3>
+              <h3 className="text-sm font-semibold mb-3 text-primary-500">{rightSection.title}</h3>
               <ul className="space-y-1.5">
                 {rightSection.links.map((link, linkIndex) => (
                   <li key={linkIndex}>
@@ -302,7 +302,7 @@ export const FooterComponent: React.FC<FooterProps & {
             <>
               {rightSections.map((section, sectionIndex) => (
                 <div key={sectionIndex}>
-                  <h3 className="text-sm font-semibold mb-3 text-primary-700">{section.title}</h3>
+                  <h3 className="text-sm font-semibold mb-3 text-primary-500">{section.title}</h3>
                   <ul className="space-y-1.5">
                     {section.links.map((link, linkIndex) => (
                       <li key={linkIndex}>
@@ -333,8 +333,8 @@ export const FooterComponent: React.FC<FooterProps & {
         </div>
 
         {/* Bottom Note - NEUTRAL with subtle primary accent */}
-        <div className="border-t border-gray-200 mt-4 sm:mt-6 pt-4 sm:pt-6 text-center">
-          <p className="text-gray-500 text-xs">
+        <div className="border-t border-catalogue-border-subtle mt-6 sm:mt-8 pt-5 sm:pt-6 text-center">
+          <p className="text-catalogue-text-muted text-xs">
             {bottomNote}
           </p>
         </div>

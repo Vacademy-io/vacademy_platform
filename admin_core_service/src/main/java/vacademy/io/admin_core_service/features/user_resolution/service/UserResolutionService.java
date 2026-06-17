@@ -192,6 +192,14 @@ public class UserResolutionService {
         if (pkg.isEmpty()) {
             return levelMeaningful ? level : "";
         }
-        return levelMeaningful ? (level + " " + pkg) : pkg;
+        if (!levelMeaningful) {
+            return pkg;
+        }
+        // Avoid duplication like "Summer Sprint Summer Sprint 2.0 …" when the course name already
+        // leads with the level name — just use the course name in that case.
+        if (pkg.toLowerCase().startsWith(level.toLowerCase())) {
+            return pkg;
+        }
+        return level + " " + pkg;
     }
 }

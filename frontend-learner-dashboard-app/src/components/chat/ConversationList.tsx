@@ -91,12 +91,12 @@ export function ConversationList({
                 </span>
 
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-body font-medium text-foreground">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="line-clamp-2 break-words text-body font-medium text-foreground">
                       {title}
                     </span>
                     {conv.lastMessageAt && (
-                      <span className="shrink-0 text-caption text-muted-foreground">
+                      <span className="mt-0.5 shrink-0 text-caption text-muted-foreground">
                         {timeLabel(conv.lastMessageAt)}
                       </span>
                     )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { cn } from "@/lib/utils";
 
 interface HeroSectionProps {
   layout: "split" | "centered";
@@ -56,7 +57,7 @@ const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "righ
       {tags.map((tag, i) => (
         <span
           key={`${tag}-${i}`}
-          className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-caption sm:text-xs font-semibold uppercase tracking-wide text-gray-700"
+          className="catalogue-badge catalogue-badge-primary rounded-full uppercase tracking-wide"
         >
           {tag}
         </span>
@@ -86,7 +87,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
     <div>
       <div
         ref={ref}
-        className={`text-lg sm:text-xl text-gray-600 leading-relaxed ${
+        className={`text-lg sm:text-xl text-catalogue-text-secondary leading-relaxed ${
           expanded ? "" : "line-clamp-4"
         }`}
         dangerouslySetInnerHTML={{ __html: html }}
@@ -95,7 +96,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-2 text-sm font-semibold text-primary-600 hover:underline focus:outline-none"
+          className="mt-2 text-sm font-semibold text-primary-500 hover:underline focus:outline-none"
         >
           {expanded ? "View less" : "View more"}
         </button>
@@ -244,8 +245,8 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
-      style={{ textAlign, backgroundColor: backgroundColor || '#f8fafc' }} // design-lint-ignore: page-builder default color
+      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
+      style={{ textAlign, ...(backgroundColor ? { backgroundColor } : {}) }} // design-lint-ignore: dynamic admin alignment + colour
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
@@ -255,7 +256,7 @@ const HeroSectionPlaceholder: React.FC<{
               <div className="space-y-5">
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -263,8 +264,8 @@ const HeroSectionPlaceholder: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
+                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
                   >
                     {left.button.text}
                   </button>
@@ -279,7 +280,7 @@ const HeroSectionPlaceholder: React.FC<{
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -287,8 +288,8 @@ const HeroSectionPlaceholder: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
+                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
                   >
                     {left.button.text}
                   </button>
@@ -383,10 +384,10 @@ const HeroSectionWithState: React.FC<{
 
   return (
     <section
-      className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
-      style={{
+      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
+      style={{ // design-lint-ignore: dynamic admin alignment + background image/colour
         textAlign,
-        backgroundColor: hasBgImage ? undefined : (backgroundColor || '#f8fafc'), // design-lint-ignore: page-builder default color
+        backgroundColor: !hasBgImage && backgroundColor ? backgroundColor : undefined,
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -402,7 +403,7 @@ const HeroSectionWithState: React.FC<{
               <div className="space-y-5">
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -410,8 +411,8 @@ const HeroSectionWithState: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
+                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
                   >
                     {left.button.text}
                   </button>
@@ -440,7 +441,7 @@ const HeroSectionWithState: React.FC<{
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
@@ -448,8 +449,8 @@ const HeroSectionWithState: React.FC<{
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="mt-3 px-8 py-3.5 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))' }}
+                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
+                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
                   >
                     {left.button.text}
                   </button>

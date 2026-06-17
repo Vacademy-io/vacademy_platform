@@ -93,14 +93,14 @@ export function MessageComposer({
 
   if (disabled) {
     return (
-      <div className="border-t border-border bg-muted/30 px-4 py-3 text-center text-caption text-muted-foreground">
+      <div className="shrink-0 border-t border-border bg-muted/30 px-4 py-3 text-center text-caption text-muted-foreground">
         {disabledReason || "You can't post in this conversation."}
       </div>
     );
   }
 
   return (
-    <div className="border-t border-border bg-background px-3 py-2">
+    <div className="shrink-0 border-t border-border bg-background px-3 py-2">
       {attachment && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2">
           <img

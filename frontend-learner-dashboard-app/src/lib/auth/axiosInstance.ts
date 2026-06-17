@@ -36,6 +36,23 @@ const captureAuthEvent = (
   });
 };
 
+// Throttle 5xx captures to one per (status + URL path) per minute. A recurring
+// server error otherwise fires one event per request per user — a flood that
+// burns the errors quota and trips spike protection — while telling us nothing
+// the first event didn't. The first occurrence in each window is still
+// captured, so a sustained outage stays visible (deduplicated, not silenced).
+const SERVER_ERROR_THROTTLE_MS = 60 * 1000;
+const lastServerErrorCaptureAt = new Map<string, number>();
+const captureServerErrorAllowed = (status: number, url: string): boolean => {
+  const path = url.split("?")[0];
+  const key = `${status}:${path}`;
+  const now = Date.now();
+  if (now - (lastServerErrorCaptureAt.get(key) ?? 0) < SERVER_ERROR_THROTTLE_MS)
+    return false;
+  lastServerErrorCaptureAt.set(key, now);
+  return true;
+};
+
 // ── Session heartbeat: pings auth_service every 5 min to detect terminated sessions ──
 const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 // Seed with the JS-context boot time, NOT 0, so cold-start does not immediately
@@ -298,11 +315,25 @@ authenticatedAxiosInstance.interceptors.response.use(
       ((responseData as { ex?: unknown }).ex ||
         (responseData as { responseCode?: unknown }).responseCode);
 
+    // Skip 5xx capture on endpoints that are either separately instrumented or
+    // polled in a loop. Auth/public/open endpoints have their own throttled
+    // captureAuthEvent path; polling endpoints (session validation, system
+    // alerts, dashboard pins, payment status) fire on a timer for every user,
+    // so a single backend blip fans them out into thousands of identical events
+    // — that burst is what trips Sentry's spike protection. The session-wide
+    // 5xx is still captured from the user's non-polling requests.
+    const isPollingOrSelfInstrumented =
+      /\/open\/|\/public\/|refresh-token|validate-session|notification|dashboard|payment.*status|payment-status/i.test(
+        requestUrl,
+      );
+
     if (
       import.meta.env.VITE_ENABLE_SENTRY === "true" &&
       status &&
       status >= 500 &&
-      !isStructured511
+      !isStructured511 &&
+      !isPollingOrSelfInstrumented &&
+      captureServerErrorAllowed(status, requestUrl)
     ) {
       Sentry.withScope((scope) => {
         scope.setTag("http.status_code", String(status));

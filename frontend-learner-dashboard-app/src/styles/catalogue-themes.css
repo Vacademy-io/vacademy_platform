@@ -19,6 +19,25 @@
    ============================================= */
 [data-catalogue-theme="default"] {
   --primary-foreground: 0 0% 100%;
+
+  /* Modern EdTech depth: a soft hero mesh + crisp badge tints built from the
+     institute's own primary scale, so the default theme has real personality
+     while still respecting the institute brand colour. */
+  --catalogue-hero-from: 0 0% 100%;
+  --catalogue-hero-via: 0 0% 100%;
+  --catalogue-hero-to: 210 40% 98%;
+  --catalogue-hero-mesh-1: hsl(var(--primary-200) / 0.45);
+  --catalogue-hero-mesh-2: hsl(var(--primary-100) / 0.55);
+}
+
+/* Default theme on a dark canvas: pull the mesh down so it doesn't blow out. */
+[data-catalogue-theme="default"].dark,
+.dark [data-catalogue-theme="default"] {
+  --catalogue-hero-from: 222.2 84% 4.9%;
+  --catalogue-hero-via: 217.2 32.6% 10%;
+  --catalogue-hero-to: 222.2 84% 4.9%;
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.18);
+  --catalogue-hero-mesh-2: hsl(var(--primary-500) / 0.14);
 }
 
 /* =============================================

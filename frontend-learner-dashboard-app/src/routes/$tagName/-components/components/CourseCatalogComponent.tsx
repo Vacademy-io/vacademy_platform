@@ -15,8 +15,9 @@ import {
   Plus,
   Minus,
   BookOpen,
+  Star,
 } from "@phosphor-icons/react";
-import { toTitleCase } from "@/lib/utils";
+import { toTitleCase, cn } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import {
@@ -210,27 +211,27 @@ const FilterSection: React.FC<FilterSectionProps> = ({
     canExpand && !isExpanded ? items.slice(0, initialDisplayCount) : items;
 
   return (
-    <div className="mb-4">
-      <h3 className="text-sm font-medium text-gray-800 mb-2">{title}</h3>
+    <div className="mb-5">
+      <h3 className="text-sm font-semibold text-catalogue-text-primary mb-2.5">{title}</h3>
       <div className="space-y-1.5">
         {items.length === 0 && !disabled && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-catalogue-text-muted">
             No {title.toLowerCase()} available.
           </p>
         )}
         {disabled && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-catalogue-text-muted">
             {title} filters are currently unavailable.
           </p>
         )}
         {itemsToDisplay.map((item) => (
           <label
             key={item.id}
-            className={`flex items-center text-gray-600 hover:text-gray-900 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+            className={`flex items-center text-catalogue-text-secondary hover:text-catalogue-text-primary transition-colors ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
           >
             <input
               type="checkbox"
-              className="form-checkbox h-3.5 w-3.5 text-primary-600 border-gray-300 rounded focus:ring-primary-500 mr-2"
+              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded focus:ring-primary-400 mr-2"
               checked={selectedItems.includes(item.id)}
               onChange={() => handleChange(item.id)}
               disabled={disabled}
@@ -244,10 +245,10 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-xs mt-1.5 flex items-center gap-1 ${
+          className={`text-xs mt-2 flex items-center gap-1 font-medium ${
             disabled
-              ? "text-gray-400 cursor-not-allowed"
-              : "text-primary-600 hover:text-primary-700"
+              ? "text-catalogue-text-muted cursor-not-allowed"
+              : "text-primary-500 hover:text-primary-400"
           }`}
         >
           {isExpanded ? (
@@ -333,7 +334,7 @@ const CartControls: React.FC<{
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-0 hover:bg-gray-100"
+          className="h-6 w-6 p-0 hover:bg-catalogue-interactive-hover"
           onClick={(e) => {
             e.stopPropagation();
             if (cartItem && course.enrollInviteId) {
@@ -371,7 +372,7 @@ const CartControls: React.FC<{
           });
           toast.success(`${course.title} added to cart!`);
         }}
-        className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-md px-2.5 py-1 flex items-center justify-center gap-1.5"
+        className="bg-primary-500 hover:bg-primary-400 text-white text-xs font-medium rounded-md px-2.5 py-1 flex items-center justify-center gap-1.5"
         size="sm"
       >
         <ShoppingCart className="h-3.5 w-3.5" />
@@ -384,152 +385,129 @@ const CartControls: React.FC<{
   return null;
 };
 
-// ─── New course card (image + name + description + price + View/Add buttons) ──
+// ─── Course card — elevated, image-zoom, themed badges (Modern EdTech depth) ──
 
 interface CourseCardProps {
   course: Course;
   globalSettings?: any;
-  showCartControls: boolean;
+  render?: { styles?: { roundedEdges?: boolean } };
+  cartButtonConfig?: {
+    enabled?: boolean;
+    showAddToCartButton?: boolean;
+    showQuantitySelector?: boolean;
+    quantityMin?: number;
+  };
   displayTitle: boolean;
   displayDescription: boolean;
   displayImage: boolean;
   displayPrice: boolean;
   displayLevel: boolean;
-  roundedEdges: boolean;
+  displayRating: boolean;
+  showCartControls: boolean;
   onView: () => void;
   addItem: (item: Omit<CartItem, "quantity">) => void;
   removeItem: (enrollInviteId: string) => void;
+  updateQuantity: (enrollInviteId: string, quantity: number) => void;
   getItemByEnrollInviteId: (id: string) => CartItem | undefined;
 }
 
 const CourseCard: React.FC<CourseCardProps> = ({
   course,
   globalSettings,
-  showCartControls,
+  render,
+  cartButtonConfig,
   displayTitle,
   displayDescription,
   displayImage,
   displayPrice,
   displayLevel,
-  roundedEdges,
+  displayRating,
+  showCartControls,
   onView,
   addItem,
   removeItem,
+  updateQuantity,
   getItemByEnrollInviteId,
 }) => {
-  const cartItem = course.enrollInviteId
-    ? getItemByEnrollInviteId(course.enrollInviteId)
-    : undefined;
-  const isInCart = !!cartItem;
+  const hasMeta = displayLevel || displayRating || showCartControls;
 
   return (
     <div
-      className={`flex flex-col bg-white border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200 ${
-        roundedEdges ? "rounded-xl" : "rounded-none"
-      }`}
+      className={cn(
+        "catalogue-card-elevated group flex cursor-pointer flex-col",
+        render?.styles?.roundedEdges === false && "rounded-none",
+      )}
+      onClick={onView}
     >
-      {/* Image with inner card border */}
+      {/* Thumbnail with zoom-on-hover + offer badge overlay */}
       {displayImage && (
-        <div className="p-3 pb-2">
-          <div className="overflow-hidden rounded-lg border border-gray-100">
-            <CourseImage
-              previewImageUrl={course.thumbnail}
-              alt={course.title}
-              className="w-full object-cover"
-            />
+        <div className="catalogue-img-zoom relative">
+          <CourseImage
+            previewImageUrl={course.thumbnail}
+            alt={course.title}
+            className="h-44 w-full object-cover"
+          />
+          <div className="absolute left-3 top-3">
+            <OfferBadge actual={course.price} elevated={course.elevatedPrice} />
           </div>
         </div>
       )}
 
       {/* Content */}
-      <div className="flex flex-col flex-1 px-4 pb-4 pt-1">
-        {/* Level badge */}
-        {displayLevel && course.level && (
-          <span className="inline-block self-start px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md mb-2">
-            {course.level}
-          </span>
-        )}
-
-        {/* Name */}
+      <div className="flex flex-1 flex-col p-4">
         {displayTitle && (
-          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 mb-1.5">
+          <h3 className="mb-1.5 line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">
             {course.title}
           </h3>
         )}
 
-        {/* Description */}
         {displayDescription &&
           course.description &&
           course.description !== "No description available" && (
-            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2 flex-1">
+            <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
               {course.description}
             </p>
           )}
 
-        {/* Price */}
         {displayPrice && globalSettings?.payment?.enabled !== false && (
           <PriceWithMrp
             actual={course.price}
             elevated={course.elevatedPrice}
             currency={course.currency}
             size="md"
-            className="text-primary-600"
+            className="mb-3 text-primary-500"
           />
         )}
 
-        {/* Action buttons */}
-        <div className="flex gap-2 mt-auto">
-          <button
-            type="button"
-            onClick={onView}
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
-          >
-            View
-          </button>
-          {showCartControls &&
-            course.enrollInviteId &&
-            (isInCart ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeItem(course.enrollInviteId!);
-                  toast.success(`${course.title} removed from cart`);
-                }}
-                className="flex-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors"
-              >
-                Remove
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!course.enrollInviteId) {
-                    toast.error(
-                      "Cannot add item to cart: missing enroll invite ID",
-                    );
-                    return;
-                  }
-                  addItem({
-                    id: course.id,
-                    title: course.title,
-                    price: course.price,
-                    image: course.thumbnail,
-                    level: course.level,
-                    packageSessionId: course.packageSessionId,
-                    enrollInviteId: course.enrollInviteId,
-                    levelId: course.levelId,
-                    courseId: course.courseId,
-                  });
-                  toast.success(`${course.title} added to cart!`);
-                }}
-                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
-              >
-                Add
-              </button>
-            ))}
-        </div>
+        {hasMeta && (
+          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {displayLevel && course.level && (
+                <span className="catalogue-badge catalogue-badge-primary">
+                  {course.level}
+                </span>
+              )}
+              {displayRating && course.rating > 0 && (
+                <span className="catalogue-chip-rating">
+                  <Star size={12} weight="fill" />
+                  {course.rating.toFixed(1)}
+                </span>
+              )}
+            </div>
+
+            {showCartControls && (
+              <CartControls
+                course={course}
+                globalSettings={globalSettings}
+                cartButtonConfig={cartButtonConfig}
+                addItem={addItem}
+                getItemByEnrollInviteId={getItemByEnrollInviteId}
+                updateQuantity={updateQuantity}
+                removeItem={removeItem}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1122,18 +1100,23 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   if (isLoading) {
     return (
-      <div className="py-6 w-full">
+      <div className="py-8 sm:py-10 w-full bg-catalogue-bg-subtle">
         <div className="w-full px-4 sm:px-6 lg:px-8">
-          <div className="animate-pulse">
-            <div className="h-6 bg-catalogue-bg-muted rounded w-1/4 mb-6"></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-catalogue-bg-muted rounded-lg h-56"
-                ></div>
-              ))}
-            </div>
+          <div className="catalogue-skeleton-shimmer h-8 w-48 mb-6"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[...Array(6)].map((_, i) => (
+              <div
+                key={i}
+                className="catalogue-card-elevated overflow-hidden"
+              >
+                <div className="catalogue-skeleton-shimmer h-44 w-full rounded-none"></div>
+                <div className="flex flex-col gap-2.5 p-4">
+                  <div className="catalogue-skeleton-shimmer h-4 w-3/4"></div>
+                  <div className="catalogue-skeleton-shimmer h-3 w-full"></div>
+                  <div className="catalogue-skeleton-shimmer h-5 w-1/3 mt-1"></div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -1143,12 +1126,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   return (
     <div
       ref={scrollRef}
-      className="py-6 bg-catalogue-bg-subtle w-full"
+      className="py-8 sm:py-10 bg-catalogue-bg-subtle w-full"
     >
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h2 className="text-xl sm:text-2xl font-bold text-catalogue-text-primary mb-4">
-          {title}
-        </h2>
+        <div className="mb-6">
+          <div className="mb-3 h-1 w-12 rounded-full bg-primary-400" />
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-catalogue-text-primary">
+            {title}
+          </h2>
+          {(render as { subtitle?: string } | undefined)?.subtitle && (
+            <p className="mt-2 max-w-2xl text-sm sm:text-base text-catalogue-text-secondary">
+              {(render as { subtitle?: string }).subtitle}
+            </p>
+          )}
+        </div>
 
         <div
           className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
@@ -1156,7 +1147,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           {shouldRenderFiltersPanel && (
             <div className="w-full lg:w-64 lg:flex-shrink-0 order-1">
               <div className="lg:sticky lg:top-20">
-                <div className="bg-white p-3 sm:p-4 rounded-lg border border-catalogue-border-subtle">
+                <div className="catalogue-surface p-4 sm:p-5 rounded-xl border border-catalogue-border-subtle shadow-sm">
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
                     <button
@@ -1174,7 +1165,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           Filters
                         </span>
                         {hasActiveFilters && (
-                          <span className="bg-primary-100 text-primary-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                          <span className="catalogue-badge catalogue-badge-primary rounded-full">
                             {filterBadgeCount}
                           </span>
                         )}
@@ -1192,7 +1183,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   >
                     {/* Desktop Header */}
                     <div className="hidden lg:flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold text-gray-800">
+                      <h2 className="text-lg font-semibold text-catalogue-text-primary">
                         Filters
                       </h2>
                       <div className="flex gap-1">
@@ -1215,7 +1206,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                     {/* Mobile Header */}
                     <div className="lg:hidden flex justify-between items-center mb-4">
-                      <h2 className="text-lg font-bold text-gray-800">
+                      <h2 className="text-lg font-semibold text-catalogue-text-primary">
                         Filters
                       </h2>
                       <div className="flex gap-1">
@@ -1294,41 +1285,39 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     )}
 
                     {shouldShowPriceFilter && (
-                      <div className="mb-4 sm:mb-6">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-700 mb-2 sm:mb-3">
+                      <div className="mb-5">
+                        <h3 className="text-sm font-semibold text-catalogue-text-primary mb-2.5">
                           {priceFilterConfig?.label ?? "Price Range"}
                         </h3>
-                        <div className="flex flex-col gap-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1">
-                              <label className="block text-xs text-gray-500 mb-1">
-                                Min
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={priceRange?.min ?? ""}
-                                onChange={(e) =>
-                                  handlePriceInputChange("min", e.target.value)
-                                }
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                              />
-                            </div>
-                            <span className="text-gray-500 mt-6">-</span>
-                            <div className="flex-1">
-                              <label className="block text-xs text-gray-500 mb-1">
-                                Max
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                value={priceRange?.max ?? ""}
-                                onChange={(e) =>
-                                  handlePriceInputChange("max", e.target.value)
-                                }
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                              />
-                            </div>
+                        <div className="flex items-end gap-2 rounded-lg bg-catalogue-bg-subtle p-3">
+                          <div className="flex-1">
+                            <label className="block text-xs text-catalogue-text-muted mb-1">
+                              Min
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={priceRange?.min ?? ""}
+                              onChange={(e) =>
+                                handlePriceInputChange("min", e.target.value)
+                              }
+                              className="w-full border border-catalogue-border rounded-md bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            />
+                          </div>
+                          <span className="pb-2 text-catalogue-text-muted">–</span>
+                          <div className="flex-1">
+                            <label className="block text-xs text-catalogue-text-muted mb-1">
+                              Max
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={priceRange?.max ?? ""}
+                              onChange={(e) =>
+                                handlePriceInputChange("max", e.target.value)
+                              }
+                              className="w-full border border-catalogue-border rounded-md bg-catalogue-bg px-3 py-2 text-sm text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            />
                           </div>
                         </div>
                       </div>
@@ -1346,13 +1335,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             }
           >
             {/* Search and Sort Bar */}
-            <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-6">
-              <div className="flex flex-col sm:flex-row gap-4">
+            <div className="catalogue-toolbar p-3 sm:p-4 mb-6">
+              <div className="flex flex-col sm:flex-row gap-3">
                 {/* Search */}
                 <div className="flex-1">
                   <div className="relative">
                     <MagnifyingGlass
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
                       size={20}
                     />
                     <input
@@ -1360,7 +1349,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       placeholder="Search courses..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                     />
                   </div>
                 </div>
@@ -1369,13 +1358,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 <div className="sm:w-48">
                   <div className="relative">
                     <SortAscending
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
                       size={20}
                     />
                     <select
                       value={sortOption}
                       onChange={(e) => setSortOption(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none bg-white"
+                      className="w-full pl-10 pr-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
                     >
                       <option value="Newest">Newest</option>
                       <option value="Oldest">Oldest</option>
@@ -1397,105 +1386,50 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             {/* Course Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {paginatedCourses.map((course, index) => (
-                <div
+                <CourseCard
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${
-                    render?.styles?.roundedEdges !== false
-                      ? "rounded-lg"
-                      : "rounded-none"
-                  }`}
-                  onClick={() => handleCourseClick(course)}
-                >
-                  {/* Course Thumbnail */}
-                  {displayImage && (
-                    <div className="relative">
-                      <CourseImage
-                        previewImageUrl={course.thumbnail}
-                        alt={course.title}
-                        className="w-full h-40 object-cover"
-                      />
-                      <div className="absolute top-2 left-2">
-                        <OfferBadge
-                          actual={course.price}
-                          elevated={course.elevatedPrice}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="p-3">
-                    {/* Course Title */}
-                    {displayTitle && (
-                      <h3 className="text-base font-semibold text-gray-900 mb-1.5 line-clamp-2">
-                        {course.title}
-                      </h3>
-                    )}
-
-                    {/* Course Description */}
-                    {displayDescription && (
-                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                        {course.description}
-                      </p>
-                    )}
-
-                    {/* Course Info */}
-                    <div className="flex flex-col gap-2">
-                      {/* Price */}
-                      {displayPrice &&
-                        globalSettings?.payment?.enabled !== false && (
-                          <PriceWithMrp
-                            actual={course.price}
-                            elevated={course.elevatedPrice}
-                            currency={course.currency}
-                            size="md"
-                            className="text-primary-600"
-                          />
-                        )}
-
-                      {/* Badges and Cart */}
-                      {(displayLevel ||
-                        displayRating ||
-                        shouldShowCartControls) && (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {displayLevel && (
-                              <span className="px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md">
-                                {course.level}
-                              </span>
-                            )}
-                            {displayRating && course.rating > 0 && (
-                              <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-md">
-                                ⭐ {course.rating.toFixed(1)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Add to Cart Button or Quantity Controls */}
-                          {shouldShowCartControls && (
-                            <CartControls
-                              course={course}
-                              globalSettings={globalSettings}
-                              cartButtonConfig={cartButtonConfig}
-                              addItem={addItem}
-                              getItemByEnrollInviteId={getItemByEnrollInviteId}
-                              updateQuantity={updateQuantity}
-                              removeItem={removeItem}
-                            />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  course={course}
+                  globalSettings={globalSettings}
+                  render={render}
+                  cartButtonConfig={cartButtonConfig}
+                  displayImage={displayImage}
+                  displayTitle={displayTitle}
+                  displayDescription={displayDescription}
+                  displayPrice={displayPrice}
+                  displayLevel={displayLevel}
+                  displayRating={displayRating}
+                  showCartControls={shouldShowCartControls}
+                  onView={() => handleCourseClick(course)}
+                  addItem={addItem}
+                  getItemByEnrollInviteId={getItemByEnrollInviteId}
+                  updateQuantity={updateQuantity}
+                  removeItem={removeItem}
+                />
               ))}
             </div>
 
             {/* No Results */}
             {filteredCourses.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-gray-500 text-base">
-                  No courses found matching your criteria.
+              <div className="catalogue-card flex flex-col items-center gap-3 py-12 px-6 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                  <MagnifyingGlass size={26} />
+                </div>
+                <p className="text-base font-semibold text-catalogue-text-primary">
+                  No courses found
                 </p>
+                <p className="max-w-sm text-sm text-catalogue-text-secondary">
+                  Try adjusting your search or filters to find what you're
+                  looking for.
+                </p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm mt-1"
+                  >
+                    Clear all filters
+                  </button>
+                )}
               </div>
             )}
 
@@ -1509,7 +1443,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       setCurrentPage((prev) => Math.max(prev - 1, 1))
                     }
                     disabled={currentPage === 1}
-                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Previous
                   </button>
@@ -1519,11 +1453,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       key={i + 1}
                       type="button"
                       onClick={() => setCurrentPage(i + 1)}
-                      className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                      className={cn(
+                        "catalogue-btn catalogue-btn-sm font-medium",
                         currentPage === i + 1
-                          ? "border-primary-600 bg-primary-600 text-white"
-                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
+                          ? "catalogue-btn-primary"
+                          : "catalogue-btn-secondary",
+                      )}
                     >
                       {i + 1}
                     </button>
@@ -1535,13 +1470,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       setCurrentPage((prev) => Math.min(prev + 1, totalPages))
                     }
                     disabled={currentPage === totalPages}
-                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
                   </button>
                 </div>
                 {totalApiElements > courses.length && (
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-catalogue-text-muted">
                     Showing {courses.length} of {totalApiElements} courses
                   </p>
                 )}

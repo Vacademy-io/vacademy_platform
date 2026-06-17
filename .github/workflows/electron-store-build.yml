@@ -1,0 +1,84 @@
+name: Build Electron Microsoft Store Package (AppX/MSIX)
+
+# Builds the Windows AppX/MSIX package for the learner Electron app on a Windows
+# runner (AppX CANNOT be built on macOS/Linux — it needs the Windows 10/11 SDK:
+# makeappx.exe / makepri.exe / signtool.exe, all preinstalled on windows-latest).
+#
+# The produced .appx is uploaded as a build artifact for MANUAL upload to
+# Partner Center. The package is NOT code-signed here — the Microsoft Store
+# re-signs it on ingestion using your reserved publisher identity, so no paid
+# code-signing certificate is required for Store distribution.
+#
+# BEFORE this produces a Store-acceptable package you MUST fill the identity
+# fields in electron/electron-builder.<flavor>-store.json with the values from
+# Partner Center -> Product management -> Product identity (identityName,
+# publisher = CN=..., publisherDisplayName). Until then the build still runs but
+# Partner Center will reject the upload for identity mismatch.
+
+run-name: "electron-store-build ${{ inputs.flavor }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: "Electron flavor (currently only shikshanation has a store config)"
+        required: true
+        default: "shikshanation"
+      vite_app_id:
+        description: "VITE_ELECTRON_APP_ID for the web build"
+        required: true
+        default: "com.shikshanation.new.app"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./frontend-learner-dashboard-app
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install web deps
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build web app (flavored)
+        env:
+          VITE_ELECTRON_APP_ID: ${{ inputs.vite_app_id }}
+        run: pnpm run build
+
+      - name: Stage web build into electron/app
+        run: |
+          rm -rf electron/app
+          cp -r dist electron/app
+
+      - name: Write electron-flavor.json
+        run: echo "{\"flavor\":\"${{ inputs.flavor }}\"}" > electron/electron-flavor.json
+
+      - name: Install electron deps
+        working-directory: ./frontend-learner-dashboard-app/electron
+        run: npm install
+
+      - name: Compile electron main process
+        working-directory: ./frontend-learner-dashboard-app/electron
+        run: npm run build
+
+      - name: Build AppX/MSIX package
+        working-directory: ./frontend-learner-dashboard-app/electron
+        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}-store.json --publish never
+
+      - name: Upload AppX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.flavor }}-appx
+          path: frontend-learner-dashboard-app/electron/dist-store/*.appx
+          if-no-files-found: error

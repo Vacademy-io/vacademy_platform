@@ -46,7 +46,11 @@ if (electronIsDev) {
   // Initialize our app, build windows, and load content.
   await myCapacitorApp.init();
   // Check for updates if we are in a packaged app.
-  if (!electronIsDev) {
+  // Skip electron-updater entirely for Microsoft Store (MSIX/AppX) packages: Store apps are
+  // installed read-only under WindowsApps and may only be updated through the Store itself, so a
+  // self-update here would error at best and violate Store policy at worst. process.windowsStore is
+  // true ONLY for Store-packaged builds, so NSIS/portable/dmg builds are completely unaffected.
+  if (!electronIsDev && !process.windowsStore) {
     // Configure auto-updater
     autoUpdater.autoDownload = false; // Don't auto-download, let user choose
     autoUpdater.autoInstallOnAppQuit = true;

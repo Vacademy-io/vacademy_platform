@@ -822,6 +822,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         String instituteId = (String) params.get("instituteId");
         String audienceIdParam = (String) params.get("audienceId"); // Renamed to denote it can be multiple
         Integer daysAgo = (Integer) params.get("daysAgo");
+        // Optional: narrow to a single conversion_status (e.g. 'OPT_OUT_INACTIVE') so the
+        // opt-out day-0 MSG1 workflow targets only inactive entries. Null = no narrowing.
+        String conversionStatus = (String) params.get("conversionStatus");
 
         // Validate all required params
         if (instituteId == null || daysAgo == null || audienceIdParam == null) {
@@ -841,10 +844,14 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         // Split by comma and trim whitespace (works for "id1, id2" and just "id1")
         String[] audienceIds = audienceIdParam.split(",");
 
+        boolean filterByConversionStatus = conversionStatus != null && !conversionStatus.trim().isEmpty();
         for (String aId : audienceIds) {
             if (aId != null && !aId.trim().isEmpty()) {
-                List<AudienceResponse> audienceResponses = audienceResponseRepository.findLeadsByAudienceAndDateRange(
-                        instituteId, aId.trim(), startDate, endDate);
+                List<AudienceResponse> audienceResponses = filterByConversionStatus
+                        ? audienceResponseRepository.findLeadsByAudienceDateRangeAndConversionStatus(
+                                instituteId, aId.trim(), startDate, endDate, conversionStatus.trim())
+                        : audienceResponseRepository.findLeadsByAudienceAndDateRange(
+                                instituteId, aId.trim(), startDate, endDate);
                 responses.addAll(audienceResponses);
             }
         }

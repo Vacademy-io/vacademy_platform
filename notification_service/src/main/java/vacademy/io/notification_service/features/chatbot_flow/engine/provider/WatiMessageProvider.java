@@ -4,13 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -244,17 +249,63 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
 
         String formattedPhone = phone.replaceAll("[^0-9]", "");
 
-        // WATI V3: POST /api/ext/v3/conversations/messages/fileViaUrl
-        String url = config.apiUrl + "/api/ext/v3/conversations/messages/fileViaUrl";
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("target", formattedPhone);
-        payload.put("fileUrl", mediaUrl);
-        if (caption != null && !caption.isBlank()) {
-            payload.put("caption", caption);
+        // WATI has no JSON "send media by URL" endpoint for session messages — the old
+        // /api/ext/v3/conversations/messages/fileViaUrl returns 404. The working path is
+        // /api/v1/sendSessionFile/{whatsappNumber} with a multipart file upload. So download
+        // the media bytes first, then upload them.
+        byte[] fileBytes;
+        try {
+            fileBytes = restTemplate.getForObject(mediaUrl, byte[].class);
+        } catch (Exception e) {
+            log.error("Failed to download media for WATI session file: url={}, error={}", mediaUrl, e.getMessage());
+            throw new RuntimeException("Could not download media: " + e.getMessage());
+        }
+        if (fileBytes == null || fileBytes.length == 0) {
+            throw new RuntimeException("Downloaded media is empty: " + mediaUrl);
         }
 
-        sendRequest(config, url, payload);
+        String safeName = (filename != null && !filename.isBlank()) ? filename : "file";
+        ByteArrayResource resource = new ByteArrayResource(fileBytes) {
+            @Override
+            public String getFilename() {
+                return safeName;
+            }
+        };
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        form.add("file", resource);
+
+        String url = config.apiUrl + "/api/v1/sendSessionFile/" + formattedPhone;
+        if (caption != null && !caption.isBlank()) {
+            url += "?caption=" + URLEncoder.encode(caption, StandardCharsets.UTF_8);
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.set("Authorization", "Bearer " + config.apiKey);
+
+        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(form, headers);
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+            log.info("WATI sendSessionFile response: status={}, body={}", response.getStatusCode(), response.getBody());
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("WATI sendSessionFile returned " + response.getStatusCode());
+            }
+            // WATI returns HTTP 200 even on failure — check the "result" flag.
+            if (response.getBody() != null) {
+                JsonNode respJson = objectMapper.readTree(response.getBody());
+                if (respJson.has("result") && respJson.path("result").isBoolean()
+                        && !respJson.path("result").booleanValue()) {
+                    throw new RuntimeException("WATI sendSessionFile result=false: "
+                            + respJson.path("info").asText("unknown error"));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.error("Failed to send document via WATI sendSessionFile: url={}, error={}", url, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to send document via WATI sendSessionFile: url={}, error={}", url, e.getMessage());
+            throw new RuntimeException(e);
+        }
     }
 
     private void sendRequest(WatiConfig config, String url, Map<String, Object> payload) {

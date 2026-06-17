@@ -783,6 +783,43 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("endDate") Timestamp endDate);
 
         /**
+         * Same as {@link #findLeadsByAudienceAndDateRange} but additionally narrowed to a
+         * single conversion_status. Used by the opt-out drip so the day-0 MSG1 workflow can
+         * target only INACTIVE entries (conversion_status = 'OPT_OUT_INACTIVE') without also
+         * re-sending to EXPLICIT opt-outs whose anchor day collides.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.audienceId = :audienceId
+                            AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                            AND ar.conversionStatus = :conversionStatus
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        List<AudienceResponse> findLeadsByAudienceDateRangeAndConversionStatus(
+                        @Param("instituteId") String instituteId,
+                        @Param("audienceId") String audienceId,
+                        @Param("startDate") Timestamp startDate,
+                        @Param("endDate") Timestamp endDate,
+                        @Param("conversionStatus") String conversionStatus);
+
+        /**
+         * All active (non opted-out) leads that have both a user_id and a parent_mobile,
+         * across the given audiences. Used by the inactivity scan to enumerate Js Challenge
+         * participants before cross-checking which have gone silent.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            WHERE ar.audienceId IN :audienceIds
+                            AND ar.userId IS NOT NULL
+                            AND ar.parentMobile IS NOT NULL
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        List<AudienceResponse> findActiveLeadsByAudienceIds(
+                        @Param("audienceIds") List<String> audienceIds);
+
+        /**
          * Find all audience responses for an institute within a date range,
          * across all audiences. Used for scheduled follow-ups when no specific
          * audienceId is configured.

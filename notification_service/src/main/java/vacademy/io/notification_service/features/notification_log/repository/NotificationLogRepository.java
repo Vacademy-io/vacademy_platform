@@ -370,6 +370,39 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     );
 
     /**
+     * Find phone numbers (channel_id) that received an OUTGOING WhatsApp message on the
+     * given business channel within the last :days days, but sent NO INCOMING reply on
+     * that channel within the same window.
+     *
+     * <p>Keyed entirely on channel_id (phone) — it never reads the outgoing row's user_id,
+     * so it works on channels where outgoing user_id logging is missing (e.g. post-migration
+     * channels). Returns the recipient phones in whatever digit form they are stored; the
+     * caller is responsible for normalising before matching against lead mobiles.</p>
+     *
+     * <p>Used by the inactivity opt-out scan to detect leads who are still being messaged
+     * but have gone silent.</p>
+     */
+    @Query(value = """
+            SELECT DISTINCT o.channel_id
+            FROM notification_log o
+            WHERE o.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND o.sender_business_channel_id = :senderBusinessChannelId
+              AND o.channel_id IS NOT NULL
+              AND o.notification_date >= NOW() - CAST(:days || ' days' AS INTERVAL)
+              AND NOT EXISTS (
+                  SELECT 1 FROM notification_log i
+                  WHERE i.channel_id = o.channel_id
+                    AND i.sender_business_channel_id = o.sender_business_channel_id
+                    AND i.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+                    AND i.notification_date >= NOW() - CAST(:days || ' days' AS INTERVAL)
+              )
+            """, nativeQuery = true)
+    List<String> findInactivePhones(
+            @Param("senderBusinessChannelId") String senderBusinessChannelId,
+            @Param("days") Integer days
+    );
+
+    /**
      * Find users who have sent ALL messages from the given list
      * Returns userId from the most recent OUTGOING message for each matching channel
      */

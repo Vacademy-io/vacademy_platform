@@ -1,0 +1,45 @@
+{
+  "appId": "com.shikshanation.new.app",
+  "productName": "Shiksha Nation",
+  "directories": {
+    "buildResources": "resources",
+    "output": "dist-store"
+  },
+  "files": [
+    "assets/**/*",
+    "build/**/*",
+    "app/**/*",
+    "capacitor.config.*",
+    "electron-flavor.json",
+    "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "node_modules/node-notifier/**/*"
+  ],
+  "compression": "normal",
+  "nodeGypRebuild": false,
+  "buildDependenciesFromSource": false,
+  "npmRebuild": false,
+  "win": {
+    "target": [
+      {
+        "target": "appx",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/shiksha_nation.ico"
+  },
+  "appx": {
+    "identityName": "ShikshaNation.ShikshaNationApp",
+    "publisher": "CN=86D745F8-F119-414C-B1CF-5361E8FE4A25",
+    "publisherDisplayName": "Shiksha Nation",
+    "applicationId": "ShikshaNation",
+    "displayName": "Shiksha Nation App",
+    "backgroundColor": "#1a1a2e",
+    "showNameOnTiles": true,
+    "setBuildNumber": false,
+    "languages": ["en-US"]
+  }
+}

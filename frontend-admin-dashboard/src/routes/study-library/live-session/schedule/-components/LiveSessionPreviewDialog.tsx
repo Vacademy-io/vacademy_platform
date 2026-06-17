@@ -152,7 +152,13 @@ export function LiveSessionPreviewDialog({
 
     const triggerLabels: string[] = [];
     if (notifySettings.onCreate) triggerLabels.push('On create');
-    const beforeTimes = notifySettings.beforeLiveTime ?? [];
+    // This dialog re-renders on every notification toggle (its props are
+    // watch()ed), so guard against any malformed reminder entry (null / missing
+    // `time`) reaching here — accessing `.time` on a bad element would throw
+    // during render and trip the route-level "System Crashed" page.
+    const beforeTimes = (notifySettings.beforeLiveTime ?? []).filter(
+        (t): t is { time: string } => !!t && typeof t.time === 'string' && t.time.length > 0
+    );
     if (beforeTimes.length > 0) {
         triggerLabels.push(`Before live (${beforeTimes.map((t) => t.time).join(', ')})`);
     }

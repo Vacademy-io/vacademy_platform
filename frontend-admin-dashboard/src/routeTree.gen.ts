@@ -14,6 +14,7 @@ import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
 import { Route as ErrorPageRouteImport } from "./routes/error-page"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
+import { Route as ChatRouteImport } from "./routes/chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
@@ -230,6 +231,11 @@ const AgentChatRoute = AgentChatRouteImport.update({
   path: "/agent-chat",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/agent-chat.lazy").then((d) => d.Route))
+const ChatRoute = ChatRouteImport.update({
+  id: "/chat",
+  path: "/chat",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import("./routes/chat.lazy").then((d) => d.Route))
 const VimIndexRoute = VimIndexRouteImport.update({
   id: "/vim/",
   path: "/vim/",
@@ -1592,6 +1598,7 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -1774,6 +1781,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -1956,6 +1964,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
+  "/chat": typeof ChatRoute
   "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
@@ -2140,6 +2149,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2322,6 +2332,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2503,6 +2514,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/agent-chat"
+    | "/chat"
     | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
@@ -2686,6 +2698,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
+  ChatRoute: typeof ChatRoute
   ErrorPageRoute: typeof ErrorPageRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
@@ -2915,6 +2928,13 @@ declare module "@tanstack/react-router" {
       path: "/agent-chat"
       fullPath: "/agent-chat"
       preLoaderRoute: typeof AgentChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/chat": {
+      id: "/chat"
+      path: "/chat"
+      fullPath: "/chat"
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/": {
@@ -4144,6 +4164,7 @@ const LearnerInsightsLazyRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
+  ChatRoute: ChatRoute,
   ErrorPageRoute: ErrorPageRoute,
   LockedFeatureRoute: LockedFeatureRoute,
   ExploreAiLazyRoute: ExploreAiLazyRoute,

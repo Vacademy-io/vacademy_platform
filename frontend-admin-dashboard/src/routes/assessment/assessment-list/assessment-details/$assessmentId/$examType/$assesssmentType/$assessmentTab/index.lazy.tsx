@@ -202,7 +202,21 @@ const AssessmentDetailsComponent = () => {
     );
 
     const navigate = useNavigate();
-    const [selectedTab, setSelectedTab] = useState('overview');
+    // Honor the details tab requested in the route (e.g. the slide's "View
+    // Submissions" deep-links with assessmentTab='submissions'). List-page entry
+    // points pass a list-tab name (liveTests/upcomingTests/…) which isn't a
+    // details tab, so those fall through to 'overview' — the prior default.
+    const detailsTabs = [
+        'overview',
+        'submissions',
+        'basicInfo',
+        'questions',
+        'participants',
+        'accessControl',
+    ];
+    const [selectedTab, setSelectedTab] = useState(
+        detailsTabs.includes(assessmentTab) ? assessmentTab : 'overview'
+    );
     const { setNavHeading } = useNavHeadingStore();
 
     const handleNavigateToSteps = () => {

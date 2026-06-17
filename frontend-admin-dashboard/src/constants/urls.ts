@@ -1,6 +1,9 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
+// Institute-facing help desk (community-service feature/support). Institute is taken
+// from the auto-attached `clientId` header; see services/support.ts.
+export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -144,6 +147,9 @@ export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/repo
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
+// Distinct values a custom field holds across the institute's leads — searchable
+// + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
+export const GET_LEAD_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/custom-field-values`;
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_LEAD_SCORE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
@@ -212,6 +218,7 @@ export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/v1/refresh-token`;
 
 export const UPLOAD_DOCS_FILE_URL = `${BASE_URL}/media-service/convert/doc-to-html`;
 export const CONVERT_PPT_TO_PDF_URL = `${BASE_URL}/media-service/convert/ppt-to-pdf`;
+export const CONVERT_PPT_TO_PDF_BY_ID_URL = `${BASE_URL}/media-service/convert/ppt-to-pdf-by-id`;
 export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/rating`;
 export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/rating/get-source-ratings-admin`;
 export const GET_ALL_RATING_SUMMARY = `${BASE_URL}/admin-core-service/rating/summary`;

@@ -13,9 +13,11 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.entity.User;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -65,6 +67,50 @@ public class AuthServiceClient {
         } catch (Exception e) {
             log.error("Error calling auth service for users by role: {} in institute: {}", roleName, instituteId, e);
             return new ArrayList<>(); // Return empty list on error to avoid failing entire announcement
+        }
+    }
+
+    /**
+     * Server-side paginated user search by role + name, scoped to an institute. Used by chat
+     * people-search so we never pull the whole institute into memory. The auth endpoint is
+     * JWT-authenticated, so the caller's Authorization + clientId headers are forwarded.
+     */
+    public PagedUserWithRolesResponse searchUsersByRoles(String instituteId, List<String> roleNames,
+                                                         String nameQuery, int pageNumber, int pageSize,
+                                                         String authHeader, String clientId) {
+        try {
+            String url = UriComponentsBuilder.fromHttpUrl(authServiceBaseUrl + "/auth-service/v1/user-roles/users-of-status")
+                    .queryParam("instituteId", instituteId)
+                    .queryParam("pageNumber", pageNumber)
+                    .queryParam("pageSize", pageSize)
+                    .toUriString();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (StringUtils.hasText(authHeader)) {
+                headers.set(HttpHeaders.AUTHORIZATION, authHeader);
+            }
+            if (StringUtils.hasText(clientId)) {
+                headers.set("clientId", clientId);
+            }
+
+            Map<String, Object> body = new HashMap<>();
+            if (roleNames != null && !roleNames.isEmpty()) {
+                body.put("roles", roleNames);
+            }
+            body.put("status", List.of("ACTIVE"));
+            if (StringUtils.hasText(nameQuery)) {
+                body.put("name", nameQuery.trim());
+            }
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            ResponseEntity<PagedUserWithRolesResponse> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, PagedUserWithRolesResponse.class);
+            return response.getBody();
+
+        } catch (Exception e) {
+            log.error("Error searching users by roles for institute {}: {}", instituteId, e.getMessage());
+            return null;
         }
     }
 

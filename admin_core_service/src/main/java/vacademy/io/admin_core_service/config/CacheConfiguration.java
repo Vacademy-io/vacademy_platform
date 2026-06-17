@@ -43,6 +43,11 @@ public class CacheConfiguration {
                 CaffeineCache studentsByPackageSessions = new CaffeineCache(
                                 "studentsByPackageSessions",
                                 caffeineCache20sBuilder().build());
+                // Batch display names ("{Level} {Course}") rarely change -> 5m. MUST be registered or
+                // @Cacheable on UserResolutionService.getBatchNamesByPackageSessions throws in the proxy.
+                CaffeineCache batchNamesByPackageSessions = new CaffeineCache(
+                                "batchNamesByPackageSessions",
+                                caffeineCache5mBuilder().build());
 
                 // 2 minutes TTL caches (new API-level caches)
                 CaffeineCache instituteById = new CaffeineCache(
@@ -147,6 +152,7 @@ public class CacheConfiguration {
                                 studyLibraryInit,
                                 facultyByPackageSessions,
                                 studentsByPackageSessions,
+                                batchNamesByPackageSessions,
                                 instituteById,
                                 openInstituteDetails,
                                 openInstituteIdOrSubdomain,

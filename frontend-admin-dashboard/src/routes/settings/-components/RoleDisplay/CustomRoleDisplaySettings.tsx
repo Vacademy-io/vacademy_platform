@@ -19,6 +19,7 @@ import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
+import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -60,6 +61,7 @@ const CUSTOM_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
 ];
 
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
+    showCreateCourse: false,
     showCreateCourseWithAI: false,
     requirePackageSelectionForNewChapter: true,
     showAdvancedSettings: true,
@@ -523,6 +525,8 @@ export default function CustomRoleDisplaySettings({
                                                 prev.coursePage?.canDeleteCourseStructure ?? false,
                                             showAdvancedCourseIds:
                                                 prev.coursePage?.showAdvancedCourseIds ?? false,
+                                            showBulkUpload:
+                                                prev.coursePage?.showBulkUpload ?? false,
                                             [key]: checked,
                                         },
                                     }))
@@ -558,6 +562,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canEditCourseStructure ?? false,
                                         canDeleteCourseStructure:
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         showAdvancedCourseIds: checked,
                                     },
                                 }))
@@ -602,6 +608,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         directEditPublishedCourse: checked,
                                     },
                                 }))
@@ -665,6 +673,8 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canEditCourseStructure: checked,
                                     },
                                 }))
@@ -696,7 +706,44 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canEditCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload:
+                                            prev.coursePage?.showBulkUpload ?? false,
                                         canDeleteCourseStructure: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            Show Bulk Upload (ZIP) button
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.showBulkUpload === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? false,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? false,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showBulkUpload: checked,
                                     },
                                 }))
                             }
@@ -780,10 +827,40 @@ export default function CustomRoleDisplaySettings({
                 <CardHeader>
                     <CardTitle>Course Creation</CardTitle>
                     <CardDescription>
-                        Configure AI course creation entry points and chapter setup defaults.
+                        Control who can create courses, AI entry points, and chapter setup
+                        defaults.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
+                            Allow creating courses (show &quot;Add Course&quot; button)
+                        </div>
+                        <Switch
+                            checked={settings.courseCreation?.showCreateCourse === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseCreation: {
+                                        showCreateCourse: checked,
+                                        showCreateCourseWithAI:
+                                            prev.courseCreation?.showCreateCourseWithAI ??
+                                            COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
+                                        requirePackageSelectionForNewChapter:
+                                            prev.courseCreation
+                                                ?.requirePackageSelectionForNewChapter ??
+                                            COURSE_CREATION_DEFAULTS.requirePackageSelectionForNewChapter,
+                                        showAdvancedSettings:
+                                            prev.courseCreation?.showAdvancedSettings ??
+                                            COURSE_CREATION_DEFAULTS.showAdvancedSettings,
+                                        limitToSingleLevel:
+                                            prev.courseCreation?.limitToSingleLevel ??
+                                            COURSE_CREATION_DEFAULTS.limitToSingleLevel,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                     <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
                         <div className="text-sm font-medium text-neutral-800">Show &quot;Create Course with AI&quot;</div>
                         <Switch
@@ -795,6 +872,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI: checked,
                                         requirePackageSelectionForNewChapter:
                                             prev.courseCreation
@@ -824,6 +902,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -850,6 +929,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -877,6 +957,7 @@ export default function CustomRoleDisplaySettings({
                                 updateSettings((prev) => ({
                                     ...prev,
                                     courseCreation: {
+                                        showCreateCourse: prev.courseCreation?.showCreateCourse,
                                         showCreateCourseWithAI:
                                             prev.courseCreation?.showCreateCourseWithAI ??
                                             COURSE_CREATION_DEFAULTS.showCreateCourseWithAI,
@@ -1925,6 +2006,18 @@ export default function CustomRoleDisplaySettings({
                     updateSettings((prev) => ({
                         ...prev,
                         learnerListColumns: next,
+                    }))
+                }
+            />
+
+            {/* Which custom fields show as filters on the leads views — per this role.
+                Saved with the rest of this blob via the shared unsaved-changes bar. */}
+            <LeadsFilterCustomFieldsCard
+                value={settings.leadsFilterCustomFields ?? []}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        leadsFilterCustomFields: next,
                     }))
                 }
             />

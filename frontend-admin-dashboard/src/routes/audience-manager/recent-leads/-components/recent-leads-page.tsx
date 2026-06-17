@@ -42,6 +42,8 @@ import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-n
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
+import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
@@ -228,6 +230,37 @@ const RecentLeadsContent = () => {
     // from the Reports source breakdown set it. Empty string = all sources.
     const [sourceFilter, setSourceFilter] = useState<string>(urlSearch.source ?? '');
 
+    // Custom-field filters — keyed by custom_field_id, each holding the selected
+    // values (multi-select). Only fields the admin enabled in Lead Settings
+    // render a control; an empty map means none are active.
+    const { fields: filterCustomFields } = useLeadFilterCustomFields(instituteId);
+    const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string[]>>({});
+    const setCustomFieldFilter = (fieldId: string, values: string[]) => {
+        setPage(0);
+        setCustomFieldFilters((prev) => {
+            const next = { ...prev };
+            if (values.length === 0) delete next[fieldId];
+            else next[fieldId] = values;
+            return next;
+        });
+    };
+    // Serialized {field_id, values} payload + a stable cache key (order-independent).
+    const customFieldFiltersPayload = useMemo(
+        () =>
+            Object.entries(customFieldFilters)
+                .filter(([, vals]) => vals.length > 0)
+                .map(([field_id, values]) => ({ field_id, values })),
+        [customFieldFilters]
+    );
+    const customFieldFiltersKey = useMemo(
+        () =>
+            customFieldFiltersPayload
+                .map((f) => `${f.field_id}=${[...f.values].sort().join(',')}`)
+                .sort()
+                .join('|'),
+        [customFieldFiltersPayload]
+    );
+
     // Write the applied filters back to the URL (replace, not push — filter
     // tweaks shouldn't pollute browser history). Defaults are omitted so the
     // bare /recent-leads URL stays clean.
@@ -348,6 +381,7 @@ const RecentLeadsContent = () => {
             counsellorFilter,
             ALL_COUNSELLORS_VALUE,
             sourceFilter,
+            customFieldFiltersKey,
             page,
             pageSize,
         ],
@@ -365,6 +399,9 @@ const RecentLeadsContent = () => {
                 assigned_counselor_id:
                     counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
                 source_type: sourceFilter || undefined,
+                custom_field_filters: customFieldFiltersPayload.length
+                    ? customFieldFiltersPayload
+                    : undefined,
                 page,
                 size: pageSize,
             }),
@@ -448,6 +485,7 @@ const RecentLeadsContent = () => {
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setSourceFilter('');
+        setCustomFieldFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
         setCustomTo('');
@@ -496,7 +534,8 @@ const RecentLeadsContent = () => {
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
         counsellorFilter !== ALL_COUNSELLORS_VALUE ||
-        !!sourceFilter;
+        !!sourceFilter ||
+        customFieldFiltersPayload.length > 0;
 
     // CSV export (shared by "Export" + "Export selected")
     const [isExporting, setIsExporting] = useState(false);
@@ -605,6 +644,9 @@ const RecentLeadsContent = () => {
                     assigned_counselor_id:
                         counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
                     source_type: sourceFilter || undefined,
+                    custom_field_filters: customFieldFiltersPayload.length
+                        ? customFieldFiltersPayload
+                        : undefined,
                     page: pageNo,
                     size: 200,
                 });
@@ -657,6 +699,14 @@ const RecentLeadsContent = () => {
                 setSourceFilter('');
             },
         });
+    customFieldFiltersPayload.forEach((f) => {
+        const fieldName =
+            filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
+        chips.push({
+            label: `${fieldName}: ${f.values.join(', ')}`,
+            onRemove: () => setCustomFieldFilter(f.field_id, []),
+        });
+    });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
         let label: string;
         if (rangeDays === CUSTOM_DATE_VALUE) {
@@ -752,6 +802,16 @@ const RecentLeadsContent = () => {
                             ))}
                         </SelectContent>
                     </Select>
+                    {filterCustomFields.map((f) => (
+                        <CustomFieldMultiSelectFilter
+                            key={f.customFieldId}
+                            instituteId={instituteId ?? ''}
+                            fieldId={f.customFieldId}
+                            fieldName={f.fieldName}
+                            selected={customFieldFilters[f.customFieldId] ?? []}
+                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                        />
+                    ))}
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />

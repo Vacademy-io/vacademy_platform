@@ -18,6 +18,7 @@ import vacademy.io.assessment_service.features.assessment.enums.AttemptResultSta
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogSourceEnum;
 import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogsTypeEnum;
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
+import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentSetMappingRepository;
 import vacademy.io.assessment_service.features.assessment.repository.EvaluationLogsRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
@@ -117,6 +118,13 @@ public class AdminManualEvaluationManager {
         attempt.setResultStatus(AttemptResultStatusEnum.COMPLETED.name());
         attempt.setEvaluatedFileId(request.getFileId());
 
+        // Manual evaluation IS the release for these assessments — once the admin
+        // submits marks, the learner's report should become available. Without
+        // this the attempt stayed report_release_status = PENDING after evaluation
+        // and the learner kept seeing "Pending evaluation".
+        attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
+        attempt.setReportLastReleaseDate(DateUtil.getCurrentUtcTime());
+
         studentAttemptService.updateStudentAttempt(attempt);
     }
 
@@ -152,6 +160,7 @@ public class AdminManualEvaluationManager {
                     QuestionWiseMarks existingMarks = existingEntry.get();
                     existingMarks.setMarks(questionMarks);
                     existingMarks.setStatus(resolvedStatus);
+                    existingMarks.setEvaluatorFeedback(dto.getEvaluatorFeedback());
                     allQuestionAttempts.add(existingMarks);
                     totalMarks += questionMarks;
                 } else {
@@ -162,6 +171,7 @@ public class AdminManualEvaluationManager {
                             .question(questionOptional.get())
                             .marks(questionMarks)
                             .status(resolvedStatus)
+                            .evaluatorFeedback(dto.getEvaluatorFeedback())
                             .studentAttempt(attempt)
                             .build());
 

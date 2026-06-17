@@ -13,8 +13,6 @@ import { SidebarItem } from './sidebar-item';
 import { SidebarMenu, SidebarMenuItem } from '@/components/ui/sidebar';
 import {
     Question,
-    WhatsappLogo,
-    EnvelopeSimple,
     Tabs,
     UserGear,
     ChalkboardTeacher,
@@ -32,9 +30,7 @@ import {
     GearSix,
     type IconProps,
 } from '@phosphor-icons/react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
-import { goToMailSupport, goToWhatsappSupport } from '@/lib/utils';
+import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
@@ -306,56 +302,29 @@ function SupportOptions() {
     const [hover, setHover] = React.useState(false);
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <div
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white"
-                    onMouseEnter={() => setHover(true)}
-                    onMouseLeave={() => setHover(false)}
+        <>
+            <button
+                type="button"
+                onClick={() => setOpen(true)}
+                className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-white"
+                onMouseEnter={() => setHover(true)}
+                onMouseLeave={() => setHover(false)}
+            >
+                <Question
+                    className={cn('size-5', hover ? 'text-teal-600' : 'text-neutral-400')}
+                    weight={hover ? 'fill' : 'regular'}
+                />
+                <span
+                    className={cn(
+                        'text-sm transition-colors',
+                        hover ? 'text-teal-600' : 'text-neutral-500'
+                    )}
                 >
-                    <Question
-                        className={cn('size-5', hover ? 'text-teal-600' : 'text-neutral-400')}
-                        weight={hover ? 'fill' : 'regular'}
-                    />
-                    <span
-                        className={cn(
-                            'text-sm transition-colors',
-                            hover ? 'text-teal-600' : 'text-neutral-500'
-                        )}
-                    >
-                        Support
-                    </span>
-                </div>
-            </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0" side="right" align="end">
-                <Command>
-                    <CommandList>
-                        <CommandGroup>
-                            <CommandItem>
-                                <div
-                                    role="button"
-                                    className="flex w-full cursor-pointer items-center gap-2"
-                                    onClick={goToWhatsappSupport}
-                                >
-                                    <WhatsappLogo size={16} />
-                                    WhatsApp
-                                </div>
-                            </CommandItem>
-                            <CommandItem>
-                                <div
-                                    role="button"
-                                    className="flex w-full cursor-pointer items-center gap-2"
-                                    onClick={goToMailSupport}
-                                >
-                                    <EnvelopeSimple size={16} />
-                                    Mail us
-                                </div>
-                            </CommandItem>
-                        </CommandGroup>
-                    </CommandList>
-                </Command>
-            </PopoverContent>
-        </Popover>
+                    Support
+                </span>
+            </button>
+            <SupportPanel open={open} onOpenChange={setOpen} />
+        </>
     );
 }
 

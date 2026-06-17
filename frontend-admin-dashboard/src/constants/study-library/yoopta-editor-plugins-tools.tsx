@@ -65,14 +65,22 @@ export const plugins: YooptaPlugin<Record<string, SlateElement>, Record<string, 
     Table as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
     Divider,
     Accordion as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
-    HeadingOne,
-    HeadingTwo,
-    HeadingThree,
-    Blockquote,
-    Callout,
-    NumberedList,
-    BulletedList,
-    TodoList,
+    // Markdown-on-space auto-format disabled (shortcuts: []). Yoopta converts a
+    // block when you type a trigger + space ("1." → numbered list, "#" → heading,
+    // ">" → quote, etc.), but its transform REPLACES the whole block — so typing
+    // the trigger on a line that already has text WIPED the content (e.g. "1. "
+    // inside an existing list item). Blocks are still creatable via the "/" slash
+    // menu and the toolbar (those use `commands`, not `shortcuts`); Enter-to-
+    // continue, paste, and HTML deserialize all live on other plugin keys and are
+    // unaffected.
+    HeadingOne.extend({ options: { shortcuts: [] } }),
+    HeadingTwo.extend({ options: { shortcuts: [] } }),
+    HeadingThree.extend({ options: { shortcuts: [] } }),
+    Blockquote.extend({ options: { shortcuts: [] } }),
+    Callout.extend({ options: { shortcuts: [] } }),
+    NumberedList.extend({ options: { shortcuts: [] } }),
+    BulletedList.extend({ options: { shortcuts: [] } }),
+    TodoList.extend({ options: { shortcuts: [] } }),
     CodeWithPreservedNewlines(Code) as unknown as YooptaPlugin<
         Record<string, SlateElement>,
         Record<string, unknown>

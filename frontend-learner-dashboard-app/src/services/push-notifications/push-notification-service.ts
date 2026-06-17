@@ -477,6 +477,15 @@ class PushNotificationService {
           case 'announcement':
             console.log('Navigate to announcements');
             break;
+          case 'chat': {
+            // Deep-link a tapped chat push to the specific conversation (falls back to the chat list).
+            // window.location works for web and inside the Capacitor webview.
+            const conversationId = data?.conversationId;
+            window.location.href = conversationId
+              ? `/chat?conversationId=${encodeURIComponent(String(conversationId))}`
+              : '/chat';
+            break;
+          }
           default:
             console.log('Navigate to dashboard');
             break;

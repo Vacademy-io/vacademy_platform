@@ -251,6 +251,12 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
                         errs.push(`Row ${rowNum}: full_name is required`);
                         return;
                     }
+                    // Usernames must not contain spaces — skip this row so the
+                    // learner is NOT enrolled, and surface a clear error.
+                    if (row.username && /\s/.test(row.username.trim())) {
+                        errs.push(`Row ${rowNum}: username cannot contain spaces`);
+                        return;
+                    }
 
                     // Build custom field values from CSV columns
                     const customFieldValues: CustomFieldValue[] = [];

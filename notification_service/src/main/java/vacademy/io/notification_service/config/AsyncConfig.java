@@ -59,9 +59,33 @@ public class AsyncConfig {
         
         executor.initialize();
         
-        log.info("Initialized announcement delivery executor: corePoolSize={}, maxPoolSize={}, queueCapacity={}", 
+        log.info("Initialized announcement delivery executor: corePoolSize={}, maxPoolSize={}, queueCapacity={}",
                 executor.getCorePoolSize(), executor.getMaxPoolSize(), executor.getQueueCapacity());
-        
+
+        return executor;
+    }
+
+    /**
+     * Dedicated executor for best-effort chat offline-push fan-out, kept SEPARATE from the announcement
+     * delivery / SSE fan-out pool so FCM I/O can never starve live message delivery. On overflow it
+     * DISCARDs (push is best-effort; the message is already persisted + delivered over SSE) rather than
+     * running on the caller thread, so the committing/publishing path is never blocked behind FCM.
+     */
+    @Bean(name = "chatPushExecutor")
+    public Executor chatPushExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("chat-push-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setAllowCoreThreadTimeOut(true);
+        executor.setKeepAliveSeconds(60);
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.initialize();
+        log.info("Initialized chat push executor: corePoolSize={}, maxPoolSize={}, queueCapacity={}",
+                executor.getCorePoolSize(), executor.getMaxPoolSize(), executor.getQueueCapacity());
         return executor;
     }
 }

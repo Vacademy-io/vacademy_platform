@@ -6,8 +6,6 @@ import { UnauthorizedResponse } from "@/constants/auth/unauthorizeresponse";
 import { IAccessToken, TokenKey, Tokens } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "../utils";
 import Cookies from "js-cookie";
-import { clearStudentDisplaySettingsCache } from "@/services/student-display-settings";
-import { clearChatbotSettingsCache } from "@/services/chatbot-settings";
 
 // Set token in cookie with domain support for cross-subdomain access
 export const setAuthorizationCookie = (key: string, token: string): void => {
@@ -61,28 +59,6 @@ const setTokenInStorage = async (key: string, token: string): Promise<void> => {
     localStorage.setItem(key, token);
   } catch (error) {
     console.warn(`[SessionUtility] Failed to write to localStorage:`, error);
-  }
-};
-
-// Helper function to remove a token from all storage locations
-const removeTokenFromStorage = async (key: string): Promise<void> => {
-  // Remove from Capacitor Storage
-  await Storage.remove({ key });
-
-  // Remove from cookies
-  try {
-    Cookies.remove(key);
-    // Also remove any legacy cookies that were set on the shared parent domain
-    Cookies.remove(key, { domain: ".vacademy.io" });
-  } catch (error) {
-    console.warn(`[SessionUtility] Failed to remove cookie:`, error);
-  }
-
-  // Remove from localStorage
-  try {
-    localStorage.removeItem(key);
-  } catch (error) {
-    console.warn(`[SessionUtility] Failed to remove from localStorage:`, error);
   }
 };
 
@@ -217,60 +193,143 @@ async function refreshTokens(
   return response.data;
 }
 
-// Remove tokens from storage and log out
+// Non-sensitive UI preferences that should survive logout.
+const LOGOUT_PRESERVE_KEYS = ["theme-code", "theme-custom-color", "vite-ui-theme"];
+
+// Expire every cookie on the current host AND every parent domain (so legacy
+// `.vacademy.io`-scoped cookies are removed too).
+const clearAllCookies = (): void => {
+  try {
+    const hostname = window.location.hostname;
+    const domains = new Set<string>(["", hostname, ".vacademy.io"]);
+    const parts = hostname.split(".");
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      domains.add("." + parts.slice(i).join("."));
+    }
+
+    const cookies = document.cookie ? document.cookie.split("; ") : [];
+    for (const cookie of cookies) {
+      const eqIdx = cookie.indexOf("=");
+      const name = (eqIdx > -1 ? cookie.slice(0, eqIdx) : cookie).trim();
+      if (!name) continue;
+      for (const domain of domains) {
+        document.cookie =
+          `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/` +
+          (domain ? `; domain=${domain}` : "");
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+};
+
+// Wipe localStorage + sessionStorage, keeping only the UI-preference allowlist.
+const clearWebStorage = (): void => {
+  try {
+    const preserved = LOGOUT_PRESERVE_KEYS.map(
+      (key) => [key, localStorage.getItem(key)] as const
+    );
+    localStorage.clear();
+    for (const [key, value] of preserved) {
+      if (value !== null) localStorage.setItem(key, value);
+    }
+  } catch {
+    /* best-effort — Safari private mode etc. */
+  }
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* best-effort */
+  }
+};
+
+// Drop browser-managed caches (Cache Storage + IndexedDB). Fire-and-forget.
+const clearBrowserCaches = (): void => {
+  try {
+    if (typeof caches !== "undefined" && typeof caches.keys === "function") {
+      void caches
+        .keys()
+        .then((names) => Promise.all(names.map((name) => caches.delete(name))))
+        .catch(() => {});
+    }
+  } catch {
+    /* best-effort */
+  }
+  try {
+    const idb = window.indexedDB as unknown as {
+      databases?: () => Promise<Array<{ name?: string | null }>>;
+      deleteDatabase: (name: string) => unknown;
+    };
+    if (idb && typeof idb.databases === "function") {
+      void idb
+        .databases()
+        .then((dbs) => {
+          dbs.forEach((db) => {
+            if (db?.name) idb.deleteDatabase(db.name);
+          });
+        })
+        .catch(() => {});
+    }
+  } catch {
+    /* best-effort */
+  }
+};
+
+// Remove ALL client-side session data and log out. Wipes tokens, every cookie,
+// localStorage, sessionStorage, Capacitor Preferences and browser caches (Cache
+// Storage + IndexedDB) so no previous user's data leaks into the next session on
+// a shared device. Only the institute id (used for branding / course comparison
+// after logout) and non-sensitive UI preferences (theme) are preserved.
 const removeTokensAndLogout = async (): Promise<void> => {
-  // Terminate the current session in backend BEFORE clearing tokens
+  // Capture the institute id so we can restore it after the wipe.
+  let preservedInstituteId: string | null = null;
+  try {
+    preservedInstituteId = await getInstituteIdFromStorage("InstituteId");
+  } catch {
+    /* ignore */
+  }
+
+  // Tell the backend to terminate this session using the still-valid token.
+  // Fire-and-forget (short timeout) so a slow/unreachable backend never blocks
+  // the local logout.
   try {
     const token = await getTokenFromStorage(TokenKey.accessToken);
     if (token) {
-      await axios.post(TERMINATE_CURRENT_SESSION, null, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      void axios
+        .post(TERMINATE_CURRENT_SESSION, null, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 5000,
+        })
+        .catch(() => {});
     }
   } catch {
-    // Best-effort — don't block logout if session termination fails
+    /* best-effort */
   }
 
-  // Remove tokens from all storage locations
-  await removeTokenFromStorage(TokenKey.accessToken);
-  await removeTokenFromStorage(TokenKey.refreshToken);
-  clearStudentDisplaySettingsCache();
-  clearChatbotSettingsCache();
-  // Don't remove institute ID - keep it for comparison in courses
-  // await removeInstituteIdFromStorage();
+  // 1. Capacitor Preferences — remove every key (native + web).
+  try {
+    const keys = await Storage.keys();
+    await Promise.all(keys.keys.map((key) => Storage.remove({ key })));
+  } catch {
+    /* best-effort */
+  }
 
-  // Remove all other items from Capacitor Storage except InstituteId
-  const keys = await Storage.keys();
-  for (const key of keys.keys) {
-    if (key !== "InstituteId") {
-      await Storage.remove({ key });
+  // 2. Cookies, 3. localStorage + sessionStorage, 4. browser caches.
+  clearAllCookies();
+  clearWebStorage();
+  clearBrowserCaches();
+
+  // Restore the preserved institute id into Capacitor + localStorage so
+  // branding / course comparison still work on the login screen.
+  if (preservedInstituteId) {
+    try {
+      await Storage.set({ key: "InstituteId", value: preservedInstituteId });
+      localStorage.setItem("InstituteId", preservedInstituteId);
+    } catch {
+      /* ignore */
     }
   }
 
-  // Also clear localStorage except InstituteId
-  try {
-    const keysToRemove = [
-      "StudentDetails",
-      "InstituteDetails",
-      "students",
-      "sessionList",
-      "instituteBatchesForSessions",
-      TokenKey.accessToken,
-      TokenKey.refreshToken,
-    ];
-
-    keysToRemove.forEach((key) => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        console.warn(`Failed to remove ${key} from localStorage:`, error);
-      }
-    });
-  } catch (error) {
-    console.warn("Failed to clear localStorage during logout:", error);
-  }
-
-  // Redirect to login or handle logout logic
   console.log("User logged out.");
 };
 

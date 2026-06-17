@@ -8,8 +8,8 @@ export const transformQuestionsToGenerateAssessmentAI = (
 ) => {
     return data?.map((item) => {
         const correctOptionIds =
-            JSON.parse(item.auto_evaluation_json)?.data?.correctOptionIds || [];
-        const validAnswers = JSON.parse(item.auto_evaluation_json)?.data?.validAnswers || [];
+            JSON.parse(item.auto_evaluation_json)?.data?.correct_option_ids || [];
+        const validAnswers = JSON.parse(item.auto_evaluation_json)?.data?.valid_answers || [];
         let decimals;
         let numericType;
         let subjectiveAnswerText;
@@ -77,6 +77,12 @@ export const transformQuestionsToGenerateAssessmentAI = (
             }));
         } else if (item.question_type === 'MCQM') {
             baseQuestion.multipleChoiceOptions = item.options.map((option) => ({
+                name: convertSVGsToBase64(option.text?.content) || '',
+                isSelected: correctOptionIds.includes(option.id || option.preview_id),
+            }));
+        } else if (item.question_type === 'CMCQS') {
+            baseQuestion.csingleChoiceOptions = item.options.map((option) => ({
+                id: option.id ? option.id : '',
                 name: convertSVGsToBase64(option.text?.content) || '',
                 isSelected: correctOptionIds.includes(option.id || option.preview_id),
             }));

@@ -31,5 +31,7 @@ public class StudentReportAnswerReviewDto {
     private double mark;
     private Long timeTakenInSeconds;
     private String answerStatus;
+    // Remark left by the evaluator during manual evaluation, shown to the learner.
+    private String evaluatorFeedback;
 
 }

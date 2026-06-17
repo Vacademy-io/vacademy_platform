@@ -122,6 +122,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         directEditPublishedCourse: false,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
+        showBulkUpload: false,
     },
     courseList: {
         tabs: [
@@ -234,5 +235,6 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowSendResetPasswordMail: true,
         showApprovalToggle: false,
     },
+    leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

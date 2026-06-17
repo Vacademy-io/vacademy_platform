@@ -7,5 +7,6 @@ public enum ModeType {
     STREAM,
     RESOURCES,
     COMMUNITY,
-    TASKS
+    TASKS,
+    CHAT
 }

@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.user_resolution.dto.BatchSearchRequest;
+import vacademy.io.admin_core_service.features.user_resolution.dto.FacultyPackageSessionsRequest;
 import vacademy.io.admin_core_service.features.user_resolution.dto.PackageSessionsRequest;
 import vacademy.io.admin_core_service.features.user_resolution.service.UserResolutionService;
 import vacademy.io.admin_core_service.features.institute_learner.dto.CustomFieldFilterRequest;
@@ -12,6 +14,7 @@ import vacademy.io.admin_core_service.features.institute_learner.service.CustomF
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/v1")
@@ -55,6 +58,56 @@ public class UserResolutionController {
             
         } catch (Exception e) {
             log.error("Error getting students by package sessions", e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Resolve display names for package sessions (batches).
+     * Used by notification service to title batch-group chats with the batch's real name.
+     */
+    @PostMapping("/package-sessions/names")
+    public ResponseEntity<Map<String, String>> getBatchNamesByPackageSessions(
+            @Valid @RequestBody PackageSessionsRequest request) {
+        try {
+            Map<String, String> names = userResolutionService
+                    .getBatchNamesByPackageSessions(request.getPackageSessionIds());
+            return ResponseEntity.ok(names);
+        } catch (Exception e) {
+            log.error("Error getting batch names by package sessions", e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Forward faculty mapping: package-session (batch) ids a faculty user is mapped to in an institute.
+     * Used by notification service to scope a teacher's chat batch list/search to their batches.
+     */
+    @PostMapping("/faculty/package-sessions")
+    public ResponseEntity<List<String>> getFacultyPackageSessions(@RequestBody FacultyPackageSessionsRequest request) {
+        try {
+            List<String> ids = userResolutionService.getFacultyPackageSessions(
+                    request.getUserId(), request.getInstituteId());
+            return ResponseEntity.ok(ids);
+        } catch (Exception e) {
+            log.error("Error getting faculty package sessions", e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Search an institute's batches by name -> [{packageSessionId, name}]. Optional packageSessionIds
+     * scopes the search to a teacher's mapped batches. Powers the chat "start a new batch" picker.
+     */
+    @PostMapping("/package-sessions/search")
+    public ResponseEntity<List<Map<String, String>>> searchBatches(@RequestBody BatchSearchRequest request) {
+        try {
+            List<Map<String, String>> batches = userResolutionService.searchBatches(
+                    request.getInstituteId(), request.getNameQuery(),
+                    request.getPackageSessionIds(), request.getLimit());
+            return ResponseEntity.ok(batches);
+        } catch (Exception e) {
+            log.error("Error searching batches", e);
             return ResponseEntity.badRequest().build();
         }
     }

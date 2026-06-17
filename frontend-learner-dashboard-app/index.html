@@ -83,6 +83,88 @@
       rel="stylesheet"
     />
 
+    <!-- Self-heal for stale-cache / purged-chunk failures.
+         A cached index.html can point at a chunk hash the CDN has since
+         purged; the request then falls back to index.html (text/html), the
+         module fails MIME checks, and the app never boots. When that happens
+         we clear all caches + service workers and do ONE hard reload, guarded
+         by sessionStorage so it can never loop. -->
+    <script>
+      (function () {
+        var KEY = "__chunkRecoveryAttempted__";
+        function isAppAsset(url) {
+          return (
+            !!url &&
+            (/\/assets\/.*\.(js|css)$/.test(url) || /\/src\/main\.tsx$/.test(url))
+          );
+        }
+        function recover() {
+          try {
+            if (sessionStorage.getItem(KEY)) return; // already tried this session
+            sessionStorage.setItem(KEY, "1");
+          } catch (e) {}
+          var reload = function () {
+            location.reload();
+          };
+          var tasks = [];
+          try {
+            if ("serviceWorker" in navigator) {
+              tasks.push(
+                navigator.serviceWorker
+                  .getRegistrations()
+                  .then(function (regs) {
+                    return Promise.all(
+                      regs.map(function (r) {
+                        return r.unregister();
+                      })
+                    );
+                  })
+                  .catch(function () {})
+              );
+            }
+            if (window.caches && caches.keys) {
+              tasks.push(
+                caches
+                  .keys()
+                  .then(function (keys) {
+                    return Promise.all(
+                      keys.map(function (k) {
+                        return caches.delete(k);
+                      })
+                    );
+                  })
+                  .catch(function () {})
+              );
+            }
+          } catch (e) {}
+          Promise.all(tasks).then(reload, reload);
+          setTimeout(reload, 1500); // safety: reload even if cleanup hangs
+        }
+        // Resource load errors don't bubble, so listen in the capture phase.
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e && e.target;
+            if (t && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+              if (isAppAsset(t.src || t.href)) recover();
+            }
+          },
+          true
+        );
+        // Clear the guard once the app has actually rendered.
+        window.addEventListener("load", function () {
+          setTimeout(function () {
+            var root = document.getElementById("root");
+            if (root && root.childElementCount > 0) {
+              try {
+                sessionStorage.removeItem(KEY);
+              } catch (e) {}
+            }
+          }, 4000);
+        });
+      })();
+    </script>
+
     <!-- jQuery must load before any module code: MathQuill (used inside the
          lazy quill-editor chunk) reads window.jQuery at module-eval time, and
          that chunk is a static dep of the entry, so it evaluates BEFORE the

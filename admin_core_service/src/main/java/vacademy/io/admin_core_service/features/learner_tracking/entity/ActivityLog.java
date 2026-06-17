@@ -70,6 +70,9 @@ public class ActivityLog {
         private List<AssignmentSlideTracked> assignmentSlideTracked;
 
         @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
+        private List<AssessmentSlideTracked> assessmentSlideTracked;
+
+        @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
         private List<VideoSlideQuestionTracked> videoSlideQuestionTracked;
 
         @OneToMany(mappedBy = "activityLog", fetch = FetchType.LAZY)
@@ -123,6 +126,12 @@ public class ActivityLog {
                 activityLogDTO.setAssignmentSlides(assignmentSlideTracked != null
                                 ? assignmentSlideTracked.stream()
                                                 .map(AssignmentSlideTracked::toAssignmentSlideActivityLog)
+                                                .toList()
+                                : List.of());
+
+                activityLogDTO.setAssessmentSlides(assessmentSlideTracked != null
+                                ? assessmentSlideTracked.stream()
+                                                .map(AssessmentSlideTracked::toAssessmentSlideActivityLog)
                                                 .toList()
                                 : List.of());
 

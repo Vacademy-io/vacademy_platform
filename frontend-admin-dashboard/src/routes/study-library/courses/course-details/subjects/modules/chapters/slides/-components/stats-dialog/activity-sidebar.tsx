@@ -14,6 +14,7 @@ import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide
 import { UserActivity } from '@/types/study-library/activity-stats-response-type';
 import { useActivityStatsStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/activity-stats-store';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export const ActivityStatsSidebar = () => {
     const [open, setOpen] = useState(false);
@@ -24,7 +25,7 @@ export const ActivityStatsSidebar = () => {
         if (!slideId) return;
         setIsDownloading(true);
         try {
-            await downloadAllAssignmentSubmissions(slideId);
+            await downloadAllAssignmentSubmissions(slideId, packageSessionId);
         } catch (err) {
             console.error('Failed to download all submissions:', err);
         } finally {
@@ -36,9 +37,27 @@ export const ActivityStatsSidebar = () => {
         setSearchInput(e.target.value);
     };
     const router = useRouter();
-    const { slideId: routeSlideId } = router.state.location.search as { slideId?: string };
+    const {
+        slideId: routeSlideId,
+        courseId,
+        levelId,
+        sessionId,
+    } = router.state.location.search as {
+        slideId?: string;
+        courseId?: string;
+        levelId?: string;
+        sessionId?: string;
+    };
     const { activeItem } = useContentStore();
+    const { getPackageSessionId } = useInstituteDetailsStore();
     const slideId = routeSlideId || activeItem?.id || '';
+    // The slide is shared across batches; scope the activity list to the batch being viewed.
+    const packageSessionId =
+        getPackageSessionId({
+            courseId: courseId ?? '',
+            levelId: levelId ?? '',
+            sessionId: sessionId ?? '',
+        }) ?? undefined;
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,
@@ -54,6 +73,7 @@ export const ActivityStatsSidebar = () => {
             slideId,
             page,
             size: pageSize,
+            packageSessionId,
         }),
         enabled: open && !!slideId,
     });

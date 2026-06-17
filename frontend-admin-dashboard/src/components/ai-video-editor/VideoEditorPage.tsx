@@ -33,6 +33,7 @@ import { AddMediaOverlayDialog } from './AddMediaOverlayDialog';
 import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
 import { SilentTailNotice } from './SilentTailNotice';
+import { SaveConflictNotice } from './SaveConflictNotice';
 import { CaptionSettingsPanel } from './CaptionSettingsPanel';
 import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
@@ -378,6 +379,13 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             ) {
                 try {
                     await saveChanges();
+                    // A revision conflict aborts the save quietly and shows the
+                    // conflict strip. Don't render with unsaved edits — let the
+                    // user resolve the conflict first.
+                    if (useVideoEditorStore.getState().saveConflict) {
+                        toast.error('Resolve the timeline conflict above before rendering.');
+                        return;
+                    }
                     toast.info('Saved pending edits before rendering');
                 } catch (err) {
                     toast.error(
@@ -449,6 +457,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const handleSave = useCallback(async () => {
         try {
             await saveChanges();
+            // saveChanges aborts quietly on a revision conflict and sets
+            // saveConflict — the SaveConflictNotice strip handles that case,
+            // so don't claim success.
+            if (useVideoEditorStore.getState().saveConflict) return;
             toast.success('Changes saved successfully');
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -912,6 +924,7 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
     return (
         <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-gray-50 text-gray-900">
             {toolbar}
+            <SaveConflictNotice />
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Entry list — collapsible left panel */}

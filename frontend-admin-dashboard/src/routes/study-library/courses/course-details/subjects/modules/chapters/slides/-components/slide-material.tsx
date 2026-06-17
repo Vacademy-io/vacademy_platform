@@ -154,6 +154,7 @@ function estimatePageCount(htmlString: string): number {
 }
 import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
+import AssessmentCreateForm from './assessment-create-form';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -191,7 +192,7 @@ export const SlideMaterial = ({
         const sub = tab?.subTabs?.find((s) => s.id === 'doubt-management');
         return sub?.visible !== false;
     }, [roleDisplay]);
-    const { items, activeItem, setActiveItem } = useContentStore();
+    const { items, activeItem, setActiveItem, assessmentCreateMode } = useContentStore();
     const editor = useMemo(() => {
         const ed = createYooptaEditor();
         // Monkey-patch: wrap Slate's focus to suppress "Cannot resolve a DOM
@@ -283,6 +284,12 @@ export const SlideMaterial = ({
     const currentDocHtmlRef = useRef<string>('');
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
+    // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
+    // a same-slide re-run (status flip PUBLISHED → UNSYNC on Save Draft, a
+    // loadContent dep) apart from a real navigation (id changed). On a same-slide
+    // re-run we must NOT re-deserialize, or we'd overwrite the editor's live
+    // bold/colour edits and revert the formatting right after the user saves.
+    const lastLoadContentSlideIdRef = useRef<string | null>(null);
 
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
@@ -1241,6 +1248,14 @@ export const SlideMaterial = ({
     const playerRef = useRef<YTPlayer | null>(null);
 
     const loadContent = async () => {
+        // Did the slide identity stay the same since the last loadContent run?
+        // If so this run was triggered by a non-id dep (notably activeItem.status,
+        // which Save Draft flips PUBLISHED → UNSYNC), not by navigation. The DOC
+        // branch uses this to avoid a destructive re-deserialize. Record the id
+        // for the next run before any early return.
+        const isSameSlideRerun = lastLoadContentSlideIdRef.current === activeItem?.id;
+        lastLoadContentSlideIdRef.current = activeItem?.id ?? null;
+
         if (activeItem == null) {
             setContent(
                 <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
@@ -1867,6 +1882,22 @@ export const SlideMaterial = ({
 
             // 🔁 Then handle DOC
             if (documentType === 'DOC') {
+                // Same slide, non-navigation re-run (e.g. Save Draft flipped
+                // status PUBLISHED → UNSYNC via the post-save slides refetch).
+                // The editor already holds this slide with the user's live
+                // bold/colour edits — re-deserializing would revert them. Keep
+                // the editor as-is and just advance the unsaved-changes baseline
+                // to the latest (now-saved) HTML so a later slide switch doesn't
+                // auto-save identical content again.
+                if (isSameSlideRerun) {
+                    if (currentDocHtmlRef.current) {
+                        initialDocHtmlRef.current = {
+                            slideId: activeItem.id,
+                            html: currentDocHtmlRef.current,
+                        };
+                    }
+                    return;
+                }
                 try {
                     // Single call — the focus() inside is already deferred via setTimeout
                     setEditorContent();
@@ -2957,7 +2988,7 @@ export const SlideMaterial = ({
                         : 'overflow-hidden'
                 }`}
             >
-                {content}
+                {assessmentCreateMode ? <AssessmentCreateForm /> : content}
             </div>
 
             {/* ✅ Doubt Sidebar (mounted only if allowed) */}

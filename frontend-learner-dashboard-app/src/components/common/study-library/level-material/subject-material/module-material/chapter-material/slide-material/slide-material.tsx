@@ -35,7 +35,14 @@ import ScormSlideComponent from "./scorm-slide";
 import { SplitScreenHtmlVideoSlide } from "./split-screen-html-video-slide";
 import AssessmentSlideViewer from "./assessment-slide-viewer";
 
-export const SlideMaterial = () => {
+export const SlideMaterial = ({
+  onNavigateToSlide,
+}: {
+  // Optional: lets the host route mirror the active slide into the URL so the
+  // course-tree sidebar (which highlights by URL slideId) and a browser
+  // refresh stay in sync with Prev/Next. Falls back to store-only when absent.
+  onNavigateToSlide?: (slideId: string) => void;
+}) => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
     useContentStore();
   const selectionRef = useRef(null);
@@ -94,12 +101,16 @@ export const SlideMaterial = () => {
 
   const goToPrev = () => {
     if (!canGoPrev) return;
-    setActiveItem(slidesList[currentIndex - 1]);
+    const target = slidesList[currentIndex - 1];
+    setActiveItem(target); // instant content update
+    onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
   };
 
   const goToNext = () => {
     if (!canGoNext) return;
-    setActiveItem(slidesList[currentIndex + 1]);
+    const target = slidesList[currentIndex + 1];
+    setActiveItem(target); // instant content update
+    onNavigateToSlide?.(target.id); // keep URL + sidebar highlight in sync
   };
 
   // Video time update handler - simplified since questions are now handled internally by YouTube player

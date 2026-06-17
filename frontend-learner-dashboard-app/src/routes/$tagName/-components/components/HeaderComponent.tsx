@@ -161,6 +161,21 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     // Check if courseCatalogeType.enabled is true
     const isCourseCatalogeTypeEnabled = !!(catalogueData?.globalSettings?.courseCatalogeType?.enabled);
+
+    // Desktop "Get Started" CTA — mirrors the mobile fixed-bottom-bar button in
+    // CourseCataloguePage so lead collection is reachable on desktop too. Shown under the
+    // same condition as that bar: not a course-catalog page and lead collection is
+    // configured (the bar/modal open regardless of leadCollection.enabled), and only when
+    // no equivalent get-started link is already configured in this header.
+    const headerHasGetStartedLink = visibleAuthLinks.some((link) => {
+      const r = normalizeRoute(link.route);
+      return r === '' || r === 'get-started';
+    });
+    const showHeaderGetStarted =
+      !isCourseCatalogeTypeEnabled &&
+      !!catalogueData?.globalSettings?.leadCollection &&
+      !headerHasGetStartedLink;
+
     const handleInstituteLogoClick = () => {
       if (domainRouting.homeIconClickRoute) {
         window.location.href = domainRouting.homeIconClickRoute;
@@ -596,38 +611,56 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     </button>
                   </div>
                 ) : (
-                  visibleAuthLinks.map((link, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        const r = normalizeRoute(link.route);
-                        if (r === 'login' || r === 'signup') {
-                          if (useModalForAuth) {
-                            (r === 'login' ? loginAuthModalRef : signupAuthModalRef)
-                              .current?.setIsOpen(true);
-                          } else {
-                            window.location.href = `/${r}`;
-                          }
-                        } else if (r === '' || r === 'get-started') {
-                          window.dispatchEvent(new CustomEvent('openLeadCollection'));
-                        } else {
-                          handleNavigation(link.route, link.label);
-                        }
-                      }}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${index === 0
-                        ? 'text-white hover:opacity-90'
-                        : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
-                        }`}
-                      style={index === 0 ? {
-                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                      } : {
-                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
-                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                      }}
-                    >
-                      {link.label}
-                    </button>
-                  ))
+                  <>
+                    {showHeaderGetStarted && (
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('openLeadCollection'))}
+                        className="px-4 py-2 rounded-md text-sm font-medium text-white hover:opacity-90 transition-all duration-200"
+                        style={{
+                          backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                        }}
+                      >
+                        Get Started
+                      </button>
+                    )}
+                    {visibleAuthLinks.map((link, index) => {
+                      // When the injected Get Started is shown it becomes the primary CTA, so
+                      // existing auth links (e.g. Login) render as secondary/outline buttons.
+                      const isPrimary = index === 0 && !showHeaderGetStarted;
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            const r = normalizeRoute(link.route);
+                            if (r === 'login' || r === 'signup') {
+                              if (useModalForAuth) {
+                                (r === 'login' ? loginAuthModalRef : signupAuthModalRef)
+                                  .current?.setIsOpen(true);
+                              } else {
+                                window.location.href = `/${r}`;
+                              }
+                            } else if (r === '' || r === 'get-started') {
+                              window.dispatchEvent(new CustomEvent('openLeadCollection'));
+                            } else {
+                              handleNavigation(link.route, link.label);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${isPrimary
+                            ? 'text-white hover:opacity-90'
+                            : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
+                            }`}
+                          style={isPrimary ? {
+                            backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                          } : {
+                            color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                            borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                          }}
+                        >
+                          {link.label}
+                        </button>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             </div>

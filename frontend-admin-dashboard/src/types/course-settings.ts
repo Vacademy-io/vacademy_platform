@@ -195,7 +195,7 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
         allowReferralOptionChange: true,
     },
     dripConditions: {
-        enabled: false,
+        enabled: true,
         conditions: [],
     },
     offerPricing: {

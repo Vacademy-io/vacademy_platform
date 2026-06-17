@@ -6,10 +6,18 @@ wins). True S3 conditional writes would need ETag plumbing through every
 download path; instead the editor uses a monotonically increasing
 ``meta.revision`` counter:
 
-  - Every mutating frame endpoint bumps ``meta.revision`` by 1 on write.
-  - Clients send the revision they loaded as ``expected_revision``; a
-    mismatch raises :class:`TimelineRevisionConflict`, which the router maps
-    to HTTP 409 so the editor can tell the user to reload.
+  - A *checked* write (the editor's save, which sends ``expected_revision``)
+    verifies the counter and bumps it by 1.
+  - A mismatch raises :class:`TimelineRevisionConflict`, which the router maps
+    to HTTP 409 so the editor can warn the user before overwriting.
+  - An *unchecked* write (``expected_revision is None`` — pipeline-view edits,
+    internal tooling, older clients) does NOT touch the counter. Bumping on an
+    unchecked write would silently invalidate every open editor's loaded
+    revision and trip its lock on the next save — a false conflict the user
+    never caused. The trade-off: a checked save won't detect an interleaved
+    unchecked write (last-writer-wins for that rare pairing), which is fine —
+    the counter exists to catch two *editors* racing, and both send the
+    revision.
 
 The residual race is the few milliseconds between download and PUT inside one
 request — versus the minutes-long window between a user's load and save that
@@ -30,11 +38,13 @@ def check_and_bump_revision(data: Any, expected_revision: Optional[int]) -> Opti
     Call AFTER all in-memory mutations, immediately before persisting, so a
     conflict aborts the request with nothing written.
 
-    Returns the new revision for wrapped (``{"entries": ..., "meta": ...}``)
-    timelines, or ``None`` for legacy plain-array timelines (nothing to check
-    or store). When ``expected_revision`` is ``None`` the check is skipped
-    but the counter still bumps, so unchecked writers (older clients, other
-    tools) remain detectable by checking ones.
+    Returns the (possibly bumped) revision for wrapped
+    (``{"entries": ..., "meta": ...}``) timelines, or ``None`` for legacy
+    plain-array timelines (nothing to check or store).
+
+    When ``expected_revision`` is ``None`` (unchecked write) the counter is
+    left untouched and the current value is returned — see the module
+    docstring for why bumping there caused false conflicts.
     """
     if not isinstance(data, dict):
         return None
@@ -46,7 +56,9 @@ def check_and_bump_revision(data: Any, expected_revision: Optional[int]) -> Opti
         current = int(meta.get("revision") or 0)
     except (TypeError, ValueError):
         current = 0
-    if expected_revision is not None and current != int(expected_revision):
+    if expected_revision is None:
+        return current
+    if current != int(expected_revision):
         raise TimelineRevisionConflict(
             f"Timeline revision is {current} but the client loaded revision "
             f"{expected_revision} — this video was modified by another "

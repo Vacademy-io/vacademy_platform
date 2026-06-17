@@ -1,35 +1,38 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { format } from "date-fns";
+import { Card, CardContent } from "@/components/ui/card";
 import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import {
   STUDENT_REPORT_DETAIL_URL,
   STUDENT_REPORT_URL,
 } from "@/constants/urls";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "@tanstack/react-router";
 import { Report } from "@/types/assessments/assessment-data-type";
 import { formatDuration, getSubjectNameById } from "@/constants/helper";
+import { formatDateTime } from "@/lib/format-date";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { PlayMode } from "@/components/design-system/chips";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from "@/components/design-system/states";
+import { FileText, Eye } from "@phosphor-icons/react";
+import { getPublicUrl } from "@/services/upload_file";
+import { toast } from "sonner";
 
-const playModeStyles: { [key: string]: string } = {
-  EXAM: "bg-green-100 text-green-700 hover:bg-green-200 border-green-200",
-  MOCK: "bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200",
-  PRACTICE: "bg-blue-100 text-blue-700 hover:bg-blue-200 border-blue-200",
-  SURVEY: "bg-rose-100 text-rose-700 hover:bg-rose-200 border-rose-200",
+const PLAY_MODE_LABELS: Record<string, string> = {
+  EXAM: "Exam",
+  MOCK: "Mock",
+  PRACTICE: "Practice",
+  SURVEY: "Survey",
+  MANUAL_UPLOAD_EXAM: "Offline exam",
 };
 
 export const viewStudentReport = async (
   assessmentId: string,
   attemptId: string,
-  instituteId: string | null,
+  instituteId: string | null
 ) => {
   const response = await authenticatedAxiosInstance({
     method: "GET",
@@ -110,9 +113,36 @@ const AssessmentReportList = ({
       state: {
         report,
         assessmentName: report.assessment_name,
+        evaluationType: report.evaluation_type,
       } as any,
     });
   };
+
+  // Open the evaluated copy (the teacher's annotated PDF) for a manual report.
+  const handleViewEvaluated = async (report: Report) => {
+    try {
+      const res = await authenticatedAxiosInstance.get(STUDENT_REPORT_DETAIL_URL, {
+        params: {
+          assessmentId: report.assessment_id,
+          attemptId: report.attempt_id,
+          instituteId: instituteDetails?.id,
+        },
+      });
+      const fileId = res.data?.evaluated_file_id;
+      if (!fileId) {
+        toast.error("Evaluated copy is not available yet.");
+        return;
+      }
+      const url = await getPublicUrl(fileId);
+      if (url) window.open(url, "_blank");
+      else toast.error("Could not open the evaluated copy.");
+    } catch {
+      toast.error("Could not open the evaluated copy.");
+    }
+  };
+
+  const isManualReport = (report: Report) =>
+    (report.evaluation_type || "").toUpperCase() === "MANUAL";
 
   const fetchReports = async () => {
     if (loading || !hasMore) return;
@@ -136,7 +166,9 @@ const AssessmentReportList = ({
         {
           name: "",
           status: ["ENDED"],
-          release_result_status: ["RELEASED"],
+          // Include PENDING so submitted-but-not-yet-evaluated attempts also show
+          // (as "Pending evaluation"). Marks/report stay gated until RELEASED.
+          release_result_status: ["RELEASED", "PENDING"],
           assessment_type: [assessment_types],
           sort_columns: {},
         },
@@ -147,12 +179,12 @@ const AssessmentReportList = ({
             pageNo,
             pageSize,
           },
-        },
+        }
       );
 
       const newReports = response.data.content;
       setReports((prev) =>
-        pageNo === 0 ? newReports : [...prev, ...newReports],
+        pageNo === 0 ? newReports : [...prev, ...newReports]
       );
       setHasMore(!response.data.last);
     } catch (err) {
@@ -176,12 +208,12 @@ const AssessmentReportList = ({
             setPageNo((prevPageNo) => prevPageNo + 1);
           }
         },
-        { threshold: 0.5 },
+        { threshold: 0.5 }
       );
 
       if (node) observer.current.observe(node);
     },
-    [loading, hasMore],
+    [loading, hasMore]
   );
 
   // Load initial data
@@ -198,126 +230,161 @@ const AssessmentReportList = ({
     };
   }, []);
 
-  const formatDateTime = (dateString: string) => {
-    try {
-      return format(new Date(dateString), "dd/MM/yyyy hh:mm a");
-    } catch (err) {
-      console.error("Date formatting error:", err);
-      return dateString;
-    }
-  };
+  // Legacy rows (no status field) are treated as released to preserve old behavior.
+  const isReportReleased = (report: Report) =>
+    report.report_release_status !== "PENDING";
 
   if (error && reports.length === 0) {
     return (
-      <div className="text-center py-4 text-destructive">
-        <p>{error}</p>
+      <div className="p-4 md:p-6 lg:p-8">
+        <ErrorState
+          title="Could not load reports"
+          message={error}
+          onRetry={() => fetchReports()}
+        />
       </div>
     );
   }
 
   return (
     <div className="w-full space-y-4 p-4 md:p-6 lg:p-8">
-      {reports.map((report: Report, index: number) => (
-        <div
-          key={report.attempt_id}
-          ref={index === reports.length - 1 ? lastReportElementRef : null}
-        >
-          <Card className="w-full transition-all hover:shadow-md">
-            <CardHeader className="pb-2">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <CardTitle className="text-base sm:text-lg font-semibold text-foreground">
-                  {report.assessment_name}
-                </CardTitle>
-                {assessment_types !== "HOMEWORK" && (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs font-semibold px-2.5 py-0.5 border",
-                      playModeStyles[report.play_mode as PlayMode],
-                    )}
-                  >
-                    {report.play_mode}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1 gap-x-8 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      Attempt Date:
-                    </span>
-                    <span>{formatDateTime(report.attempt_date)}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      {getTerminology(
-                        ContentTerms.Subjects,
-                        SystemTerms.Subjects,
-                      )}
-                      :
-                    </span>
-                    <span>
-                      {getSubjectNameById(
-                        instituteDetails?.subjects || [],
-                        report?.subject_id,
-                      ) || "-"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">
-                      Duration:
-                    </span>
-                    <span>
-                      {report.duration_in_seconds
-                        ? formatDuration(report.duration_in_seconds)
-                        : "N/A"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">Marks:</span>
-                    <span>{report.total_marks}</span>
-                  </div>
+      {reports.map((report: Report, index: number) => {
+        const released = isReportReleased(report);
+        // The list API's `total_marks` is the attempt's achieved score
+        // (student_attempt.total_marks) — lead with it instead of burying it.
+        // Gated until the result is released (manual attempts await evaluation).
+        const score =
+          released && report.total_marks != null
+            ? Math.round(report.total_marks * 10) / 10
+            : null;
+        const metaParts = [
+          formatDateTime(report.attempt_date),
+          getSubjectNameById(
+            instituteDetails?.subjects || [],
+            report?.subject_id
+          ),
+          report.duration_in_seconds
+            ? formatDuration(report.duration_in_seconds)
+            : "",
+        ].filter(Boolean);
+
+        return (
+          <div
+            key={report.attempt_id}
+            ref={index === reports.length - 1 ? lastReportElementRef : null}
+          >
+            <Card className="w-full transition-shadow hover:shadow-sm [.ui-play_&]:rounded-2xl">
+              <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5 sm:p-5">
+                {/* Score first: the figure the learner came for */}
+                <div className="flex w-fit shrink-0 items-baseline gap-1.5 rounded-lg bg-primary-50 px-4 py-2 sm:w-24 sm:flex-col sm:items-center sm:gap-0 sm:py-3 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300">
+                  <span className="text-h2 font-bold tabular-nums text-primary-500 [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
+                    {score != null ? score : "-"}
+                  </span>
+                  <span className="text-3xs font-medium uppercase tracking-wide text-muted-foreground [.ui-play_&]:text-play-ink/70">
+                    marks
+                  </span>
                 </div>
 
-                <div className="w-full md:w-auto mt-2 md:mt-0  flex flex-col md:flex-row gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-body font-semibold text-foreground">
+                      {report.assessment_name}
+                    </h3>
+                    {report.evaluation_type && (
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-2xs font-medium text-slate-700">
+                        {report.evaluation_type === "MANUAL"
+                          ? "Manual"
+                          : "Auto"}
+                      </span>
+                    )}
+                    <span
+                      className={
+                        released
+                          ? "inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2 py-0.5 text-2xs font-medium text-green-700"
+                          : "inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-2xs font-medium text-amber-700"
+                      }
+                    >
+                      {released ? "Released" : "Pending evaluation"}
+                    </span>
+                    {assessment_types !== "HOMEWORK" && (
+                      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground">
+                        {PLAY_MODE_LABELS[report.play_mode] ?? report.play_mode}
+                      </span>
+                    )}
+                  </div>
+                  {metaParts.length > 0 && (
+                    <p className="mt-1 text-caption text-muted-foreground">
+                      {metaParts.join(" · ")}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  {!isManualReport(report) && (
+                    <MyButton
+                      className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                      onClick={() => handleViewAIReport(report)}
+                      disable={!released}
+                    >
+                      View AI Report
+                    </MyButton>
+                  )}
                   <MyButton
-                    className="w-full md:w-auto min-w-32"
-                    onClick={() => handleViewAIReport(report)}
-                  >
-                    View AI Report
-                  </MyButton>
-                  <Button
-                    variant="outline"
-                    className="w-full md:w-auto min-w-32"
+                    buttonType="secondary"
+                    className="min-h-11 w-full sm:min-h-9 sm:w-auto"
                     onClick={() => handleViewComparison(report)}
+                    disable={!released}
                   >
                     Report
-                  </Button>
+                  </MyButton>
+                  {isManualReport(report) && (
+                    <MyButton
+                      buttonType="secondary"
+                      className="min-h-11 w-full sm:min-h-9 sm:w-auto"
+                      onClick={() => handleViewEvaluated(report)}
+                      disable={!released}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <Eye className="size-4" />
+                        View Evaluated
+                      </span>
+                    </MyButton>
+                  )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ))}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })}
 
       {loading && (
-        <div className="flex justify-center p-4" ref={loadingRef}>
-          <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
+        <div ref={loadingRef}>
+          <LoadingState variant="list" count={3} />
         </div>
       )}
 
       {!hasMore && reports.length > 0 && (
-        <p className="text-center text-sm text-muted-foreground py-4">
+        <p className="text-center text-caption text-muted-foreground py-4">
           No more reports to load
         </p>
       )}
 
       {reports.length === 0 && !loading && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground text-sm">No reports found</p>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No reports yet"
+          description="Reports appear here once you finish a test and its results are released."
+          action={{
+            label: assessment_types === "HOMEWORK" ? "Go to homework" : "Go to tests",
+            onClick: () =>
+              navigate({
+                to:
+                  assessment_types === "HOMEWORK"
+                    ? "/homework/list"
+                    : "/assessment/examination",
+              }),
+          }}
+        />
       )}
     </div>
   );

@@ -58,6 +58,25 @@ type RoleDisplaySettingsBlob = Record<string, unknown> & {
     audienceRoleAccess?: AudienceRoleAccessConfig;
 };
 
+// The `/get` endpoint returns a SettingDto ({ key, name, data }) as the
+// response body, so the stored blob lives at `response.data.data`. Older /
+// proxied response shapes nested it differently, so probe the same three
+// shapes the canonical display-settings reader handles
+// (services/display-settings.ts getDisplaySettings). The previous code read
+// only `response.data.data[settingKey].data` — a shape the backend never
+// returns — so it ALWAYS resolved to undefined: the saved audience-access
+// config was never read back (UI reverted to DEFAULT) and the save's
+// read-modify-write clobbered sibling per-role display config.
+function extractSettingData(responseBody: unknown, settingKey: string): unknown {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = responseBody as any;
+    if (!body) return undefined;
+    if (body[settingKey]?.data) return body[settingKey].data;
+    if (body.data?.[settingKey]?.data) return body.data[settingKey].data;
+    if (body.data) return body.data;
+    return undefined;
+}
+
 async function getRoleDisplaySettingsBlob(
     instituteId: string
 ): Promise<RoleDisplaySettingsBlob> {
@@ -67,8 +86,7 @@ async function getRoleDisplaySettingsBlob(
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: ROLE_DISPLAY_SETTING_KEY },
         });
-        const data: RoleDisplaySettingsBlob | undefined =
-            response.data?.data?.[ROLE_DISPLAY_SETTING_KEY]?.data;
+        const data = extractSettingData(response.data, ROLE_DISPLAY_SETTING_KEY);
         return (data ?? {}) as RoleDisplaySettingsBlob;
     } catch {
         return {};
@@ -84,8 +102,9 @@ async function fetchLegacyAudienceRoleAccess(
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: LEGACY_SETTING_KEY },
         });
-        const data: Partial<AudienceRoleAccessConfig> | undefined =
-            response.data?.data?.[LEGACY_SETTING_KEY]?.data;
+        const data = extractSettingData(response.data, LEGACY_SETTING_KEY) as
+            | Partial<AudienceRoleAccessConfig>
+            | undefined;
         if (!data || !data.roles) return null;
         return { roles: data.roles };
     } catch {

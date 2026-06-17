@@ -31,6 +31,7 @@ public class InstituteAnnouncementSettingsResponse {
         private ResourceSettings resources;
         private GeneralSettings general;
         private FirebaseSettings firebase;
+        private vacademy.io.notification_service.features.chat.dto.ChatSettings chat;
     }
     
     @Data

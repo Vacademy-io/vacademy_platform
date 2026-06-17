@@ -5,8 +5,12 @@ import { Slide } from '@/routes/study-library/courses/course-details/subjects/mo
 interface ContentStore {
     items: Slide[];
     activeItem: Slide | null;
+    // When true, the slides content area renders the in-slide "create assessment"
+    // form instead of a slide (mirrors how assignment is configured in-slide).
+    assessmentCreateMode: boolean;
     setItems: (items: Slide[]) => void;
     setActiveItem: (item: Slide | null) => void;
+    setAssessmentCreateMode: (on: boolean) => void;
     reorderItems: (oldIndex: number, newIndex: number) => void;
     resetChapterSidebarStore: () => void;
     getSlideById: (slideId: string) => Slide | null;
@@ -16,13 +20,19 @@ interface ContentStore {
 export const useContentStore = create<ContentStore>((set, get) => ({
     items: [],
     activeItem: null,
+    assessmentCreateMode: false,
 
     setItems: (items) => {
         set({ items });
     },
 
     setActiveItem: (item) => {
-        set({ activeItem: item });
+        // Selecting a slide always exits the transient create-assessment mode.
+        set({ activeItem: item, assessmentCreateMode: false });
+    },
+
+    setAssessmentCreateMode: (on) => {
+        set({ assessmentCreateMode: on });
     },
 
     reorderItems: (oldIndex: number, newIndex: number) =>
@@ -47,7 +57,8 @@ export const useContentStore = create<ContentStore>((set, get) => ({
             };
         }),
 
-    resetChapterSidebarStore: () => set({ items: [], activeItem: null }),
+    resetChapterSidebarStore: () =>
+        set({ items: [], activeItem: null, assessmentCreateMode: false }),
 
     getSlideById: (slideId: string) => {
         const state = get();

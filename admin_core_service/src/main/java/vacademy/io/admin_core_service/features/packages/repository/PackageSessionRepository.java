@@ -388,6 +388,83 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             """, nativeQuery = true)
     List<PackageSessionDetailProjection> findPackageSessionDetailsByIds(@Param("ids") List<String> ids);
 
+    interface BatchNameProjection {
+        String getPackageSessionId();
+        String getPackageName();
+        String getLevelId();
+        String getLevelName();
+    }
+
+    /**
+     * Batch display-name components for the given package sessions. LEFT JOINs (vs. the INNER JOINs
+     * of findPackageSessionDetailsByIds) so a batch whose level/package row is missing is still
+     * returned rather than silently dropped — the caller composes a name from whatever is present.
+     * Includes level_id so callers can detect the canonical DEFAULT level by id, not by display name.
+     */
+    @Query(value = """
+            SELECT ps.id AS packageSessionId,
+                   p.package_name AS packageName,
+                   l.id AS levelId,
+                   l.level_name AS levelName
+            FROM package_session ps
+            LEFT JOIN package p ON ps.package_id = p.id
+            LEFT JOIN level l ON ps.level_id = l.id
+            WHERE ps.id IN (:ids)
+            """, nativeQuery = true)
+    List<BatchNameProjection> findBatchNameComponentsByIds(@Param("ids") List<String> ids);
+
+    /**
+     * Search ALL of an institute's batches by name for the chat "start a new batch" picker (admin).
+     * Optional name match on package OR level name. Limited via Pageable. (Split from the id-scoped
+     * variant rather than using a nullable IN list, which is unreliable to bind on Hibernate 6.)
+     */
+    @Query("""
+            SELECT DISTINCT ps.id AS packageSessionId,
+                   p.packageName AS packageName,
+                   l.id          AS levelId,
+                   l.levelName   AS levelName
+            FROM PackageSession ps
+            JOIN ps.packageEntity p
+            JOIN PackageInstitute pi ON pi.packageEntity.id = p.id
+            LEFT JOIN ps.level l
+            WHERE pi.instituteEntity.id = :instituteId
+              AND ps.status IN :statuses
+              AND (:nameQuery IS NULL
+                   OR LOWER(p.packageName) LIKE LOWER(CONCAT('%', :nameQuery, '%'))
+                   OR LOWER(l.levelName) LIKE LOWER(CONCAT('%', :nameQuery, '%')))
+            ORDER BY p.packageName ASC
+            """)
+    List<BatchNameProjection> searchBatchNameComponents(
+            @Param("instituteId") String instituteId,
+            @Param("nameQuery") String nameQuery,
+            @Param("statuses") List<String> statuses,
+            Pageable pageable);
+
+    /** Same as {@link #searchBatchNameComponents} but scoped to a set of package-session ids (teacher). */
+    @Query("""
+            SELECT DISTINCT ps.id AS packageSessionId,
+                   p.packageName AS packageName,
+                   l.id          AS levelId,
+                   l.levelName   AS levelName
+            FROM PackageSession ps
+            JOIN ps.packageEntity p
+            JOIN PackageInstitute pi ON pi.packageEntity.id = p.id
+            LEFT JOIN ps.level l
+            WHERE pi.instituteEntity.id = :instituteId
+              AND ps.status IN :statuses
+              AND ps.id IN :packageSessionIds
+              AND (:nameQuery IS NULL
+                   OR LOWER(p.packageName) LIKE LOWER(CONCAT('%', :nameQuery, '%'))
+                   OR LOWER(l.levelName) LIKE LOWER(CONCAT('%', :nameQuery, '%')))
+            ORDER BY p.packageName ASC
+            """)
+    List<BatchNameProjection> searchBatchNameComponentsScoped(
+            @Param("instituteId") String instituteId,
+            @Param("nameQuery") String nameQuery,
+            @Param("packageSessionIds") List<String> packageSessionIds,
+            @Param("statuses") List<String> statuses,
+            Pageable pageable);
+
     /**
      * Find child package sessions (subgroups) for a given parent batch.
      * Used when syncing subgroups on edit course.

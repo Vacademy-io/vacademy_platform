@@ -12,6 +12,7 @@ import type {
     BulkUploadContext,
     BulkUploadOptions,
     CourseSection,
+    CsvChapterIndex,
     ExistingSnapshot,
     ItemStatus,
     NodeMapping,
@@ -19,6 +20,7 @@ import type {
     ParseResult,
     UploadMode,
 } from './types';
+import type { CsvResolveResult, CsvRowResult } from './csv-manifest';
 
 export type WizardPhase = 'select' | 'parsing' | 'preview' | 'committing' | 'results';
 
@@ -47,6 +49,9 @@ interface BulkContentUploadingStore {
     courseSections: Record<string, CourseSection>;
     sectionSnapshots: Record<string, ExistingSnapshot>;
     sectionDefaults: Record<string, SectionDefaults>;
+    // ----- csv-manifest mode -----
+    csvRows: CsvRowResult[];
+    chapterIndexBySection: Record<string, CsvChapterIndex>;
 
     setPhase: (phase: WizardPhase) => void;
     setMode: (mode: UploadMode) => void;
@@ -70,6 +75,11 @@ interface BulkContentUploadingStore {
     loadSectionParse: (sectionId: string, result: ParseResult, snapshot: ExistingSnapshot) => void;
     clearSectionParse: (sectionId: string) => void;
     setSectionDefaults: (sectionId: string, defaults: SectionDefaults) => void;
+    // ----- csv-manifest action -----
+    loadCsvResolve: (
+        result: CsvResolveResult,
+        zipMeta: { zipFileName: string; zipTotalBytes: number; fingerprint: string }
+    ) => void;
     resetForNewZip: () => void;
     resetStore: () => void;
 }
@@ -91,6 +101,8 @@ const initialState = {
     courseSections: {},
     sectionSnapshots: {},
     sectionDefaults: {},
+    csvRows: [],
+    chapterIndexBySection: {},
 };
 
 export const useBulkContentUploadingStore = create<BulkContentUploadingStore>((set) => ({
@@ -227,6 +239,22 @@ export const useBulkContentUploadingStore = create<BulkContentUploadingStore>((s
             sectionDefaults: { ...state.sectionDefaults, [sectionId]: defaults },
         })),
 
+    loadCsvResolve: (result, zipMeta) =>
+        set({
+            nodes: result.nodes,
+            items: result.items,
+            courseSections: Object.fromEntries(result.sections.map((s) => [s.id, s])),
+            sectionSnapshots: result.snapshots,
+            chapterIndexBySection: result.chapterIndexBySection,
+            csvRows: result.rows,
+            issues: result.issues,
+            fatalErrors: [],
+            zipFileName: zipMeta.zipFileName,
+            zipTotalBytes: zipMeta.zipTotalBytes,
+            fingerprint: zipMeta.fingerprint,
+            phase: 'preview',
+        }),
+
     resetForNewZip: () =>
         set((state) => ({
             ...initialState,
@@ -246,6 +274,19 @@ export const selectProgress = (items: Record<string, BulkItem>) => {
     const done = countable.filter((i) => i.status === 'done').length;
     const failed = countable.filter((i) => i.status === 'failed' || i.status === 'blocked').length;
     return { total: countable.length, done, failed };
+};
+
+/** CSV mode Confirm gate: not over caps + at least one valid (committable) row. */
+export const selectCsvReadiness = (state: {
+    items: Record<string, BulkItem>;
+    fatalErrors: string[];
+}): { ready: boolean; reason?: string } => {
+    if (state.fatalErrors.length > 0) return { ready: false, reason: state.fatalErrors[0] };
+    const validCount = Object.keys(state.items).length;
+    if (validCount === 0) {
+        return { ready: false, reason: 'No valid rows to upload — fix the errors below.' };
+    }
+    return { ready: true };
 };
 
 /**

@@ -103,6 +103,34 @@ public class CacheConfig {
                         .recordStats()
                         .build());
 
+        // Chat display-title resolution. Batch names rarely change (5m); institute names almost
+        // never (30m). These MUST be registered or the @Cacheable on AdminCoreServiceClient
+        // .getBatchNames/.getInstituteName throws "cannot find cache" in the proxy.
+        CaffeineCache batchNamesByPackageSessions = new CaffeineCache(
+                "batchNamesByPackageSessions",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(1000)
+                        .recordStats()
+                        .build());
+
+        CaffeineCache instituteNameById = new CaffeineCache(
+                "instituteNameById",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(30, TimeUnit.MINUTES)
+                        .maximumSize(1000)
+                        .recordStats()
+                        .build());
+
+        // Teacher -> mapped batch ids, consulted on every teacher chat list/search load.
+        CaffeineCache facultyPackageSessions = new CaffeineCache(
+                "facultyPackageSessions",
+                Caffeine.newBuilder()
+                        .expireAfterWrite(5, TimeUnit.MINUTES)
+                        .maximumSize(2000)
+                        .recordStats()
+                        .build());
+
         cacheManager.setCaches(java.util.List.of(
                 usersByRole,
                 usersById,
@@ -113,7 +141,10 @@ public class CacheConfig {
                 outgoingTemplates,
                 dailyParticipation,
                 engagementLeaderboard,
-                completionCohort));
+                completionCohort,
+                batchNamesByPackageSessions,
+                instituteNameById,
+                facultyPackageSessions));
 
         return cacheManager;
     }

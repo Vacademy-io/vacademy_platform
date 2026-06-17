@@ -1330,7 +1330,7 @@ const AssignmentSlide = ({
             richTextProcessed.cleanHtml.replace(/<[^>]+>/g, "").trim() !== "" && (
               <HtmlWithKatex
                 html={richTextProcessed.cleanHtml}
-                className="prose max-w-none text-gray-700 text-sm sm:text-base"
+                className="richtext-content max-w-none text-gray-700 text-sm sm:text-base"
                 onPreviewPdf={setPdfPreview}
               />
             )}

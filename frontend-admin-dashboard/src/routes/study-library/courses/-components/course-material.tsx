@@ -227,18 +227,21 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     // Role Display Settings (course list tabs)
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        const fetchSettings = async () => {
-            const roleKey = getActiveRoleDisplaySettingsKey();
-            const cached = getDisplaySettingsFromCache(roleKey);
-            if (cached) {
-                setRoleDisplay(cached);
-            } else {
-                getDisplaySettings(roleKey)
-                    .then(setRoleDisplay)
-                    .catch(() => setRoleDisplay(null));
-            }
-        };
-        fetchSettings();
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        // Seed from cache for an instant first paint...
+        const cached = getDisplaySettingsFromCache(roleKey);
+        if (cached) {
+            setRoleDisplay(cached);
+        }
+        // ...but always force-refresh on mount so admin policy changes (e.g.
+        // showCreateCourse / showCreateCourseWithAI) take effect on the next page
+        // load instead of being masked by the 24h localStorage cache. Mirrors the
+        // course-details page, which force-refreshes for the same reason.
+        getDisplaySettings(roleKey, true)
+            .then(setRoleDisplay)
+            .catch(() => {
+                if (!cached) setRoleDisplay(null);
+            });
     }, [roles]);
 
     // Handle tab change with URL sync
@@ -740,6 +743,14 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     const canCreateCourse =
         !isPermissionGated
         || hasFacultyPermission('CREATE_COURSE');
+    // Per-role override (Display Settings → Course Creation → "Allow creating
+    // courses"). It is AUTHORITATIVE when set: `true` always shows the button,
+    // `false` always hides it (even for admins / CREATE_COURSE holders). Only
+    // when the role never configured it (undefined) do we fall back to the
+    // default permission gating above.
+    const createCourseOverride = roleDisplay?.courseCreation?.showCreateCourse;
+    const canShowCreateCourse =
+        typeof createCourseOverride === 'boolean' ? createCourseOverride : canCreateCourse;
 
     if (availableTabs.length === 0) {
         return (
@@ -751,8 +762,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     Try adding a new {getTerminology(ContentTerms.Course, SystemTerms.Course)}.
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
-                    {canCreateCourse && <AddCourseButton />}
-                    {canCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
+                    {canShowCreateCourse && <AddCourseButton />}
+                    {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton
                             type="button"
                             scale="large"
@@ -782,8 +793,8 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     </div>
                 </div>
                 <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-                    {canCreateCourse && <AddCourseButton />}
-                    {canCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
+                    {canShowCreateCourse && <AddCourseButton />}
+                    {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton
                             type="button"
                             scale="large"

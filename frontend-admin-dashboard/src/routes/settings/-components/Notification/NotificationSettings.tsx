@@ -65,13 +65,22 @@ function purposeLabelFor(code: string): string {
 import type {
     NotificationSettings,
     NotificationSettingsResponse,
+    ChatSettings,
+    ChatDirectRole,
+    ChatModerationAction,
 } from '@/services/notification-settings';
 import {
     createUpsertRequest,
     getNotificationDefaultTemplate,
     getNotificationSettings,
     upsertNotificationSettings,
+    mergeChatSettings,
 } from '@/services/notification-settings';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     getEmailConfigurations,
     createEmailConfiguration,
@@ -363,6 +372,14 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Chat */}
+            <ChatSection
+                chat={mergeChatSettings(settings.chat)}
+                onChange={(updater) =>
+                    update('chat', (prev) => updater(mergeChatSettings(prev)))
+                }
+            />
 
             {/* System Alerts */}
             <Card className="rounded-lg border-gray-200">
@@ -773,6 +790,533 @@ function ToggleRow({
         <div className="flex items-center justify-between rounded-md border p-3">
             <Label>{label}</Label>
             <Switch checked={checked} onCheckedChange={onChange} />
+        </div>
+    );
+}
+
+function NumberRow({
+    label,
+    hint,
+    value,
+    onChange,
+}: {
+    label: string;
+    hint?: string;
+    value: number;
+    onChange: (value: number) => void;
+}) {
+    return (
+        <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+                <Label>{label}</Label>
+                {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+            </div>
+            <Input
+                type="number"
+                className="w-28"
+                value={value}
+                onChange={(e) => onChange(Number(e.target.value || 0))}
+            />
+        </div>
+    );
+}
+
+const CHAT_DIRECT_ROLES: ChatDirectRole[] = ['student', 'teacher', 'admin'];
+
+// Maps the API role code (kept unchanged) to its configured singular/plural term.
+const CHAT_ROLE_TERMS: Record<ChatDirectRole, { term: RoleTerms; system: SystemTerms }> = {
+    student: { term: RoleTerms.Learner, system: SystemTerms.Learner },
+    teacher: { term: RoleTerms.Teacher, system: SystemTerms.Teacher },
+    admin: { term: RoleTerms.Admin, system: SystemTerms.Admin },
+};
+
+const chatRoleLabel = (role: ChatDirectRole): string =>
+    getTerminology(CHAT_ROLE_TERMS[role].term, CHAT_ROLE_TERMS[role].system);
+
+const chatRoleLabelPlural = (role: ChatDirectRole): string =>
+    getTerminologyPlural(CHAT_ROLE_TERMS[role].term, CHAT_ROLE_TERMS[role].system);
+
+function ChatSection({
+    chat,
+    onChange,
+}: {
+    chat: ChatSettings;
+    onChange: (updater: (prev: ChatSettings) => ChatSettings) => void;
+}) {
+    const batchLabel = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
+    const rules = chat.community.rules;
+
+    return (
+        <Card className="rounded-lg border-gray-200">
+            <CardHeader className="py-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                    <Bell className="size-5" /> In-App Messages
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                {/* Master toggle */}
+                <ToggleRow
+                    label="In-App Messages enabled"
+                    checked={chat.enabled}
+                    onChange={(checked) => onChange((c) => ({ ...c, enabled: checked }))}
+                />
+
+                {/* Batch groups */}
+                <div className="space-y-2">
+                    <div className="text-sm font-medium">{batchLabel} groups</div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('student')} can post`}
+                            checked={chat.batch_group.students_can_post}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    batch_group: {
+                                        ...c.batch_group,
+                                        students_can_post: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('teacher')} can post`}
+                            checked={chat.batch_group.teachers_can_post}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    batch_group: {
+                                        ...c.batch_group,
+                                        teachers_can_post: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </div>
+
+                {/* Community */}
+                <div className="space-y-2">
+                    <div className="text-sm font-medium">Community</div>
+                    <ToggleRow
+                        label="Community channel enabled"
+                        checked={chat.community.enabled}
+                        onChange={(checked) =>
+                            onChange((c) => ({
+                                ...c,
+                                community: {
+                                    ...c.community,
+                                    enabled: checked,
+                                },
+                            }))
+                        }
+                    />
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('student')} can post`}
+                            checked={chat.community.students_can_post}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        students_can_post: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('teacher')} can post`}
+                            checked={chat.community.teachers_can_post}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        teachers_can_post: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label={`${chatRoleLabelPlural('admin')} can post`}
+                            checked={chat.community.admins_can_post}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        admins_can_post: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </div>
+
+                {/* Community Rules */}
+                <div className="space-y-4 rounded-md border p-4">
+                    <div className="text-sm font-medium">Community rules</div>
+
+                    <div className="space-y-2">
+                        <Label>Guidelines title</Label>
+                        <Input
+                            value={rules.guidelines.title}
+                            onChange={(e) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            guidelines: {
+                                                ...c.community.rules.guidelines,
+                                                title: e.target.value,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                            placeholder="e.g., Community Guidelines"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Guideline items</Label>
+                        <StringListEditor
+                            value={rules.guidelines.items}
+                            placeholder="Add a guideline and press Enter"
+                            onChange={(items) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            guidelines: {
+                                                ...c.community.rules.guidelines,
+                                                items,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+
+                    <ToggleRow
+                        label="Acknowledgement required"
+                        checked={rules.acknowledgement_required}
+                        onChange={(checked) =>
+                            onChange((c) => ({
+                                ...c,
+                                community: {
+                                    ...c.community,
+                                    rules: {
+                                        ...c.community.rules,
+                                        acknowledgement_required: checked,
+                                    },
+                                },
+                            }))
+                        }
+                    />
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <NumberRow
+                            label="Slow mode (seconds)"
+                            hint="Delay between posts"
+                            value={rules.posting.slow_mode_seconds}
+                            onChange={(value) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            posting: {
+                                                ...c.community.rules.posting,
+                                                slow_mode_seconds: value,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                        <NumberRow
+                            label="New member read-only (minutes)"
+                            hint="Mute new members initially"
+                            value={rules.posting.new_member_readonly_minutes}
+                            onChange={(value) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            posting: {
+                                                ...c.community.rules.posting,
+                                                new_member_readonly_minutes: value,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label="Allow links"
+                            checked={rules.posting.allow_links}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            posting: {
+                                                ...c.community.rules.posting,
+                                                allow_links: checked,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label="Allow attachments"
+                            checked={rules.posting.allow_attachments}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            posting: {
+                                                ...c.community.rules.posting,
+                                                allow_attachments: checked,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Banned keywords</Label>
+                        <StringListEditor
+                            value={rules.auto_moderation.banned_keywords}
+                            placeholder="Add a keyword and press Enter"
+                            onChange={(keywords) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            auto_moderation: {
+                                                ...c.community.rules.auto_moderation,
+                                                banned_keywords: keywords,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Auto-moderation action</Label>
+                        <Select
+                            value={rules.auto_moderation.action}
+                            onValueChange={(value) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    community: {
+                                        ...c.community,
+                                        rules: {
+                                            ...c.community.rules,
+                                            auto_moderation: {
+                                                ...c.community.rules.auto_moderation,
+                                                action: value as ChatModerationAction,
+                                            },
+                                        },
+                                    },
+                                }))
+                            }
+                        >
+                            <SelectTrigger className="w-48">
+                                <SelectValue placeholder="Select action" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="BLOCK">Block</SelectItem>
+                                <SelectItem value="FLAG">Flag</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                {/* Direct messages */}
+                <div className="space-y-3">
+                    <div className="text-sm font-medium">Direct messages</div>
+                    <ToggleRow
+                        label="Direct messages enabled"
+                        checked={chat.direct.enabled}
+                        onChange={(checked) =>
+                            onChange((c) => ({
+                                ...c,
+                                direct: { ...c.direct, enabled: checked },
+                            }))
+                        }
+                    />
+                    <div className="overflow-x-auto rounded-md border">
+                        <table className="w-full border-collapse text-sm">
+                            <thead>
+                                <tr>
+                                    <th className="p-3 text-left font-medium text-muted-foreground">
+                                        Sender \ Can message
+                                    </th>
+                                    {CHAT_DIRECT_ROLES.map((target) => (
+                                        <th
+                                            key={target}
+                                            className="p-3 text-center font-medium text-muted-foreground"
+                                        >
+                                            {chatRoleLabel(target)}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {CHAT_DIRECT_ROLES.map((sender) => (
+                                    <tr key={sender} className="border-t">
+                                        <td className="p-3 font-medium">
+                                            {chatRoleLabel(sender)}
+                                        </td>
+                                        {CHAT_DIRECT_ROLES.map((target) => (
+                                            <td key={target} className="p-3 text-center">
+                                                <div className="flex justify-center">
+                                                    <Switch
+                                                        checked={chat.direct.matrix[sender][target]}
+                                                        onCheckedChange={(checked) =>
+                                                            onChange((c) => ({
+                                                                ...c,
+                                                                direct: {
+                                                                    ...c.direct,
+                                                                    matrix: {
+                                                                        ...c.direct.matrix,
+                                                                        [sender]: {
+                                                                            ...c.direct.matrix[
+                                                                                sender
+                                                                            ],
+                                                                            [target]: checked,
+                                                                        },
+                                                                    },
+                                                                },
+                                                            }))
+                                                        }
+                                                    />
+                                                </div>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Attachments */}
+                <div className="space-y-2">
+                    <div className="text-sm font-medium">Attachments</div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <ToggleRow
+                            label="Images enabled"
+                            checked={chat.attachments.images_enabled}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    attachments: {
+                                        ...c.attachments,
+                                        images_enabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <ToggleRow
+                            label="Files enabled"
+                            checked={chat.attachments.files_enabled}
+                            onChange={(checked) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    attachments: {
+                                        ...c.attachments,
+                                        files_enabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                        <NumberRow
+                            label="Max file size (MB)"
+                            hint="Upload limit"
+                            value={chat.attachments.max_file_size_mb}
+                            onChange={(value) =>
+                                onChange((c) => ({
+                                    ...c,
+                                    attachments: {
+                                        ...c.attachments,
+                                        max_file_size_mb: value,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function StringListEditor({
+    value,
+    onChange,
+    placeholder,
+}: {
+    value: string[];
+    onChange: (items: string[]) => void;
+    placeholder?: string;
+}) {
+    const [input, setInput] = useState('');
+    const addItem = () => {
+        const v = input.trim();
+        if (!v) return;
+        if (value.includes(v)) return;
+        onChange([...value, v]);
+        setInput('');
+    };
+    const removeItem = (item: string) => {
+        onChange(value.filter((t) => t !== item));
+    };
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            {value.map((item) => (
+                <Badge key={item} variant="secondary" className="flex items-center gap-2">
+                    {item}
+                    <button type="button" className="text-xs" onClick={() => removeItem(item)}>
+                        ×
+                    </button>
+                </Badge>
+            ))}
+            <Input
+                className="w-64"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addItem();
+                    }
+                }}
+                placeholder={placeholder ?? 'Add and press Enter'}
+            />
         </div>
     );
 }

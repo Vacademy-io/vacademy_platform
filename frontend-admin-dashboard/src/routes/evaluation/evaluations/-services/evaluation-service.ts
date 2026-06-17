@@ -1,4 +1,4 @@
-import { SUBMIT_MARKS } from '@/constants/urls';
+import { SUBMIT_MARKS, GET_RELEASE_STUDENT_RESULT } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 
 interface SubimtRequest {
@@ -10,6 +10,7 @@ interface SubimtRequest {
         question_id: string;
         status: string;
         marks: number;
+        evaluator_feedback?: string;
     }[];
 }
 
@@ -28,6 +29,26 @@ export const submitEvlauationMarks = async (
             attemptId,
         },
         data,
+    });
+    return response?.data;
+};
+
+// Release the result for a single attempt so the learner sees it immediately
+// after the admin submits a manual evaluation.
+export const releaseEvaluationResult = async (
+    assessmentId: string,
+    instituteId: string | undefined,
+    attemptId: string
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${GET_RELEASE_STUDENT_RESULT}`,
+        params: {
+            assessmentId,
+            instituteId,
+            methodType: 'ENTIRE_ASSESSMENT_PARTICIPANTS',
+        },
+        data: { attempt_ids: [attemptId] },
     });
     return response?.data;
 };

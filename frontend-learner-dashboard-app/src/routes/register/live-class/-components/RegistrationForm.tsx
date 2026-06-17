@@ -1,6 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import PhoneInput from "react-phone-input-2";
-import "react-phone-input-2/lib/bootstrap.css";
+import PhoneInputField from "@/components/design-system/phone-input-field";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FieldErrors, FormProvider, useForm } from "react-hook-form";
 import SelectField from "@/components/design-system/select-field";
@@ -9,14 +8,15 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
 import { generateZodSchema } from "../-types/registrationFormSchema";
 import { RegistrationFormValues, CustomField } from "../-types/type";
 import { useEffect, useMemo } from "react";
-import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
-import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import {
+  getFieldRenderType,
+  FieldRenderType,
+} from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
   Card,
   CardContent,
@@ -35,6 +35,26 @@ interface RegistrationFormProps {
   onEmailChange: (email: string) => void;
 }
 
+/**
+ * Identify the email field by its render type (and name as a fallback) rather
+ * than a hardcoded `fieldKey === "email"`. The email custom field's key varies
+ * per institute (name/UUID-derived), so keying off the literal string meant the
+ * verified email never prefilled and the field stayed editable.
+ */
+const isEmailField = (field: CustomField): boolean => {
+  if (getFieldRenderType(field.fieldKey, field.fieldType) === FieldRenderType.EMAIL) {
+    return true;
+  }
+  const key = (field.fieldKey || "").toLowerCase();
+  const label = (field.fieldName || "").toLowerCase();
+  return (
+    key === "email" ||
+    key.includes("mail") ||
+    label.includes("email") ||
+    label.includes("e-mail")
+  );
+};
+
 export default function RegistrationForm({
   customFields,
   verifiedEmail,
@@ -44,16 +64,17 @@ export default function RegistrationForm({
   onEmailChange,
 }: RegistrationFormProps) {
   const schema = generateZodSchema(customFields);
-  // Default selected country + picker order from the institute's preferred countries.
-  const { defaultCountry, preferredCountries } = useMemo(
-    () => getPreferredPhoneCountries(),
-    [],
+  // Actual keys of every email field in this form (keys vary per institute).
+  const emailFieldKeys = useMemo(
+    () => (customFields || []).filter(isEmailField).map((f) => f.fieldKey),
+    [customFields],
   );
   const form = useForm({
     resolver: zodResolver(schema),
-    defaultValues: {
-      email: verifiedEmail,
-    },
+    defaultValues: emailFieldKeys.reduce<Record<string, string>>(
+      (acc, key) => ({ ...acc, [key]: verifiedEmail }),
+      {},
+    ),
   });
 
   const {
@@ -63,9 +84,11 @@ export default function RegistrationForm({
 
   useEffect(() => {
     if (verifiedEmail) {
-      form.setValue("email", verifiedEmail);
+      emailFieldKeys.forEach((key) => {
+        form.setValue(key as never, verifiedEmail as never);
+      });
     }
-  }, [verifiedEmail, form]);
+  }, [verifiedEmail, emailFieldKeys, form]);
 
   return (
     <Card className="w-full border-primary-100/60 shadow-lg">
@@ -92,57 +115,32 @@ export default function RegistrationForm({
                   responseField.fieldKey,
                   responseField.fieldType
                 );
+                // Only show the email picker when there's an actual choice
+                // (a returning user with 2+ verified emails). For a single
+                // verified email, render it as a clean prefilled/locked field
+                // instead of a pointless one-option dropdown.
                 const isEmailWithVerifiedList =
-                  responseField.fieldKey === "email" &&
-                  verifiedEmails.length > 0;
-                const isMobileNumber =
-                  responseField.fieldKey === "mobile_number";
+                  isEmailField(responseField) && verifiedEmails.length > 1;
+                // Detect phone fields by render type, not a literal
+                // "mobile_number" key (keys are institute-suffixed), so every
+                // phone field renders with the shared picker and is validated.
+                const isPhoneField = renderType === FieldRenderType.PHONE;
 
                 return (
                   <div key={responseField.id} className="flex flex-col gap-4">
-                    {isMobileNumber ? (
-                      <FormField
+                    {isPhoneField ? (
+                      // Reuse the shared design-system phone field (same as the
+                      // enroll-by-invite flow) so the country picker, styling and
+                      // E.164 formatting stay consistent across forms. Validation
+                      // is handled by this form's zod schema, so opt out of the
+                      // component's own country-aware rule.
+                      <PhoneInputField
+                        label={responseField.fieldName}
+                        name={responseField.fieldKey}
+                        placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
                         control={form.control}
-                        name={responseField.fieldKey as never}
-                        render={({ field }) => (
-                          <FormItem className="!w-full">
-                            <FormLabel className="text-sm font-medium text-gray-700">
-                              {responseField.fieldName}
-                              {responseField.mandatory && (
-                                <span className="text-red-500 ml-0.5">*</span>
-                              )}
-                            </FormLabel>
-                            <FormControl>
-                              <PhoneInput
-                                {...field}
-                                country={defaultCountry}
-                                enableSearch={true}
-                                placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
-                                onChange={(val) => {
-                                  const formattedValue = val.startsWith("+")
-                                    ? val
-                                    : `+${val}`;
-                                  field.onChange(formattedValue);
-                                }}
-                                inputClass="!w-full h-11 !rounded-lg !border-gray-200 !text-sm focus:!border-primary-300 focus:!ring-primary-100"
-                                buttonClass="!rounded-l-lg !border-gray-200 !h-11"
-                                disabled={false}
-                                value={field.value}
-                                countryCodeEditable={false}
-                                enableAreaCodes={true}
-                                disableCountryGuess={false}
-                                preferredCountries={preferredCountries}
-                                inputProps={{
-                                  // Cap input at the E.164 max (+ and up to 15
-                                  // digits). Country-aware length/format is
-                                  // enforced by the zod schema, not here.
-                                  maxLength: 16,
-                                }}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
+                        required={responseField.mandatory}
+                        validate={false}
                       />
                     ) : isEmailWithVerifiedList ? (
                       <SelectField
@@ -156,7 +154,7 @@ export default function RegistrationForm({
                         control={form.control}
                         className="mt-2 w-full font-thin"
                         onSelect={(value) => {
-                          form.setValue("email", value);
+                          form.setValue(responseField.fieldKey as never, value as never);
                           onEmailChange(value);
                         }}
                       />
@@ -166,8 +164,7 @@ export default function RegistrationForm({
                         name={responseField.fieldKey as never}
                         render={({ field }) => {
                           const isVerifiedEmailField =
-                            responseField.fieldKey === "email" &&
-                            verifiedEmail !== "";
+                            isEmailField(responseField) && verifiedEmail !== "";
                           return (
                             <FormItem>
                               <FormLabel className="text-sm font-medium text-gray-700">

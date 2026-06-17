@@ -60,7 +60,12 @@ export const stepFourSchema = z.object({
 
 // Step Five Schema - Credentials
 export const stepFiveSchema = z.object({
-    username: z.string().nonempty('Username is required'),
+    username: z
+        .string()
+        .nonempty('Username is required')
+        .refine((value) => !/\s/.test(value), {
+            message: 'Username cannot contain spaces',
+        }),
     password: z.string().min(4, {
         message: 'Password must be at least 4 characters',
     }),

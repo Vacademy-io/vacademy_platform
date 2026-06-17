@@ -92,53 +92,168 @@ public class AdminCoreServiceClient {
         }
 
         try {
-            // For scalability, fetch paginated results for each package session
-            Set<String> allUserIds = new HashSet<>();
-            int pageSize = 1000; // Fetch 1000 users at a time
+            // admin-core exposes POST /students/by-package-sessions (plural) taking the id list in the
+            // body and returning all student user-ids — mirror the faculty call. (The old singular GET
+            // /students/by-package-session endpoint does not exist, so it 4xx'd → empty → students were
+            // never resolved into batch chats.)
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-sessions";
 
-            for (String packageSessionId : packageSessionIds) {
-                boolean hasMore = true;
-                int pageNumber = 0;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-                while (hasMore) {
-                    String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-session" +
-                            "?packageSessionId=" + packageSessionId +
-                            "&pageNumber=" + pageNumber +
-                            "&pageSize=" + pageSize;
+            Map<String, Object> requestBody = Map.of("packageSessionIds", packageSessionIds);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                    HttpHeaders headers = new HttpHeaders();
-                    headers.setContentType(MediaType.APPLICATION_JSON);
-                    HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<List<String>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<List<String>>() {}
+            );
 
-                    ResponseEntity<List<String>> response = restTemplate.exchange(
-                            url,
-                            HttpMethod.GET,
-                            entity,
-                            new ParameterizedTypeReference<List<String>>() {}
-                    );
-
-                    List<String> userIds = response.getBody();
-                    if (userIds != null && !userIds.isEmpty()) {
-                        allUserIds.addAll(userIds);
-                        log.debug("Fetched page {}: {} students for package session {}", pageNumber, userIds.size(), packageSessionId);
-
-                        // If we got a full page, there might be more
-                        hasMore = userIds.size() == pageSize;
-                    } else {
-                        hasMore = false;
-                    }
-
-                    pageNumber++;
-                }
+            List<String> userIds = response.getBody();
+            if (userIds == null) {
+                userIds = new ArrayList<>();
             }
 
-            List<String> result = new ArrayList<>(allUserIds);
-            log.debug("Found {} unique students across {} package sessions", result.size(), packageSessionIds.size());
-            return result;
+            log.debug("Found {} students across {} package sessions", userIds.size(), packageSessionIds.size());
+            return userIds;
 
         } catch (Exception e) {
             log.error("Error calling admin-core service for students by package sessions", e);
             return new ArrayList<>(); // Return empty list on error
+        }
+    }
+
+    /**
+     * Resolve display names for package sessions (batches) — packageSessionId -> "{Level} {Course}".
+     * Used to title batch-group chats with the batch's real name instead of a generic "Group" label.
+     * Ids with no resolvable name are simply absent from the map. Never throws — returns an empty map
+     * on any failure so the caller falls back to its generic label.
+     */
+    @Cacheable(value = "batchNamesByPackageSessions", key = "#packageSessionIds.hashCode()")
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public Map<String, String> getBatchNames(List<String> packageSessionIds) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/package-sessions/names";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = Map.of("packageSessionIds", packageSessionIds);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<Map<String, String>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<Map<String, String>>() {}
+            );
+
+            Map<String, String> names = response.getBody();
+            return names != null ? names : new HashMap<>();
+        } catch (Exception e) {
+            log.error("Error calling admin-core service for batch names by package sessions", e);
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * Forward faculty mapping: package-session (batch) ids a faculty user is mapped to in an institute.
+     * Used to scope a teacher's chat batch list/search. Never throws — empty list on failure.
+     */
+    @Cacheable(value = "facultyPackageSessions", key = "#userId + '_' + #instituteId",
+            unless = "#result == null || #result.isEmpty()")
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public List<String> getFacultyPackageSessions(String userId, String instituteId) {
+        if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/faculty/package-sessions";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("userId", userId);
+            requestBody.put("instituteId", instituteId);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<List<String>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, new ParameterizedTypeReference<List<String>>() {});
+            List<String> ids = response.getBody();
+            return ids != null ? ids : new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Error resolving faculty package sessions for user {} institute {}", userId, instituteId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Search an institute's batches by name -> list of {packageSessionId, name}. Pass packageSessionIds
+     * to scope to a teacher's mapped batches (null = all institute batches). Never throws.
+     */
+    public List<Map<String, String>> searchBatches(String instituteId, String nameQuery,
+                                                   List<String> packageSessionIds, int limit) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/package-sessions/search";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("instituteId", instituteId);
+            if (nameQuery != null && !nameQuery.isBlank()) {
+                requestBody.put("nameQuery", nameQuery.trim());
+            }
+            if (packageSessionIds != null) {
+                requestBody.put("packageSessionIds", packageSessionIds);
+            }
+            requestBody.put("limit", limit);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            ResponseEntity<List<Map<String, String>>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, new ParameterizedTypeReference<List<Map<String, String>>>() {});
+            List<Map<String, String>> batches = response.getBody();
+            return batches != null ? batches : new ArrayList<>();
+        } catch (Exception e) {
+            log.error("Error searching batches for institute {}", instituteId, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Resolve an institute's display name by id via the internal HMAC endpoint. Cached (names are
+     * stable). Returns null on any failure so the caller can fall back. The internal DTO is camelCase
+     * by default; we read both spellings to be resilient to a future snake_case switch.
+     */
+    @Cacheable(value = "instituteNameById", key = "#instituteId")
+    public String getInstituteName(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return null;
+        }
+        try {
+            String route = "/admin-core-service/internal/institute/v1/" + instituteId;
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.GET.name(), adminCoreServiceBaseUrl, route, null);
+
+            if (response == null || response.getBody() == null || response.getBody().isBlank()) {
+                return null;
+            }
+            Map<String, Object> body = new ObjectMapper()
+                    .readValue(response.getBody(), new TypeReference<Map<String, Object>>() {});
+            Object name = body.get("instituteName");
+            if (name == null) {
+                name = body.get("institute_name");
+            }
+            return name != null && !name.toString().isBlank() ? name.toString() : null;
+        } catch (Exception e) {
+            log.warn("Failed to resolve institute name for {}: {}", instituteId, e.getMessage());
+            return null;
         }
     }
 

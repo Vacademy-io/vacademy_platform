@@ -16,6 +16,9 @@ import java.util.Map;
 @Builder
 public class StudentReportOverallDetailDto {
     private String evaluatedFileId;
+    // The learner's own submitted answer file (from the attempt's attemptData),
+    // so the report can offer "view submitted" alongside "view evaluated".
+    private String responseFileId;
     private ParticipantsQuestionOverallDetailDto questionOverallDetailDto;
     private Map<String, List<StudentReportAnswerReviewDto>> allSections;
 }

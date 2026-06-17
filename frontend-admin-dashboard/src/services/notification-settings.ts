@@ -69,6 +69,7 @@ export type NotificationSettings = {
         retention_days: number;
         disabled_modes?: string[] | null;
     };
+    chat?: ChatSettings;
     emails?: Array<{
         id: string;
         email: string;
@@ -76,6 +77,170 @@ export type NotificationSettings = {
     }>;
     firebase?: FirebaseSettings;
 };
+
+// Chat settings block, persisted under institute-settings `settings.chat`.
+// Inner keys are snake_case to match the backend JSON shape EXACTLY.
+export type ChatModerationAction = 'BLOCK' | 'FLAG';
+
+export type ChatDirectRole = 'student' | 'teacher' | 'admin';
+
+export type ChatDirectMatrix = Record<ChatDirectRole, Record<ChatDirectRole, boolean>>;
+
+export type ChatSettings = {
+    enabled: boolean;
+    batch_group: {
+        students_can_post: boolean;
+        teachers_can_post: boolean;
+    };
+    community: {
+        enabled: boolean;
+        students_can_post: boolean;
+        teachers_can_post: boolean;
+        admins_can_post: boolean;
+        rules: {
+            guidelines: {
+                title: string;
+                items: string[];
+            };
+            acknowledgement_required: boolean;
+            posting: {
+                slow_mode_seconds: number;
+                allow_links: boolean;
+                allow_attachments: boolean;
+                new_member_readonly_minutes: number;
+            };
+            auto_moderation: {
+                banned_keywords: string[];
+                action: ChatModerationAction;
+            };
+        };
+    };
+    direct: {
+        enabled: boolean;
+        matrix: ChatDirectMatrix;
+    };
+    attachments: {
+        images_enabled: boolean;
+        files_enabled: boolean;
+        max_file_size_mb: number;
+    };
+};
+
+// Defaults used when settings.chat is missing. Chat is OFF by default — an admin opts in here; the
+// per-channel posting defaults stay open so once enabled it "just works".
+export function getDefaultChatSettings(): ChatSettings {
+    return {
+        enabled: false,
+        batch_group: {
+            students_can_post: true,
+            teachers_can_post: true,
+        },
+        community: {
+            enabled: true,
+            students_can_post: true,
+            teachers_can_post: true,
+            admins_can_post: true,
+            rules: {
+                guidelines: {
+                    title: 'Community Guidelines',
+                    items: [],
+                },
+                acknowledgement_required: false,
+                posting: {
+                    slow_mode_seconds: 0,
+                    allow_links: true,
+                    allow_attachments: true,
+                    new_member_readonly_minutes: 0,
+                },
+                auto_moderation: {
+                    banned_keywords: [],
+                    action: 'FLAG',
+                },
+            },
+        },
+        direct: {
+            enabled: true,
+            matrix: {
+                student: { student: true, teacher: true, admin: true },
+                teacher: { student: true, teacher: true, admin: true },
+                admin: { student: true, teacher: true, admin: true },
+            },
+        },
+        attachments: {
+            images_enabled: true,
+            files_enabled: true,
+            max_file_size_mb: 25,
+        },
+    };
+}
+
+type DeepPartial<T> = T extends Array<unknown>
+    ? T
+    : T extends object
+      ? { [K in keyof T]?: DeepPartial<T[K]> }
+      : T;
+
+// Deep-merge a possibly-partial chat settings object against the full defaults so
+// every nested object / array / matrix is guaranteed present. A persisted
+// settings.chat that omits sub-objects (e.g. no `direct`, no `community.rules`)
+// would otherwise crash the Notification tab when the UI indexes into them.
+export function mergeChatSettings(partial?: DeepPartial<ChatSettings> | null): ChatSettings {
+    const d = getDefaultChatSettings();
+    const p = partial ?? {};
+    const pCommunity = p.community ?? {};
+    const pRules = pCommunity.rules ?? {};
+    const pMatrix = p.direct?.matrix ?? {};
+    const mergeMatrixRow = (role: ChatDirectRole): Record<ChatDirectRole, boolean> => ({
+        ...d.direct.matrix[role],
+        ...(pMatrix[role] ?? {}),
+    });
+    return {
+        enabled: p.enabled ?? d.enabled,
+        batch_group: {
+            ...d.batch_group,
+            ...(p.batch_group ?? {}),
+        },
+        community: {
+            enabled: pCommunity.enabled ?? d.community.enabled,
+            students_can_post: pCommunity.students_can_post ?? d.community.students_can_post,
+            teachers_can_post: pCommunity.teachers_can_post ?? d.community.teachers_can_post,
+            admins_can_post: pCommunity.admins_can_post ?? d.community.admins_can_post,
+            rules: {
+                guidelines: {
+                    title: pRules.guidelines?.title ?? d.community.rules.guidelines.title,
+                    items: pRules.guidelines?.items ?? d.community.rules.guidelines.items,
+                },
+                acknowledgement_required:
+                    pRules.acknowledgement_required ??
+                    d.community.rules.acknowledgement_required,
+                posting: {
+                    ...d.community.rules.posting,
+                    ...(pRules.posting ?? {}),
+                },
+                auto_moderation: {
+                    banned_keywords:
+                        pRules.auto_moderation?.banned_keywords ??
+                        d.community.rules.auto_moderation.banned_keywords,
+                    action:
+                        pRules.auto_moderation?.action ??
+                        d.community.rules.auto_moderation.action,
+                },
+            },
+        },
+        direct: {
+            enabled: p.direct?.enabled ?? d.direct.enabled,
+            matrix: {
+                student: mergeMatrixRow('student'),
+                teacher: mergeMatrixRow('teacher'),
+                admin: mergeMatrixRow('admin'),
+            },
+        },
+        attachments: {
+            ...d.attachments,
+            ...(p.attachments ?? {}),
+        },
+    };
+}
 
 export type FirebaseSettings = {
     enabled?: boolean;

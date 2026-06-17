@@ -37,6 +37,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 
 const ProvideReattemptComponent = ({
     student,
@@ -357,8 +358,23 @@ const StudentRevaluateForEntireAssessmentComponent = ({
 const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStudentInterface }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
-    const { assessmentId } = Route.useParams();
+    const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
+    const navigate = useNavigate();
+
+    // Open the manual PDF evaluation tool for this attempt (same flow as the
+    // assessment-slide "Evaluate" deep-link); return here after submitting.
+    const handleManualEvaluate = () => {
+        stashEvalReturnUrl(window.location.href);
+        navigate({
+            to: '/evaluation/evaluate/$assessmentId/$attemptId/$examType',
+            params: {
+                assessmentId,
+                attemptId: student.attempt_id,
+                examType: examType || 'EXAM',
+            },
+        });
+    };
 
     // Fetch assessment details to get evaluation_type
     const { data: assessmentData } = useSuspenseQuery(
@@ -423,13 +439,21 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                                     </DropdownMenuItem>
                                 </>
                             ) : (
-                                /* Show "Evaluate with AI" if evaluation_type is MANUAL */
-                                <DropdownMenuItem
-                                    className="cursor-pointer"
-                                    onClick={() => handleProvideReattempt('Evaluate with AI')}
-                                >
-                                    Evaluate with AI
-                                </DropdownMenuItem>
+                                /* For MANUAL evaluation: grade by hand in the tool, or with AI */
+                                <>
+                                    <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={handleManualEvaluate}
+                                    >
+                                        Manual
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                        className="cursor-pointer"
+                                        onClick={() => handleProvideReattempt('Evaluate with AI')}
+                                    >
+                                        Evaluate with AI
+                                    </DropdownMenuItem>
+                                </>
                             )}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>

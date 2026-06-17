@@ -852,6 +852,18 @@ export const TestReportDialog = ({
                           </div>
                         </div>
                       )}
+
+                      {/* Evaluator feedback — remark left by the teacher */}
+                      {review.evaluator_feedback && (
+                        <div className="space-y-2 pt-2 border-t border-neutral-100">
+                          <span className="text-sm font-semibold text-primary-500">
+                            Evaluator feedback
+                          </span>
+                          <div className="whitespace-pre-line rounded-lg bg-primary-50 p-4 text-sm leading-relaxed text-neutral-700">
+                            {review.evaluator_feedback}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))

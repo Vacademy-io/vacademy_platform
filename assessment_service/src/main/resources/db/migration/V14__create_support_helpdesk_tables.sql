@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS public.support_ticket (
     resolved_at            timestamp    NULL,
     last_message_at        timestamp    NULL,
     message_count          int          NOT NULL DEFAULT 0,
-    client_context         jsonb        NULL,                 -- auto-captured browser/device + server-side IP (support-only)
     created_at             timestamp    DEFAULT CURRENT_TIMESTAMP,
     updated_at             timestamp    DEFAULT CURRENT_TIMESTAMP
 );

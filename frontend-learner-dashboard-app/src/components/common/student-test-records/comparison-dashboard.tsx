@@ -9,18 +9,29 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PdfDownloadButton } from "./pdf-download-button";
+import { EvaluatedReportDialog } from "./evaluated-report-dialog";
 import { MarksDistributionChart } from "./marks-distribution-chart";
 import { SectionComparisonTable } from "./section-comparison-table";
 import { MarksStatusIndicator } from "./marks-chip";
 import { formatDuration } from "@/constants/helper";
 import { parseHtmlToString } from "@/lib/utils";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { getPublicUrl } from "@/services/upload_file";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 import {
   STUDENT_REPORT_DETAIL_URL,
   GET_QUESTIONS_OF_SECTIONS,
   GET_ASSESSMENT_DETAILS,
   LEARNER_OPTION_DISTRIBUTION_URL,
+  EXPORT_ASSESSMENT_REPORT,
 } from "@/constants/urls";
 import {
   renderStudentResponse,
@@ -35,6 +46,10 @@ import {
   Target,
   Timer,
   Trophy,
+  DotsThreeVertical,
+  DownloadSimple,
+  Eye,
+  FileArrowDown,
 } from "@phosphor-icons/react";
 import { formatDateTime, formatTime } from "@/lib/format-date";
 import { EmptyState } from "@/components/design-system/states";
@@ -79,6 +94,7 @@ interface ComparisonDashboardProps {
   assessmentId: string;
   attemptId: string;
   instituteId: string;
+  evaluationType?: string;
 }
 
 export function ComparisonDashboard({
@@ -87,7 +103,109 @@ export function ComparisonDashboard({
   assessmentId,
   attemptId,
   instituteId,
+  evaluationType,
 }: ComparisonDashboardProps) {
+  // Manual assessments have no per-question learner responses, so the answer
+  // review is meaningless there — hide it entirely.
+  const isManual = (evaluationType || "").toUpperCase() === "MANUAL";
+
+  // For manual assessments, surface the evaluated copy + the learner's own
+  // submission via a report-options menu (in place of the plain Download PDF).
+  const [reportFiles, setReportFiles] = useState<{
+    evaluated?: string | null;
+    submitted?: string | null;
+    remark?: string | null;
+  }>({});
+  const [downloadingReport, setDownloadingReport] = useState(false);
+
+  // In-app PDF viewer (evaluated / submitted) with the teacher's remark.
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerRemark, setViewerRemark] = useState<string | null>(null);
+  const [viewerTitle, setViewerTitle] = useState<string>("");
+
+  useEffect(() => {
+    if (!isManual) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authenticatedAxiosInstance.get(STUDENT_REPORT_DETAIL_URL, {
+          params: { assessmentId, attemptId, instituteId },
+        });
+        if (cancelled) return;
+        // The teacher's remark rides on the question's evaluator_feedback.
+        const allSections = res.data?.all_sections || {};
+        let remark: string | null = null;
+        for (const questions of Object.values(allSections)) {
+          const found = Array.isArray(questions)
+            ? (questions as any[]).find((q) => q?.evaluator_feedback)
+            : null;
+          if (found?.evaluator_feedback) {
+            remark = found.evaluator_feedback;
+            break;
+          }
+        }
+        setReportFiles({
+          evaluated: res.data?.evaluated_file_id,
+          submitted: res.data?.response_file_id,
+          remark,
+        });
+      } catch {
+        // Best-effort; the menu items just stay disabled if this fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isManual, assessmentId, attemptId, instituteId]);
+
+  const openInAppViewer = async (
+    fileId: string | null | undefined,
+    opts: { remark?: string | null; title: string }
+  ) => {
+    if (!fileId) {
+      toast.error("File not available.");
+      return;
+    }
+    try {
+      const url = await getPublicUrl(fileId);
+      if (!url) {
+        toast.error("Could not open the file.");
+        return;
+      }
+      setViewerUrl(url);
+      setViewerRemark(opts.remark ?? null);
+      setViewerTitle(opts.title);
+      setViewerOpen(true);
+    } catch {
+      toast.error("Could not open the file.");
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    try {
+      setDownloadingReport(true);
+      const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: EXPORT_ASSESSMENT_REPORT,
+        params: { assessmentId, attemptId, instituteId },
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${assessmentName || "assessment"}-report.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Could not download the report.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
   const [answerReviewOpen, setAnswerReviewOpen] = useState(false);
   const [answerReviewLoading, setAnswerReviewLoading] = useState(false);
   const [reportDetail, setReportDetail] = useState<any>(null);
@@ -211,12 +329,54 @@ export function ComparisonDashboard({
             Performance Comparison with Batch
           </p>
         </div>
-        <PdfDownloadButton
-          assessmentId={assessmentId}
-          attemptId={attemptId}
-          instituteId={instituteId}
-          assessmentName={assessmentName}
-        />
+        {isManual ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="Report options">
+                <DotsThreeVertical className="h-5 w-5" weight="bold" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={handleDownloadReport}
+                disabled={downloadingReport}
+              >
+                <DownloadSimple className="mr-2 h-4 w-4" />
+                {downloadingReport ? "Downloading…" : "Download report"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  openInAppViewer(reportFiles.evaluated, {
+                    remark: reportFiles.remark,
+                    title: "Evaluated answer",
+                  })
+                }
+                disabled={!reportFiles.evaluated}
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                View evaluated
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  openInAppViewer(reportFiles.submitted, {
+                    title: "Your submission",
+                  })
+                }
+                disabled={!reportFiles.submitted}
+              >
+                <FileArrowDown className="mr-2 h-4 w-4" />
+                View submitted
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <PdfDownloadButton
+            assessmentId={assessmentId}
+            attemptId={attemptId}
+            instituteId={instituteId}
+            assessmentName={assessmentName}
+          />
+        )}
       </div>
 
       {/* Score hero: the result leads, metadata follows as one quiet line.
@@ -430,8 +590,8 @@ export function ComparisonDashboard({
         </Card>
       )}
 
-      {/* Answer Review — lazy loaded */}
-      {!answerReviewOpen ? (
+      {/* Answer Review — lazy loaded; hidden for MANUAL assessments (no responses) */}
+      {isManual ? null : !answerReviewOpen ? (
         <Card>
           <CardContent className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
@@ -619,6 +779,14 @@ export function ComparisonDashboard({
           </Card>
         </>
       )}
+
+      <EvaluatedReportDialog
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        pdfUrl={viewerUrl}
+        remark={viewerRemark}
+        title={viewerTitle}
+      />
     </div>
   );
 }

@@ -464,7 +464,11 @@ export function Navbar({
         // the slide complete so the chapter tree shows progress.
         const returnContext = await readSlideReturnContext();
         if (returnContext?.returnSlideId) {
-          await markAssessmentSlideComplete(returnContext.returnSlideId, attemptId);
+          await markAssessmentSlideComplete(
+            returnContext.returnSlideId,
+            attemptId,
+            pdfFile?.fileId,
+          );
           await clearSlideReturnContext();
           // Use a raw URL string here — the captured pathname + search lives
           // outside TanStack's typed route table, so we don't try to

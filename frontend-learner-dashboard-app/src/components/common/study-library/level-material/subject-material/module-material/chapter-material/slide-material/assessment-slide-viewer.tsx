@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Clock,
   Eye,
+  FileArrowDown,
   ListChecks,
   ListNumbers,
   PlayCircle,
@@ -20,13 +21,25 @@ import { Slide } from "@/hooks/study-library/use-slides";
 import { fetchAssessmentData, storeAssessmentInfo } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { Assessment, assessmentTypes } from "@/types/assessment";
-import { formatDuration } from "@/constants/helper";
+import { formatDuration, getInstituteId } from "@/constants/helper";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { GET_ASSESSMENT_MARKS } from "@/constants/urls";
+import { GET_ASSESSMENT_MARKS, STUDENT_REPORT_DETAIL_URL } from "@/constants/urls";
+import { getPublicUrl } from "@/services/upload_file";
 
 interface TotalMarksResponse {
   total_achievable_marks?: number | null;
   section_wise_achievable_marks?: Record<string, number> | null;
+}
+
+interface ReportDetailResponse {
+  evaluated_file_id?: string | null;
+  question_overall_detail_dto?: {
+    achievedMarks?: number | null;
+  } | null;
+  all_sections?: Record<
+    string,
+    Array<{ evaluator_feedback?: string | null }>
+  > | null;
 }
 
 const SLIDE_RETURN_KEY = "SLIDE_RETURN_CONTEXT";
@@ -212,13 +225,71 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
   const handleViewReport = () => {
     if (!assessment?.last_attempt_id) return;
+    // Open the new comparison report. Slide assessments are always MANUAL, so the
+    // comparison view hides the Answer Review (no per-question learner responses).
     navigate({
-      to: "/assessment/reports/student-report",
+      to: "/assessment/reports/comparison",
       search: {
         assessmentId: assessment.assessment_id,
         attemptId: assessment.last_attempt_id,
       },
+      state: {
+        assessmentName: assessment.name,
+        evaluationType: "MANUAL",
+      } as any,
     });
+  };
+
+  // Once results are viewable, pull the attempt's report detail so we can show
+  // the achieved score (and, for manual assessments, the evaluated copy) right
+  // here — instead of making the learner open the full report just to see it.
+  const { data: reportDetail } = useQuery<ReportDetailResponse | null>({
+    queryKey: [
+      "ASSESSMENT_SLIDE_REPORT_DETAIL",
+      assessmentId,
+      assessment?.last_attempt_id,
+    ],
+    queryFn: async () => {
+      const instituteId = await getInstituteId();
+      const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: STUDENT_REPORT_DETAIL_URL,
+        params: {
+          assessmentId,
+          attemptId: assessment?.last_attempt_id,
+          instituteId,
+        },
+      });
+      return response?.data ?? null;
+    },
+    enabled: canViewReport,
+    staleTime: 60 * 1000,
+  });
+
+  const achievedMarks = reportDetail?.question_overall_detail_dto?.achievedMarks;
+  const evaluatedFileId = reportDetail?.evaluated_file_id;
+
+  // The teacher's remark rides on the question's evaluator_feedback.
+  const evaluatorRemark = (() => {
+    const sections = reportDetail?.all_sections;
+    if (!sections) return null;
+    for (const questions of Object.values(sections)) {
+      const found = Array.isArray(questions)
+        ? questions.find((q) => q?.evaluator_feedback)
+        : null;
+      if (found?.evaluator_feedback) return found.evaluator_feedback;
+    }
+    return null;
+  })();
+
+  const handleViewEvaluatedCopy = async () => {
+    if (!evaluatedFileId) return;
+    try {
+      const url = await getPublicUrl(evaluatedFileId);
+      if (url) window.open(url, "_blank");
+    } catch {
+      toast.error("Could not open the evaluated copy.");
+    }
   };
 
   if (!assessmentId) {
@@ -302,9 +373,47 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
               Results are not shown for this assessment.
             </p>
           ) : assessment?.report_release_status === "RELEASED" ? (
-            <p className="mt-1 text-xs text-emerald-700/80">
-              Your result is available — open the assessment to view your detailed report.
-            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              {typeof achievedMarks === "number" ? (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-emerald-700">
+                    {achievedMarks}
+                  </span>
+                  {typeof totalMarksData?.total_achievable_marks === "number" && (
+                    <span className="text-sm font-medium text-emerald-700/70">
+                      / {totalMarksData.total_achievable_marks}
+                    </span>
+                  )}
+                  <span className="text-2xs uppercase tracking-wide text-emerald-700/60">
+                    marks
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-emerald-700/80">
+                  Your result is available — open the report for details.
+                </p>
+              )}
+              {evaluatorRemark && (
+                <div className="rounded-md border border-emerald-200 bg-white/70 p-2.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-emerald-700/70">
+                    Evaluator remark
+                  </p>
+                  <p className="mt-1 whitespace-pre-line text-sm text-emerald-900">
+                    {evaluatorRemark}
+                  </p>
+                </div>
+              )}
+              {evaluatedFileId && (
+                <Button
+                  variant="link"
+                  onClick={handleViewEvaluatedCopy}
+                  className="h-auto w-fit gap-1.5 p-0 text-xs font-medium text-emerald-700"
+                >
+                  <FileArrowDown className="size-4" />
+                  View evaluated copy
+                </Button>
+              )}
+            </div>
           ) : (
             <p className="mt-1 text-xs text-emerald-700/80">
               Your submission is being evaluated. Results will appear once released.

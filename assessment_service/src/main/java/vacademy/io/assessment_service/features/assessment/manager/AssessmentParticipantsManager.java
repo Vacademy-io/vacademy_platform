@@ -1,6 +1,7 @@
 package vacademy.io.assessment_service.features.assessment.manager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itextpdf.html2pdf.ConverterProperties;
 import com.itextpdf.html2pdf.HtmlConverter;
 import lombok.extern.slf4j.Slf4j;
@@ -741,7 +742,21 @@ public class AssessmentParticipantsManager {
                 .allSections(generateStudentReport(mappings, attemptId))
                 .questionOverallDetailDto(questionOverallDetailDto)
                 .evaluatedFileId(studentAttempt.get().getEvaluatedFileId())
+                .responseFileId(extractResponseFileId(studentAttempt.get().getAttemptData()))
                 .build();
+    }
+
+    // The attempt stores the learner's uploaded answer file id inside its
+    // attemptData JSON (key "fileId"). Parse it defensively for "view submitted".
+    private String extractResponseFileId(String attemptData) {
+        if (attemptData == null || attemptData.isBlank()) return null;
+        try {
+            Map<String, Object> jsonMap = new ObjectMapper().readValue(attemptData, Map.class);
+            Object fileId = jsonMap.get("fileId");
+            return fileId != null ? fileId.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Map<String, List<StudentReportAnswerReviewDto>> generateStudentReport(
@@ -825,6 +840,7 @@ public class AssessmentParticipantsManager {
                             ? currentQuestion.getExplanationTextData().getContent()
                             : null)
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
+                    .evaluatorFeedback(questionWiseMarks.getEvaluatorFeedback())
                     .build();
         } catch (Exception e) {
             // G: Return null instead of empty DTO — caller filters nulls

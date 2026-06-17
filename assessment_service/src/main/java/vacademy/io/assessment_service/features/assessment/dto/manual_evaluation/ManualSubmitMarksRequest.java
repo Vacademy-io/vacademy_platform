@@ -32,5 +32,8 @@ public class ManualSubmitMarksRequest {
         private String questionId;
         private String status;
         private Double marks;
+        // Optional remark the evaluator leaves for the learner; persisted on
+        // QuestionWiseMarks.evaluatorFeedback and shown in the student's report.
+        private String evaluatorFeedback;
     }
 }

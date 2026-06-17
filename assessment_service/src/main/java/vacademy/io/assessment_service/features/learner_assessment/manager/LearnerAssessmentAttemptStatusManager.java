@@ -147,47 +147,31 @@ public class LearnerAssessmentAttemptStatusManager {
                         String attemptId, AssessmentAttemptUpdateRequest request) {
                 Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
                 if (studentAttempt.isEmpty()) {
-                        SentryLogger.logError(new VacademyException("Student Attempt Not Found"),
-                                        "Student attempt not found during response update", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "operation", "updateLearnerAssessmentStatus"));
+                        // Expected client error (stale/invalid attemptId) — slf4j only, NOT Sentry.
+                        // This path is hit on every learner sync during live assessments, so a
+                        // Sentry event here floods the errors quota for a non-bug.
+                        log.warn("Student attempt not found during response update: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Student Attempt Not Found");
                 }
 
                 if (Objects.isNull(request) || Objects.isNull(request.getJsonContent())) {
-                        SentryLogger.logError(new VacademyException("Invalid request"),
-                                        "Invalid request during assessment response update", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "has.request", String.valueOf(request != null),
-                                                        "operation", "updateLearnerAssessmentStatus"));
+                        log.warn("Invalid request during assessment response update: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Invalid request");
                 }
 
                 Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
                 if (!assessment.getId().equals(assessmentId)) {
-                        SentryLogger.logError(new VacademyException("Student Not Linked with Assessment"),
-                                        "Student attempt not linked with assessment", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.assessment.id", assessment.getId(),
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "operation", "updateLearnerAssessmentStatus"));
+                        log.warn("Student attempt not linked with assessment during update: assessmentId={}, attemptAssessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, assessment.getId(), attemptId, user.getId());
                         throw new VacademyException("Student Not Linked with Assessment");
                 }
 
                 // Check if the attempt status is preview
                 if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus())) {
-                        SentryLogger.logError(new VacademyException("Currently Assessment is in preview"),
-                                        "Attempt to update preview assessment", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "attempt.status", "PREVIEW",
-                                                        "user.id", user.getId(),
-                                                        "operation", "updateLearnerAssessmentStatus"));
+                        log.warn("Attempt to update preview assessment: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Currently Assessment is in preview");
                 }
 
@@ -312,46 +296,29 @@ public class LearnerAssessmentAttemptStatusManager {
                         AssessmentAttemptUpdateRequest request) {
                 Optional<StudentAttempt> studentAttempt = studentAttemptRepository.findById(attemptId);
                 if (studentAttempt.isEmpty()) {
-                        SentryLogger.logError(new VacademyException("Student Attempt Not Found"),
-                                        "Student attempt not found during submission", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "operation", "submitAssessment"));
+                        // Expected client error — slf4j only, NOT Sentry (see updateLearnerStatus).
+                        log.warn("Student attempt not found during submission: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Student Attempt Not Found");
                 }
 
                 if (Objects.isNull(request) || Objects.isNull(request.getJsonContent())) {
-                        SentryLogger.logError(new VacademyException("Invalid request"),
-                                        "Invalid request during assessment submission", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "operation", "submitAssessment"));
+                        log.warn("Invalid request during assessment submission: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Invalid request");
                 }
 
                 Assessment assessment = studentAttempt.get().getRegistration().getAssessment();
                 if (!assessment.getId().equals(assessmentId)) {
-                        SentryLogger.logError(new VacademyException("Student Not Linked with Assessment"),
-                                        "Assessment mismatch during submission", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.assessment.id", assessment.getId(),
-                                                        "attempt.id", attemptId,
-                                                        "user.id", user.getId(),
-                                                        "operation", "submitAssessment"));
+                        log.warn("Assessment mismatch during submission: assessmentId={}, attemptAssessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, assessment.getId(), attemptId, user.getId());
                         throw new VacademyException("Student Not Linked with Assessment");
                 }
 
                 // Check if the attempt status is preview
                 if (AssessmentAttemptEnum.PREVIEW.name().equals(studentAttempt.get().getStatus())) {
-                        SentryLogger.logError(new VacademyException("Currently Assessment is in preview"),
-                                        "Attempt to submit preview assessment", Map.of(
-                                                        "assessment.id", assessmentId,
-                                                        "attempt.id", attemptId,
-                                                        "attempt.status", "PREVIEW",
-                                                        "user.id", user.getId(),
-                                                        "operation", "submitAssessment"));
+                        log.warn("Attempt to submit preview assessment: assessmentId={}, attemptId={}, userId={}",
+                                        assessmentId, attemptId, user.getId());
                         throw new VacademyException("Currently Assessment is in preview");
                 }
 

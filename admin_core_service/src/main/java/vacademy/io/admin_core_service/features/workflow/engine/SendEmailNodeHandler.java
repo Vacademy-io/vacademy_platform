@@ -503,6 +503,22 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
             // --- BATCHING LOGIC END ---
 
+            // One aggregated Sentry event per node run if any item failed — replaces
+            // the former per-item captures that fanned a batch outage into thousands
+            // of events. Full per-item detail lives in the execution log (failedEmails).
+            if (!failedEmails.isEmpty()) {
+                SentryLogger.SentryEventBuilder.error()
+                        .withMessage("SEND_EMAIL forEach completed with failures")
+                        .withTag("node.type", "SEND_EMAIL")
+                        .withTag("failed.count", String.valueOf(failedEmails.size()))
+                        .withTag("success.count", String.valueOf(processedCount))
+                        .withTag("first.error", failedEmails.get(0).getErrorMessage() != null
+                                ? failedEmails.get(0).getErrorMessage()
+                                : "unknown")
+                        .withTag("operation", "handleSendEmailForEach")
+                        .send();
+            }
+
             // Complete logging with success
             if (logId != null) {
                 EmailExecutionDetails details = EmailExecutionDetails.builder()
@@ -600,11 +616,10 @@ public class SendEmailNodeHandler implements NodeHandler {
 
             return processEmailDataAndCreateRequests(emailDataObj, itemContext, "REGULAR", failedEmails, item);
         } catch (Exception e) {
+            // Per-item failure: collected into failedEmails and reported ONCE in
+            // aggregate after the forEach (see handle()). Capturing per item here
+            // fanned a single batch outage into thousands of identical Sentry events.
             log.error("Error processing regular email forEach operation for item: {}", item, e);
-            SentryLogger.logError(e, "Email forEach processing failed", Map.of(
-                    "email.type", "REGULAR",
-                    "operation", "processRegularEmailOperation",
-                    "node.type", "SEND_EMAIL"));
             failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
                     .itemData(item)
                     .errorMessage(e.getMessage())
@@ -647,11 +662,8 @@ public class SendEmailNodeHandler implements NodeHandler {
             }
             return Collections.emptyList();
         } catch (Exception e) {
+            // Per-item failure: aggregated after the forEach, not captured per item.
             log.error("Error processing attachment email forEach operation for item: {}", item, e);
-            SentryLogger.logError(e, "Attachment email forEach processing failed", Map.of(
-                    "email.type", "ATTACHMENT",
-                    "operation", "processAttachmentEmailOperation",
-                    "node.type", "SEND_EMAIL"));
             failedEmails.add(EmailExecutionDetails.FailedEmail.builder()
                     .itemData(item)
                     .errorMessage(e.getMessage())

@@ -88,6 +88,29 @@ export const reportApiError = (error: unknown, options: ReportApiErrorOptions) =
         return message;
     }
 
+    // Don't spend the Sentry errors quota on EXPECTED client errors. A 4xx is a
+    // validation failure, a permission denial, or a not-found — the user sees
+    // the toast and the breadcrumb keeps it in context for any real error that
+    // follows, but it is not a bug worth a captured event. We still capture 5xx
+    // (server bugs) and network/unknown errors (status undefined). Earlier, all
+    // 18 call sites captured every 4xx, which was the dominant errors-quota
+    // source and (via replaysOnErrorSampleRate) the dominant replay source too.
+    const isExpectedClientError = httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500;
+
+    if (isExpectedClientError) {
+        try {
+            Sentry.addBreadcrumb({
+                category: 'api-error',
+                level: 'warning',
+                message: `[${options.feature}] ${httpStatus} ${message}`,
+                data: { httpStatus, requestMethod, requestUrl },
+            });
+        } catch {
+            /* never let a Sentry SDK failure break the caller */
+        }
+        return message;
+    }
+
     const cleanTags: Record<string, string> = { feature: options.feature };
     if (httpStatus !== undefined) cleanTags['http.status'] = String(httpStatus);
     if (requestMethod) cleanTags['http.method'] = requestMethod;

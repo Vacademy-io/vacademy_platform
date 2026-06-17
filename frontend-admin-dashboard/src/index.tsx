@@ -99,7 +99,13 @@ if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
         // an error fires (see replaysOnErrorSampleRate). Bump this once quota
         // usage is understood.
         replaysSessionSampleRate: 0,
-        replaysOnErrorSampleRate: 1.0,
+        // Replay on 10% of errors, not 100%. The 50-replay plan cap was being
+        // exhausted instantly because a replay fired on every captured error.
+        // Now that expected 4xx no longer capture (see report-api-error.ts),
+        // the errors that do reach here are genuine bugs; 0.1 keeps replays a
+        // trickle of actionable sessions under the cap. Raise back toward 1.0
+        // once measured error volume is low.
+        replaysOnErrorSampleRate: 0.1,
         ignoreErrors: [
             // Known non-fatal Slate/Yoopta race condition: toDOMNode / toDOMPoint
             // is called before React commits the new DOM after setEditorValue,

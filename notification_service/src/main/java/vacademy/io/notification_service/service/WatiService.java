@@ -239,6 +239,7 @@ public class WatiService {
                 // Setting these to arbitrary values (e.g. "-") breaks template sends.
         );
 
+        int addContactFailures = 0;
         for (Map<String, Map<String, String>> userDetail : userDetails) {
             String phone = userDetail.keySet().iterator().next();
             String formattedPhone = phone.replaceAll("[^0-9]", "");
@@ -248,8 +249,21 @@ public class WatiService {
 
             // Step 2: If contact didn't exist (update failed), create it via addContact
             if (!updated) {
-                addContact(formattedPhone, requiredAttributes, headers, apiUrl);
+                if (!addContact(formattedPhone, requiredAttributes, headers, apiUrl)) {
+                    addContactFailures++;
+                }
             }
+        }
+
+        // One aggregated Sentry event per batch if any contact upsert failed, instead
+        // of one per recipient. If contacts can't be created, WATI rejects the
+        // template send with "Missing customer attributes", so this is worth knowing.
+        if (addContactFailures > 0) {
+            SentryLogger.logWarning("WATI contact upsert failed for some recipients — template sends may be rejected",
+                    Map.of("failed.count", String.valueOf(addContactFailures),
+                            "total.count", String.valueOf(userDetails.size()),
+                            "api.url", apiUrl,
+                            "layer", "5-wati-api"));
         }
     }
 
@@ -277,7 +291,7 @@ public class WatiService {
         }
     }
 
-    private void addContact(String phone, List<Map<String, String>> customParams,
+    private boolean addContact(String phone, List<Map<String, String>> customParams,
                              HttpHeaders headers, String apiUrl) {
         // POST /{tenantId}/api/v1/addContact/{whatsappNumber}
         // Body requires "name" field (use phone as fallback name)
@@ -290,12 +304,13 @@ public class WatiService {
             HttpEntity<String> entity = new HttpEntity<>(json, headers);
             ResponseEntity<String> response = restTemplate.exchange(endpoint, HttpMethod.POST, entity, String.class);
             log.info("WATI addContact {}: status={}, body={}", phone, response.getStatusCode(), response.getBody());
+            return true;
         } catch (Exception e) {
+            // Per-recipient failure: counted and reported ONCE by upsertContacts.
+            // A per-recipient Sentry event fanned a single WATI outage into up to
+            // one event per recipient (thousands per failing batch).
             log.warn("WATI addContact failed for {}: {}", phone, e.getMessage());
-            // If both updateContactAttributes and addContact fail, WATI will reject the
-            // template send with "Missing customer attributes"
-            SentryLogger.logWarning(e, "WATI addContact failed — template send may be rejected",
-                    Map.of("phone", phone, "api.url", apiUrl, "layer", "5-wati-api"));
+            return false;
         }
     }
 

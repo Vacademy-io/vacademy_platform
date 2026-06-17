@@ -897,6 +897,19 @@ function ChatSection({
                 {/* Community */}
                 <div className="space-y-2">
                     <div className="text-sm font-medium">Community</div>
+                    <ToggleRow
+                        label="Community channel enabled"
+                        checked={chat.community.enabled}
+                        onChange={(checked) =>
+                            onChange((c) => ({
+                                ...c,
+                                community: {
+                                    ...c.community,
+                                    enabled: checked,
+                                },
+                            }))
+                        }
+                    />
                     <div className="grid gap-4 md:grid-cols-3">
                         <ToggleRow
                             label={`${chatRoleLabelPlural('student')} can post`}

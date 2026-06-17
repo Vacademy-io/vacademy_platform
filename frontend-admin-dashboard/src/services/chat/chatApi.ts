@@ -122,6 +122,17 @@ export interface ChatReportResponse {
     reportedMessage?: ChatMessageResponse;
 }
 
+export interface ChatBatchResponse {
+    packageSessionId: string;
+    name?: string;
+    /** Existing batch-group conversation id, or undefined if the batch has no conversation yet. */
+    conversationId?: string;
+}
+
+export interface ChatBatchSearchResponse {
+    batches: ChatBatchResponse[];
+}
+
 export interface ChatPeopleSearchRequest {
     roles?: string[];
     nameQuery?: string;
@@ -320,6 +331,22 @@ export const searchPeople = async (
     const res = await authenticatedAxiosInstance.post(`${CHAT_BASE}/people/search`, body, {
         params: { userId, instituteId, userRole },
     });
+    return res.data;
+};
+
+/**
+ * Search batches to start/open a batch conversation. Role-scoped server-side:
+ * admin = all institute batches, teacher = faculty-mapped batches, students = none.
+ */
+export const searchBatches = async (
+    nameQuery?: string,
+    pageSize = 30
+): Promise<ChatBatchSearchResponse> => {
+    const res = await authenticatedAxiosInstance.post(
+        `${CHAT_BASE}/batches/search`,
+        { nameQuery, pageSize },
+        { params: identityParams() }
+    );
     return res.data;
 };
 

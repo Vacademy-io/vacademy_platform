@@ -21,12 +21,19 @@ import {
     getRules,
     acknowledgeRules,
     createReport,
+    createBatchConversation,
+    createCommunityConversation,
+    createDirectConversation,
+    searchBatches,
+    searchPeople,
     classifyChatSendError,
     type ChatConversationResponse,
     type ChatMessageResponse,
     type ChatRulesResponse,
     type SendChatMessageRequest,
     type ChatMessagePayload,
+    type ChatBatchResponse,
+    type ChatPersonResponse,
 } from '@/services/chat/chatApi';
 import { getChatUser } from '@/services/chat/getChatUser';
 import { useChatStream } from '@/hooks/useChatStream';
@@ -80,6 +87,12 @@ export function ChatScreen({
     const [newChatOpen, setNewChatOpen] = useState(false);
     const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
 
+    // Inline search across batches (start/open a batch conversation) + people (start a DM).
+    const searchTrimmed = search.trim();
+    const [batchResults, setBatchResults] = useState<ChatBatchResponse[]>([]);
+    const [peopleResults, setPeopleResults] = useState<ChatPersonResponse[]>([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+
     const [messages, setMessages] = useState<ThreadMessage[]>([]);
     const [hasMore, setHasMore] = useState(false);
     const [messagesLoading, setMessagesLoading] = useState(false);
@@ -117,6 +130,22 @@ export function ChatScreen({
     const refetchConversations = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: CONVERSATIONS_KEY });
     }, [queryClient]);
+
+    // Seed/replace a conversation in the cached list so the thread panel (which derives
+    // activeConversation from this cache) renders immediately, before any list refetch lands.
+    const upsertConversation = useCallback(
+        (conv: ChatConversationResponse) => {
+            queryClient.setQueryData<ChatConversationResponse[]>(CONVERSATIONS_KEY, (prev) => {
+                const list = prev ?? [];
+                const idx = list.findIndex((c) => c.id === conv.id);
+                if (idx === -1) return [conv, ...list];
+                const next = list.slice();
+                next[idx] = { ...next[idx], ...conv };
+                return next;
+            });
+        },
+        [queryClient]
+    );
 
     // Patch a single conversation in the cached list (preview/unread/order) without a refetch.
     const patchConversation = useCallback(
@@ -179,12 +208,99 @@ export function ChatScreen({
     );
 
     const handleSelect = useCallback(
-        (conversation: ChatConversationResponse) => {
+        async (conversation: ChatConversationResponse) => {
             setShowReports(false);
             setActiveId(conversation.id);
-            void loadInitial(conversation);
+            let conv = conversation;
+            // Opening a channel the caller hasn't joined (e.g. an admin viewing every batch, or a
+            // teacher opening a mapped batch) must ensure membership so the read cursor + posting work.
+            // get-or-provision is idempotent; for an already-joined channel we skip the round-trip.
+            if (!conversation.memberRole) {
+                try {
+                    if (conversation.type === 'BATCH_GROUP' && conversation.referenceId) {
+                        conv = await createBatchConversation(conversation.referenceId);
+                    } else if (conversation.type === 'COMMUNITY') {
+                        conv = await createCommunityConversation();
+                    }
+                    if (conv.id !== conversation.id) setActiveId(conv.id);
+                    upsertConversation(conv);
+                } catch {
+                    conv = conversation; // read still works even if joining failed
+                }
+            }
+            void loadInitial(conv);
         },
-        [loadInitial]
+        [loadInitial, upsertConversation]
+    );
+
+    // ── Inline search: batches + people (debounced) ───────────────────────
+    useEffect(() => {
+        if (!searchTrimmed) {
+            setBatchResults([]);
+            setPeopleResults([]);
+            setSearchLoading(false);
+            return;
+        }
+        let cancelled = false;
+        setSearchLoading(true);
+        const handle = setTimeout(() => {
+            void Promise.allSettled([
+                searchBatches(searchTrimmed, 20),
+                searchPeople({ nameQuery: searchTrimmed, pageNumber: 0, pageSize: 20 }),
+            ])
+                .then(([b, p]) => {
+                    if (cancelled) return;
+                    setBatchResults(b.status === 'fulfilled' ? (b.value.batches ?? []) : []);
+                    setPeopleResults(p.status === 'fulfilled' ? (p.value.people ?? []) : []);
+                })
+                .finally(() => {
+                    if (!cancelled) setSearchLoading(false);
+                });
+        }, 300);
+        return () => {
+            cancelled = true;
+            clearTimeout(handle);
+        };
+    }, [searchTrimmed]);
+
+    const openConversationFresh = useCallback(
+        (conv: ChatConversationResponse) => {
+            setSearch('');
+            upsertConversation(conv); // seed so the thread renders immediately (before the refetch)
+            refetchConversations(); // reconcile the list (ordering/preview) in the background
+            setShowReports(false);
+            setActiveId(conv.id);
+            void loadInitial(conv);
+        },
+        [loadInitial, refetchConversations, upsertConversation]
+    );
+
+    const handleSelectBatch = useCallback(
+        async (batch: ChatBatchResponse) => {
+            try {
+                openConversationFresh(await createBatchConversation(batch.packageSessionId));
+            } catch {
+                toast.error("Couldn't open this batch. Please try again.");
+            }
+        },
+        [openConversationFresh]
+    );
+
+    const handleSelectPerson = useCallback(
+        async (person: ChatPersonResponse) => {
+            try {
+                openConversationFresh(
+                    await createDirectConversation({
+                        targetUserId: person.userId,
+                        targetUserName: person.fullName,
+                        targetUserRole: person.role,
+                    })
+                );
+            } catch {
+                toast.error("Couldn't start the conversation. Please try again.");
+            }
+        },
+        [openConversationFresh]
     );
 
     // ── Load earlier (pagination) ─────────────────────────────────────────
@@ -553,6 +669,12 @@ export function ChatScreen({
                             onSearchChange={setSearch}
                             onSelect={handleSelect}
                             onNewChat={() => setNewChatOpen(true)}
+                            searchActive={searchTrimmed.length > 0}
+                            searchLoading={searchLoading}
+                            batchResults={batchResults}
+                            peopleResults={peopleResults}
+                            onSelectBatch={handleSelectBatch}
+                            onSelectPerson={handleSelectPerson}
                         />
                     </div>
                 </div>

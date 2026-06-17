@@ -93,6 +93,7 @@ export type ChatSettings = {
         teachers_can_post: boolean;
     };
     community: {
+        enabled: boolean;
         students_can_post: boolean;
         teachers_can_post: boolean;
         admins_can_post: boolean;
@@ -135,6 +136,7 @@ export function getDefaultChatSettings(): ChatSettings {
             teachers_can_post: true,
         },
         community: {
+            enabled: true,
             students_can_post: true,
             teachers_can_post: true,
             admins_can_post: true,
@@ -199,6 +201,7 @@ export function mergeChatSettings(partial?: DeepPartial<ChatSettings> | null): C
             ...(p.batch_group ?? {}),
         },
         community: {
+            enabled: pCommunity.enabled ?? d.community.enabled,
             students_can_post: pCommunity.students_can_post ?? d.community.students_can_post,
             teachers_can_post: pCommunity.teachers_can_post ?? d.community.teachers_can_post,
             admins_can_post: pCommunity.admins_can_post ?? d.community.admins_can_post,

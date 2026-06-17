@@ -35,7 +35,9 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
             + "(:status IS NULL OR t.status = :status) AND "
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
-            + "    AND t.firstResponseDueAt < :now))")
+            + "    AND t.firstResponseDueAt < :now "
+            + "    AND t.status NOT IN (vacademy.io.community_service.feature.support.enums.TicketStatus.RESOLVED, "
+            + "    vacademy.io.community_service.feature.support.enums.TicketStatus.CLOSED)))")
     Page<SupportTicket> searchTickets(@Param("instituteId") String instituteId,
                                       @Param("status") TicketStatus status,
                                       @Param("engineerId") String engineerId,

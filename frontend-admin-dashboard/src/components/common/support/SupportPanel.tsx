@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     ArrowSquareOut,
     CaretLeft,
@@ -8,11 +8,13 @@ import {
     Clock,
     DiscordLogo,
     EnvelopeSimple,
+    Paperclip,
     PaperPlaneTilt,
     Plus,
     Star,
     Warning,
     WhatsappLogo,
+    X,
 } from '@phosphor-icons/react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
@@ -27,12 +29,16 @@ import { MyInput } from '@/components/design-system/input';
 import { cn, goToMailSupport, goToWhatsappSupport } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
+    ACCEPTED_ATTACHMENT_TYPES,
+    checkAttachment,
+    uploadSupportAttachment,
     useCreateTicket,
     useMyTickets,
     useReplyToTicket,
     useSetTicketStatus,
     useSupportConfig,
     useTicket,
+    type SupportAttachment,
     type SupportMessageDto,
     type SupportTicketDto,
     type TicketCategory,
@@ -85,6 +91,122 @@ function Chip({ label, cls }: { label: string; cls: string }) {
         >
             {label}
         </span>
+    );
+}
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif|heic)$/i;
+const VIDEO_EXT = /\.(mp4|mov|webm|avi|mkv|m4v|ogv)$/i;
+
+function AttachmentInput({
+    value,
+    onChange,
+}: {
+    value: SupportAttachment[];
+    onChange: (next: SupportAttachment[]) => void;
+}) {
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const handleFiles = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        setUploading(true);
+        const added: SupportAttachment[] = [];
+        for (const file of Array.from(files)) {
+            const check = checkAttachment(file);
+            if (!check.ok) {
+                toast.error(check.reason ?? 'Unsupported file.');
+                continue;
+            }
+            try {
+                added.push(await uploadSupportAttachment(file));
+            } catch {
+                toast.error(`Could not upload ${file.name}.`);
+            }
+        }
+        if (added.length) onChange([...value, ...added]);
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = '';
+    };
+
+    return (
+        <div className="flex flex-col gap-2">
+            <input
+                ref={inputRef}
+                type="file"
+                accept={ACCEPTED_ATTACHMENT_TYPES}
+                multiple
+                className="hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+            />
+            <MyButton
+                type="button"
+                buttonType="secondary"
+                scale="small"
+                onClick={() => inputRef.current?.click()}
+                disable={uploading}
+            >
+                {uploading ? (
+                    <CircleNotch size={15} className="animate-spin" />
+                ) : (
+                    <Paperclip size={15} />
+                )}
+                Attach image / video
+            </MyButton>
+            {value.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                    {value.map((a, i) => (
+                        <span
+                            key={a.fileId || i}
+                            className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600"
+                        >
+                            <Paperclip size={12} />
+                            {a.fileName || 'attachment'}
+                            <button
+                                type="button"
+                                onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                                className="text-neutral-400 hover:text-danger-600"
+                                aria-label="Remove attachment"
+                            >
+                                <X size={12} />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            ) : null}
+            <p className="text-xs text-neutral-400">Images &amp; videos, up to 50 MB each.</p>
+        </div>
+    );
+}
+
+function AttachmentView({ attachment }: { attachment: SupportAttachment }) {
+    const name = attachment.fileName ?? '';
+    const url = attachment.url ?? '';
+    if (!url) return null;
+    if (IMAGE_EXT.test(name)) {
+        return (
+            <a href={url} target="_blank" rel="noreferrer">
+                <img
+                    src={url}
+                    alt={name}
+                    className="max-h-40 rounded-md border border-neutral-200"
+                />
+            </a>
+        );
+    }
+    if (VIDEO_EXT.test(name)) {
+        return (
+            <video src={url} controls className="max-h-40 rounded-md border border-neutral-200" />
+        );
+    }
+    return (
+        <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs underline"
+        >
+            <Paperclip size={12} /> {name || 'attachment'}
+        </a>
     );
 }
 
@@ -311,6 +433,7 @@ function NewIssueView({
     const [category, setCategory] = useState<TicketCategory>('QUESTION');
     const [priority, setPriority] = useState<TicketPriority>('MINOR');
     const [message, setMessage] = useState('');
+    const [attachments, setAttachments] = useState<SupportAttachment[]>([]);
 
     const submit = async () => {
         if (!subject.trim() || !message.trim()) {
@@ -323,6 +446,7 @@ function NewIssueView({
                 category,
                 priority,
                 message: message.trim(),
+                attachments,
             });
             toast.success('Issue raised — our team has been notified.');
             onCreated(ticket.id);
@@ -383,6 +507,8 @@ function NewIssueView({
                 />
             </div>
 
+            <AttachmentInput value={attachments} onChange={setAttachments} />
+
             <div className="flex items-center justify-end gap-2">
                 <MyButton buttonType="secondary" scale="medium" onClick={onCancel}>
                     Cancel
@@ -410,6 +536,7 @@ function ThreadView({ ticketId }: { ticketId: string }) {
     const reply = useReplyToTicket();
     const setStatus = useSetTicketStatus();
     const [draft, setDraft] = useState('');
+    const [draftFiles, setDraftFiles] = useState<SupportAttachment[]>([]);
 
     if (isLoading || !ticket) {
         return (
@@ -420,10 +547,15 @@ function ThreadView({ ticketId }: { ticketId: string }) {
     }
 
     const send = async () => {
-        if (!draft.trim()) return;
+        if (!draft.trim() && draftFiles.length === 0) return;
         try {
-            await reply.mutateAsync({ id: ticket.id, body: draft.trim() });
+            await reply.mutateAsync({
+                id: ticket.id,
+                body: draft.trim() || 'Shared an attachment.',
+                attachments: draftFiles,
+            });
             setDraft('');
+            setDraftFiles([]);
         } catch {
             toast.error('Could not send your reply.');
         }
@@ -500,6 +632,9 @@ function ThreadView({ ticketId }: { ticketId: string }) {
                                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
                             }}
                         />
+                        <div className="mt-2">
+                            <AttachmentInput value={draftFiles} onChange={setDraftFiles} />
+                        </div>
                         <div className="mt-2 flex items-center justify-between">
                             <MyButton
                                 buttonType="text"
@@ -514,7 +649,9 @@ function ThreadView({ ticketId }: { ticketId: string }) {
                                 buttonType="primary"
                                 scale="medium"
                                 onClick={send}
-                                disable={!draft.trim() || reply.isPending}
+                                disable={
+                                    (!draft.trim() && draftFiles.length === 0) || reply.isPending
+                                }
                             >
                                 {reply.isPending ? (
                                     <CircleNotch size={15} className="animate-spin" />
@@ -561,6 +698,13 @@ function Bubble({ message }: { message: SupportMessageDto }) {
                     {isSupport ? message.senderName || 'Support' : 'You'} · {fmt(message.createdAt)}
                 </div>
                 <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                {message.attachments?.length ? (
+                    <div className="mt-2 flex flex-col gap-2">
+                        {message.attachments.map((a, i) => (
+                            <AttachmentView key={a.fileId || i} attachment={a} />
+                        ))}
+                    </div>
+                ) : null}
             </div>
         </div>
     );

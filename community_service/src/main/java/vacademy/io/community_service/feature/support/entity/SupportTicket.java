@@ -3,8 +3,10 @@ package vacademy.io.community_service.feature.support.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.enums.TicketCategory;
 import vacademy.io.community_service.feature.support.enums.TicketPriority;
@@ -86,6 +88,11 @@ public class SupportTicket {
     @Column(name = "message_count", nullable = false)
     @Builder.Default
     private int messageCount = 0;
+
+    /** Auto-captured client diagnostics (browser/device JSON) merged with the server-side IP. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "client_context", columnDefinition = "jsonb")
+    private String clientContext;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

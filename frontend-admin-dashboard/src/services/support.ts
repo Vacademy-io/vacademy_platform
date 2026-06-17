@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { SUPPORT_BASE_URL } from '@/constants/urls';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
+import { getInstituteId } from '@/constants/helper';
+import { getUserId } from '@/utils/userDetails';
 
 // ---- Types (camelCase, matching community-service) ---------------------------------
 
@@ -81,6 +84,66 @@ function currentInstituteName(): string | null {
     return useInstituteDetailsStore.getState().instituteDetails?.institute_name ?? null;
 }
 
+// ---- Attachments (image/video, 50 MB max) ------------------------------------------
+
+export const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024; // 50 MB
+export const ACCEPTED_ATTACHMENT_TYPES = 'image/*,video/*';
+
+export function checkAttachment(file: File): { ok: boolean; reason?: string } {
+    const isMedia = file.type.startsWith('image/') || file.type.startsWith('video/');
+    if (!isMedia) return { ok: false, reason: 'Only images and videos can be attached.' };
+    if (file.size > MAX_ATTACHMENT_BYTES)
+        return { ok: false, reason: `${file.name} exceeds the 50 MB limit.` };
+    return { ok: true };
+}
+
+/** Uploads a file to media-service (public) and returns the attachment descriptor. */
+export async function uploadSupportAttachment(file: File): Promise<SupportAttachment> {
+    const fileId = await UploadFileInS3(
+        file,
+        () => {},
+        getUserId(),
+        'SUPPORT_ATTACHMENT',
+        getInstituteId(),
+        true
+    );
+    if (!fileId) throw new Error('Upload failed');
+    const url = await getPublicUrl(fileId);
+    return { fileId, fileName: file.name, url };
+}
+
+/** Best-effort browser/device diagnostics auto-attached to a new ticket (IP is added server-side). */
+function collectClientContext(): Record<string, unknown> {
+    try {
+        const nav = navigator as Navigator & {
+            deviceMemory?: number;
+            connection?: { effectiveType?: string };
+        };
+        return {
+            userAgent: nav.userAgent,
+            platform: nav.platform,
+            language: nav.language,
+            languages: nav.languages ? Array.from(nav.languages).join(', ') : undefined,
+            screen: `${window.screen.width}x${window.screen.height}`,
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+            devicePixelRatio: window.devicePixelRatio,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+            pageUrl: window.location.href,
+            referrer: document.referrer || undefined,
+            online: nav.onLine,
+            cookieEnabled: nav.cookieEnabled,
+            hardwareConcurrency: nav.hardwareConcurrency,
+            deviceMemoryGb: nav.deviceMemory,
+            connectionType: nav.connection?.effectiveType,
+            appVersion: (import.meta.env as Record<string, string | undefined>).VITE_APP_VERSION,
+            capturedAt: new Date().toISOString(),
+        };
+    } catch {
+        return {};
+    }
+}
+
 // ---- Hooks -------------------------------------------------------------------------
 
 export function useSupportConfig() {
@@ -90,6 +153,8 @@ export function useSupportConfig() {
             (await authenticatedAxiosInstance.get<SupportConfigDto>(`${SUPPORT_BASE_URL}/config`))
                 .data,
         staleTime: 5 * 60 * 1000,
+        // Non-admins get a 403 here; don't hammer it with retries on every page.
+        retry: false,
     });
 }
 
@@ -127,6 +192,7 @@ export interface CreateTicketPayload {
     category: TicketCategory;
     priority: TicketPriority;
     message: string;
+    attachments?: SupportAttachment[];
 }
 
 export function useCreateTicket() {
@@ -137,7 +203,7 @@ export function useCreateTicket() {
             // pass instituteName as a display hint for support-team alerts.
             const { data } = await authenticatedAxiosInstance.post<SupportTicketDto>(
                 `${SUPPORT_BASE_URL}/tickets`,
-                payload,
+                { ...payload, clientContext: collectClientContext() },
                 { params: { instituteName: currentInstituteName() || undefined } }
             );
             return data;
@@ -152,11 +218,11 @@ export function useCreateTicket() {
 export function useReplyToTicket() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (vars: { id: string; body: string }) =>
+        mutationFn: async (vars: { id: string; body: string; attachments?: SupportAttachment[] }) =>
             (
                 await authenticatedAxiosInstance.post<SupportTicketDto>(
                     `${SUPPORT_BASE_URL}/tickets/${vars.id}/messages`,
-                    { body: vars.body }
+                    { body: vars.body, attachments: vars.attachments }
                 )
             ).data,
         onSuccess: (_d, vars) => {

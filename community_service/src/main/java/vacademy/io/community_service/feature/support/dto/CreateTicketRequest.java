@@ -3,6 +3,7 @@ package vacademy.io.community_service.feature.support.dto;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class CreateTicketRequest {
@@ -11,4 +12,6 @@ public class CreateTicketRequest {
     private String priority;   // MAJOR | MINOR
     private String message;    // first message body
     private List<AttachmentDto> attachments;
+    /** Auto-captured browser/device diagnostics from the client (merged with server IP). */
+    private Map<String, Object> clientContext;
 }

@@ -1,5 +1,6 @@
 package vacademy.io.community_service.feature.support.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -15,7 +16,9 @@ import vacademy.io.community_service.feature.support.service.SupportConfigServic
 import vacademy.io.community_service.feature.support.service.SupportTicketService;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -80,13 +83,15 @@ public class SupportAdminController {
             @RequestHeader(value = "clientId", required = false) String clientId,
             @RequestParam(value = "instituteId", required = false) String instituteIdParam,
             @RequestParam(value = "instituteName", required = false) String instituteName,
-            @RequestBody CreateTicketRequest request) {
+            @RequestBody CreateTicketRequest request,
+            HttpServletRequest httpRequest) {
         requireAdmin(user);
         String instituteId = resolveInstituteId(clientId, instituteIdParam);
         // Raiser identity is taken from the authenticated principal only — never from the request.
         SupportTicketDto dto = ticketService.createTicket(
                 instituteId, instituteName,
-                user.getUserId(), user.getFullName(), user.getUsername(), "ADMIN", request);
+                user.getUserId(), user.getFullName(), user.getUsername(), "ADMIN",
+                buildClientContext(request, httpRequest), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
@@ -146,6 +151,33 @@ public class SupportAdminController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Admin access required for this institute");
         }
+    }
+
+    /** Merge the client-supplied diagnostics with the server-derived IP and user-agent. */
+    private Map<String, Object> buildClientContext(CreateTicketRequest request, HttpServletRequest http) {
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        if (request != null && request.getClientContext() != null) {
+            ctx.putAll(request.getClientContext());
+        }
+        ctx.put("ipAddress", clientIp(http));
+        String ua = http.getHeader("User-Agent");
+        if (StringUtils.hasText(ua)) {
+            ctx.putIfAbsent("serverUserAgent", ua);
+        }
+        return ctx;
+    }
+
+    /** Real client IP, honouring the gateway's forwarding headers (first hop wins). */
+    private String clientIp(HttpServletRequest http) {
+        String forwarded = http.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwarded)) {
+            return forwarded.split(",")[0].trim();
+        }
+        String realIp = http.getHeader("X-Real-IP");
+        if (StringUtils.hasText(realIp)) {
+            return realIp.trim();
+        }
+        return http.getRemoteAddr();
     }
 
     private String resolveInstituteId(String clientId, String instituteIdParam) {

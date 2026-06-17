@@ -63,7 +63,7 @@ public class SupportTicketService {
     @Transactional
     public SupportTicketDto createTicket(String instituteId, String instituteName, String raiserUserId,
                                          String raiserName, String raiserEmail, String raisedByRole,
-                                         CreateTicketRequest request) {
+                                         Map<String, Object> clientContext, CreateTicketRequest request) {
         if (request == null || !StringUtils.hasText(request.getSubject())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "subject is required");
         }
@@ -91,6 +91,7 @@ public class SupportTicketService {
                 .firstResponseDueAt(computeDue(now, plan, priority))
                 .lastMessageAt(now)
                 .messageCount(1)
+                .clientContext(writeClientContext(clientContext))
                 .build();
         ticket = ticketRepository.save(ticket);
 
@@ -353,10 +354,15 @@ public class SupportTicketService {
                 .filter(m -> includeInternal || !m.isInternalNote())
                 .map(this::toMessageDto)
                 .collect(Collectors.toList());
-        return baseDto(t)
+        SupportTicketDto dto = baseDto(t)
                 .assignedEngineerName(engineerService.nameOf(t.getAssignedEngineerId()))
                 .messages(messages)
                 .build();
+        // Diagnostics (incl. IP) are surfaced only to the support team, never the customer view.
+        if (includeInternal) {
+            dto.setClientContext(readClientContext(t.getClientContext()));
+        }
+        return dto;
     }
 
     private SupportTicketDto.SupportTicketDtoBuilder baseDto(SupportTicket t) {
@@ -416,6 +422,28 @@ public class SupportTicketService {
         }
         try {
             return objectMapper.writeValueAsString(attachments);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String writeClientContext(Map<String, Object> ctx) {
+        if (ctx == null || ctx.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(ctx);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Object readClientContext(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, Object.class);
         } catch (Exception e) {
             return null;
         }

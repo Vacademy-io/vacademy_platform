@@ -31,6 +31,7 @@ import {
     type IconProps,
 } from '@phosphor-icons/react';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
+import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRouter, useRouterState } from '@tanstack/react-router';
@@ -297,9 +298,20 @@ const RecentTabsList: React.FC<RecentTabsListProps> = ({
 
 // ─── Support Options ───────────────────────────────────────────
 
+const SUPPORT_PLAN_SHORT: Record<string, string> = {
+    DEDICATED: 'Dedicated',
+    PREMIUM: 'Premium',
+    AVERAGE: 'Average',
+    LOW: 'Low',
+    NONE: 'No plan',
+};
+
 function SupportOptions() {
     const [open, setOpen] = React.useState(false);
     const [hover, setHover] = React.useState(false);
+    const config = useSupportConfig();
+    const planKey = config.data?.plan.key;
+    const planLabel = planKey ? (SUPPORT_PLAN_SHORT[planKey] ?? planKey) : null;
 
     return (
         <>
@@ -322,6 +334,14 @@ function SupportOptions() {
                 >
                     Support
                 </span>
+                {planLabel ? (
+                    <span
+                        className="ml-auto rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500"
+                        title={`${planLabel} support plan`}
+                    >
+                        {planLabel}
+                    </span>
+                ) : null}
             </button>
             <SupportPanel open={open} onOpenChange={setOpen} />
         </>

@@ -38,4 +38,6 @@ public class SupportTicketDto {
     private Date updatedAt;
     /** Populated only on the single-ticket detail endpoints; null in list responses. */
     private List<SupportTicketMessageDto> messages;
+    /** Auto-captured diagnostics (browser/device + server IP). Support-view detail only. */
+    private Object clientContext;
 }

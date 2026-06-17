@@ -156,41 +156,41 @@
             padding: 15px 0;
         }
         
+        /* Logo + institute name are laid out as a 2-cell table row. The PDF renderer
+           (openhtmltopdf) does NOT support flexbox/gap, so the previous display:flex was
+           ignored and the logo image (sized up to 200px wide inline by buildInstituteLogoHtml)
+           overflowed its fixed 50px box and ran underneath the institute name. A table row
+           keeps logo and name in separate, non-overlapping cells with a fixed gap, regardless
+           of the logo's rendered size — the same table pattern the rest of this template uses. */
         .company-logo-name-wrapper {
+            display: table;
             padding-left: 10px;
             padding-right: 10px;
         }
-        
-        .company-logo-name-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-        
+
         .logo-container {
-            flex-shrink: 0;
-            width: 50px;
-            height: 50px;
-            display: inline-block;
+            display: table-cell;
             vertical-align: middle;
+            padding-right: 15px;
+            white-space: nowrap;
         }
-        
+
         .logo-container img {
-            max-width: 50px;
-            max-height: 50px;
+            max-width: 120px;
+            max-height: 60px;
             width: auto;
             height: auto;
             object-fit: contain;
             display: block;
             vertical-align: middle;
         }
-        
+
         .company-name {
+            display: table-cell;
+            vertical-align: middle;
             font-size: 22px;
             font-weight: bold;
             color: #000000;
-            display: inline-block;
-            vertical-align: middle;
         }
         
         .company-address {

@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
+import vacademy.io.notification_service.features.combot.dto.InactivePhonesRequest;
 import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
 import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
 import vacademy.io.notification_service.features.combot.dto.UsersByMessagesRequest;
@@ -313,6 +314,30 @@ public class CombotMessagingService {
                 inactiveUserIds.size(), request.getTemplateName());
 
         return inactiveUserIds;
+    }
+
+    /**
+     * Find phone numbers that received outgoing WhatsApp on a channel within the lookback
+     * window but sent no inbound reply in that window. Phone-based, so it is unaffected by
+     * missing outgoing user_id. Used by the inactivity opt-out scan.
+     *
+     * @param request Contains senderBusinessChannelId and days (defaults to 3 if unset)
+     * @return List of recipient phone numbers (channel_id) with no inbound reply
+     */
+    public List<String> findInactivePhones(InactivePhonesRequest request) {
+        if (request.getSenderBusinessChannelId() == null || request.getSenderBusinessChannelId().isEmpty()) {
+            log.warn("findInactivePhones: senderBusinessChannelId is required");
+            return Collections.emptyList();
+        }
+        int days = (request.getDays() == null || request.getDays() <= 0) ? 3 : request.getDays();
+
+        List<String> phones = notificationLogRepository.findInactivePhones(
+                request.getSenderBusinessChannelId(), days);
+
+        log.info("Found {} inactive phone(s) on channel {} ({}d without an inbound reply)",
+                phones.size(), request.getSenderBusinessChannelId(), days);
+
+        return phones;
     }
 
     /**

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.notification_service.features.combot.dto.InactivePhonesRequest;
 import vacademy.io.notification_service.features.combot.dto.InactiveUsersRequest;
 import vacademy.io.notification_service.features.combot.dto.LogSequenceRequest;
 import vacademy.io.notification_service.features.combot.dto.UsersByMessagesRequest;
@@ -48,6 +49,17 @@ public class CombotMessagingController {
     public ResponseEntity<List<String>> filterUsersByMessages(@RequestBody UsersByMessagesRequest request) {
         List<String> userIds = combotMessagingService.findUsersByAllMessages(request);
         return ResponseEntity.ok(userIds);
+    }
+
+    /**
+     * Return recipient phone numbers (channel_id) that received outgoing WhatsApp on the
+     * channel within the lookback window but sent no inbound reply in that window.
+     * Phone-based — unaffected by missing outgoing user_id. Used by the inactivity opt-out scan.
+     */
+    @PostMapping("/filter-inactive-phones")
+    public ResponseEntity<List<String>> filterInactivePhones(@RequestBody InactivePhonesRequest request) {
+        List<String> phones = combotMessagingService.findInactivePhones(request);
+        return ResponseEntity.ok(phones);
     }
 
 }

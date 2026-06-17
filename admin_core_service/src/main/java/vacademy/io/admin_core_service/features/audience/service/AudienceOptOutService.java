@@ -1,14 +1,12 @@
 package vacademy.io.admin_core_service.features.audience.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.enums.OptOutReason;
 import vacademy.io.admin_core_service.features.audience.enums.SourceTypeEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
@@ -52,6 +50,18 @@ public class AudienceOptOutService {
      */
     @Transactional
     public void moveUserToOptOutAudience(String userId, String instituteId, String channel) {
+        moveUserToOptOutAudience(userId, instituteId, channel, OptOutReason.EXPLICIT);
+    }
+
+    /**
+     * Variant carrying the opt-out {@link OptOutReason}. EXPLICIT (lead-initiated) fires the
+     * AUDIENCE_OPT_OUT workflow immediately (MSG1) and anchors the drip to today. INACTIVE
+     * (auto opt-out by the inactivity scan) does NOT fire the trigger — MSG1 is sent the next
+     * morning by the scheduled 9 AM workflow — and anchors the drip to tomorrow.
+     */
+    @Transactional
+    public void moveUserToOptOutAudience(String userId, String instituteId, String channel, OptOutReason reason) {
+        if (reason == null) reason = OptOutReason.EXPLICIT;
         if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
             log.warn("moveUserToOptOutAudience: missing userId or instituteId");
             return;
@@ -90,10 +100,10 @@ public class AudienceOptOutService {
         }
 
         AudienceResponse optOutEntry = buildOptOutEntry(
-                optOutAudience, userId, previousAudienceId, previousOpt.orElse(null));
+                optOutAudience, userId, previousAudienceId, previousOpt.orElse(null), reason);
         audienceResponseRepository.save(optOutEntry);
-        log.info("Created opt-out audience_response for user {} in audience {} (previousAudience={})",
-                userId, optOutAudienceId, previousAudienceId);
+        log.info("Created opt-out audience_response for user {} in audience {} (previousAudience={}, reason={})",
+                userId, optOutAudienceId, previousAudienceId, reason);
 
         // Copy all custom field values from the previous response so the opt-out
         // audience retains the user's full profile data (name, phone, center, etc.)
@@ -101,7 +111,14 @@ public class AudienceOptOutService {
             copyCustomFieldValues(previousResponseId, optOutEntry.getId());
         }
 
-        triggerOptOutWorkflow(optOutAudienceId, instituteId, userId, previousAudienceId, channel);
+        // EXPLICIT opt-outs send MSG1 immediately via the AUDIENCE_OPT_OUT workflow.
+        // INACTIVE opt-outs intentionally do NOT — their MSG1 is sent the next morning
+        // by the scheduled 9 AM workflow (day-0 on workflow_activate_day_at, which is
+        // anchored to tomorrow for INACTIVE entries).
+        if (reason == OptOutReason.EXPLICIT) {
+            triggerOptOutWorkflow(optOutAudienceId, instituteId, userId, previousAudienceId, channel,
+                    optOutEntry.getParentMobile(), optOutEntry.getParentName());
+        }
     }
 
     private void copyCustomFieldValues(String previousResponseId, String newResponseId) {
@@ -130,13 +147,18 @@ public class AudienceOptOutService {
     }
 
     private AudienceResponse buildOptOutEntry(Audience optOutAudience, String userId,
-                                               String previousAudienceId, AudienceResponse previous) {
+                                               String previousAudienceId, AudienceResponse previous,
+                                               OptOutReason reason) {
         return AudienceResponse.builder()
                 .audienceId(optOutAudience.getId())
                 .userId(userId)
                 .sourceType(SourceTypeEnum.OPT_OUT.name())
                 .sourceId(previousAudienceId)
-                .workflowActivateDayAt(calculateWorkflowActivateDayAt(optOutAudience))
+                // conversion_status distinguishes the two drip variants so the scheduled
+                // day-0 MSG1 workflow targets only INACTIVE entries (EXPLICIT already got
+                // their immediate MSG1 from the trigger).
+                .conversionStatus(reason.conversionStatus())
+                .workflowActivateDayAt(resolveActivateDay(reason))
                 .isDuplicate(false)
                 .parentName(previous != null ? previous.getParentName() : null)
                 .parentEmail(previous != null ? previous.getParentEmail() : null)
@@ -144,13 +166,30 @@ public class AudienceOptOutService {
                 .build();
     }
 
+    /**
+     * Drip anchor for the opt-out entry. EXPLICIT → today (MSG1 already sent immediately by
+     * the trigger; MSG2 is +2 days via the day-2 workflow). INACTIVE → tomorrow, so the
+     * day-0 9 AM MSG1 workflow sends opt_out_inactive_day_1 the morning after detection and
+     * the day-2 workflow sends opt_out_inactive_msg_2 two days after that.
+     */
+    private Timestamp resolveActivateDay(OptOutReason reason) {
+        LocalDateTime base = LocalDateTime.now();
+        return Timestamp.valueOf(reason == OptOutReason.INACTIVE ? base.plusDays(1) : base);
+    }
+
     private void triggerOptOutWorkflow(String optOutAudienceId, String instituteId,
-                                        String userId, String previousAudienceId, String channel) {
+                                        String userId, String previousAudienceId, String channel,
+                                        String parentMobile, String parentName) {
         try {
             Map<String, Object> contextData = new HashMap<>();
             contextData.put("userId", userId);
             contextData.put("previousAudienceId", previousAudienceId);
             contextData.put("channel", channel);
+            // Carry the lead's contact so the AUDIENCE_OPT_OUT workflow can send MSG1 to just
+            // this lead from context (no day-difference query needed for the immediate send).
+            contextData.put("parentMobile", parentMobile);
+            contextData.put("parentName", parentName);
+            contextData.put("mobileNumber", parentMobile);
 
             workflowTriggerService.handleTriggerEvents(
                     WorkflowTriggerEvent.AUDIENCE_OPT_OUT.name(),
@@ -160,25 +199,6 @@ public class AudienceOptOutService {
             log.info("AUDIENCE_OPT_OUT workflow triggered for user {} in audience {}", userId, optOutAudienceId);
         } catch (Exception e) {
             log.error("Failed to trigger AUDIENCE_OPT_OUT workflow for user {} (non-blocking)", userId, e);
-        }
-    }
-
-    // Mirrors AudienceService.calculateWorkflowActivateDayAt — reads offset_day from settingJson
-    private Timestamp calculateWorkflowActivateDayAt(Audience audience) {
-        try {
-            String settingJson = audience.getSettingJson();
-            if (!StringUtils.hasText(settingJson)) {
-                return Timestamp.valueOf(LocalDateTime.now());
-            }
-            JsonNode root = new ObjectMapper().readTree(settingJson);
-            JsonNode offsetDayNode = root.path("workflow_setting").path("offset_day");
-            if (offsetDayNode.isMissingNode() || !offsetDayNode.isNumber()) {
-                return Timestamp.valueOf(LocalDateTime.now());
-            }
-            return Timestamp.valueOf(LocalDateTime.now().plusDays(offsetDayNode.asInt()));
-        } catch (Exception e) {
-            log.warn("Could not parse settingJson for opt-out audience {}, using now", audience.getId());
-            return Timestamp.valueOf(LocalDateTime.now());
         }
     }
 }

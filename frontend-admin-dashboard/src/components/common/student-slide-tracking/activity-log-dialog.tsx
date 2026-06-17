@@ -41,6 +41,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide-operations/download-assignment-submissions';
 import { useRouter } from '@tanstack/react-router';
+import AssessmentAttemptActivity from './assessment-attempt-activity';
+import { getInstituteId } from '@/constants/helper';
 
 interface AssignmentFileInfo {
     fileId: string;
@@ -992,12 +994,18 @@ export const ActivityLogDialog = ({
         });
     }, [selectedUser, slideData, selectedUserId, activeItem, page, pageSize]);
 
-    const { data: activityLogs, isLoading, error } = useQuery(queryConfig);
+    // Assessment activity is served by its own component (assessment data lives in
+    // the assessment-service, not learner-tracking), so skip the generic log fetch.
+    const isAssessment = activeItem?.source_type?.toUpperCase() === 'ASSESSMENT';
+    const { data: activityLogs, isLoading, error } = useQuery({
+        ...queryConfig,
+        enabled: !isAssessment,
+    });
     const {
         data: activityLogsVideoResponse,
         isLoading: isVideoResponseLoading,
         error: isVideoResponseError,
-    } = useQuery(queryConfigVideoResponse);
+    } = useQuery({ ...queryConfigVideoResponse, enabled: !isAssessment });
 
     const quizSlideIdForFetch =
         activeItem?.source_type === 'QUIZ'
@@ -1477,7 +1485,19 @@ export const ActivityLogDialog = ({
                         );
                     })()}
                     <div className="flex-1 overflow-y-auto">
-                    {isLoading || isVideoResponseLoading ? (
+                    {isAssessment ? (
+                        <AssessmentAttemptActivity
+                            assessmentId={activeItem?.assessment_slide?.assessment_id || ''}
+                            instituteId={getInstituteId()}
+                            userId={
+                                selectedUser && slideData
+                                    ? selectedUser.user_id
+                                    : selectedUserId || ''
+                            }
+                            userName={selectedUserName || selectedUser?.full_name || ''}
+                            assessmentTitle={activeItem?.title}
+                        />
+                    ) : isLoading || isVideoResponseLoading ? (
                         <div className="flex items-center justify-center p-8">
                             <DashboardLoader />
                         </div>

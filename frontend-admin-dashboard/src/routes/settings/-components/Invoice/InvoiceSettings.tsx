@@ -440,6 +440,35 @@ export default function InvoiceSettings() {
                         />
                     </div>
 
+                    <div className="space-y-1.5 rounded-lg border p-3">
+                        <Label htmlFor="invoice-pdf-placement">Invoice PDF delivery</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Choose which email carries the invoice PDF after a successful payment.
+                            &quot;Payment confirmation email&quot; sends a single combined mail
+                            instead of a separate invoice email.
+                        </p>
+                        <Select
+                            value={settings.invoicePdfPlacement}
+                            onValueChange={(v) =>
+                                update({
+                                    invoicePdfPlacement: v as InvoiceSettingsData['invoicePdfPlacement'],
+                                })
+                            }
+                        >
+                            <SelectTrigger id="invoice-pdf-placement" className="max-w-sm">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="INVOICE_EMAIL">
+                                    Separate invoice email
+                                </SelectItem>
+                                <SelectItem value="PAYMENT_CONFIRMATION_EMAIL">
+                                    Attach to payment confirmation email (single email)
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
                     <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="space-y-0.5">
                             <Label htmlFor="invoice-manual-enroll" className="cursor-pointer">

@@ -205,6 +205,7 @@ public class WorkflowCatalogController {
         eventMeta.put("SUBSCRIPTION_CANCELLED", new String[]{"Subscription Cancelled", "Fires when a learner cancels their own subscription", "Subscription", "USER_PLAN"});
         eventMeta.put("SUBSCRIPTION_TERMINATED", new String[]{"Subscription Terminated", "Fires when an admin terminates a learner's subscription", "Subscription", "USER_PLAN"});
         eventMeta.put("LEARNER_RE_ENROLLMENT", new String[]{"Learner Re-enrolment", "Fires when a learner re-enrols in a course they already had a plan for", "Enrollment", "ENROLL_INVITE"});
+        eventMeta.put("LEARNER_TERMINATION", new String[]{"Learner Termination", "Fires when a learner is removed / terminated from a course batch", "Enrollment", "PACKAGE_SESSION"});
         // LMS / content / engagement
         eventMeta.put("COURSE_CREATED", new String[]{"Course Created", "Fires when a new course / package is published in the institute", "Course", "PACKAGE_SESSION"});
         eventMeta.put("DOUBT_RAISED", new String[]{"Doubt Raised", "Fires when a learner posts a new doubt", "Engagement", "PACKAGE_SESSION"});

@@ -89,6 +89,11 @@ export interface FormattedCourseData {
     created_by_user_id: string;
     original_course_id: string | null;
     version_number: number;
+    /**
+     * Optional per-course advanced settings JSON (package.course_setting envelope).
+     * Only set when the wizard's Advanced Settings JSON is present and valid.
+     */
+    course_setting?: string;
 }
 
 type FormattedSession = FormattedCourseData['sessions'][0];
@@ -296,6 +301,18 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
             auth?.roles?.includes('ADMIN')
         );
 
+    // Per-course advanced settings JSON from the wizard. Only include when present
+    // and valid JSON, so course creation never breaks on a malformed entry.
+    const rawCourseSetting = (formData as { courseSettingJson?: string }).courseSettingJson;
+    let courseSetting: string | undefined;
+    if (rawCourseSetting && rawCourseSetting.trim().length > 0) {
+        try {
+            courseSetting = JSON.stringify(JSON.parse(rawCourseSetting));
+        } catch {
+            courseSetting = undefined;
+        }
+    }
+
     return {
         id: '',
         new_course: true,
@@ -320,6 +337,7 @@ export const convertToApiCourseFormat = (formData: CourseFormData): FormattedCou
         created_by_user_id: tokenData?.user || '',
         original_course_id: null,
         version_number: 1,
+        ...(courseSetting ? { course_setting: courseSetting } : {}),
     };
 };
 

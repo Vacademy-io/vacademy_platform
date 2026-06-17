@@ -272,6 +272,9 @@ public class CourseService {
 
         packageEntity.setCourseDepth(addCourseDTO.getCourseDepth());
         packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
+        if (StringUtils.hasText(addCourseDTO.getCourseSetting())) {
+            packageEntity.setCourseSetting(addCourseDTO.getCourseSetting());
+        }
         PackageEntity savedPackage = packageRepository.save(packageEntity);
         packageSessionService.addInvitedPackageSessionForPackage(savedPackage);
         return savedPackage;
@@ -350,6 +353,10 @@ public class CourseService {
 
         if (isNotBlank(addCourseDTO.getCourseHtmlDescription())) {
             packageEntity.setCourseHtmlDescription(addCourseDTO.getCourseHtmlDescription());
+        }
+
+        if (isNotBlank(addCourseDTO.getCourseSetting())) {
+            packageEntity.setCourseSetting(addCourseDTO.getCourseSetting());
         }
 
         return packageRepository.save(packageEntity);

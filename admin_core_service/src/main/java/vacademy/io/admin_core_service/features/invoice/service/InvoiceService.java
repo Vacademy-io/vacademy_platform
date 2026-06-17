@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.invoice.dto.*;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogMapping;
+import vacademy.io.admin_core_service.features.invoice.enums.InvoicePdfPlacement;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -270,6 +271,39 @@ public class InvoiceService {
     }
 
     /**
+     * Result of invoice generation: the persisted {@link Invoice}, the freshly-rendered PDF bytes,
+     * and whether an invoice already existed for this payment log.
+     *
+     * <p>{@code pdfBytes} is {@code null} when {@link #isAlreadyExisted()} is true (a duplicate /
+     * retried webhook — we do not re-render the PDF in that case) or when generation produced no
+     * PDF. Callers that want to attach the PDF elsewhere (e.g. the payment-confirmation email) must
+     * null-check it.</p>
+     */
+    public static class InvoiceGenerationResult {
+        private final Invoice invoice;
+        private final byte[] pdfBytes;
+        private final boolean alreadyExisted;
+
+        public InvoiceGenerationResult(Invoice invoice, byte[] pdfBytes, boolean alreadyExisted) {
+            this.invoice = invoice;
+            this.pdfBytes = pdfBytes;
+            this.alreadyExisted = alreadyExisted;
+        }
+
+        public Invoice getInvoice() {
+            return invoice;
+        }
+
+        public byte[] getPdfBytes() {
+            return pdfBytes;
+        }
+
+        public boolean isAlreadyExisted() {
+            return alreadyExisted;
+        }
+    }
+
+    /**
      * Main method to generate invoice after payment confirmation
      * This method supports multiple payment logs for a single invoice (v2
      * multi-package enrollments)
@@ -287,7 +321,21 @@ public class InvoiceService {
      *
      * @param sendEmail whether to email the generated invoice PDF to the learner
      */
+    @Transactional
     public Invoice generateInvoice(UserPlan userPlan, PaymentLog paymentLog, String instituteId, boolean sendEmail) {
+        return generateInvoiceWithResult(userPlan, paymentLog, instituteId, sendEmail).getInvoice();
+    }
+
+    /**
+     * Same as {@link #generateInvoice(UserPlan, PaymentLog, String, boolean)} but also returns the
+     * freshly-rendered PDF bytes so callers can attach the invoice to a different email (e.g. the
+     * payment-confirmation email when {@code INVOICE_SETTING.invoicePdfPlacement =
+     * PAYMENT_CONFIRMATION_EMAIL}). {@code pdfBytes} is null when the invoice already existed
+     * (duplicate webhook) — see {@link InvoiceGenerationResult#isAlreadyExisted()}.
+     */
+    @Transactional
+    public InvoiceGenerationResult generateInvoiceWithResult(UserPlan userPlan, PaymentLog paymentLog,
+            String instituteId, boolean sendEmail) {
         try {
             log.info("Starting invoice generation for userPlanId: {}, paymentLogId: {}, instituteId: {}",
                     userPlan.getId(), paymentLog.getId(), instituteId);
@@ -296,7 +344,7 @@ public class InvoiceService {
             if (invoicePaymentLogMappingRepository.existsByPaymentLogId(paymentLog.getId())) {
                 log.info("Payment log {} is already part of an invoice. Skipping invoice generation.",
                         paymentLog.getId());
-                return findInvoiceByPaymentLogId(paymentLog.getId());
+                return new InvoiceGenerationResult(findInvoiceByPaymentLogId(paymentLog.getId()), null, true);
             }
 
             // Check if this is a v2 multi-package enrollment (has shared order ID)
@@ -340,7 +388,7 @@ public class InvoiceService {
 
             log.info("Invoice generated successfully: {} with {} payment log(s)",
                     invoiceNumber, paymentLogs.size());
-            return invoice;
+            return new InvoiceGenerationResult(invoice, pdfBytes, false);
 
         } catch (Exception e) {
             log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}",
@@ -1154,6 +1202,10 @@ public class InvoiceService {
                 if (!map.containsKey("sendInvoiceEmail")) {
                     map.put("sendInvoiceEmail", false);
                 }
+                // Default PDF placement: keep the PDF in the dedicated invoice email (legacy behaviour)
+                if (!map.containsKey("invoicePdfPlacement")) {
+                    map.put("invoicePdfPlacement", InvoicePdfPlacement.INVOICE_EMAIL.name());
+                }
                 return map;
             }
         } catch (Exception e) {
@@ -1166,7 +1218,28 @@ public class InvoiceService {
         defaults.put("taxLabel", "Tax");
         defaults.put("currency", "INR");
         defaults.put("sendInvoiceEmail", false);
+        defaults.put("invoicePdfPlacement", InvoicePdfPlacement.INVOICE_EMAIL.name());
         return defaults;
+    }
+
+    /**
+     * Resolve where the invoice PDF should be delivered for this institute. Reads
+     * {@code INVOICE_SETTING.invoicePdfPlacement}; defaults to {@link InvoicePdfPlacement#INVOICE_EMAIL}
+     * when the institute, the setting, or its value is missing/unrecognised.
+     */
+    public InvoicePdfPlacement getInvoicePdfPlacement(String instituteId) {
+        try {
+            Institute institute = instituteRepository.findById(instituteId).orElse(null);
+            if (institute == null) {
+                return InvoicePdfPlacement.INVOICE_EMAIL;
+            }
+            Map<String, Object> settings = getInvoiceSettings(institute);
+            return InvoicePdfPlacement.fromSetting(settings.get("invoicePdfPlacement"));
+        } catch (Exception e) {
+            log.warn("Could not resolve invoicePdfPlacement for institute {} — defaulting to INVOICE_EMAIL",
+                    instituteId, e);
+            return InvoicePdfPlacement.INVOICE_EMAIL;
+        }
     }
 
     /**

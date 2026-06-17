@@ -172,9 +172,9 @@ export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }
                         {isFetching ? ' · loading…' : ''}
                     </span>
                     <MyPagination
-                        currentPage={page + 1}
+                        currentPage={page}
                         totalPages={totalPages}
-                        onPageChange={(p) => setPage(p - 1)}
+                        onPageChange={setPage}
                     />
                 </div>
             )}

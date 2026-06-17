@@ -48,4 +48,11 @@ public class AddCourseDTO {
      * Only considered when contains_subgroup = true.
      */
     private List<SubgroupDTO> subgroups;
+
+    /**
+     * Optional: per-course advanced settings JSON stored on package.course_setting.
+     * Open-ended envelope ({@code { "setting": { "<KEY>": { ... } } }}) consumed by
+     * workflows; persisted verbatim when provided.
+     */
+    private String courseSetting;
 }

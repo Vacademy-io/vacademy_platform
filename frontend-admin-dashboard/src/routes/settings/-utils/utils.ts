@@ -27,6 +27,7 @@ import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
 import CouponSettings from '../-components/Coupons/CouponSettings';
 import TelephonySettings from '../-components/TelephonySettings';
 import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
+import LmsSettings from '../-components/Lms/LmsSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -172,6 +173,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.PaymentGateways,
             value: 'Payment Gateways',
             component: PaymentGatewaySettings,
+        },
+        {
+            tab: SettingsTabs.Lms,
+            value: 'LMS Settings',
+            component: LmsSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

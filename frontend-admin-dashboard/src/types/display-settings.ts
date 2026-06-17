@@ -76,7 +76,8 @@ export type CourseDetailsTabId =
     | 'TEACHER'
     | 'ASSESSMENT'
     | 'PLANNING'
-    | 'ACTIVITY';
+    | 'ACTIVITY'
+    | 'SETTINGS';
 
 export interface CourseDetailsTabConfig {
     id: CourseDetailsTabId;

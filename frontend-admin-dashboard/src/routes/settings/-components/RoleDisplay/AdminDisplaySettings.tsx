@@ -1101,6 +1101,7 @@ export default function AdminDisplaySettings() {
                             'ASSESSMENT',
                             'PLANNING',
                             'ACTIVITY',
+                            'SETTINGS',
                         ];
                         const orderForId: Record<string, number> = {
                             OUTLINE: 1,
@@ -1110,6 +1111,7 @@ export default function AdminDisplaySettings() {
                             ASSESSMENT: 5,
                             PLANNING: 6,
                             ACTIVITY: 7,
+                            SETTINGS: 8,
                         };
                         const sorted = detailsIds
                             .map((id) => ({

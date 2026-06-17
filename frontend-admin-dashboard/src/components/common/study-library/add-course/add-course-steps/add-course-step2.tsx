@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import AddCourseStep2StructureTypes from './add-course-step2-structure-types';
@@ -144,6 +145,9 @@ export const step2Schema = z
             )
             .optional(),
         publishToCatalogue: z.boolean(),
+        // Optional per-course advanced settings JSON (package.course_setting envelope),
+        // consumed by workflows. Persisted verbatim on create when present + valid.
+        courseSettingJson: z.string().optional(),
     })
     .superRefine((data, ctx) => {
         if (!data.containsSubgroup) return;
@@ -4204,6 +4208,40 @@ export const AddCourseStep2 = ({
                                 ) : null}
                             </CardContent>
                         </Card>
+
+                        {/* Advanced Settings (per-course course_setting JSON) */}
+                        {!isEdit && (
+                            <Card className="mt-6">
+                                <CardContent className="pt-6">
+                                    <Collapsible>
+                                        <CollapsibleTrigger className="flex w-full items-center justify-between text-left">
+                                            <span className="font-semibold text-neutral-700">
+                                                Advanced Settings (JSON, optional)
+                                            </span>
+                                            <span className="text-xs text-primary-500">Show / hide</span>
+                                        </CollapsibleTrigger>
+                                        <CollapsibleContent className="mt-3 space-y-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                Advanced per-course settings used by workflows (LMS config,
+                                                retention, etc.). Must be a JSON object wrapped in a{' '}
+                                                <code>{'{ "setting": { ... } }'}</code> envelope. You can also
+                                                edit this later from the course&apos;s Settings tab. Leave empty
+                                                to skip.
+                                            </p>
+                                            <Textarea
+                                                spellCheck={false}
+                                                placeholder={'{\n  "setting": {}\n}'}
+                                                className="min-h-[180px] font-mono text-xs"
+                                                value={form.watch('courseSettingJson') ?? ''}
+                                                onChange={(e) =>
+                                                    form.setValue('courseSettingJson', e.target.value)
+                                                }
+                                            />
+                                        </CollapsibleContent>
+                                    </Collapsible>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     {/* Fixed Footer */}

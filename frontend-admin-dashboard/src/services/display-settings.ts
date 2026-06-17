@@ -266,6 +266,7 @@ function mergeDisplayWithDefaults(
                 { id: 'ASSESSMENT', order: 5, visible: true },
                 { id: 'PLANNING', order: 6, visible: false },
                 { id: 'ACTIVITY', order: 7, visible: false },
+                { id: 'SETTINGS', order: 8, visible: false },
             ],
             defaultTab: 'OUTLINE' as const,
         };

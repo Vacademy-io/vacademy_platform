@@ -11,6 +11,8 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationToUs
 import vacademy.io.admin_core_service.features.notification_service.enums.CommunicationType;
 import vacademy.io.admin_core_service.features.notification_service.utils.StripeInvoiceEmailBody;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.notification.dto.AttachmentNotificationDTO;
+import vacademy.io.common.notification.dto.AttachmentUsersDTO;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -21,6 +23,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,23 @@ public class PaymentNotificatonService {
             PaymentResponseDTO paymentResponseDTO,
             PaymentInitiationRequestDTO paymentInitiationRequestDTO,
             UserDTO userDTO) {
+        return sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                paymentInitiationRequestDTO, userDTO, null, null);
+    }
+
+    /**
+     * Overload that can attach the invoice PDF directly to the payment-confirmation email.
+     * Used when {@code INVOICE_SETTING.invoicePdfPlacement = PAYMENT_CONFIRMATION_EMAIL}, so the
+     * learner receives a single mail (confirmation + invoice PDF) instead of two separate emails.
+     * When {@code invoicePdfBytes} is null/empty this behaves exactly like the no-attachment path.
+     */
+    public boolean sendPaymentConfirmationNotification(
+            String instituteId,
+            PaymentResponseDTO paymentResponseDTO,
+            PaymentInitiationRequestDTO paymentInitiationRequestDTO,
+            UserDTO userDTO,
+            byte[] invoicePdfBytes,
+            String invoiceNumber) {
         if (instituteId == null || paymentResponseDTO == null || paymentInitiationRequestDTO == null
                 || userDTO == null) {
             return false;
@@ -63,26 +83,62 @@ public class PaymentNotificatonService {
         if (emailBody == null)
             return false;
 
-        NotificationDTO notificationDTO = new NotificationDTO();
-        notificationDTO.setBody(emailBody);
-        notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
-        notificationDTO.setSubject("Payment Confirmation from " + institute.getInstituteName());
-
-        NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
-        notificationToUserDTO.setUserId(userDTO.getId());
-        notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
-                : paymentInitiationRequestDTO.getEmail());
-        notificationToUserDTO.setPlaceholders(new HashMap<>());
-
-        List<NotificationToUserDTO> recipients = new ArrayList<>();
-        recipients.add(notificationToUserDTO);
-        billingContactRecipientResolver
-                .buildBillingContactRecipient(userDTO.getId(), instituteId, notificationToUserDTO.getChannelId())
-                .ifPresent(recipients::add);
-        notificationDTO.setUsers(recipients);
+        String subject = "Payment Confirmation from " + institute.getInstituteName();
+        String channelId = paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
+                : paymentInitiationRequestDTO.getEmail();
+        boolean attachPdf = invoicePdfBytes != null && invoicePdfBytes.length > 0;
 
         try {
-            notificationService.sendEmailViaUnified(notificationDTO, instituteId);
+            if (attachPdf) {
+                String attachmentName = "invoice_"
+                        + (StringUtils.hasText(invoiceNumber) ? invoiceNumber : userDTO.getId()) + ".pdf";
+                AttachmentUsersDTO.AttachmentDTO attachmentDTO = new AttachmentUsersDTO.AttachmentDTO();
+                attachmentDTO.setAttachmentName(attachmentName);
+                attachmentDTO.setAttachment(Base64.getEncoder().encodeToString(invoicePdfBytes));
+
+                AttachmentUsersDTO toUser = new AttachmentUsersDTO();
+                toUser.setUserId(userDTO.getId());
+                toUser.setChannelId(channelId);
+                toUser.setPlaceholders(new HashMap<>());
+                toUser.setAttachments(List.of(attachmentDTO));
+
+                List<AttachmentUsersDTO> recipients = new ArrayList<>();
+                recipients.add(toUser);
+                billingContactRecipientResolver
+                        .buildBillingContactAttachmentRecipient(userDTO.getId(), instituteId, channelId,
+                                List.of(attachmentDTO))
+                        .ifPresent(recipients::add);
+
+                AttachmentNotificationDTO attachmentNotification = AttachmentNotificationDTO.builder()
+                        .body(emailBody)
+                        .subject(subject)
+                        .notificationType(CommunicationType.EMAIL.name())
+                        .source("PAYMENT_CONFIRMATION")
+                        .sourceId(StringUtils.hasText(invoiceNumber) ? invoiceNumber : userDTO.getId())
+                        .users(recipients)
+                        .build();
+
+                notificationService.sendAttachmentEmailViaUnified(List.of(attachmentNotification), instituteId);
+            } else {
+                NotificationDTO notificationDTO = new NotificationDTO();
+                notificationDTO.setBody(emailBody);
+                notificationDTO.setNotificationType(CommunicationType.EMAIL.name());
+                notificationDTO.setSubject(subject);
+
+                NotificationToUserDTO notificationToUserDTO = new NotificationToUserDTO();
+                notificationToUserDTO.setUserId(userDTO.getId());
+                notificationToUserDTO.setChannelId(channelId);
+                notificationToUserDTO.setPlaceholders(new HashMap<>());
+
+                List<NotificationToUserDTO> recipients = new ArrayList<>();
+                recipients.add(notificationToUserDTO);
+                billingContactRecipientResolver
+                        .buildBillingContactRecipient(userDTO.getId(), instituteId, channelId)
+                        .ifPresent(recipients::add);
+                notificationDTO.setUsers(recipients);
+
+                notificationService.sendEmailViaUnified(notificationDTO, instituteId);
+            }
             return true;
         } catch (Exception e) {
             SentryLogger.SentryEventBuilder.error(e)
@@ -91,7 +147,7 @@ public class PaymentNotificatonService {
                     .withTag("email.type", "PAYMENT_CONFIRMATION")
                     .withTag("institute.id", instituteId)
                     .withTag("user.id", userDTO.getId())
-                    .withTag("user.email", notificationToUserDTO.getChannelId())
+                    .withTag("user.email", channelId)
                     .withTag("operation", "sendPaymentConfirmationEmail")
                     .send();
             return false;

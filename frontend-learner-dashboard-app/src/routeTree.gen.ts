@@ -32,6 +32,7 @@ import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-respo
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
+import { Route as ChatIndexRouteImport } from './routes/chat/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
 import { Route as AuthTransferIndexRouteImport } from './routes/auth-transfer/index'
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
@@ -206,6 +207,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
 const CoursesIndexRoute = CoursesIndexRouteImport.update({
   id: '/courses/',
   path: '/courses/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatIndexRoute = ChatIndexRouteImport.update({
+  id: '/chat/',
+  path: '/chat/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
@@ -549,6 +555,7 @@ export interface FileRoutesByFullPath {
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
+  '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -632,6 +639,7 @@ export interface FileRoutesByTo {
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
+  '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/delete-user': typeof DeleteUserIndexRoute
@@ -717,6 +725,7 @@ export interface FileRoutesById {
   '/audience-response/': typeof AudienceResponseIndexRoute
   '/auth-transfer/': typeof AuthTransferIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
+  '/chat/': typeof ChatIndexRoute
   '/courses/': typeof CoursesIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/delete-user/': typeof DeleteUserIndexRoute
@@ -803,6 +812,7 @@ export interface FileRouteTypes {
     | '/audience-response'
     | '/auth-transfer'
     | '/change-password'
+    | '/chat'
     | '/courses'
     | '/dashboard'
     | '/delete-user'
@@ -886,6 +896,7 @@ export interface FileRouteTypes {
     | '/audience-response'
     | '/auth-transfer'
     | '/change-password'
+    | '/chat'
     | '/courses'
     | '/dashboard'
     | '/delete-user'
@@ -970,6 +981,7 @@ export interface FileRouteTypes {
     | '/audience-response/'
     | '/auth-transfer/'
     | '/change-password/'
+    | '/chat/'
     | '/courses/'
     | '/dashboard/'
     | '/delete-user/'
@@ -1055,6 +1067,7 @@ export interface RootRouteChildren {
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
+  ChatIndexRoute: typeof ChatIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
@@ -1290,6 +1303,13 @@ declare module '@tanstack/react-router' {
       path: '/courses'
       fullPath: '/courses'
       preLoaderRoute: typeof CoursesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/': {
+      id: '/chat/'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/change-password/': {
@@ -1730,6 +1750,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
+  ChatIndexRoute: ChatIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DeleteUserIndexRoute: DeleteUserIndexRoute,

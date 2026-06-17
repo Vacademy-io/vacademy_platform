@@ -277,12 +277,69 @@ public class PaymentLogService {
         // payment — generateInvoice's @Transactional had already marked the
         // outer transaction rollback-only.
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-            log.info("Generating invoice for payment log ID: {} (sync path)", paymentLog.getId());
-            invoiceService.generateInvoice(
+            // Honor the invoice-PDF-placement setting on the synchronous path too. Synchronous
+            // gateways (eWay, Stripe charge_automatically, etc.) confirm the payment in-request via
+            // the 4-arg updatePaymentLog and there is NO later webhook to send the confirmation —
+            // so in consolidated mode we suppress the separate invoice email and send the single
+            // payment-confirmation email (with the PDF attached) right here.
+            InvoicePdfPlacement pdfPlacement = invoiceService.getInvoicePdfPlacement(instituteId);
+            boolean attachInvoiceToConfirmation = pdfPlacement == InvoicePdfPlacement.PAYMENT_CONFIRMATION_EMAIL;
+            log.info("Generating invoice for payment log ID: {} (sync path, pdfPlacement={})",
+                    paymentLog.getId(), pdfPlacement);
+            InvoiceService.InvoiceGenerationResult invoiceResult = invoiceService.generateInvoiceWithResult(
                     paymentLog.getUserPlan(),
                     paymentLog,
-                    instituteId);
+                    instituteId,
+                    /* sendEmail */ !attachInvoiceToConfirmation);
             log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
+
+            // Send the consolidated confirmation only on a freshly-generated invoice. A re-run for an
+            // already-invoiced payment log (or a later polling/webhook delivery) means the single
+            // email already went out — the webhook path's dedup guard relies on the same signal.
+            if (attachInvoiceToConfirmation && invoiceResult != null && !invoiceResult.isAlreadyExisted()) {
+                String invoiceNumber = invoiceResult.getInvoice() != null
+                        ? invoiceResult.getInvoice().getInvoiceNumber()
+                        : null;
+                sendSyncPaymentConfirmation(paymentLog, instituteId, invoiceResult.getPdfBytes(), invoiceNumber);
+            }
+        }
+    }
+
+    /**
+     * Send the consolidated payment-confirmation email (with the invoice PDF attached) for the
+     * synchronous payment path. Synchronous gateways confirm in-request and have no webhook to
+     * carry the confirmation, so we send it here. The sync {@code paymentSpecificData} may not hold
+     * the full gateway response, so we build a minimal response/request DTO from the PaymentLog
+     * itself (amount, currency, id). Best-effort: a failure is logged and never blocks enrollment.
+     */
+    private void sendSyncPaymentConfirmation(PaymentLog paymentLog, String instituteId,
+            byte[] pdfBytes, String invoiceNumber) {
+        try {
+            if (paymentLog.getUserId() == null) {
+                return;
+            }
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId()));
+            if (CollectionUtils.isEmpty(users) || users.get(0) == null) {
+                return;
+            }
+            UserDTO userDTO = users.get(0);
+
+            PaymentResponseDTO responseDTO = new PaymentResponseDTO();
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("paymentStatus", PaymentStatusEnum.PAID.name());
+            responseData.put("amount", paymentLog.getPaymentAmount());
+            responseData.put("transactionId", paymentLog.getId());
+            responseDTO.setResponseData(responseData);
+
+            PaymentInitiationRequestDTO requestDTO = new PaymentInitiationRequestDTO();
+            requestDTO.setCurrency(paymentLog.getCurrency());
+            requestDTO.setEmail(userDTO.getEmail());
+
+            paymentNotificatonService.sendPaymentConfirmationNotification(
+                    instituteId, responseDTO, requestDTO, userDTO, pdfBytes, invoiceNumber);
+        } catch (Exception e) {
+            log.error("Failed to send sync-path payment-confirmation email for payment log {}: {}",
+                    paymentLog.getId(), e.getMessage(), e);
         }
     }
 

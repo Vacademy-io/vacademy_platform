@@ -1530,6 +1530,12 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('authLinks', [...(props.authLinks || []), { label: 'Login', route: 'login' }]);
     };
 
+    // 'get-started' is the canonical route the learner header recognises as the
+    // lead-collection / enrollment CTA (see isLeadFormLink in the learner HeaderComponent).
+    const addGetStartedLink = () => {
+        updateProp('authLinks', [...(props.authLinks || []), { label: 'Get Started', route: 'get-started' }]);
+    };
+
     const updateAuthLink = (index: number, field: string, value: any) => {
         const updated = [...(props.authLinks || [])];
         updated[index] = { ...updated[index], [field]: value };
@@ -1671,12 +1677,19 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label>Auth / CTA Buttons</Label>
-                    <Button size="sm" variant="outline" onClick={addAuthLink}>
-                        <Plus className="mr-1 size-3" /> Add
-                    </Button>
+                    <div className="flex items-center gap-1">
+                        <Button size="sm" variant="outline" onClick={addGetStartedLink}>
+                            <Plus className="mr-1 size-3" /> Get Started
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={addAuthLink}>
+                            <Plus className="mr-1 size-3" /> Add
+                        </Button>
+                    </div>
                 </div>
                 <p className="text-[11px] text-gray-400">
-                    Buttons shown on the right side of the header (e.g. Login, Sign Up).
+                    Buttons shown on the right side of the header (e.g. Login, Sign Up). A
+                    &ldquo;Get Started&rdquo; button opens the enrollment / lead-collection form
+                    (requires lead collection to be enabled in catalogue settings).
                 </p>
                 {(props.authLinks || []).map((link: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
@@ -1734,6 +1747,37 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
 
     const updateLeftSection = (field: string, value: any) => {
         updateProp('leftSection', { ...props.leftSection, [field]: value });
+    };
+
+    // Footer social links (Column 1 — Brand). platform drives both the label
+    // and the icon the learner footer renders (icon = platform lowercased).
+    const SOCIAL_PLATFORMS = ['Facebook', 'Instagram', 'LinkedIn', 'YouTube', 'Twitter'];
+
+    const updateSocial = (index: number, field: string, value: any) => {
+        const socials = [...(props.leftSection?.socials || [])];
+        socials[index] = { ...socials[index], [field]: value };
+        updateLeftSection('socials', socials);
+    };
+
+    const updateSocialPlatform = (index: number, platform: string) => {
+        const socials = [...(props.leftSection?.socials || [])];
+        socials[index] = { ...socials[index], platform, icon: platform.toLowerCase() };
+        updateLeftSection('socials', socials);
+    };
+
+    const addSocial = () => {
+        const socials = [
+            ...(props.leftSection?.socials || []),
+            { platform: 'Facebook', icon: 'facebook', url: '', openInSameTab: false },
+        ];
+        updateLeftSection('socials', socials);
+    };
+
+    const deleteSocial = (index: number) => {
+        const socials = (props.leftSection?.socials || []).filter(
+            (_: any, i: number) => i !== index,
+        );
+        updateLeftSection('socials', socials);
     };
 
     // Helper to update a right section's field
@@ -1814,6 +1858,55 @@ const FooterEditor = ({ component, pageId, updateComponent }: any) => {
                     onChange={(html) => updateLeftSection('text', html)}
                     placeholder="Platform description..."
                 />
+
+                {/* Social Links */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs">Social Links</Label>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={addSocial}
+                        >
+                            <Plus className="mr-1 size-3" /> Add
+                        </Button>
+                    </div>
+                    {(props.leftSection?.socials || []).map((social: any, si: number) => (
+                        <div key={si} className="flex items-center gap-1.5">
+                            <select
+                                className="h-7 shrink-0 rounded border px-2 text-xs"
+                                value={social.platform || 'Facebook'}
+                                onChange={(e) => updateSocialPlatform(si, e.target.value)}
+                            >
+                                {SOCIAL_PLATFORMS.map((p) => (
+                                    <option key={p} value={p}>
+                                        {p}
+                                    </option>
+                                ))}
+                            </select>
+                            <Input
+                                className="h-7 text-xs"
+                                placeholder="https://..."
+                                value={social.url || ''}
+                                onChange={(e) => updateSocial(si, 'url', e.target.value)}
+                            />
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="size-7 shrink-0 p-0 text-red-500"
+                                onClick={() => deleteSocial(si)}
+                            >
+                                <Trash2 className="size-3" />
+                            </Button>
+                        </div>
+                    ))}
+                    {(props.leftSection?.socials || []).length === 0 && (
+                        <p className="text-xs text-gray-400">
+                            No social links yet — click Add.
+                        </p>
+                    )}
+                </div>
             </div>
 
             {/* Right Sections (link columns) */}
@@ -1903,6 +1996,23 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
         updateProp('right', { ...props.right, [field]: value });
     };
 
+    // Hero carousel images. 2+ → the learner hero renders an auto-playing
+    // carousel; 1 → single image; 0 → falls back to the single "Right Image".
+    const updateRightImage = (index: number, field: string, value: any) => {
+        const images = [...(props.right?.images || [])];
+        images[index] = { ...images[index], [field]: value };
+        updateRight('images', images);
+    };
+    const addRightImage = () => {
+        updateRight('images', [...(props.right?.images || []), { image: '', alt: '' }]);
+    };
+    const deleteRightImage = (index: number) => {
+        updateRight(
+            'images',
+            (props.right?.images || []).filter((_: any, i: number) => i !== index),
+        );
+    };
+
     return (
         <div className="space-y-4">
             <h4 className="text-sm font-medium">Hero Section Settings</h4>
@@ -1969,6 +2079,54 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                         onChange={(e) => updateRight('alt', e.target.value)}
                     />
                 </div>
+            </div>
+
+            {/* Carousel Images */}
+            <div className="space-y-3 rounded border bg-gray-50 p-3">
+                <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-semibold">Carousel Images</h5>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        onClick={addRightImage}
+                    >
+                        <Plus className="mr-1 size-3" /> Add
+                    </Button>
+                </div>
+                <p className="text-xs text-gray-500">
+                    Add 2 or more images to turn the hero media into an
+                    auto-playing carousel. With one image it stays a single
+                    image; with none it uses the Right Image above.
+                </p>
+                {(props.right?.images || []).map((img: any, i: number) => (
+                    <div key={i} className="space-y-2 rounded border bg-white p-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-500">
+                                Slide {i + 1}
+                            </span>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="size-6 shrink-0 p-0 text-red-500"
+                                onClick={() => deleteRightImage(i)}
+                            >
+                                <Trash2 className="size-3" />
+                            </Button>
+                        </div>
+                        <ImageUploadField
+                            label="Image"
+                            value={img.image || ''}
+                            onChange={(url) => updateRightImage(i, 'image', url)}
+                        />
+                        <Input
+                            className="h-7 text-xs"
+                            placeholder="Alt text"
+                            value={img.alt || ''}
+                            onChange={(e) => updateRightImage(i, 'alt', e.target.value)}
+                        />
+                    </div>
+                ))}
             </div>
         </div>
     );

@@ -208,11 +208,18 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       }
       const H = Math.round(h * 360), S = Math.round(s * 100), L = Math.round(l * 100);
       el.style.setProperty('--primary-500', `${H} ${S}% ${L}%`);
+      // Keep the shadcn base `--primary` var in sync with --primary-500. The
+      // header Login button (and other shadcn `bg-primary` elements) read
+      // hsl(var(--primary)); without this it stays on a stale/default green
+      // while the rest of the catalogue uses the institute color — so the
+      // Login button looked a different green from every other accent.
+      el.style.setProperty('--primary', `${H} ${S}% ${L}%`);
       el.style.setProperty('--primary-400', `${H} ${S}% ${Math.min(L + 10, 90)}%`);
       el.style.setProperty('--primary-200', `${H} ${Math.max(S - 15, 10)}% ${Math.min(L + 28, 95)}%`);
       el.style.setProperty('--primary-50', `${H} ${Math.max(S - 30, 5)}% ${Math.min(L + 43, 98)}%`);
     } else {
       el.style.removeProperty('--primary-500');
+      el.style.removeProperty('--primary');
       el.style.removeProperty('--primary-400');
       el.style.removeProperty('--primary-200');
       el.style.removeProperty('--primary-50');
@@ -223,13 +230,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   useEffect(() => {
     const handleOpenLeadCollection = () => {
       console.log("[CourseCataloguePage] Received openLeadCollection event");
-      // Open lead collection whenever it's configured. This matches the mobile
-      // fixed-bottom-bar Get Started button and the modal's own render condition
-      // below, both of which open it regardless of the leadCollection.enabled flag.
-      if (catalogueData?.globalSettings?.leadCollection) {
+      // Only show lead collection if it's enabled in JSON
+      if (catalogueData?.globalSettings.leadCollection.enabled) {
         setShowLeadCollection(true);
       } else {
-        console.log("[CourseCataloguePage] Lead collection is not configured, ignoring openLeadCollection event");
+        console.log("[CourseCataloguePage] Lead collection is disabled, ignoring openLeadCollection event");
       }
     };
 
@@ -358,7 +363,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <>
           {/* Header from JSON globalSettings */}
           {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
-            <div className={catalogueData.globalSettings.stickyHeader ? 'sticky top-0 z-50' : ''}>
+            <div className={(catalogueData.globalSettings as any).stickyHeader !== false ? 'sticky top-0 z-50' : ''}>
               <JsonRenderer
                 page={{
                   id: "header",
@@ -395,7 +400,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   globalSettings={catalogueData.globalSettings}
                   instituteId={instituteId}
                   tagName={tagName}
-                  catalogueData={catalogueData}
                   isPreviewMode={isPreviewMode}
                   selectedComponentId={selectedComponentId}
                   onComponentClick={handlePreviewComponentClick}

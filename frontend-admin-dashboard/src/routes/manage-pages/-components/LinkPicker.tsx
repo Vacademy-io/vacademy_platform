@@ -141,7 +141,9 @@ export const LinkPicker = ({
                     {value && !isExternal && (
                         <div className="flex items-center justify-between rounded bg-blue-50 px-2 py-1">
                             <span className="text-[10px] text-blue-600">
-                                Links to: <strong>/{value}</strong>
+                                {value === 'get-started'
+                                    ? <>Opens: <strong>Get Started (lead form)</strong></>
+                                    : <>Links to: <strong>/{value}</strong></>}
                             </span>
                             <button
                                 type="button"

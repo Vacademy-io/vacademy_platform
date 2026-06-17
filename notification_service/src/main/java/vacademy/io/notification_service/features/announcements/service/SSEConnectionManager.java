@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import vacademy.io.notification_service.features.announcements.dto.AnnouncementEvent;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -58,7 +57,10 @@ public class SSEConnectionManager {
             removeConnection(userId, emitter);
         });
         emitter.onError(throwable -> {
-            log.error("SSE connection error for user: {}", userId, throwable);
+            // Fires routinely when a client disconnects mid-stream (broken pipe / connection reset).
+            // Expected churn, not an error — debug-level so it doesn't flood Sentry.
+            log.debug("SSE connection closed with error for user {}: {}", userId,
+                    throwable != null ? throwable.toString() : "unknown");
             removeConnection(userId, emitter);
         });
         
@@ -74,8 +76,10 @@ public class SSEConnectionManager {
             emitter.send(SseEmitter.event()
                     .name("connection")
                     .data("Connected to announcement stream"));
-        } catch (IOException e) {
-            log.error("Failed to send connection confirmation to user: {}", userId, e);
+        } catch (Exception e) {
+            // Client bailed during the handshake (IOException) or the emitter was already torn down
+            // (IllegalStateException). Routine — fail the connection cleanly, no error-level noise.
+            log.debug("Failed to send connection confirmation to user {}: {}", userId, e.toString());
             removeConnection(userId, emitter);
             return null;
         }
@@ -113,9 +117,16 @@ public class SSEConnectionManager {
                 
                 // Update last activity
                 if (metadata != null) metadata.updateLastActivity();
-                
-            } catch (IOException e) {
-                log.error("Failed to send event to user: {}", userId, e);
+
+            } catch (Exception e) {
+                // Routine churn: a dead/closed emitter throws here — IOException on a broken pipe, OR
+                // IllegalStateException("ResponseBodyEmitter has already completed", a RuntimeException
+                // with a frequently-null message) for a stale/timed-out connection. Catch BOTH (not
+                // just IOException): an uncaught RuntimeException here would propagate out of
+                // broadcastToInstitute, abort delivery to every remaining user in the loop, and trip
+                // the *Manager tracing aspect into an ERROR Sentry event. Drop this one emitter and
+                // continue; debug-level since a disconnected client is expected, not an error.
+                log.debug("Dropping unsendable SSE connection for user {}: {}", userId, e.toString());
                 iterator.remove();
                 connectionMetadata.remove(emitter);
             }

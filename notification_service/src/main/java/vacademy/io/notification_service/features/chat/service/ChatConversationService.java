@@ -121,12 +121,22 @@ public class ChatConversationService {
             conv = convRepo.saveAndFlush(conv);
             materializeBatchMembers(conv.getId(), packageSessionId);
         }
-        // Caller must belong to the batch; admins are granted access on demand.
+        // Caller must belong to the batch.
         if (!memberRepo.existsByConversationIdAndUserIdAndIsActiveTrue(conv.getId(), callerId)) {
             if ("admin".equals(ChatPermissionService.normalizeRole(callerRole))) {
                 ensureMember(conv, callerId, callerRole, ChatMemberRole.MODERATOR);
             } else {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_A_MEMBER");
+                // Not in the cached roster — re-validate against the LIVE batch membership and self-heal.
+                // The materialized members are a cache: a student who enrolled after the batch chat was
+                // first provisioned (or who was missed by an incomplete initial materialization) would
+                // otherwise be wrongly rejected. If they genuinely belong to the batch, add them.
+                Map<String, String> roster = resolveBatchMembers(packageSessionId);
+                String roleInBatch = roster.get(callerId);
+                if (roleInBatch != null) {
+                    ensureMember(conv, callerId, roleInBatch, ChatMemberRole.MEMBER);
+                } else {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "NOT_A_MEMBER");
+                }
             }
         }
         return conv;

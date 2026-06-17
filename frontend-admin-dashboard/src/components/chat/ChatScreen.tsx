@@ -513,8 +513,10 @@ export function ChatScreen({
           ? 'You do not have permission to post in this conversation.'
           : undefined;
 
+    // Fit within the viewport below the navbar + LayoutContainer margins/padding (~9rem of chrome)
+    // so the composer stays visible without scrolling. No min-height (it would overflow short screens).
     const shellClass =
-        'flex h-[calc(100vh-140px)] min-h-[520px] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm'; // design-lint-ignore: viewport-relative chat height has no spacing token
+        'flex h-[calc(100dvh-9rem)] overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm'; // design-lint-ignore: viewport-relative chat height has no spacing token
 
     return (
         <div className={shellClass}>

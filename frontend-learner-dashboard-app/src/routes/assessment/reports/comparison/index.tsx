@@ -23,9 +23,10 @@ function ComparisonRouteComponent() {
   const { assessmentId, attemptId } = Route.useSearch();
   const router = useRouter();
   const state = router.state.location.state as
-    | { assessmentName?: string }
+    | { assessmentName?: string; evaluationType?: string }
     | undefined;
   const assessmentName = state?.assessmentName || "Assessment";
+  const evaluationType = state?.evaluationType;
 
   const [comparisonData, setComparisonData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -91,6 +92,7 @@ function ComparisonRouteComponent() {
         assessmentId={assessmentId}
         attemptId={attemptId}
         instituteId={instituteId}
+        evaluationType={evaluationType}
       />
     </LayoutContainer>
   );

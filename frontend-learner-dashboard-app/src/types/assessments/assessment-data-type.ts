@@ -132,6 +132,7 @@ interface Question {
   time_taken_in_seconds: number;
   answer_status: string;
   question_type: string;
+  evaluator_feedback?: string | null;
 }
 
 interface AllSections {

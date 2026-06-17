@@ -110,7 +110,7 @@ export const ChapterSidebarAddButton = () => {
         }) || ''
     );
 
-    const { items, setActiveItem } = useContentStore();
+    const { items, setActiveItem, setAssessmentCreateMode } = useContentStore();
 
     // Use the Zustand store instead of useState
     const {
@@ -286,7 +286,19 @@ export const ChapterSidebarAddButton = () => {
                 label: 'Assessment',
                 value: 'assessment',
                 icon: <ListChecks className="size-4 text-rose-500" />,
-                description: 'Link an existing assessment',
+                description: 'Link or create an assessment',
+                subItems: [
+                    {
+                        label: 'Link existing assessment',
+                        value: 'link-assessment',
+                        description: 'Pick an assessment you already created',
+                    },
+                    {
+                        label: 'Create new assessment',
+                        value: 'create-assessment',
+                        description: 'Create a manual assessment in this slide',
+                    },
+                ],
             },
         ],
         []
@@ -328,6 +340,8 @@ export const ChapterSidebarAddButton = () => {
                 case 'scorm':
                     return ct.scorm !== false;
                 case 'assessment':
+                case 'link-assessment':
+                case 'create-assessment':
                     return ct.assessment !== false;
                 // presentation treated as a document-type control
                 case 'presentation':
@@ -688,7 +702,15 @@ export const ChapterSidebarAddButton = () => {
                 break;
 
             case 'assessment':
+            case 'link-assessment':
                 openAssessmentDialog();
+                break;
+
+            case 'create-assessment':
+                // Render the in-slide create form (clears any active slide so the
+                // form takes over the content area).
+                setActiveItem(null);
+                setAssessmentCreateMode(true);
                 break;
         }
     };

@@ -1,18 +1,34 @@
 import { Canvas } from 'fabric';
 import useFabric from './canvas'; // Adjust the import path as necessary
-import { Check, Trash2, Type, X, Pen } from 'lucide-react';
-import { Circle, Rectangle } from '@phosphor-icons/react';
+import {
+    Check,
+    Trash as Trash2,
+    TextT as Type,
+    X,
+    Pen,
+    Circle,
+    Rectangle,
+    Cursor,
+} from '@phosphor-icons/react';
 
 const useCanvasTools = (fabricCanvas: Canvas | null) => {
     const canvasUtils = useFabric(fabricCanvas);
 
     const tools = [
         {
+            icon: Cursor,
+            label: 'Select',
+            color: 'text-neutral-600',
+            action: () => {
+                canvasUtils.enableSelection();
+            },
+        },
+        {
             icon: Pen,
             label: 'Pen',
-            color: 'text-blue-600',
+            color: 'text-green-600',
             action: () => {
-                canvasUtils.addPenTool('black');
+                canvasUtils.addPenTool('green');
             },
         },
         {
@@ -21,7 +37,7 @@ const useCanvasTools = (fabricCanvas: Canvas | null) => {
             color: 'text-green-600',
             action: () => {
                 canvasUtils.disableDrawingMode();
-                canvasUtils.addSymbol('✓', 'green');
+                canvasUtils.addTick();
             },
         },
         {
@@ -30,7 +46,7 @@ const useCanvasTools = (fabricCanvas: Canvas | null) => {
             color: 'text-red-600',
             action: () => {
                 canvasUtils.disableDrawingMode();
-                canvasUtils.addSymbol('✗', 'red');
+                canvasUtils.addCross();
             },
         },
         {

@@ -1,6 +1,10 @@
 import { Storage } from "@capacitor/storage";
+import { v4 as uuidv4 } from "uuid";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG } from "@/constants/urls";
+import {
+  SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG,
+  SUBMIT_ASSESSMENT_SLIDE_ACTIVITY_LOG,
+} from "@/constants/urls";
 
 const SLIDE_RETURN_KEY = "SLIDE_RETURN_CONTEXT";
 
@@ -74,9 +78,16 @@ export const clearSlideReturnContext = async () => {
 export const markAssessmentSlideComplete = async (
   slideId: string,
   attemptId: string,
+  // For manual assessments: the learner's uploaded answer file id(s). Recorded
+  // on the assessment-slide activity log so the submission (learner + attempt +
+  // answer file) is tracked the same way assignment submissions are.
+  fileIds?: string,
 ) => {
+  const params = new URLSearchParams({ slideId });
+
+  // 1) Mark the slide complete (progress). Best-effort — re-visiting the slide
+  //    re-fetches live status from assessment_service so progress reconciles.
   try {
-    const params = new URLSearchParams({ slideId });
     await authenticatedAxiosInstance.post(
       `${SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG}?${params.toString()}`,
       {
@@ -89,6 +100,31 @@ export const markAssessmentSlideComplete = async (
     );
   } catch (err) {
     console.warn("Failed to mark assessment slide complete:", err);
+  }
+
+  // 2) Record the submission on the assessment-slide activity log (learner +
+  //    attempt + answer file). Separate from completion so a failure in either
+  //    can't take down the other.
+  try {
+    await authenticatedAxiosInstance.post(
+      `${SUBMIT_ASSESSMENT_SLIDE_ACTIVITY_LOG}?${params.toString()}`,
+      {
+        id: uuidv4(),
+        slide_id: slideId,
+        source_type: "ASSESSMENT",
+        percentage_watched: 100,
+        new_activity: true,
+        assessment_slides: [
+          {
+            id: uuidv4(),
+            attempt_id: attemptId,
+            comma_separated_file_ids: fileIds ?? "",
+          },
+        ],
+      },
+    );
+  } catch (err) {
+    console.warn("Failed to record assessment slide submission:", err);
   }
 };
 

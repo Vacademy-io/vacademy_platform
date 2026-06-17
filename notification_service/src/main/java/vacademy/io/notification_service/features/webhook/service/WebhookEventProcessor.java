@@ -5,10 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.chatbot_flow.engine.ChatbotFlowEngine;
 import vacademy.io.notification_service.features.combot.action.dto.FlowContext;
 import vacademy.io.notification_service.features.combot.action.service.FlowActionRouter;
+import vacademy.io.notification_service.features.combot.service.CombotWebhookService;
 import vacademy.io.notification_service.features.combot.entity.ChannelFlowConfig;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.repository.ChannelFlowConfigRepository;
@@ -37,6 +40,12 @@ public class WebhookEventProcessor {
     private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final ChannelFlowConfigRepository flowConfigRepository;
     private final ChatbotFlowEngine chatbotFlowEngine;
+
+    // @Lazy to keep the existing constructor-injected graph cycle-free; reused for opt-out
+    // keyword handling (which historically lived only on the COMBOT webhook path).
+    @Lazy
+    @Autowired
+    private CombotWebhookService combotWebhookService;
 
     // Notification types for webhook events
     private static final String WHATSAPP_STATUS_EVENT = "WHATSAPP_STATUS_EVENT";
@@ -260,6 +269,16 @@ public class WebhookEventProcessor {
             ChannelToInstituteMapping mapping = mappingOpt.get();
             String instituteId = mapping.getInstituteId();
             String channelType = mapping.getChannelType();
+
+            // 1a. Opt-out keywords take precedence over any flow ("Opt out of challenge",
+            // STOP / OPT OUT / UNSUBSCRIBE). Opt-out detection historically lived only on the
+            // COMBOT webhook path, so WATI inbounds never opted anyone out — handle it here.
+            if (combotWebhookService.handleOptOutKeyword(event.getMessageText(),
+                    event.getPhoneNumber(), instituteId)) {
+                log.info("Opt-out handled for phone={} on channel {}",
+                        maskPhoneNumber(event.getPhoneNumber()), businessChannelId);
+                return;
+            }
 
             // 1b. NEW: Try chatbot flow engine first (graph-based flows)
             boolean handledByNewFlow = chatbotFlowEngine.handleIncomingMessage(

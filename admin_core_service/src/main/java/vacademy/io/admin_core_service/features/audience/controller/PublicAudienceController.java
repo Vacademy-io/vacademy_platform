@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
+import vacademy.io.admin_core_service.features.audience.dto.CatalogueLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.BulkSubmitLeadRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.BulkSubmitLeadResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.BulkSubmitLeadWithEnquiryRequestDTO;
@@ -49,6 +50,20 @@ public class PublicAudienceController {
     @PostMapping("/lead/submit/v2")
     public ResponseEntity<String> submitLeadV2(@RequestBody SubmitLeadRequestDTO requestDTO) {
         String responseId = audienceService.submitLeadV2(requestDTO);
+        return ResponseEntity.ok(responseId);
+    }
+
+    /**
+     * Submit a lead from the public course catalogue / course-details "Get Started"
+     * form (public endpoint). The caller only supplies instituteId + lead fields;
+     * the service resolves/creates a per-institute "Course Catalogue Leads" audience
+     * and routes through the v2 pipeline so the lead appears in Audience Manager →
+     * Recent Leads and triggers any configured lead workflows.
+     * POST /open/v1/audience/lead/submit-catalogue
+     */
+    @PostMapping("/lead/submit-catalogue")
+    public ResponseEntity<String> submitCatalogueLead(@RequestBody CatalogueLeadRequestDTO requestDTO) {
+        String responseId = audienceService.submitCatalogueLead(requestDTO);
         return ResponseEntity.ok(responseId);
     }
 

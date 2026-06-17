@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import axios from "axios";
-import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, LEAD_COLLECTION_ENROLL_URL } from "@/constants/urls";
+import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, CATALOGUE_LEAD_SUBMIT_URL } from "@/constants/urls";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
@@ -80,25 +80,6 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   const [emailVerified, setEmailVerified] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-
-  // Helper functions to extract level and package IDs from form data
-  const getLevelIdFromFormData = (levelValue: string): string => {
-    const levelField = settings.fields.find(field => field.name === 'Level');
-    if (levelField && levelField.options) {
-      const selectedOption = levelField.options.find(option => option.value === levelValue);
-      return selectedOption?.levelId || "";
-    }
-    return "";
-  };
-
-  const getPackageIdFromFormData = (levelValue: string): string => {
-    const levelField = settings.fields.find(field => field.name === 'Level');
-    if (levelField && levelField.options) {
-      const selectedOption = levelField.options.find(option => option.value === levelValue);
-      return selectedOption?.packageSessionId || "";
-    }
-    return "";
-  };
 
   // Debug logging
   console.log("[LeadCollectionModal] Props received:", {
@@ -331,61 +312,49 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
     setIsSubmitting(true);
     
     try {
-      // Create the payload for the new lead collection endpoint
+      // Carry every filled form field as a custom field value so the Recent
+      // Leads table can show them (name/email/phone are also sent top-level).
+      const customFieldValues: Record<string, string> = {};
+      settings.fields.forEach((field) => {
+        const value = formData[field.name];
+        if (value != null && String(value).trim() !== "") {
+          customFieldValues[field.name] = String(value);
+        }
+      });
+
+      // Public catalogue-lead endpoint: creates an audience_response so the lead
+      // shows up in admin Audience Manager → Recent Leads (and triggers lead
+      // workflows). The backend resolves/creates the per-institute audience.
       const payload = {
-        user_dto: {
-          id: "",
-          username: formData.email || "",
-          email: formData.email || "",
-          full_name: formData.name || "",
-          address_line: "",
-          city: "",
-          region: "",
-          pin_code: "",
-          mobile_number: formData.phone || "",
-          date_of_birth: null,
-          gender: "",
-          password: "",
-          profile_pic_file_id: "",
-          roles: [],
-          root_user: false
-        },
-        package_session_id: selectedPackageSessionId || packageSessionId || "",
-        type: "COURSE_CATALOGUE_LEAD",
-        type_id: null,
-        source: "LEAD",
-        custom_field_values: [],
-        desired_level_id: formData.Level ? getLevelIdFromFormData(formData.Level) : "",
-        desired_package_id: formData.Level ? getPackageIdFromFormData(formData.Level) : ""
+        institute_id: instituteId,
+        full_name: formData.name || "",
+        email: formData.email || "",
+        mobile_number: formData.phone || "",
+        // package_session of the course the lead came from (empty on the catalogue home)
+        source_id: selectedPackageSessionId || packageSessionId || "",
+        custom_field_values: customFieldValues,
       };
 
-      // Call the new API endpoint
-      const response = await axios.post(
-        `${LEAD_COLLECTION_ENROLL_URL}?instituteId=${instituteId}`,
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await axios.post(CATALOGUE_LEAD_SUBMIT_URL, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
       console.log("Lead collection response:", response.data);
 
-      // Show success popup instead of toast
-      setSuccessMessage("Thank you for your interest! We'll be in touch soon.");
+      const alreadySubmitted =
+        typeof response.data === "string" &&
+        response.data.toLowerCase().includes("already submitted");
+      setSuccessMessage(
+        alreadySubmitted
+          ? "We already have your information. Thank you for your interest!"
+          : "Thank you for your interest! We'll be in touch soon."
+      );
       setShowSuccessPopup(true);
     } catch (error: any) {
       console.error("Error collecting lead data:", error);
-      
-      // Check if it's a duplicate entry error
-      if (error.response?.data?.ex === "User entry already exists" || 
-          error.response?.data?.responseCode === "510 NOT_EXTENDED") {
-        setSuccessMessage("We already have your information. Thank you for your interest! We'll get back to you soon.");
-        setShowSuccessPopup(true);
-      } else {
-        toast.error("Failed to submit your information. Please try again.");
-      }
+      toast.error("Failed to submit your information. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

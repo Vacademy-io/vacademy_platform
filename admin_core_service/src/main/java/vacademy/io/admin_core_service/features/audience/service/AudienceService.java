@@ -423,6 +423,86 @@ public class AudienceService {
                 .build());
     }
 
+    /** Campaign name used for the auto-provisioned per-institute catalogue lead audience. */
+    private static final String CATALOGUE_AUDIENCE_NAME = "Course Catalogue Leads";
+
+    /**
+     * Submit a lead captured from the public course catalogue / course-details
+     * "Get Started" form. The caller only knows the institute (not an audienceId),
+     * so we resolve — or lazily create — a single per-institute "Course Catalogue
+     * Leads" audience and then route through the normal v2 lead pipeline. This is
+     * what makes catalogue leads appear in Audience Manager → Recent Leads (they
+     * previously landed in student_session_institute_group_mapping, which no lead
+     * screen reads).
+     */
+    @Transactional
+    public String submitCatalogueLead(CatalogueLeadRequestDTO dto) {
+        if (dto == null || !StringUtils.hasText(dto.getInstituteId())) {
+            throw new VacademyException("instituteId is required");
+        }
+        if (!StringUtils.hasText(dto.getEmail()) && !StringUtils.hasText(dto.getMobileNumber())) {
+            throw new VacademyException("Email or mobile number is required");
+        }
+
+        Audience audience = getOrCreateCatalogueAudience(dto.getInstituteId());
+
+        UserDTO userDTO = UserDTO.builder()
+                .fullName(dto.getFullName())
+                .email(dto.getEmail())
+                .mobileNumber(dto.getMobileNumber())
+                .build();
+
+        // Carry the visible lead fields as custom field values too, so the
+        // Recent Leads table shows name/email/phone even before the admin
+        // defines a custom-field schema for the auto-created audience.
+        Map<String, String> customFieldValues = dto.getCustomFieldValues() != null
+                ? new HashMap<>(dto.getCustomFieldValues())
+                : new HashMap<>();
+        if (StringUtils.hasText(dto.getFullName())) {
+            customFieldValues.putIfAbsent("full_name", dto.getFullName());
+        }
+        if (StringUtils.hasText(dto.getEmail())) {
+            customFieldValues.putIfAbsent("email", dto.getEmail());
+        }
+        if (StringUtils.hasText(dto.getMobileNumber())) {
+            customFieldValues.putIfAbsent("phone", dto.getMobileNumber());
+        }
+
+        SubmitLeadRequestDTO submitRequest = SubmitLeadRequestDTO.builder()
+                .audienceId(audience.getId())
+                .sourceType("COURSE_CATALOGUE")
+                .sourceId(StringUtils.hasText(dto.getSourceId()) ? dto.getSourceId() : "course-catalogue")
+                .userDTO(userDTO)
+                .customFieldValues(customFieldValues)
+                .build();
+
+        return submitLeadV2(submitRequest);
+    }
+
+    /**
+     * Resolve the per-institute "Course Catalogue Leads" audience, creating a
+     * minimal ACTIVE one on first use so no manual campaign setup is required.
+     */
+    private Audience getOrCreateCatalogueAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, CATALOGUE_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(CATALOGUE_AUDIENCE_NAME)
+                            .campaignType("WEBSITE")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from the public course catalogue and course pages")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned Course Catalogue Leads audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
     /**
      * Submit a lead from website form
      * Automatically creates/fetches user from auth_service

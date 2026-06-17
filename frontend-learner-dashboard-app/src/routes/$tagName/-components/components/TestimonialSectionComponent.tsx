@@ -118,7 +118,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   // Carousel Layout
   if (layout === "carousel") {
     return (
-      <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}> // design-lint-ignore: page-builder default color
+      <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>
@@ -180,7 +180,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
 
   // Grid / Grid-Scroll Layout
   return (
-    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}> // design-lint-ignore: page-builder default color
+    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>

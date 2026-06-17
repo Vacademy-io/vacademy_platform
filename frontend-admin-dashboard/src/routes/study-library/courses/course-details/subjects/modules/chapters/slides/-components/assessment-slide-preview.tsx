@@ -5,8 +5,7 @@ import { useRouter } from '@tanstack/react-router';
 import {
     ListChecks,
     ArrowSquareOut,
-    Clock,
-    ListNumbers,
+    FileText,
     Trophy,
     Users,
 } from '@phosphor-icons/react';
@@ -19,6 +18,7 @@ import {
     GET_ASSESSMENT_LISTS,
 } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
+import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { MyButton } from '@/components/design-system/button';
 import AssessmentSubmissionsPanel from './assessment-submissions-panel';
 
@@ -146,11 +146,21 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
         staleTime: 60 * 1000,
     });
 
+    // Assessment instructions live on the basic-info step — fetch once play_mode
+    // is resolved so we can show what participants see before they begin.
+    const detailsQuery = useQuery({
+        ...getAssessmentDetails({
+            assessmentId: assessmentId ?? '',
+            instituteId,
+            type: routeParamsQuery.data?.playMode ?? undefined,
+        }),
+        enabled: Boolean(assessmentId && instituteId && routeParamsQuery.data?.playMode),
+    });
+    const instructionsHtml: string =
+        detailsQuery.data?.[0]?.saved_data?.instructions?.content || '';
+
     const overview = overviewQuery.data?.assessment_overview_dto;
     const totalMarks = totalMarksQuery.data;
-    const sectionCount = totalMarks?.section_wise_achievable_marks
-        ? Object.keys(totalMarks.section_wise_achievable_marks).length
-        : null;
     const isLoading = overviewQuery.isLoading || totalMarksQuery.isLoading;
     const isError = overviewQuery.isError && totalMarksQuery.isError;
 
@@ -240,22 +250,7 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                 </p>
             )}
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Stat
-                    icon={<Clock className="size-4" />}
-                    label="Duration"
-                    value={
-                        typeof overview?.duration_in_min === 'number' &&
-                        overview.duration_in_min > 0
-                            ? `${overview.duration_in_min} min`
-                            : null
-                    }
-                />
-                <Stat
-                    icon={<ListNumbers className="size-4" />}
-                    label="Sections"
-                    value={sectionCount && sectionCount > 0 ? sectionCount : null}
-                />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Stat
                     icon={<Trophy className="size-4" />}
                     label="Total marks"
@@ -265,6 +260,26 @@ const AssessmentSlidePreview = ({ activeItem }: AssessmentSlidePreviewProps) => 
                             : null
                     }
                 />
+            </div>
+
+            {/* Assessment instructions — what participants see before they begin. */}
+            <div className="flex flex-col gap-2 rounded-md border border-neutral-200 bg-white p-4">
+                <div className="flex items-center gap-2">
+                    <FileText className="size-4 text-primary-500" />
+                    <span className="text-2xs uppercase tracking-wide text-neutral-500">
+                        Instructions
+                    </span>
+                </div>
+                {detailsQuery.isLoading ? (
+                    <p className="text-sm text-neutral-400">Loading instructions…</p>
+                ) : instructionsHtml ? (
+                    <div
+                        dangerouslySetInnerHTML={{ __html: instructionsHtml }}
+                        className="custom-html-content prose prose-sm max-w-none text-sm text-neutral-700"
+                    />
+                ) : (
+                    <p className="text-sm text-neutral-500">No instructions provided.</p>
+                )}
             </div>
 
             {/* Submissions at-a-glance — full evaluated/pending breakdown is in the

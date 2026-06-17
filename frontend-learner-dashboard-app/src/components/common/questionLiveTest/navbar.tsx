@@ -546,6 +546,9 @@ export function Navbar({
           size: file.size,
           file: file,
         });
+        // Open the preview automatically so the learner can verify their
+        // uploaded response right away before submitting.
+        setShowPdfPreview(true);
       }
     } catch (error) {
       console.error("PDF Upload failed:", error);

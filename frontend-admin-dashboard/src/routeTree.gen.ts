@@ -13,8 +13,8 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
 import { Route as ErrorPageRouteImport } from "./routes/error-page"
-import { Route as AgentChatRouteImport } from "./routes/agent-chat"
 import { Route as ChatRouteImport } from "./routes/chat"
+import { Route as AgentChatRouteImport } from "./routes/agent-chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
@@ -226,16 +226,16 @@ const ErrorPageRoute = ErrorPageRouteImport.update({
   path: "/error-page",
   getParentRoute: () => rootRouteImport,
 } as any)
-const AgentChatRoute = AgentChatRouteImport.update({
-  id: "/agent-chat",
-  path: "/agent-chat",
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import("./routes/agent-chat.lazy").then((d) => d.Route))
 const ChatRoute = ChatRouteImport.update({
   id: "/chat",
   path: "/chat",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/chat.lazy").then((d) => d.Route))
+const AgentChatRoute = AgentChatRouteImport.update({
+  id: "/agent-chat",
+  path: "/agent-chat",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import("./routes/agent-chat.lazy").then((d) => d.Route))
 const VimIndexRoute = VimIndexRouteImport.update({
   id: "/vim/",
   path: "/vim/",
@@ -2923,18 +2923,18 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ErrorPageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/agent-chat": {
-      id: "/agent-chat"
-      path: "/agent-chat"
-      fullPath: "/agent-chat"
-      preLoaderRoute: typeof AgentChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     "/chat": {
       id: "/chat"
       path: "/chat"
       fullPath: "/chat"
       preLoaderRoute: typeof ChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/agent-chat": {
+      id: "/agent-chat"
+      path: "/agent-chat"
+      fullPath: "/agent-chat"
+      preLoaderRoute: typeof AgentChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/": {

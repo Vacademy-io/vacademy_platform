@@ -92,49 +92,32 @@ public class AdminCoreServiceClient {
         }
 
         try {
-            // For scalability, fetch paginated results for each package session
-            Set<String> allUserIds = new HashSet<>();
-            int pageSize = 1000; // Fetch 1000 users at a time
+            // admin-core exposes POST /students/by-package-sessions (plural) taking the id list in the
+            // body and returning all student user-ids — mirror the faculty call. (The old singular GET
+            // /students/by-package-session endpoint does not exist, so it 4xx'd → empty → students were
+            // never resolved into batch chats.)
+            String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-sessions";
 
-            for (String packageSessionId : packageSessionIds) {
-                boolean hasMore = true;
-                int pageNumber = 0;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-                while (hasMore) {
-                    String url = adminCoreServiceBaseUrl + "/admin-core-service/v1/students/by-package-session" +
-                            "?packageSessionId=" + packageSessionId +
-                            "&pageNumber=" + pageNumber +
-                            "&pageSize=" + pageSize;
+            Map<String, Object> requestBody = Map.of("packageSessionIds", packageSessionIds);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                    HttpHeaders headers = new HttpHeaders();
-                    headers.setContentType(MediaType.APPLICATION_JSON);
-                    HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<List<String>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<List<String>>() {}
+            );
 
-                    ResponseEntity<List<String>> response = restTemplate.exchange(
-                            url,
-                            HttpMethod.GET,
-                            entity,
-                            new ParameterizedTypeReference<List<String>>() {}
-                    );
-
-                    List<String> userIds = response.getBody();
-                    if (userIds != null && !userIds.isEmpty()) {
-                        allUserIds.addAll(userIds);
-                        log.debug("Fetched page {}: {} students for package session {}", pageNumber, userIds.size(), packageSessionId);
-
-                        // If we got a full page, there might be more
-                        hasMore = userIds.size() == pageSize;
-                    } else {
-                        hasMore = false;
-                    }
-
-                    pageNumber++;
-                }
+            List<String> userIds = response.getBody();
+            if (userIds == null) {
+                userIds = new ArrayList<>();
             }
 
-            List<String> result = new ArrayList<>(allUserIds);
-            log.debug("Found {} unique students across {} package sessions", result.size(), packageSessionIds.size());
-            return result;
+            log.debug("Found {} students across {} package sessions", userIds.size(), packageSessionIds.size());
+            return userIds;
 
         } catch (Exception e) {
             log.error("Error calling admin-core service for students by package sessions", e);

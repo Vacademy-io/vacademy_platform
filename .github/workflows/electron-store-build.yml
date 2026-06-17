@@ -37,6 +37,15 @@ jobs:
         shell: bash
         working-directory: ./frontend-learner-dashboard-app
     steps:
+      # Some frontend-admin-dashboard route paths exceed Windows' 260-char MAX_PATH,
+      # which makes `git checkout` fail with "Filename too long" (exit 128) on the
+      # windows-latest runner. Enabling git long-path support before checkout fixes it.
+      # Runs from ${{ github.workspace }} because the default working-directory
+      # (./frontend-learner-dashboard-app) does not exist until after checkout.
+      - name: Enable git long paths (Windows MAX_PATH workaround)
+        working-directory: ${{ github.workspace }}
+        run: git config --system core.longpaths true
+
       - name: Checkout source
         uses: actions/checkout@v4
 

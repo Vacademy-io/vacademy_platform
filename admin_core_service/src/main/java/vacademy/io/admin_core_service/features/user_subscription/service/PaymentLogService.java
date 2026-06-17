@@ -29,6 +29,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.admin_core_service.features.invoice.enums.InvoicePdfPlacement;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoicePaymentLogMappingRepository;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogMapping;
 import vacademy.io.common.core.standard_classes.ListService;
@@ -504,12 +505,38 @@ public class PaymentLogService {
             // catch was harmful — generateInvoice's @Transactional already marked
             // the outer transaction rollback-only, so swallowing didn't actually
             // save the payment, it only deleted the diagnostic info.
+            // Resolve where the invoice PDF should land. When the institute opts for
+            // PAYMENT_CONFIRMATION_EMAIL we suppress the separate invoice email and attach the PDF
+            // to the confirmation email instead — so the learner gets exactly one mail.
+            InvoicePdfPlacement pdfPlacement = invoiceService.getInvoicePdfPlacement(instituteId);
+            boolean attachInvoiceToConfirmation = pdfPlacement == InvoicePdfPlacement.PAYMENT_CONFIRMATION_EMAIL;
+            byte[] invoicePdfBytes = null;
+            String invoiceNumber = null;
+            // In consolidated mode (the invoice PDF rides on the confirmation email) we reuse the
+            // invoice's OWN idempotency as the confirmation dedup signal: if the invoice already
+            // existed for this payment log, this is a retried/duplicate webhook and the single email
+            // carrying the PDF was already sent on the first delivery — so we skip re-sending it.
+            // No extra column/flag needed; it piggybacks on the existing invoice generation guard
+            // (existsByPaymentLogId). NOTE: reliable for sequential webhook retries (the realistic
+            // Razorpay case); truly-concurrent duplicate deliveries are bounded only as well as
+            // invoice generation itself is (the mapping unique key is composite invoice_id+
+            // payment_log_id, so concurrency safety would need an atomic guard — out of scope here).
+            boolean invoiceAlreadyExisted = false;
             if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-                log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
-                invoiceService.generateInvoice(
+                log.info("Generating invoice for payment log ID: {} (pdfPlacement={})",
+                        paymentLog.getId(), pdfPlacement);
+                InvoiceService.InvoiceGenerationResult invoiceResult = invoiceService.generateInvoiceWithResult(
                         paymentLog.getUserPlan(),
                         paymentLog,
-                        instituteId);
+                        instituteId,
+                        /* sendEmail */ !attachInvoiceToConfirmation);
+                if (attachInvoiceToConfirmation && invoiceResult != null) {
+                    invoicePdfBytes = invoiceResult.getPdfBytes();
+                    invoiceNumber = invoiceResult.getInvoice() != null
+                            ? invoiceResult.getInvoice().getInvoiceNumber()
+                            : null;
+                    invoiceAlreadyExisted = invoiceResult.isAlreadyExisted();
+                }
                 log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
             }
 
@@ -658,9 +685,19 @@ public class PaymentLogService {
                 }
             }
 
-            UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
-            paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
-                    paymentInitiationRequestDTO, userDTO);
+            // Consolidated-mode dedup: when the PDF rides on the confirmation email and the invoice
+            // was already present (duplicate/retried webhook), the single email was already sent on
+            // the first delivery — skip to avoid a second confirmation. Default-placement institutes
+            // (attachInvoiceToConfirmation == false) always send the confirmation, exactly as before.
+            if (attachInvoiceToConfirmation && invoiceAlreadyExisted) {
+                log.info("Skipping duplicate payment-confirmation email for payment log {} — invoice "
+                        + "already existed (retried/duplicate webhook); single email was already sent.",
+                        paymentLog.getId());
+            } else {
+                UserDTO userDTO = authService.getUsersFromAuthServiceByUserIds(List.of(paymentLog.getUserId())).get(0);
+                paymentNotificatonService.sendPaymentConfirmationNotification(instituteId, paymentResponseDTO,
+                        paymentInitiationRequestDTO, userDTO, invoicePdfBytes, invoiceNumber);
+            }
         }
     }
 

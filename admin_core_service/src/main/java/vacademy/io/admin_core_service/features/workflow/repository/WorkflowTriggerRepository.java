@@ -11,6 +11,18 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.workflow.id = :workflowId")
     List<WorkflowTrigger> findByWorkflowId(@Param("workflowId") String workflowId);
 
+    /** Idempotency for "attach workflow to course": don't create a duplicate trigger row. */
+    boolean existsByWorkflow_IdAndEventIdAndTriggerEventName(String workflowId, String eventId, String triggerEventName);
+
+    /** Active triggers whose eventId is one of these package sessions (to show what's attached to a course). */
+    @Query("SELECT w FROM WorkflowTrigger w WHERE w.eventId IN :eventIds AND w.triggerEventName = :event AND w.status = 'ACTIVE'")
+    List<WorkflowTrigger> findActiveByEventIdInAndTriggerEventName(@Param("eventIds") List<String> eventIds,
+                                                                   @Param("event") String event);
+
+    /** All active triggers (any event) whose eventId is one of these package sessions. */
+    @Query("SELECT w FROM WorkflowTrigger w WHERE w.eventId IN :eventIds AND w.status = 'ACTIVE'")
+    List<WorkflowTrigger> findActiveByEventIdIn(@Param("eventIds") List<String> eventIds);
+
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.instituteId = :instituteId AND w.status IN :statuses AND w.triggerEventName IN :triggerEvents")
     List<WorkflowTrigger> findByInstituteIdAndStatusInAndTriggerEventNameIn(
             String  instituteId,

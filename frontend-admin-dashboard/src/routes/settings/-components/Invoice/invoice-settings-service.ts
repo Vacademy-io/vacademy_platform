@@ -35,6 +35,15 @@ export interface InvoiceCountryConfig {
     taxComponentsByPackageType: Record<string, TaxComponent[]>;
 }
 
+/**
+ * Where the generated invoice PDF is delivered after a successful payment.
+ * - `INVOICE_EMAIL` (default): PDF goes in the dedicated invoice email; the payment-confirmation
+ *   email is sent separately with no PDF (legacy behaviour — two emails).
+ * - `PAYMENT_CONFIRMATION_EMAIL`: PDF is attached to the payment-confirmation email and the
+ *   separate invoice email is suppressed, so the learner receives a single email.
+ */
+export type InvoicePdfPlacement = 'INVOICE_EMAIL' | 'PAYMENT_CONFIRMATION_EMAIL';
+
 /** Package types that can have their own tax components (matches backend package_type). */
 export const PACKAGE_TYPES = [
     'COURSE',
@@ -56,6 +65,8 @@ export interface InvoiceSettingsData {
     currency: string;
     /** Whether the invoice email is sent to the learner automatically. */
     sendInvoiceEmail: boolean;
+    /** Which email carries the invoice PDF after a successful payment. */
+    invoicePdfPlacement: InvoicePdfPlacement;
     /**
      * Generate an invoice when an admin enrolls learners manually / in bulk
      * (no payment gateway). Read by BulkAssignmentService.
@@ -72,6 +83,7 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettingsData = {
     taxLabel: 'Tax',
     currency: 'INR',
     sendInvoiceEmail: false,
+    invoicePdfPlacement: 'INVOICE_EMAIL',
     generateInvoiceOnManualEnroll: false,
     country: {
         code: '',
@@ -157,6 +169,10 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
         taxLabel: base.taxLabel ?? DEFAULT_INVOICE_SETTINGS.taxLabel,
         currency: base.currency ?? DEFAULT_INVOICE_SETTINGS.currency,
         sendInvoiceEmail: base.sendInvoiceEmail ?? DEFAULT_INVOICE_SETTINGS.sendInvoiceEmail,
+        invoicePdfPlacement:
+            base.invoicePdfPlacement === 'PAYMENT_CONFIRMATION_EMAIL'
+                ? 'PAYMENT_CONFIRMATION_EMAIL'
+                : DEFAULT_INVOICE_SETTINGS.invoicePdfPlacement,
         generateInvoiceOnManualEnroll:
             base.generateInvoiceOnManualEnroll ?? DEFAULT_INVOICE_SETTINGS.generateInvoiceOnManualEnroll,
         country: {

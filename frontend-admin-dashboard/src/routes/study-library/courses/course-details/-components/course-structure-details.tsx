@@ -108,6 +108,7 @@ import { AddChapterForm } from '../subjects/modules/chapters/-components/chapter
 import { MyDialog } from '@/components/design-system/dialog';
 import Planning from '../subjects/-components/planning';
 import Activity from '../subjects/-components/activity';
+import { PackageSettingsPanel } from './package-settings/PackageSettingsPanel';
 import {
     CopyContentDialog,
     type CopyContentSelection,
@@ -4550,6 +4551,11 @@ export const CourseStructureDetails = ({
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Activity packageSessionId={batchPackageSessionId ?? ''} />
+            </div>
+        ),
+        [TabType.SETTINGS]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <PackageSettingsPanel packageId={courseId} />
             </div>
         ),
     };

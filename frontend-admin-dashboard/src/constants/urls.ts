@@ -366,19 +366,29 @@ export const UPDATE_COURSE = `${BASE_URL}/admin-core-service/course/v1/update-co
 export const COPY_COURSE_CONTENT = `${BASE_URL}/admin-core-service/course/v1/copy-content`;
 export const COPY_CONTENT_LINEAGE = `${BASE_URL}/admin-core-service/course/v1/copy-lineage`;
 
-// Per-course (package-level) settings JSON (package.course_setting) + LMS settings
-// LOCAL TEST OVERRIDE: pointed at LOCAL_ADMIN_CORE_BASE (localhost:8072) for local testing.
-// Revert these two base URLs to BASE_URL before shipping to production.
-export const PACKAGE_SETTING_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/package/setting/v1`;
+// Per-course (package-level) settings JSON (package.course_setting) + LMS settings.
+export const PACKAGE_SETTING_BASE = `${BASE_URL}/admin-core-service/package/setting/v1`;
 export const PACKAGE_SETTING_RAW = `${PACKAGE_SETTING_BASE}/raw`;
 export const PACKAGE_SETTING_ALL = `${PACKAGE_SETTING_BASE}/all`;
 export const PACKAGE_SETTING_GET = `${PACKAGE_SETTING_BASE}/get`;
 export const PACKAGE_SETTING_DATA = `${PACKAGE_SETTING_BASE}/data`;
 export const PACKAGE_SETTING_SAVE = `${PACKAGE_SETTING_BASE}/save-setting`;
 export const PACKAGE_SETTING_APPLY_INSTITUTE_LMS = `${PACKAGE_SETTING_BASE}/apply-institute-lms`;
-export const LMS_PROVIDERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/lms/v1/providers`;
-// LOCAL TEST OVERRIDE: institute LMS_SETTING save endpoint base for local testing (revert to BASE_URL for prod).
-export const INSTITUTE_SETTING_SAVE_LOCAL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/setting/v1/save-setting`;
+export const LMS_PROVIDERS = `${BASE_URL}/admin-core-service/lms/v1/providers`;
+// Live-tests an LMS connection from the settings form.
+export const LMS_TEST_CONNECTION = `${BASE_URL}/admin-core-service/lms/v1/test-connection`;
+// Apply an institute LMS connection (+courseId, +optional workflow) to a course; list institute
+// workflows for the "attach workflow" picker.
+export const LMS_APPLY_CONNECTION_TO_PACKAGE = `${BASE_URL}/admin-core-service/lms/v1/apply-connection-to-package`;
+export const WORKFLOWS_BY_INSTITUTE = `${BASE_URL}/admin-core-service/v1/workflow/institute`;
+// The enrolment workflow already attached to a course.
+export const LMS_PACKAGE_ATTACHED_WORKFLOW = `${BASE_URL}/admin-core-service/lms/v1/package-attached-workflow`;
+// List/save a course's workflow triggers (any event).
+export const LMS_PACKAGE_WORKFLOW_TRIGGERS = `${BASE_URL}/admin-core-service/lms/v1/package-workflow-triggers`;
+// Catalog of trigger events (key + label + eventAppliedType) for the trigger-event picker.
+export const WORKFLOW_TRIGGER_EVENTS = `${BASE_URL}/admin-core-service/v1/workflow/catalog/trigger-events`;
+// Institute LMS_SETTING save endpoint (kept name for back-compat with importers).
+export const INSTITUTE_SETTING_SAVE_LOCAL = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;

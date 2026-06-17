@@ -1004,6 +1004,7 @@ export default function CustomRoleDisplaySettings({
                             'ASSESSMENT',
                             'PLANNING',
                             'ACTIVITY',
+                            'SETTINGS',
                         ];
                         const sorted = tabIds
                             .map((id) => settings.courseDetails?.tabs.find((t) => t.id === id) || { id, order: 0, visible: true })

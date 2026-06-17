@@ -51,6 +51,7 @@ import Students from './student-list';
 import Assessments from './assessment-list';
 import Planning from './planning';
 import Activity from './activity';
+import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
 import { getIcon } from '../modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { MyButton } from '@/components/design-system/button';
 import { useContentStore } from '../modules/chapters/slides/-stores/chapter-sidebar-store';
@@ -875,6 +876,11 @@ export const SubjectMaterial = () => {
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Activity packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
+        [TabType.SETTINGS]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <PackageSettingsPanel packageId={courseId} />
             </div>
         ),
     };

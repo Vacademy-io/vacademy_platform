@@ -48,6 +48,31 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("packageStatusList") List<String> packageStatusList,
             @Param("packageSessionStatusList") List<String> packageSessionStatusList);
 
+    /**
+     * Most-recently-updated course_setting for the institute that mentions an LMS_SETTING.
+     * Lets the institute LMS page surface a connection the admin already configured on a
+     * course (per-package course_setting) even when the institute-level setting is empty.
+     * Returns the raw course_setting JSON string, or null if no course has LMS settings.
+     */
+    @Query(value = "SELECT p.course_setting FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND p.course_setting LIKE '%LMS_SETTING%' " +
+            "ORDER BY p.updated_at DESC NULLS LAST LIMIT 1", nativeQuery = true)
+    String findLatestCourseSettingWithLmsByInstitute(@Param("instituteId") String instituteId);
+
+    /**
+     * Every course_setting in the institute that holds an LMS or Moodle connection. Used to
+     * discover ALL the distinct LMS endpoints the admin configured per-course (e.g. several
+     * LearnDash sites + a Moodle) so the institute LMS page lists each one as its own connection.
+     */
+    @Query(value = "SELECT p.course_setting FROM package p " +
+            "JOIN package_institute pi ON p.id = pi.package_id " +
+            "WHERE pi.institute_id = :instituteId " +
+            "AND (p.course_setting LIKE '%LMS_SETTING%' OR p.course_setting LIKE '%MOODLE_SETTING%')",
+            nativeQuery = true)
+    List<String> findCourseSettingsWithLmsByInstitute(@Param("instituteId") String instituteId);
+
     // Get all package sessions of an institute_id and of a session_id
     @Query(value = "SELECT ps.id, ps.level_id, ps.session_id, ps.start_time, ps.updated_at, ps.created_at, ps.status, ps.package_id "
             +

@@ -481,22 +481,57 @@ public class AudienceService {
             customFieldValues.putIfAbsent("phone", dto.getMobileNumber());
         }
 
-        SubmitLeadRequestDTO submitRequest = SubmitLeadRequestDTO.builder()
+        final String sourceId = StringUtils.hasText(dto.getSourceId()) ? dto.getSourceId() : "course-catalogue";
+
+        // Create the lead directly rather than via submitLeadV2: that method is built
+        // for fully-configured campaigns and its email/workflow/score machinery throws
+        // on a freshly auto-provisioned audience (no pool / scoring / field schema),
+        // getting swallowed into a generic sentinel. Here the two essential steps
+        // (user + audience_response) surface real errors, and the enrichment steps are
+        // best-effort so a lead is never lost over optional config.
+
+        // 1. Create/fetch the lead's user in auth_service (no credentials email).
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
+        String userId = createdUser != null ? createdUser.getId() : null;
+
+        // 2. Dedup per person per campaign (same behaviour as submitLeadV2).
+        if (StringUtils.hasText(userId)
+                && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            return "You have already submitted your response for this campaign";
+        }
+
+        // 3. Persist the lead — this is what Audience Manager → Recent Leads reads.
+        AudienceResponse savedResponse = audienceResponseRepository.save(AudienceResponse.builder()
                 .audienceId(audience.getId())
                 .sourceType("COURSE_CATALOGUE")
-                .sourceId(StringUtils.hasText(dto.getSourceId()) ? dto.getSourceId() : "course-catalogue")
-                .userDTO(userDTO)
-                .customFieldValues(customFieldValues)
-                .build();
+                .sourceId(sourceId)
+                .userId(userId)
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
 
-        String result = submitLeadV2(submitRequest);
-        // submitLeadV2 swallows internal failures and returns this sentinel string;
-        // surface it as an error so the form shows a real failure rather than a
-        // false "thank you" success (the masking bug this whole change removes).
-        if ("Error in submitting the response".equals(result)) {
-            throw new VacademyException("Failed to submit catalogue lead");
+        // 4. Enrichment — best-effort; never block the saved lead.
+        try {
+            logLeadSubmitted(savedResponse);
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: logLeadSubmitted failed: {}", savedResponse.getId(), e.getMessage());
         }
-        return result;
+        try {
+            if (!CollectionUtils.isEmpty(customFieldValues)) {
+                saveCustomFieldValues(savedResponse.getId(), customFieldValues, audience.getInstituteId(),
+                        audience.getId());
+            }
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: saveCustomFieldValues failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(savedResponse.getId(), savedResponse.getAudienceId(),
+                    audience.getInstituteId(), savedResponse.getSourceType(), savedResponse.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
+        }
+
+        return savedResponse.getId();
     }
 
     /**

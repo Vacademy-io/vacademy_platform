@@ -37,9 +37,10 @@ public class CreditUsageService {
     private AuthService authService;
 
     public Page<UserUsageRow> listUsers(String instituteId, Timestamp from, Timestamp to,
-                                        String role, Pageable pageable) {
+                                        String role, String name, Pageable pageable) {
         List<Object[]> agg = repository.findAllUserUsage(instituteId, from, to);
         Map<String, UserDTO> users = resolveUsers(agg);
+        String nameNeedle = (name == null || name.isBlank()) ? null : name.toLowerCase().trim();
 
         List<UserUsageRow> rows = new ArrayList<>();
         for (Object[] r : agg) {
@@ -48,6 +49,10 @@ public class CreditUsageService {
             List<String> roles = (u != null && u.getRoles() != null) ? u.getRoles() : List.of();
             // Role filter (sub-tab): keep users who hold the selected role.
             if (role != null && !roles.contains(role)) {
+                continue;
+            }
+            // Name filter (search box): match on resolved full name OR email.
+            if (nameNeedle != null && !matchesName(u, nameNeedle)) {
                 continue;
             }
             String rolesStr = roles.isEmpty() ? str(r[1]) : String.join(",", roles);
@@ -104,6 +109,15 @@ public class CreditUsageService {
     public Page<UsageLogRow> userLogs(String instituteId, String userId, Timestamp from,
                                       Timestamp to, Pageable pageable) {
         return repository.findUserLogs(instituteId, userId, from, to, pageable).map(this::toLogRow);
+    }
+
+    /** True when the search needle is a substring of the user's full name or email. */
+    private static boolean matchesName(UserDTO u, String needle) {
+        if (u == null) return false;
+        String fullName = u.getFullName();
+        String email = u.getEmail();
+        return (fullName != null && fullName.toLowerCase().contains(needle))
+                || (email != null && email.toLowerCase().contains(needle));
     }
 
     /** Batch-resolve user_id -> UserDTO from auth-service. Degrades to an empty map

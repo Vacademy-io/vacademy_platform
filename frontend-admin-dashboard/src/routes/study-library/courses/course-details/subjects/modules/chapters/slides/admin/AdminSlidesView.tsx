@@ -78,30 +78,35 @@ export function AdminSlidesView({
     //     steps: studyLibrarySteps.addSlidesStep,
     // });
 
+    // Course depth (2–5) decides which Content Structure level a breadcrumb crumb
+    // maps to. Only structure 5 has a separate modules grid under each subject.
+    const courseStructure =
+        studyLibraryData?.find((item) => item.course.id === courseId)?.course?.course_depth ?? 0;
+
     const handleSubjectRoute = useCallback(() => {
         navigate({
-            to: '/study-library/courses/course-details/subjects/modules',
-            params: {},
+            to: '/study-library/courses/course-details',
             search: {
                 courseId: courseId,
-                levelId: levelId,
-                subjectId: subjectId,
                 sessionId: sessionId,
+                levelId: levelId,
+                navLevel: courseStructure === 5 ? ('modules' as const) : undefined,
+                navSubjectId: courseStructure === 5 ? subjectId : undefined,
             },
             hash: '',
         });
-    }, [courseId, levelId, subjectId, sessionId, navigate]);
+    }, [courseId, levelId, subjectId, sessionId, courseStructure, navigate]);
 
     const handleModuleRoute = useCallback(() => {
         navigate({
-            to: '/study-library/courses/course-details/subjects/modules/chapters',
-            params: {},
+            to: '/study-library/courses/course-details',
             search: {
                 courseId: courseId,
-                levelId: levelId,
-                subjectId: subjectId,
-                moduleId: moduleId,
                 sessionId: sessionId,
+                levelId: levelId,
+                navLevel: 'chapters' as const,
+                navSubjectId: subjectId,
+                navModuleId: moduleId,
             },
             hash: '',
         });

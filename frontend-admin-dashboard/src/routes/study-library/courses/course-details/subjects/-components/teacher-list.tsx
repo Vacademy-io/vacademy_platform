@@ -37,7 +37,10 @@ export const TeachersList = ({ packageSessionId }: { packageSessionId: string })
         name: '',
         batches: packageSessionId ? [packageSessionId] : [],
         subjects: [],
-        status: [],
+        // Only ACTIVE assignments: the backend list query ignores the status filter
+        // when this is empty, so soft-deleted (status='DELETED') mappings would otherwise
+        // keep returning here and a removed teacher would appear not to be removed.
+        status: ['ACTIVE'],
         sort_columns: { name: 'DESC' },
     };
 

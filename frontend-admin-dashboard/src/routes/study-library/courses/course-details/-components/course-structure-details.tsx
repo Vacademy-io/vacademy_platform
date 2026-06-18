@@ -1,7 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 // class-study-material.tsx
-import { useRouter } from '@tanstack/react-router';
+import { useRouter, useSearch } from '@tanstack/react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { SubjectType, useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
@@ -270,6 +270,29 @@ export const CourseStructureDetails = ({
 }) => {
     const router = useRouter();
     const searchParams = router.state.location.search;
+    // Reactive read of the content-structure drill position from the URL.
+    // Drilling in pushes these params (creating history entries) and a sync
+    // effect below mirrors them into local state, so the back button steps
+    // Subject → Module → Chapter instead of jumping straight to the top.
+    const navSearch = useSearch({
+        from: '/study-library/courses/course-details/',
+    }) as { navLevel?: 'modules' | 'chapters'; navSubjectId?: string; navModuleId?: string };
+    const goToNavLevel = (
+        next: { navLevel?: 'modules' | 'chapters'; navSubjectId?: string; navModuleId?: string },
+        opts?: { replace?: boolean }
+    ) => {
+        router.navigate({
+            to: '/study-library/courses/course-details',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            search: (prev: any) => ({
+                ...prev,
+                navLevel: next.navLevel,
+                navSubjectId: next.navSubjectId,
+                navModuleId: next.navModuleId,
+            }),
+            replace: opts?.replace,
+        });
+    };
     const { getSessionFromPackage, getPackageSessionId, instituteDetails } = useInstituteDetailsStore();
     const { studyLibraryData } = useStudyLibraryStore();
     const { setActiveItem } = useContentStore();
@@ -1377,49 +1400,146 @@ export const CourseStructureDetails = ({
     const totalOpen = openSubjects.size + openModules.size + openChapters.size;
     const isAllExpanded = totalExpandable > 0 && totalOpen >= totalExpandable;
 
-    // Navigation functions for loose view
-    const handleSubjectClick = (subjectId: string, subjectName: string) => {
-        setSelectedSubjectId(subjectId);
-        setCurrentNavigationLevel('modules');
-        setNavigationBreadcrumb([{ level: 'Subject', name: subjectName, id: subjectId }]);
+    // Navigation functions for loose view.
+    // These push the drill position into the URL (a history entry); the sync
+    // effect below mirrors the URL back into local state. This keeps the back
+    // button stepping one level at a time (Subject → Module → Chapter) and
+    // restores the level when returning from the slides view.
+    const handleSubjectClick = (subjectId: string, _subjectName?: string) => {
+        goToNavLevel({ navLevel: 'modules', navSubjectId: subjectId });
     };
 
-    const handleModuleClick = (moduleId: string, moduleName: string) => {
-        setSelectedModuleId(moduleId);
-        setCurrentNavigationLevel('chapters');
-        setNavigationBreadcrumb((prev) => [
-            ...prev,
-            { level: 'Module', name: moduleName, id: moduleId },
-        ]);
+    const handleModuleClick = (moduleId: string, _moduleName?: string) => {
+        goToNavLevel({
+            navLevel: 'chapters',
+            navSubjectId: navSearch.navSubjectId,
+            navModuleId: moduleId,
+        });
     };
 
     const resetNavigation = () => {
-        setCurrentNavigationLevel('subjects');
-        setSelectedSubjectId('');
-        setSelectedModuleId('');
-        setNavigationBreadcrumb([]);
+        // Replace (not push) — used when switching to the Content Structure tab,
+        // so it doesn't pollute the back stack.
+        goToNavLevel({}, { replace: true });
     };
 
     const navigateToLevel = (levelIndex: number) => {
-        const breadcrumb = navigationBreadcrumb.slice(0, levelIndex + 1);
-        setNavigationBreadcrumb(breadcrumb);
-
         if (levelIndex === -1) {
-            resetNavigation();
+            // Breadcrumb "Course" → top level.
+            goToNavLevel({});
         } else if (levelIndex === 0) {
-            // For course structure 4, level 0 is the module, so we should navigate to subjects and clear module selection
             if (courseStructure === 4) {
-                setCurrentNavigationLevel('subjects');
-                setSelectedModuleId('');
+                // Structure 4: level 0 is the module crumb → back to the modules grid.
+                goToNavLevel({});
             } else {
-                // For course structure 5, level 0 is subject, so navigate to modules
-                setCurrentNavigationLevel('modules');
-                setSelectedModuleId('');
+                // Structure 5: level 0 is the subject crumb → modules grid.
+                goToNavLevel({ navLevel: 'modules', navSubjectId: navSearch.navSubjectId });
             }
         } else if (levelIndex === 1) {
-            setCurrentNavigationLevel('chapters');
+            // Structure 5: level 1 is the module crumb → chapters grid (no-op move).
+            goToNavLevel({
+                navLevel: 'chapters',
+                navSubjectId: navSearch.navSubjectId,
+                navModuleId: navSearch.navModuleId,
+            });
         }
     };
+
+    // Mirror the URL drill position (navSearch) into local navigation state.
+    // Runs on mount, on back/forward, and as course data loads (so breadcrumb
+    // names resolve once subjects/modules are available).
+    useEffect(() => {
+        const { navLevel, navSubjectId, navModuleId } = navSearch;
+
+        if (courseStructure === 5) {
+            if (navLevel === 'chapters' && navSubjectId && navModuleId) {
+                const subj = subjects.find((s) => s.id === navSubjectId);
+                // Data loaded but the target subject is gone (e.g. session/level
+                // switched) → fall back to the top level.
+                if (subjects.length > 0 && !subj) {
+                    setCurrentNavigationLevel('subjects');
+                    setSelectedSubjectId('');
+                    setSelectedModuleId('');
+                    setNavigationBreadcrumb([]);
+                    return;
+                }
+                const modules = subjectModulesMap[navSubjectId] ?? [];
+                const mod = modules.find((m) => m.module.id === navModuleId);
+                // Module gone (deleted / session switched) but its list has loaded
+                // → drop to the modules grid for this subject instead of stranding
+                // the user on a blank, nameless chapters view.
+                if (modules.length > 0 && !mod) {
+                    setCurrentNavigationLevel('modules');
+                    setSelectedSubjectId(navSubjectId);
+                    setSelectedModuleId('');
+                    setNavigationBreadcrumb([
+                        { level: 'Subject', name: subj?.subject_name ?? '', id: navSubjectId },
+                    ]);
+                    return;
+                }
+                setCurrentNavigationLevel('chapters');
+                setSelectedSubjectId(navSubjectId);
+                setSelectedModuleId(navModuleId);
+                setNavigationBreadcrumb([
+                    { level: 'Subject', name: subj?.subject_name ?? '', id: navSubjectId },
+                    { level: 'Module', name: mod?.module.module_name ?? '', id: navModuleId },
+                ]);
+            } else if (navLevel === 'modules' && navSubjectId) {
+                const subj = subjects.find((s) => s.id === navSubjectId);
+                if (subjects.length > 0 && !subj) {
+                    setCurrentNavigationLevel('subjects');
+                    setSelectedSubjectId('');
+                    setSelectedModuleId('');
+                    setNavigationBreadcrumb([]);
+                    return;
+                }
+                setCurrentNavigationLevel('modules');
+                setSelectedSubjectId(navSubjectId);
+                setSelectedModuleId('');
+                setNavigationBreadcrumb([
+                    { level: 'Subject', name: subj?.subject_name ?? '', id: navSubjectId },
+                ]);
+            } else {
+                setCurrentNavigationLevel('subjects');
+                setSelectedSubjectId('');
+                setSelectedModuleId('');
+                setNavigationBreadcrumb([]);
+            }
+        } else if (courseStructure === 4) {
+            if (navLevel === 'chapters' && navModuleId) {
+                const firstSubjectId = subjects[0]?.id ?? '';
+                const modules = subjectModulesMap[firstSubjectId] ?? [];
+                const mod = modules.find((m) => m.module.id === navModuleId);
+                // Module gone (deleted / batch or session switched) but its list
+                // has loaded → fall back to the modules grid (the top level for
+                // structure 4) instead of a blank, nameless chapters view.
+                if (modules.length > 0 && !mod) {
+                    setCurrentNavigationLevel('subjects');
+                    setSelectedModuleId('');
+                    setNavigationBreadcrumb([]);
+                    return;
+                }
+                setCurrentNavigationLevel('chapters');
+                setSelectedModuleId(navModuleId);
+                setNavigationBreadcrumb([
+                    { level: 'Module', name: mod?.module.module_name ?? '', id: navModuleId },
+                ]);
+            } else {
+                setCurrentNavigationLevel('subjects');
+                setSelectedModuleId('');
+                setNavigationBreadcrumb([]);
+            }
+        }
+        // Structures 2 & 3 have no intermediate drill levels — nothing to mirror.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        navSearch.navLevel,
+        navSearch.navSubjectId,
+        navSearch.navModuleId,
+        subjects,
+        subjectModulesMap,
+        courseStructure,
+    ]);
     const tabContent: Record<TabType, React.ReactNode> = {
         [TabType.OUTLINE]: (
             <div className="relative">
@@ -3823,15 +3943,10 @@ export const CourseStructureDetails = ({
                                             <div
                                                 onClick={() => {
                                                     // For courseStructure 4, navigate to show chapters
-                                                    setSelectedModuleId(mod.module.id);
-                                                    setCurrentNavigationLevel('chapters');
-                                                    setNavigationBreadcrumb([
-                                                        {
-                                                            level: 'Module',
-                                                            name: mod.module.module_name,
-                                                            id: mod.module.id,
-                                                        },
-                                                    ]);
+                                                    goToNavLevel({
+                                                        navLevel: 'chapters',
+                                                        navModuleId: mod.module.id,
+                                                    });
                                                 }}
                                                 className="cursor-pointer rounded-lg border border-gray-200 bg-white p-2 transition-shadow duration-200 hover:shadow-md"
                                             >

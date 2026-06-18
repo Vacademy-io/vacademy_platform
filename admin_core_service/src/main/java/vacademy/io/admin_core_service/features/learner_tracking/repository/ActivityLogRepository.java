@@ -1738,6 +1738,16 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("sourceId") String sourceId);
 
     /**
+     * Find all activity logs for a user + source (any status), newest first.
+     * Used by on-demand AI report processing to locate the raw/failed row to
+     * process immediately when a learner opens the report before the hourly cron.
+     */
+    @Query("SELECT a FROM ActivityLog a WHERE a.userId = :userId AND a.sourceId = :sourceId ORDER BY a.createdAt DESC")
+    List<ActivityLog> findByUserIdAndSourceIdOrderByCreatedAtDesc(
+            @Param("userId") String userId,
+            @Param("sourceId") String sourceId);
+
+    /**
      * Update processed JSON and status for an activity log
      * Used by LLM analytics processor to update processed data without loading full
      * entity

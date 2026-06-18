@@ -100,6 +100,68 @@ public class LearnerLLMAnalyticsController {
                 }
         }
 
+        @PostMapping("/process-on-demand")
+        @Operation(summary = "Process the AI report for a single source on demand", description = "Synchronously runs LLM processing for the latest raw/failed activity log of the given user + source (assessment) and returns the processed result. Lets a learner generate the report immediately instead of waiting for the hourly scheduler.")
+        public ResponseEntity<?> processOnDemand(
+                        @RequestParam("userId") String userId,
+                        @RequestParam("sourceId") String sourceId,
+                        @RequestAttribute("user") CustomUserDetails userDetails) {
+
+                log.info("[LLM-Analytics-API] On-demand processing requested for user: {}, sourceId: {}",
+                                userId, sourceId);
+
+                if (sourceId == null || sourceId.isEmpty()) {
+                        return ResponseEntity.badRequest().body(Map.of(
+                                        "status", "error",
+                                        "message", "sourceId must be provided"));
+                }
+
+                try {
+                        ActivityLog activityLog = activityLogProcessorService.processOnDemand(userId, sourceId);
+
+                        if (activityLog == null) {
+                                // No submission data captured for this user + source yet — nothing to process.
+                                return ResponseEntity.ok(ProcessedActivityLogsResponse.builder()
+                                                .activityLogs(List.of())
+                                                .count(0)
+                                                .build());
+                        }
+
+                        ProcessedActivityLogItem item = ProcessedActivityLogItem.builder()
+                                        .id(activityLog.getId())
+                                        .userId(activityLog.getUserId())
+                                        .slideId(activityLog.getSlideId())
+                                        .sourceId(activityLog.getSourceId())
+                                        .sourceType(activityLog.getSourceType())
+                                        .status(activityLog.getStatus())
+                                        .processedJson(activityLog.getProcessedJson())
+                                        .createdAt(activityLog.getCreatedAt() != null
+                                                        ? activityLog.getCreatedAt().toLocalDateTime()
+                                                        : null)
+                                        .updatedAt(activityLog.getUpdatedAt() != null
+                                                        ? activityLog.getUpdatedAt().toLocalDateTime()
+                                                        : null)
+                                        .build();
+
+                        // Only surface successfully-processed rows to the client; a 'failed' row
+                        // carries an error JSON, not a report, so return an empty result for it.
+                        boolean processed = "processed".equalsIgnoreCase(activityLog.getStatus());
+                        ProcessedActivityLogsResponse response = ProcessedActivityLogsResponse.builder()
+                                        .activityLogs(processed ? List.of(item) : List.of())
+                                        .count(processed ? 1 : 0)
+                                        .build();
+
+                        return ResponseEntity.ok(response);
+
+                } catch (Exception e) {
+                        log.error("[LLM-Analytics-API] Error during on-demand processing for user: {}, sourceId: {}",
+                                        userId, sourceId, e);
+                        return ResponseEntity.internalServerError().body(Map.of(
+                                        "status", "error",
+                                        "message", "Failed to process report: " + e.getMessage()));
+                }
+        }
+
         // ==================== BACKEND/TESTING APIs ====================
 
         @PostMapping("/process-all")

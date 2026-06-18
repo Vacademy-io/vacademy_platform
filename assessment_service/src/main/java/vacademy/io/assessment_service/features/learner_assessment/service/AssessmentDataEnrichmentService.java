@@ -57,8 +57,19 @@ public class AssessmentDataEnrichmentService {
                     studentAttempt.getSubmitTime() != null ? studentAttempt.getSubmitTime().toInstant().toString()
                             : java.time.Instant.now().toString());
 
-            // Assessment metadata (compact — no IDs AI doesn't need)
+            // Envelope identifiers (root level). admin_core_service reads these to set
+            // activity_log.source_id (= assessmentId). Without them source_id stays null
+            // and the learner AI report fetch (by userId + sourceId) never matches.
+            enrichedData.put("assessmentId", assessmentId);
+            enrichedData.put("attemptId", studentAttempt.getId());
+            enrichedData.put("instituteId", instituteId);
+
+            // Assessment metadata. `id` is what admin_core_service's primary extractor
+            // (assessment.id) reads to set activity_log.source_id; the root-level
+            // assessmentId above is its fallback. Both are populated so source_id is set
+            // regardless of which extraction path admin takes.
             Map<String, Object> assessment = new LinkedHashMap<>();
+            assessment.put("id", assessmentId);
             assessment.put("name", assessmentName);
             assessment.put("type", assessmentType);
             assessment.put("total_marks", totalMarks != null ? totalMarks : 0);
@@ -67,6 +78,7 @@ public class AssessmentDataEnrichmentService {
 
             // Attempt metadata
             Map<String, Object> attempt = new LinkedHashMap<>();
+            attempt.put("id", studentAttempt.getId());
             attempt.put("user_id", studentAttempt.getRegistration().getUserId());
             attempt.put("start_time",
                     studentAttempt.getStartTime() != null ? studentAttempt.getStartTime().toInstant().toString() : null);

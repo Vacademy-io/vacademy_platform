@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ChatMessageRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.ConversationRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatLogRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatMessageRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatSessionRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.RoleSummaryRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UsageLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UserUsageRow;
@@ -31,7 +33,9 @@ import java.util.List;
  *
  *   GET /ai-usage/v1/users                          paginated per-user list (role + name + date filter)
  *   GET /ai-usage/v1/summary                        per-role rollup for the sub-tabs
- *   GET /ai-usage/v1/logs                           flat institute-wide deduction log (for the Excel export)
+ *   GET /ai-usage/v1/logs                           flat institute-wide deduction log (Excel export)
+ *   GET /ai-usage/v1/conversations/all              flat institute-wide chat sessions (Excel export)
+ *   GET /ai-usage/v1/messages                       flat institute-wide chat messages (Excel export)
  *   GET /ai-usage/v1/users/{userId}/logs            one user's paginated deduction log
  *   GET /ai-usage/v1/users/{userId}/conversations   one learner's Student-AI chat sessions
  *   GET /ai-usage/v1/conversations/{id}/messages    full transcript (prompts + AI answers)
@@ -90,6 +94,34 @@ public class CreditUsageController {
         String roleFilter = (role == null || role.isBlank()) ? null : role;
         return ResponseEntity.ok(
                 service.allLogs(instituteId, from(startDate), to(endDate), roleFilter, name, EXPORT_LOG_CAP));
+    }
+
+    /** Flat list of Student-AI chat sessions for the institute — for the Excel export's "Chat Sessions" sheet. */
+    @GetMapping("/conversations/all")
+    public ResponseEntity<List<FlatSessionRow>> allConversations(
+            HttpServletRequest request,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate) {
+        String instituteId = requireInstituteId(request);
+        String roleFilter = (role == null || role.isBlank()) ? null : role;
+        return ResponseEntity.ok(
+                service.allSessions(instituteId, from(startDate), to(endDate), roleFilter, name, EXPORT_LOG_CAP));
+    }
+
+    /** Flat list of chat messages (prompts + AI answers) for the institute — for the "Chat Messages" sheet. */
+    @GetMapping("/messages")
+    public ResponseEntity<List<FlatMessageRow>> allMessages(
+            HttpServletRequest request,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Long startDate,
+            @RequestParam(required = false) Long endDate) {
+        String instituteId = requireInstituteId(request);
+        String roleFilter = (role == null || role.isBlank()) ? null : role;
+        return ResponseEntity.ok(
+                service.allMessages(instituteId, from(startDate), to(endDate), roleFilter, name, EXPORT_LOG_CAP));
     }
 
     @GetMapping("/users/{userId}/logs")

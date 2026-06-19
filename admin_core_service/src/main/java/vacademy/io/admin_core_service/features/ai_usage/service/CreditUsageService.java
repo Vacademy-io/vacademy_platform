@@ -7,9 +7,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatLogRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatMessageRow;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatSessionRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.RoleSummaryRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UsageLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UserUsageRow;
+import vacademy.io.admin_core_service.features.ai_usage.repository.ConversationRepository;
 import vacademy.io.admin_core_service.features.ai_usage.repository.CreditUsageRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -34,6 +37,9 @@ public class CreditUsageService {
 
     @Autowired
     private CreditUsageRepository repository;
+
+    @Autowired
+    private ConversationRepository conversationRepository;
 
     @Autowired
     private AuthService authService;
@@ -149,6 +155,94 @@ public class CreditUsageService {
                     .build());
         }
         return out;
+    }
+
+    /**
+     * Flat list of Student-AI chat sessions across the institute (role/name/date
+     * filtered, user-attributed) — for the export's "Chat Sessions" sheet.
+     */
+    public List<FlatSessionRow> allSessions(String instituteId, Timestamp from, Timestamp to,
+                                            String role, String name, int cap) {
+        List<Object[]> sessions = conversationRepository
+                .findAllSessions(instituteId, from, to, PageRequest.of(0, cap)).getContent();
+        List<String> ids = sessions.stream().map(r -> str(r[2])).filter(Objects::nonNull).distinct().toList();
+        Map<String, UserDTO> users = resolveUsersByIds(ids);
+        String nameNeedle = (name == null || name.isBlank()) ? null : name.toLowerCase().trim();
+
+        List<FlatSessionRow> out = new ArrayList<>();
+        for (Object[] r : sessions) {
+            String uid = str(r[2]);
+            UserDTO u = users.get(uid);
+            List<String> roles = (u != null && u.getRoles() != null) ? u.getRoles() : List.of();
+            if (role != null && !roles.contains(role)) {
+                continue;
+            }
+            if (nameNeedle != null && !matchesName(u, nameNeedle)) {
+                continue;
+            }
+            out.add(FlatSessionRow.builder()
+                    .createdAt(millis(r[0]))
+                    .lastActive(millis(r[1]))
+                    .userId(uid)
+                    .name(u != null ? u.getFullName() : null)
+                    .email(u != null ? u.getEmail() : null)
+                    .roles(roles.isEmpty() ? null : String.join(",", roles))
+                    .sessionId(str(r[3]))
+                    .contextType(str(r[4]))
+                    .contextTitle(str(r[5]))
+                    .sessionMode(str(r[6]))
+                    .status(str(r[7]))
+                    .messageCount(lng(r[8]))
+                    .preview(clip(str(r[9])))
+                    .build());
+        }
+        return out;
+    }
+
+    /**
+     * Flat list of chat messages (prompts + AI answers) across the institute
+     * (role/name/date filtered, user-attributed) — for the "Chat Messages" sheet.
+     */
+    public List<FlatMessageRow> allMessages(String instituteId, Timestamp from, Timestamp to,
+                                            String role, String name, int cap) {
+        List<Object[]> messages = conversationRepository
+                .findAllMessages(instituteId, from, to, PageRequest.of(0, cap)).getContent();
+        List<String> ids = messages.stream().map(r -> str(r[1])).filter(Objects::nonNull).distinct().toList();
+        Map<String, UserDTO> users = resolveUsersByIds(ids);
+        String nameNeedle = (name == null || name.isBlank()) ? null : name.toLowerCase().trim();
+
+        List<FlatMessageRow> out = new ArrayList<>();
+        for (Object[] r : messages) {
+            String uid = str(r[1]);
+            UserDTO u = users.get(uid);
+            List<String> roles = (u != null && u.getRoles() != null) ? u.getRoles() : List.of();
+            if (role != null && !roles.contains(role)) {
+                continue;
+            }
+            if (nameNeedle != null && !matchesName(u, nameNeedle)) {
+                continue;
+            }
+            out.add(FlatMessageRow.builder()
+                    .createdAt(millis(r[0]))
+                    .userId(uid)
+                    .name(u != null ? u.getFullName() : null)
+                    .email(u != null ? u.getEmail() : null)
+                    .sessionId(str(r[2]))
+                    .contextType(str(r[3]))
+                    .contextTitle(str(r[4]))
+                    .sessionMode(str(r[5]))
+                    .messageType(str(r[6]))
+                    .content(str(r[7]))
+                    .build());
+        }
+        return out;
+    }
+
+    /** Excel cells cap at 32767 chars; keep the session preview short anyway. */
+    private static String clip(String s) {
+        if (s == null) return null;
+        String flat = s.replaceAll("\\s+", " ").trim();
+        return flat.length() <= 300 ? flat : flat.substring(0, 300) + "…";
     }
 
     /** True when the search needle is a substring of the user's full name or email. */

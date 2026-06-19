@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useDebounce } from 'use-debounce';
 import * as XLSX from 'xlsx';
-import { Sparkle, Users, MagnifyingGlass, DownloadSimple } from '@phosphor-icons/react';
+import { Sparkle, Users, MagnifyingGlass, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -14,6 +14,9 @@ import {
     useUsageUsersQuery,
     useUsageSummaryQuery,
     fetchUsageUsers,
+    fetchAllLogs,
+    fetchAllSessions,
+    fetchAllMessages,
     ddmmyyyyToMillis,
     type UsageDateRange,
     type UserUsageRow,
@@ -38,6 +41,26 @@ const fileDate = (ms?: number): string => {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
+const prettyTool = (s: string | null): string =>
+    s ? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
+
+const senderLabel = (t: string | null): string => {
+    switch (t) {
+        case 'user':
+            return 'Learner';
+        case 'assistant':
+            return 'AI';
+        case 'tool_call':
+            return 'Tool call';
+        case 'tool_result':
+            return 'Tool result';
+        default:
+            return prettyTool(t);
+    }
+};
+
+const dateTime = (ms: number | null): string => (ms ? new Date(ms).toLocaleString() : '');
 
 const defaultRange = (): UsageDateRange => {
     const now = new Date();
@@ -92,26 +115,93 @@ export function AiUsageSection() {
         [summaryQ.data]
     );
 
-    // Export the currently-filtered usage list (role tab + name search + date range).
+    // Export the currently-filtered data (role tab + name search + date range) as a
+    // workbook: Summary, Activity Log, Chat Sessions and Chat Messages.
     const handleExport = async () => {
-        const all = await fetchUsageUsers(0, EXPORT_PAGE_SIZE, {
-            ...range,
-            role: roleTab,
-            name: debouncedName,
-        });
-        const rows = all.content ?? [];
-        const header = ['Name', 'Email', 'Role', 'Credits used', 'Requests'];
-        const body = rows.map((u) => [
+        const filters = { ...range, role: roleTab, name: debouncedName };
+        const [usersData, logs, sessions, messages] = await Promise.all([
+            fetchUsageUsers(0, EXPORT_PAGE_SIZE, filters),
+            fetchAllLogs(filters),
+            fetchAllSessions(filters),
+            fetchAllMessages(filters),
+        ]);
+
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1 — Summary (per member)
+        const summaryHeader = ['Name', 'Email', 'Role', 'Credits used', 'Requests'];
+        const summaryBody = (usersData.content ?? []).map((u) => [
             u.name || u.userId,
             u.email || '',
             formatRoles(u.roles),
             Number(u.totalCredits.toFixed(2)),
             u.requestCount,
         ]);
-        const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
-        ws['!cols'] = [{ wch: 28 }, { wch: 32 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'AI Credit Usage');
+        const summaryWs = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryBody]);
+        summaryWs['!cols'] = [{ wch: 28 }, { wch: 32 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+        // Sheet 2 — Activity Log (every credit deduction across all tools)
+        const logHeader = ['When', 'Name', 'Email', 'Role', 'Tool', 'Model', 'Credits', 'Detail'];
+        const logBody = logs.map((l) => [
+            dateTime(l.createdAt),
+            l.name || l.userId,
+            l.email || '',
+            formatRoles(l.roles),
+            prettyTool(l.requestType),
+            l.model || '',
+            Number(l.credits.toFixed(4)),
+            l.description || '',
+        ]);
+        const logWs = XLSX.utils.aoa_to_sheet([logHeader, ...logBody]);
+        logWs['!cols'] = [
+            { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 18 },
+            { wch: 16 }, { wch: 26 }, { wch: 10 }, { wch: 40 },
+        ];
+        XLSX.utils.book_append_sheet(wb, logWs, 'Activity Log');
+
+        // Sheet 3 — Chat Sessions (one row per Student-AI session)
+        const sessionHeader = [
+            'Started', 'Last active', 'Name', 'Email', 'Role',
+            'Context', 'Mode', 'Status', 'Messages', 'First message',
+        ];
+        const sessionBody = sessions.map((s) => [
+            dateTime(s.createdAt),
+            dateTime(s.lastActive),
+            s.name || s.userId,
+            s.email || '',
+            formatRoles(s.roles),
+            s.contextTitle || prettyTool(s.contextType),
+            prettyTool(s.sessionMode),
+            s.status || '',
+            s.messageCount,
+            s.preview || '',
+        ]);
+        const sessionWs = XLSX.utils.aoa_to_sheet([sessionHeader, ...sessionBody]);
+        sessionWs['!cols'] = [
+            { wch: 20 }, { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 16 },
+            { wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 50 },
+        ];
+        XLSX.utils.book_append_sheet(wb, sessionWs, 'Chat Sessions');
+
+        // Sheet 4 — Chat Messages (every prompt + AI answer)
+        const msgHeader = ['When', 'Name', 'Email', 'Session', 'Context', 'Sender', 'Message'];
+        const msgBody = messages.map((m) => [
+            dateTime(m.createdAt),
+            m.name || m.userId,
+            m.email || '',
+            m.sessionId,
+            m.contextTitle || prettyTool(m.contextType),
+            senderLabel(m.messageType),
+            m.content || '',
+        ]);
+        const msgWs = XLSX.utils.aoa_to_sheet([msgHeader, ...msgBody]);
+        msgWs['!cols'] = [
+            { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 24 },
+            { wch: 26 }, { wch: 12 }, { wch: 80 },
+        ];
+        XLSX.utils.book_append_sheet(wb, msgWs, 'Chat Messages');
+
         XLSX.writeFile(wb, `ai-credit-usage_${fileDate(range.startDate)}_${fileDate(range.endDate)}.xlsx`);
     };
 
@@ -120,8 +210,12 @@ export function AiUsageSection() {
             {
                 accessorKey: 'name',
                 header: 'Name',
+                size: 260,
                 cell: ({ row }) => (
-                    <span className="font-medium text-neutral-700">
+                    <span
+                        className="block truncate font-medium text-neutral-700"
+                        title={row.original.name || row.original.userId}
+                    >
                         {row.original.name || row.original.userId}
                     </span>
                 ),
@@ -129,9 +223,12 @@ export function AiUsageSection() {
             {
                 accessorKey: 'email',
                 header: 'Email',
+                size: 460,
                 cell: ({ row }) =>
                     row.original.email ? (
-                        <span className="text-neutral-600">{row.original.email}</span>
+                        <span className="block truncate text-neutral-600" title={row.original.email}>
+                            {row.original.email}
+                        </span>
                     ) : (
                         <span className="text-neutral-400">—</span>
                     ),
@@ -139,24 +236,27 @@ export function AiUsageSection() {
             {
                 accessorKey: 'roles',
                 header: 'Role',
+                size: 200,
                 cell: ({ row }) => <RoleChips roles={row.original.roles} />,
             },
             {
                 accessorKey: 'totalCredits',
                 header: 'Credits used',
+                size: 170,
                 cell: ({ row }) => (
                     <span className="font-semibold text-neutral-800">
                         {row.original.totalCredits.toFixed(2)}
                     </span>
                 ),
             },
-            { accessorKey: 'requestCount', header: 'Requests' },
+            { accessorKey: 'requestCount', header: 'Requests', size: 150 },
             {
                 id: 'actions',
-                header: '',
+                header: 'Activity',
+                size: 160,
                 cell: ({ row }) => (
                     <MyButton
-                        buttonType="text"
+                        buttonType="secondary"
                         scale="small"
                         onClick={() =>
                             setSelectedLearner({
@@ -169,6 +269,7 @@ export function AiUsageSection() {
                             })
                         }
                     >
+                        <Eye className="size-4" />
                         View logs
                     </MyButton>
                 ),

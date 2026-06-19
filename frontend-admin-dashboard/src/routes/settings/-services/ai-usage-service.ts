@@ -42,6 +42,50 @@ export interface ConversationRow {
     preview: string | null; // first learner message, trimmed
 }
 
+/** One credit deduction (flat) for the institute-wide Activity Log export. */
+export interface FlatLogRow {
+    createdAt: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string | null;
+    requestType: string | null;
+    model: string | null;
+    credits: number;
+    description: string | null;
+}
+
+/** One chat session (flat, user-attributed) for the export's "Chat Sessions" sheet. */
+export interface FlatSessionRow {
+    createdAt: number | null;
+    lastActive: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string | null;
+    sessionId: string;
+    contextType: string | null;
+    contextTitle: string | null;
+    sessionMode: string | null;
+    status: string | null;
+    messageCount: number;
+    preview: string | null;
+}
+
+/** One chat message (flat, user-attributed) for the export's "Chat Messages" sheet. */
+export interface FlatMessageRow {
+    createdAt: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    sessionId: string;
+    contextType: string | null;
+    contextTitle: string | null;
+    sessionMode: string | null;
+    messageType: string | null;
+    content: string | null;
+}
+
 export type ChatMessageType = 'user' | 'assistant' | 'tool_call' | 'tool_result';
 
 /** One message inside a chat session transcript. */
@@ -163,6 +207,41 @@ export const fetchConversationMessages = async (
     const response = await authenticatedAxiosInstance.get<ConversationMessage[]>(
         `${AI_USAGE_BASE}/conversations/${sessionId}/messages`
     );
+    return response.data ?? [];
+};
+
+/** Params shared by every institute-wide export fetcher. */
+type ExportFilters = UsageDateRange & { role?: string | null; name?: string | null };
+
+const exportParams = (filters: ExportFilters) => ({
+    role: filters.role || undefined,
+    name: filters.name?.trim() || undefined,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+});
+
+/** Flat institute-wide activity log for the export (honours role + name + date filters). */
+export const fetchAllLogs = async (filters: ExportFilters): Promise<FlatLogRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatLogRow[]>(`${AI_USAGE_BASE}/logs`, {
+        params: exportParams(filters),
+    });
+    return response.data ?? [];
+};
+
+/** Flat institute-wide chat sessions for the export. */
+export const fetchAllSessions = async (filters: ExportFilters): Promise<FlatSessionRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatSessionRow[]>(
+        `${AI_USAGE_BASE}/conversations/all`,
+        { params: exportParams(filters) }
+    );
+    return response.data ?? [];
+};
+
+/** Flat institute-wide chat messages (prompts + AI answers) for the export. */
+export const fetchAllMessages = async (filters: ExportFilters): Promise<FlatMessageRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatMessageRow[]>(`${AI_USAGE_BASE}/messages`, {
+        params: exportParams(filters),
+    });
     return response.data ?? [];
 };
 

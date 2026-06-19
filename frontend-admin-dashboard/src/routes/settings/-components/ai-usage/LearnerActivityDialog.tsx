@@ -15,7 +15,6 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
@@ -119,7 +118,7 @@ function LearnerHeader({ learner }: { learner: SelectedLearner }) {
     const initial = (learner.name || learner.email || '?').charAt(0).toUpperCase();
 
     return (
-        <div className="flex items-start gap-3 border-b border-neutral-200 p-5 pr-10">
+        <div className="flex shrink-0 items-start gap-3 border-b border-neutral-200 p-5 pr-10">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-h3 font-semibold text-primary-500">
                 {initial}
             </div>
@@ -330,33 +329,47 @@ function ConversationsTab({
         }
     }, [sessions, selectedSessionId]);
 
-    const isEmpty = !conversationsQ.isLoading && sessions.length === 0;
+    // Loading — fill the whole area.
+    if (conversationsQ.isLoading) {
+        return (
+            <div className="flex min-h-0 flex-1 items-center justify-center p-8">
+                <p className="animate-pulse text-body text-neutral-400">Loading conversations…</p>
+            </div>
+        );
+    }
+
+    // No sessions — one centered empty state across the whole view.
+    if (sessions.length === 0) {
+        return (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+                <div className="flex size-14 items-center justify-center rounded-full bg-neutral-100">
+                    <ChatCircleDots className="size-7 text-neutral-400" />
+                </div>
+                <p className="text-subtitle font-semibold text-neutral-600">No AI conversations yet</p>
+                <p className="max-w-sm text-body text-neutral-400">
+                    {learner.name || 'This member'} hasn’t chatted with the Student-AI tutor in the
+                    selected date range. Try widening the date range to see more.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
             {/* Session list */}
-            <div className="flex max-h-48 min-h-0 flex-col overflow-y-auto border-b border-neutral-200 md:max-h-none md:w-72 md:shrink-0 md:border-b-0 md:border-r">
-                {conversationsQ.isLoading && (
-                    <p className="animate-pulse p-4 text-body text-neutral-400">Loading…</p>
-                )}
-                {isEmpty && (
-                    <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-                        <ChatCircleDots className="size-7 text-neutral-300" />
-                        <p className="text-caption text-neutral-400">
-                            No Student-AI conversations in this period.
-                        </p>
-                    </div>
-                )}
-                {sessions.map((s) => (
-                    <SessionListItem
-                        key={s.sessionId}
-                        session={s}
-                        active={s.sessionId === selectedSessionId}
-                        onClick={() => setSelectedSessionId(s.sessionId)}
-                    />
-                ))}
+            <div className="flex max-h-48 min-h-0 flex-col overflow-y-auto border-b border-neutral-200 md:max-h-none md:w-80 md:shrink-0 md:border-b-0 md:border-r">
+                <div className="flex-1">
+                    {sessions.map((s) => (
+                        <SessionListItem
+                            key={s.sessionId}
+                            session={s}
+                            active={s.sessionId === selectedSessionId}
+                            onClick={() => setSelectedSessionId(s.sessionId)}
+                        />
+                    ))}
+                </div>
                 {conversationsQ.data && conversationsQ.data.total_pages > 1 && (
-                    <div className="border-t border-neutral-200 p-2">
+                    <div className="sticky bottom-0 border-t border-neutral-200 bg-white p-2">
                         <MyPagination
                             currentPage={sessionPage}
                             totalPages={conversationsQ.data.total_pages}
@@ -370,7 +383,7 @@ function ConversationsTab({
             </div>
 
             {/* Transcript */}
-            <TranscriptPane sessionId={isEmpty ? null : selectedSessionId} />
+            <TranscriptPane sessionId={selectedSessionId} />
         </div>
     );
 }
@@ -385,22 +398,30 @@ function ActivityTab({ learner, range }: { learner: SelectedLearner; range: Usag
             {
                 accessorKey: 'createdAt',
                 header: 'When',
+                size: 200,
                 cell: ({ row }) =>
                     row.original.createdAt ? formatDateTime(row.original.createdAt) : '—',
             },
             {
                 accessorKey: 'requestType',
                 header: 'Tool',
+                size: 220,
                 cell: ({ row }) => prettify(row.original.requestType),
             },
             {
                 accessorKey: 'model',
                 header: 'Model',
-                cell: ({ row }) => row.original.model || '—',
+                size: 400,
+                cell: ({ row }) => (
+                    <span className="block truncate" title={row.original.model || undefined}>
+                        {row.original.model || '—'}
+                    </span>
+                ),
             },
             {
                 accessorKey: 'credits',
                 header: 'Credits',
+                size: 160,
                 cell: ({ row }) => (
                     <span className="font-semibold text-neutral-800">
                         {row.original.credits.toFixed(4)}
@@ -436,45 +457,70 @@ function ActivityTab({ learner, range }: { learner: SelectedLearner; range: Usag
 }
 
 // ── dialog shell ────────────────────────────────────────────────────────────
+function TabPill({
+    active,
+    onClick,
+    children,
+}: {
+    active: boolean;
+    onClick: () => void;
+    children: ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-body font-medium transition-colors',
+                active
+                    ? 'bg-primary-50 text-primary-600'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700'
+            )}
+        >
+            {children}
+        </button>
+    );
+}
+
 export function LearnerActivityDialog({ learner, range, onClose }: Props) {
+    const [tab, setTab] = useState<'conversations' | 'activity'>('conversations');
+
+    // Reset to the first tab whenever a new learner is opened.
+    useEffect(() => {
+        setTab('conversations');
+    }, [learner?.userId]);
+
+    const stateKey = learner ? `${learner.userId}:${range.startDate}:${range.endDate}` : 'none';
+
     return (
         <Sheet open={!!learner} onOpenChange={(o) => !o && onClose()}>
             <SheetContent
                 side="right"
-                className="flex w-full flex-col gap-0 p-0 sm:max-w-4xl"
+                className="flex h-full w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
             >
                 {learner && (
                     <>
                         <LearnerHeader learner={learner} />
-                        <Tabs defaultValue="conversations" className="flex min-h-0 flex-1 flex-col">
-                            <TabsList className="mx-5 mt-3 w-fit">
-                                <TabsTrigger value="conversations">
-                                    <ChatCircleDots className="mr-1.5 size-4" />
-                                    Conversations
-                                </TabsTrigger>
-                                <TabsTrigger value="activity">
-                                    <Coins className="mr-1.5 size-4" />
-                                    Credit activity
-                                </TabsTrigger>
-                            </TabsList>
-                            <TabsContent
-                                value="conversations"
-                                className="mt-3 flex min-h-0 flex-1 flex-col"
+                        <div className="flex shrink-0 items-center gap-1.5 border-b border-neutral-100 px-5 py-2">
+                            <TabPill
+                                active={tab === 'conversations'}
+                                onClick={() => setTab('conversations')}
                             >
-                                <ConversationsTab
-                                    key={`${learner.userId}:${range.startDate}:${range.endDate}`}
-                                    learner={learner}
-                                    range={range}
-                                />
-                            </TabsContent>
-                            <TabsContent value="activity" className="mt-3 flex min-h-0 flex-1 flex-col">
-                                <ActivityTab
-                                    key={`${learner.userId}:${range.startDate}:${range.endDate}`}
-                                    learner={learner}
-                                    range={range}
-                                />
-                            </TabsContent>
-                        </Tabs>
+                                <ChatCircleDots className="size-4" />
+                                Conversations
+                            </TabPill>
+                            <TabPill active={tab === 'activity'} onClick={() => setTab('activity')}>
+                                <Coins className="size-4" />
+                                Credit activity
+                            </TabPill>
+                        </div>
+                        <div className="flex min-h-0 flex-1 flex-col">
+                            {tab === 'conversations' ? (
+                                <ConversationsTab key={stateKey} learner={learner} range={range} />
+                            ) : (
+                                <ActivityTab key={stateKey} learner={learner} range={range} />
+                            )}
+                        </div>
                     </>
                 )}
             </SheetContent>

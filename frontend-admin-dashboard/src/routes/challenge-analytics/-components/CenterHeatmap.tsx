@@ -90,19 +90,26 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
     const maxUsers = Math.max(...centers.map((c) => c.unique_users), 1);
 
     // Chart data
-    const barData = centers.slice(0, 10).map((item) => ({
-        name: item.campaign_name.length > 14 ? item.campaign_name.substring(0, 14) + '…' : item.campaign_name,
+    // Show EVERY center — no top-N cap, which previously hid low-volume centers like Kharadi.
+    const barData = centers.map((item) => ({
+        name: item.campaign_name,
         fullName: item.campaign_name,
         unique_users: item.unique_users,
         total_responses: item.total_responses,
         opted_out: item.opted_out_users ?? 0,
     }));
+    // Grow the chart so all centers fit (≈34px per row).
+    const barChartHeight = Math.max(280, barData.length * 34);
 
-    const pieData = centers.slice(0, 8).map((item, index) => ({
-        name: item.campaign_name,
-        value: item.unique_users,
-        fill: COLORS[index % COLORS.length],
-    }));
+    // Pie shows the distribution across every center that has at least one user
+    // (a 0-user center would just be an empty 0% slice).
+    const pieData = centers
+        .filter((item) => item.unique_users > 0)
+        .map((item, index) => ({
+            name: item.campaign_name,
+            value: item.unique_users,
+            fill: COLORS[index % COLORS.length],
+        }));
 
     const exportToCSV = () => {
         const headers = ['Center', 'Enrolled Users', 'Total Interactions', 'Avg/User', 'Opt-Outs', 'Opt-Out %', 'Status'];
@@ -163,15 +170,21 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                         {/* Bar chart */}
                         <div>
                             <h4 className="mb-3 text-sm font-medium text-gray-700">Users by Center</h4>
-                            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+                            <ChartContainer config={chartConfig} className="aspect-auto w-full" style={{ height: barChartHeight }}>
                                 <BarChart
                                     data={barData}
                                     layout="vertical"
-                                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                                    margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
                                 >
                                     <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} />
                                     <XAxis type="number" tick={{ fontSize: 11 }} />
-                                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={75} />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        tick={{ fontSize: 11 }}
+                                        width={130}
+                                        interval={0}
+                                    />
                                     <ChartTooltip
                                         content={({ active, payload }) => {
                                             if (active && payload?.length) {
@@ -200,20 +213,20 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                         {/* Pie chart */}
                         <div>
                             <h4 className="mb-3 text-sm font-medium text-gray-700">User Distribution</h4>
-                            <ResponsiveContainer width="100%" height={280}>
-                                <PieChart>
+                            <ResponsiveContainer width="100%" height={320}>
+                                <PieChart margin={{ top: 8, right: 12, bottom: 8, left: 12 }}>
                                     <Pie
                                         data={pieData}
                                         cx="50%"
-                                        cy="50%"
-                                        innerRadius={55}
-                                        outerRadius={90}
+                                        cy="45%"
+                                        innerRadius={45}
+                                        outerRadius={72}
                                         paddingAngle={2}
                                         dataKey="value"
                                         label={({ name, percent }) =>
-                                            `${name.substring(0, 8)}${name.length > 8 ? '…' : ''}: ${(percent * 100).toFixed(0)}%`
+                                            `${name}: ${(percent * 100).toFixed(0)}%`
                                         }
-                                        labelLine={false}
+                                        labelLine
                                     >
                                         {pieData.map((entry, i) => (
                                             <Cell key={i} fill={entry.fill} />
@@ -221,9 +234,9 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                                     </Pie>
                                     <Tooltip formatter={(v: number) => [v.toLocaleString(), 'Users']} />
                                     <Legend
-                                        layout="vertical"
-                                        align="right"
-                                        verticalAlign="middle"
+                                        layout="horizontal"
+                                        align="center"
+                                        verticalAlign="bottom"
                                         wrapperStyle={{ fontSize: '11px' }}
                                     />
                                 </PieChart>

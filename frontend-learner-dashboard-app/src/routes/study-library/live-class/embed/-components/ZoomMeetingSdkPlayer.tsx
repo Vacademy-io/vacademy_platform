@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
+import { AppLauncher } from "@capacitor/app-launcher";
 import { ArrowSquareOut } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ZOOM_SDK_SIGNATURE_ENDPOINT } from "@/constants/urls";
@@ -144,6 +145,37 @@ interface ZoomSdkSignature {
 
 type Phase = "loading" | "joining" | "joined" | "error";
 
+/**
+ * Native escape hatch when the in-WebView Client View can't run: open the meeting
+ * in the Zoom APP via the zoommtg:// deep link (built from the signature payload),
+ * falling back to the web join URL in an in-app browser if the Zoom app isn't
+ * installed. canOpenUrl needs the zoommtg scheme declared (Android manifest
+ * <queries>, iOS LSApplicationQueriesSchemes) — both are present.
+ */
+async function launchZoomExternally(
+    data: ZoomSdkSignature | undefined,
+    webUrl: string
+): Promise<void> {
+    try {
+        if (data?.meetingNumber) {
+            const { value } = await AppLauncher.canOpenUrl({ url: "zoommtg://" });
+            if (value) {
+                const deepLink =
+                    "zoommtg://zoom.us/join?action=join" +
+                    `&confno=${encodeURIComponent(data.meetingNumber)}` +
+                    `&pwd=${encodeURIComponent(data.passcode ?? "")}` +
+                    `&uname=${encodeURIComponent(data.userName ?? "")}` +
+                    "&zc=0";
+                await AppLauncher.openUrl({ url: deepLink });
+                return;
+            }
+        }
+    } catch {
+        /* Zoom app not installed / scheme not queryable → fall through to browser */
+    }
+    await Browser.open({ url: webUrl, presentationStyle: "fullscreen" });
+}
+
 export default function ZoomMeetingSdkPlayer({
     scheduleId,
     leaveUrl,
@@ -152,9 +184,10 @@ export default function ZoomMeetingSdkPlayer({
     scheduleId: string;
     /** Where Zoom's "Leave" sends the browser. Defaults to the app origin. */
     leaveUrl?: string;
-    /** On Capacitor, if the Zoom Client View hits a load/init/join/signature
-     *  error, offer to open this Zoom join URL externally in the browser. (Camera/
-     *  mic denial is handled inside the SDK and does NOT route here.) */
+    /** On Capacitor, if the Zoom Client View hits a load/init/join/signature error,
+     *  offer to open the meeting in the Zoom app (zoommtg:// deep link), falling back
+     *  to this web join URL in a browser. (Camera/mic denial is handled inside the SDK
+     *  and does NOT route here.) */
     nativeFallbackUrl?: string;
 }) {
     const startedRef = useRef(false);
@@ -292,12 +325,10 @@ export default function ZoomMeetingSdkPlayer({
                 {fallbackUrl && (
                     <Button
                         className="mt-2 gap-2"
-                        onClick={() =>
-                            void Browser.open({ url: fallbackUrl, presentationStyle: "fullscreen" })
-                        }
+                        onClick={() => void launchZoomExternally(data, fallbackUrl)}
                     >
                         <ArrowSquareOut size={18} />
-                        Open in browser instead
+                        Open in Zoom app
                     </Button>
                 )}
             </div>

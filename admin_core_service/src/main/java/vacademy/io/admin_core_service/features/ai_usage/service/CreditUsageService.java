@@ -3,8 +3,10 @@ package vacademy.io.admin_core_service.features.ai_usage.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.FlatLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.RoleSummaryRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UsageLogRow;
 import vacademy.io.admin_core_service.features.ai_usage.dto.CreditUsageDtos.UserUsageRow;
@@ -111,6 +113,44 @@ public class CreditUsageService {
         return repository.findUserLogs(instituteId, userId, from, to, pageable).map(this::toLogRow);
     }
 
+    /**
+     * Flat list of every deduction in the window, attributed to a member and
+     * honouring the same role/name filters as the user list — for the export's
+     * "Activity Log" sheet. Capped to keep a runaway export bounded.
+     */
+    public List<FlatLogRow> allLogs(String instituteId, Timestamp from, Timestamp to,
+                                    String role, String name, int cap) {
+        List<Object[]> logs = repository.findAllLogs(instituteId, from, to, PageRequest.of(0, cap)).getContent();
+        List<String> ids = logs.stream().map(r -> str(r[1])).filter(Objects::nonNull).distinct().toList();
+        Map<String, UserDTO> users = resolveUsersByIds(ids);
+        String nameNeedle = (name == null || name.isBlank()) ? null : name.toLowerCase().trim();
+
+        List<FlatLogRow> out = new ArrayList<>();
+        for (Object[] r : logs) {
+            String uid = str(r[1]);
+            UserDTO u = users.get(uid);
+            List<String> roles = (u != null && u.getRoles() != null) ? u.getRoles() : List.of();
+            if (role != null && !roles.contains(role)) {
+                continue;
+            }
+            if (nameNeedle != null && !matchesName(u, nameNeedle)) {
+                continue;
+            }
+            out.add(FlatLogRow.builder()
+                    .createdAt(millis(r[0]))
+                    .userId(uid)
+                    .name(u != null ? u.getFullName() : null)
+                    .email(u != null ? u.getEmail() : null)
+                    .roles(roles.isEmpty() ? null : String.join(",", roles))
+                    .requestType(str(r[2]))
+                    .model(str(r[3]))
+                    .credits(round(dbl(r[4])))
+                    .description(str(r[5]))
+                    .build());
+        }
+        return out;
+    }
+
     /** True when the search needle is a substring of the user's full name or email. */
     private static boolean matchesName(UserDTO u, String needle) {
         if (u == null) return false;
@@ -120,11 +160,15 @@ public class CreditUsageService {
                 || (email != null && email.toLowerCase().contains(needle));
     }
 
+    /** Batch-resolve user_id -> UserDTO from auth-service for an aggregate (keyed on r[0]). */
+    private Map<String, UserDTO> resolveUsers(List<Object[]> agg) {
+        return resolveUsersByIds(agg.stream().map(r -> str(r[0])).filter(Objects::nonNull).distinct().toList());
+    }
+
     /** Batch-resolve user_id -> UserDTO from auth-service. Degrades to an empty map
      * (names shown as user_id) if auth-service is unavailable — never 500s. */
-    private Map<String, UserDTO> resolveUsers(List<Object[]> agg) {
-        List<String> ids = agg.stream().map(r -> str(r[0])).filter(Objects::nonNull).distinct().toList();
-        if (ids.isEmpty()) {
+    private Map<String, UserDTO> resolveUsersByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
             return Map.of();
         }
         try {

@@ -121,6 +121,17 @@ function ensureZmmtgRoot(): HTMLElement {
     return root;
 }
 
+/**
+ * Hides the singleton #zmmtg-root. Zoom's bootstrap.css makes it a fixed,
+ * full-viewport, high-z-index overlay, so it MUST be hidden on every error path
+ * after ensureZmmtgRoot() ran — otherwise the empty Zoom shell covers our error
+ * message. The node is kept (not removed) so a re-init can reuse it.
+ */
+function hideZmmtgRoot(): void {
+    const root = document.getElementById('zmmtg-root');
+    if (root) root.style.display = 'none';
+}
+
 interface ZoomSdkSignature {
     signature: string;
     sdkKey: string;
@@ -245,6 +256,7 @@ export default function ZoomHostSdkPlayer({
                             error: (err: any) => {
                                 console.error('[Zoom Host ClientView] join failed:', err);
                                 if (!cancelled) {
+                                    hideZmmtgRoot(); // else the empty Zoom shell covers the error UI
                                     setErrorMsg(`Could not start the Zoom meeting (${err?.errorCode ?? 'join error'}).`);
                                     setPhase('error');
                                 }
@@ -259,6 +271,7 @@ export default function ZoomHostSdkPlayer({
                     error: (err: any) => {
                         console.error('[Zoom Host ClientView] init failed:', err);
                         if (!cancelled) {
+                            hideZmmtgRoot();
                             setErrorMsg(`Could not initialise the Zoom meeting (${err?.errorCode ?? 'init error'}).`);
                             setPhase('error');
                         }
@@ -267,6 +280,7 @@ export default function ZoomHostSdkPlayer({
             } catch (err: unknown) {
                 if (cancelled) return;
                 console.error('[Zoom Host ClientView] load failed:', err);
+                hideZmmtgRoot();
                 setErrorMsg('Could not load the Zoom meeting. Check your connection and try again.');
                 setPhase('error');
             }
@@ -281,8 +295,7 @@ export default function ZoomHostSdkPlayer({
             } catch {
                 /* ignore */
             }
-            const root = document.getElementById('zmmtg-root');
-            if (root) root.style.display = 'none';
+            hideZmmtgRoot();
             startedRef.current = false;
         };
     }, [data, leaveUrl]);

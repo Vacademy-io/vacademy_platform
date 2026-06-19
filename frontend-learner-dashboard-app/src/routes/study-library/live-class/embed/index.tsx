@@ -286,26 +286,10 @@ function EmbedComponent() {
       );
     }
 
-    // Handle integration-created Zoom meetings — embedded inside the portal via
-    // the Meeting SDK Client View (loaded from Zoom's CDN, NOT the npm package —
-    // see ZoomMeetingSdkPlayer for why). This runs on BOTH desktop web AND inside
-    // the Capacitor WebView: the Client View vendors its own React from the CDN,
-    // so it doesn't collide with the app's React 19 (the old npm Component View
-    // did, which is the only reason native used to bounce out to a browser). On
-    // native the player offers an "open in Zoom" fallback if the in-WebView SDK
-    // can't start. A pasted Zoom link (no providerMeetingId) or a recording falls
-    // through to the iframe player below.
-    if (
-      (linkType === LinkType.ZOOM || linkType === "zoom") &&
-      sessionDetails?.providerMeetingId &&
-      sessionId
-    ) {
-      return <ZoomMeetingSdkPlayer
-        scheduleId={sessionId}
-        leaveUrl={`${window.location.origin}/study-library/live-class`}
-        nativeFallbackUrl={sessionDetails.defaultMeetLink}
-      />;
-    }
+    // NOTE: integration-created Zoom meetings (link_type ZOOM + providerMeetingId)
+    // are handled earlier by the full-screen `isZoomFullscreen` branch (which renders
+    // ZoomMeetingSdkPlayer on both web and native), so they never reach here. A pasted
+    // Zoom link (no providerMeetingId) or a recording falls through to the players below.
 
     if (!sessionDetails?.defaultMeetLink) return null;
 

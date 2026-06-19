@@ -118,6 +118,18 @@ function ensureZmmtgRoot(): HTMLElement {
     return root;
 }
 
+/**
+ * Hides the singleton #zmmtg-root. Zoom's bootstrap.css makes it a fixed,
+ * full-viewport, high-z-index overlay, so it MUST be hidden on every error path
+ * after ensureZmmtgRoot() ran — otherwise the (empty) Zoom shell covers our
+ * error message and the "Open in Zoom" fallback button. The node is kept (not
+ * removed) so a re-init can reuse it.
+ */
+function hideZmmtgRoot(): void {
+    const root = document.getElementById("zmmtg-root");
+    if (root) root.style.display = "none";
+}
+
 interface ZoomSdkSignature {
     signature: string;
     sdkKey: string;
@@ -140,8 +152,9 @@ export default function ZoomMeetingSdkPlayer({
     scheduleId: string;
     /** Where Zoom's "Leave" sends the browser. Defaults to the app origin. */
     leaveUrl?: string;
-    /** On Capacitor, if the in-WebView SDK can't start (e.g. denied camera/mic),
-     *  offer to open this Zoom join URL externally (Zoom app / browser). */
+    /** On Capacitor, if the Zoom Client View hits a load/init/join/signature
+     *  error, offer to open this Zoom join URL externally in the browser. (Camera/
+     *  mic denial is handled inside the SDK and does NOT route here.) */
     nativeFallbackUrl?: string;
 }) {
     const startedRef = useRef(false);
@@ -228,6 +241,7 @@ export default function ZoomMeetingSdkPlayer({
                             error: (err: any) => {
                                 console.error("[Zoom Learner ClientView] join failed:", err);
                                 if (!cancelled) {
+                                    hideZmmtgRoot(); // else the empty Zoom shell covers the error UI
                                     setErrorMsg(`Could not join the Zoom meeting (${err?.errorCode ?? "join error"}).`);
                                     setPhase("error");
                                 }
@@ -241,6 +255,7 @@ export default function ZoomMeetingSdkPlayer({
                     error: (err: any) => {
                         console.error("[Zoom Learner ClientView] init failed:", err);
                         if (!cancelled) {
+                            hideZmmtgRoot();
                             setErrorMsg(`Could not initialise the Zoom meeting (${err?.errorCode ?? "init error"}).`);
                             setPhase("error");
                         }
@@ -249,6 +264,7 @@ export default function ZoomMeetingSdkPlayer({
             } catch (err: unknown) {
                 if (cancelled) return;
                 console.error("[Zoom Learner ClientView] load failed:", err);
+                hideZmmtgRoot();
                 setErrorMsg("Could not load the Zoom meeting. Check your connection and try again.");
                 setPhase("error");
             }
@@ -261,30 +277,27 @@ export default function ZoomMeetingSdkPlayer({
             } catch {
                 /* ignore */
             }
-            const root = document.getElementById("zmmtg-root");
-            if (root) root.style.display = "none";
+            hideZmmtgRoot();
             startedRef.current = false;
         };
     }, [data, leaveUrl]);
 
     if (error || phase === "error") {
-        const showNativeFallback = Capacitor.isNativePlatform() && !!nativeFallbackUrl;
+        // Capture the URL so TS narrows it (no non-null assertion in the handler).
+        const fallbackUrl = Capacitor.isNativePlatform() ? nativeFallbackUrl : undefined;
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
                 <p className="text-red-600">{errorMsg ?? "Failed to load the Zoom meeting."}</p>
                 <p className="text-sm text-neutral-500">Please refresh the page or try rejoining.</p>
-                {showNativeFallback && (
+                {fallbackUrl && (
                     <Button
                         className="mt-2 gap-2"
                         onClick={() =>
-                            void Browser.open({
-                                url: nativeFallbackUrl!,
-                                presentationStyle: "fullscreen",
-                            })
+                            void Browser.open({ url: fallbackUrl, presentationStyle: "fullscreen" })
                         }
                     >
                         <ArrowSquareOut size={18} />
-                        Open in Zoom instead
+                        Open in browser instead
                     </Button>
                 )}
             </div>

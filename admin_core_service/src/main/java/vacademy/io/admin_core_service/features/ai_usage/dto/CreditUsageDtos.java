@@ -119,4 +119,47 @@ public class CreditUsageDtos {
         private double credits;
         private String description;
     }
+
+    /** One Student-AI chat session, user-attributed — flat row for the "Chat Sessions" export sheet. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FlatSessionRow {
+        /** Epoch millis (session created). */
+        private Long createdAt;
+        /** Epoch millis (last activity). */
+        private Long lastActive;
+        private String userId;
+        private String name;
+        private String email;
+        private String roles;
+        private String sessionId;
+        private String contextType;
+        private String contextTitle;
+        private String sessionMode;
+        private String status;
+        private long messageCount;
+        private String preview;
+    }
+
+    /** One chat message (prompt or answer), user-attributed — flat row for the "Chat Messages" export sheet. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FlatMessageRow {
+        /** Epoch millis. */
+        private Long createdAt;
+        private String userId;
+        private String name;
+        private String email;
+        private String sessionId;
+        private String contextType;
+        private String contextTitle;
+        private String sessionMode;
+        /** user | assistant | tool_call | tool_result */
+        private String messageType;
+        private String content;
+    }
 }

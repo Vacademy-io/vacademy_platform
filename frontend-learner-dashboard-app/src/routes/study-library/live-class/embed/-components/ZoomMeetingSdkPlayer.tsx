@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
+import { ArrowSquareOut } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ZOOM_SDK_SIGNATURE_ENDPOINT } from "@/constants/urls";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Button } from "@/components/ui/button";
 
 /**
  * Joins a live Zoom meeting using the Web Meeting SDK **Client View** (the
@@ -131,10 +135,14 @@ type Phase = "loading" | "joining" | "joined" | "error";
 export default function ZoomMeetingSdkPlayer({
     scheduleId,
     leaveUrl,
+    nativeFallbackUrl,
 }: {
     scheduleId: string;
     /** Where Zoom's "Leave" sends the browser. Defaults to the app origin. */
     leaveUrl?: string;
+    /** On Capacitor, if the in-WebView SDK can't start (e.g. denied camera/mic),
+     *  offer to open this Zoom join URL externally (Zoom app / browser). */
+    nativeFallbackUrl?: string;
 }) {
     const startedRef = useRef(false);
     const [phase, setPhase] = useState<Phase>("loading");
@@ -260,10 +268,25 @@ export default function ZoomMeetingSdkPlayer({
     }, [data, leaveUrl]);
 
     if (error || phase === "error") {
+        const showNativeFallback = Capacitor.isNativePlatform() && !!nativeFallbackUrl;
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-center">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
                 <p className="text-red-600">{errorMsg ?? "Failed to load the Zoom meeting."}</p>
                 <p className="text-sm text-neutral-500">Please refresh the page or try rejoining.</p>
+                {showNativeFallback && (
+                    <Button
+                        className="mt-2 gap-2"
+                        onClick={() =>
+                            void Browser.open({
+                                url: nativeFallbackUrl!,
+                                presentationStyle: "fullscreen",
+                            })
+                        }
+                    >
+                        <ArrowSquareOut size={18} />
+                        Open in Zoom instead
+                    </Button>
+                )}
             </div>
         );
     }

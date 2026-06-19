@@ -97,4 +97,26 @@ public class CreditUsageDtos {
         /** Epoch millis. */
         private Long createdAt;
     }
+
+    /**
+     * One credit deduction across the whole institute, with the member it's
+     * attributed to resolved — a flat row for the admin "Activity Log" export.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FlatLogRow {
+        /** Epoch millis. */
+        private Long createdAt;
+        private String userId;
+        private String name;
+        private String email;
+        /** Comma-separated role names. */
+        private String roles;
+        private String requestType;
+        private String model;
+        private double credits;
+        private String description;
+    }
 }

@@ -441,7 +441,7 @@ export function LearnerActivityDialog({ learner, range, onClose }: Props) {
         <Sheet open={!!learner} onOpenChange={(o) => !o && onClose()}>
             <SheetContent
                 side="right"
-                className="flex w-full flex-col gap-0 p-0 sm:max-w-4xl"
+                className="flex h-full w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
             >
                 {learner && (
                     <>

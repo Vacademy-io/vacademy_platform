@@ -42,6 +42,19 @@ export interface ConversationRow {
     preview: string | null; // first learner message, trimmed
 }
 
+/** One credit deduction (flat) for the institute-wide Activity Log export. */
+export interface FlatLogRow {
+    createdAt: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string | null;
+    requestType: string | null;
+    model: string | null;
+    credits: number;
+    description: string | null;
+}
+
 export type ChatMessageType = 'user' | 'assistant' | 'tool_call' | 'tool_result';
 
 /** One message inside a chat session transcript. */
@@ -163,6 +176,21 @@ export const fetchConversationMessages = async (
     const response = await authenticatedAxiosInstance.get<ConversationMessage[]>(
         `${AI_USAGE_BASE}/conversations/${sessionId}/messages`
     );
+    return response.data ?? [];
+};
+
+/** Flat institute-wide activity log for the export (honours role + name + date filters). */
+export const fetchAllLogs = async (
+    filters: UsageDateRange & { role?: string | null; name?: string | null }
+): Promise<FlatLogRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatLogRow[]>(`${AI_USAGE_BASE}/logs`, {
+        params: {
+            role: filters.role || undefined,
+            name: filters.name?.trim() || undefined,
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+        },
+    });
     return response.data ?? [];
 };
 

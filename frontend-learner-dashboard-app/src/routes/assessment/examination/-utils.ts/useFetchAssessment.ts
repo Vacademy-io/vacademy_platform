@@ -205,23 +205,40 @@ export const fetchPreviewData = async (
       return;
     }
 
-    const sessions = await getAllSessionListFromStorage();
-    const batchIds = sessions?.map((session) => session.id).filter(Boolean) || [];
+    // Send EVERY enrolled batch — the SAME source the assessment LIST uses
+    // (getEnrolledBatchIds: a live /details fetch of all enrollments) — so any
+    // assessment visible in the list can also be started. Previously we sent a
+    // single batch_id, which broke multi-batch learners: when the assessment
+    // was registered to a batch other than the one passed, the backend matched
+    // nothing and threw "Assessment batch not found", even though the list
+    // (which queries all enrolled batches) showed the assessment.
+    const enrolledBatchIds = await getEnrolledBatchIds(
+      institute.id,
+      student.user_id
+    );
 
-    // Build the resolved batch_ids list, filtering out any null/undefined values.
-    // This list may legitimately be EMPTY for PUBLIC / open-registration
-    // participants, who are never enrolled in a batch. Do NOT hard-block on an
-    // empty list: batch_ids is optional server-side, and the backend resolves an
-    // already-registered participant by (assessment_id + user_id). Registration
-    // is still mandatory — if the user has not registered, the backend rejects
-    // the start, and we surface that precise reason in the catch block below.
-    let resolvedBatchIds: string[] = (
-      batch_id
-        ? [batch_id]
-        : batchIds.length > 0
-          ? batchIds
-          : [student_details.package_session_id]
-    ).filter((id): id is string => Boolean(id));
+    // Cached session list as an extra fallback for offline/transient cases.
+    const sessions = await getAllSessionListFromStorage();
+    const cachedBatchIds = sessions?.map((session) => session.id) || [];
+
+    // Union the explicit hint + all enrolled batches + fallbacks, drop
+    // null/undefined, and dedupe. This list may legitimately be EMPTY for
+    // PUBLIC / open-registration participants, who are never enrolled in a
+    // batch. Do NOT hard-block on an empty list: batch_ids is optional
+    // server-side, and the backend resolves an already-registered participant
+    // by (assessment_id + user_id). Registration is still mandatory — if the
+    // user has not registered, the backend rejects the start, and we surface
+    // that precise reason in the catch block below.
+    let resolvedBatchIds: string[] = Array.from(
+      new Set(
+        [
+          ...(batch_id ? [batch_id] : []),
+          ...enrolledBatchIds,
+          ...cachedBatchIds,
+          student_details.package_session_id,
+        ].filter((id): id is string => Boolean(id))
+      )
+    );
 
     // Last-resort fallback for slide-linked assessments: when the caller passed
     // no batch_id, the learner has no enrolled batch in storage, and there's no

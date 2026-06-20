@@ -452,14 +452,14 @@ export default function ProfilePage() {
                       )}
                     </div>
 
-                    {/* Desktop edit action; mobile uses the fixed bottom bar. */}
+                    {/* Edit action — shown inline on all breakpoints. */}
                     {permissions.canEditProfile && (
                       <MyButton
                         type="button"
                         scale="medium"
                         buttonType="primary"
                         layoutVariant="default"
-                        className="mt-5 hidden md:inline-flex"
+                        className="mt-5 inline-flex"
                         onClick={handleEditProfile}
                       >
                         Edit Profile
@@ -747,22 +747,6 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
-
-      {/* Mobile Fixed Bottom Bar */}
-      {permissions.canEditProfile && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 z-40">
-          <MyButton
-            type="button"
-            scale="large"
-            buttonType="primary"
-            layoutVariant="default"
-            className="w-full"
-            onClick={handleEditProfile}
-          >
-            Edit Profile
-          </MyButton>
-        </div>
-      )}
     </div>
   );
 }

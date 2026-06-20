@@ -39,6 +39,13 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
     Optional<Audience> findByInstituteIdAndSessionId(String instituteId, String sessionId);
 
     /**
+     * Find the (first) campaign for an institute by exact campaign name. Used to
+     * resolve the auto-provisioned "Course Catalogue Leads" audience so public
+     * catalogue lead submissions all land on a single per-institute campaign.
+     */
+    Optional<Audience> findFirstByInstituteIdAndCampaignName(String instituteId, String campaignName);
+
+    /**
      * Find active campaigns for an institute
      */
     @Query("SELECT a FROM Audience a " +

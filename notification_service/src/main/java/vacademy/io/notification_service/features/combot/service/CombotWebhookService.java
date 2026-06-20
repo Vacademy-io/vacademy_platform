@@ -339,7 +339,24 @@ public class CombotWebhookService {
         if (text == null)
             return false;
         String normalized = text.trim().toUpperCase();
-        return normalized.equals("STOP") || normalized.equals("OPT OUT") || normalized.equals("UNSUBSCRIBE");
+        return normalized.equals("STOP") || normalized.equals("OPT OUT") || normalized.equals("UNSUBSCRIBE")
+                || normalized.equals("OPT OUT OF CHALLENGE");
+    }
+
+    /**
+     * Public entry point so non-COMBOT inbound paths (e.g. WATI via WebhookEventProcessor)
+     * can run the same opt-out detection + handling — the keyword check + handleOptOut used to
+     * live only on the COMBOT webhook path, so WATI inbounds never opted anyone out.
+     *
+     * @return true if {@code userText} was an opt-out keyword and was handled (the caller should
+     *         then stop further routing); false otherwise.
+     */
+    public boolean handleOptOutKeyword(String userText, String userPhone, String instituteId) {
+        if (!isOptOutKeyword(userText)) {
+            return false;
+        }
+        handleOptOut(userPhone, instituteId);
+        return true;
     }
 
     private boolean isOptInKeyword(String text) {

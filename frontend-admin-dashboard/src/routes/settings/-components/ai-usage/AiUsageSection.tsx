@@ -1,24 +1,66 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Sparkle, Users, ListBullets } from '@phosphor-icons/react';
+import { useDebounce } from 'use-debounce';
+import * as XLSX from 'xlsx';
+import { Sparkle, Users, MagnifyingGlass, DownloadSimple, Eye } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
-import { MyDialog } from '@/components/design-system/dialog';
 import { DateRangeFilter, type DateRangeResult } from '@/components/design-system/date-range-filter';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 import {
     useUsageUsersQuery,
     useUsageSummaryQuery,
-    useUsageUserLogsQuery,
+    fetchUsageUsers,
+    fetchAllLogs,
+    fetchAllSessions,
+    fetchAllMessages,
     ddmmyyyyToMillis,
     type UsageDateRange,
     type UserUsageRow,
-    type UsageLogRow,
 } from '../../-services/ai-usage-service';
+import { LearnerActivityDialog, type SelectedLearner } from './LearnerActivityDialog';
 
 const PAGE_SIZE = 20;
+// Per-user usage is bounded (one row per member who used AI), so one big page
+// pulls the whole filtered set for an export.
+const EXPORT_PAGE_SIZE = 10000;
+
+const formatRoles = (roles: string | null): string =>
+    roles
+        ? Array.from(new Set(roles.split(',').map((r) => r.trim()).filter(Boolean)))
+              .map((r) => mapRoleToCustomName(r))
+              .join(', ')
+        : '';
+
+const fileDate = (ms?: number): string => {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const prettyTool = (s: string | null): string =>
+    s ? s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '';
+
+const senderLabel = (t: string | null): string => {
+    switch (t) {
+        case 'user':
+            return 'Learner';
+        case 'assistant':
+            return 'AI';
+        case 'tool_call':
+            return 'Tool call';
+        case 'tool_result':
+            return 'Tool result';
+        default:
+            return prettyTool(t);
+    }
+};
+
+const dateTime = (ms: number | null): string => (ms ? new Date(ms).toLocaleString() : '');
 
 const defaultRange = (): UsageDateRange => {
     const now = new Date();
@@ -48,13 +90,13 @@ function RoleChips({ roles }: { roles: string | null }) {
 export function AiUsageSection() {
     const [range, setRange] = useState<UsageDateRange>(defaultRange);
     const [roleTab, setRoleTab] = useState<string | null>(null); // null = All
+    const [nameInput, setNameInput] = useState('');
+    const [debouncedName] = useDebounce(nameInput, 300);
     const [page, setPage] = useState(0);
-    const [selectedUser, setSelectedUser] = useState<{ userId: string; name: string } | null>(null);
-    const [logPage, setLogPage] = useState(0);
+    const [selectedLearner, setSelectedLearner] = useState<SelectedLearner | null>(null);
 
     const summaryQ = useUsageSummaryQuery(range);
-    const usersQ = useUsageUsersQuery(page, PAGE_SIZE, { ...range, role: roleTab });
-    const logsQ = useUsageUserLogsQuery(selectedUser?.userId ?? null, logPage, PAGE_SIZE, range);
+    const usersQ = useUsageUsersQuery(page, PAGE_SIZE, { ...range, role: roleTab, name: debouncedName });
 
     const onDateChange = (r: DateRangeResult | null) => {
         setPage(0);
@@ -73,81 +115,163 @@ export function AiUsageSection() {
         [summaryQ.data]
     );
 
+    // Export the currently-filtered data (role tab + name search + date range) as a
+    // workbook: Summary, Activity Log, Chat Sessions and Chat Messages.
+    const handleExport = async () => {
+        const filters = { ...range, role: roleTab, name: debouncedName };
+        const [usersData, logs, sessions, messages] = await Promise.all([
+            fetchUsageUsers(0, EXPORT_PAGE_SIZE, filters),
+            fetchAllLogs(filters),
+            fetchAllSessions(filters),
+            fetchAllMessages(filters),
+        ]);
+
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1 — Summary (per member)
+        const summaryHeader = ['Name', 'Email', 'Role', 'Credits used', 'Requests'];
+        const summaryBody = (usersData.content ?? []).map((u) => [
+            u.name || u.userId,
+            u.email || '',
+            formatRoles(u.roles),
+            Number(u.totalCredits.toFixed(2)),
+            u.requestCount,
+        ]);
+        const summaryWs = XLSX.utils.aoa_to_sheet([summaryHeader, ...summaryBody]);
+        summaryWs['!cols'] = [{ wch: 28 }, { wch: 32 }, { wch: 22 }, { wch: 14 }, { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+        // Sheet 2 — Activity Log (every credit deduction across all tools)
+        const logHeader = ['When', 'Name', 'Email', 'Role', 'Tool', 'Model', 'Credits', 'Detail'];
+        const logBody = logs.map((l) => [
+            dateTime(l.createdAt),
+            l.name || l.userId,
+            l.email || '',
+            formatRoles(l.roles),
+            prettyTool(l.requestType),
+            l.model || '',
+            Number(l.credits.toFixed(4)),
+            l.description || '',
+        ]);
+        const logWs = XLSX.utils.aoa_to_sheet([logHeader, ...logBody]);
+        logWs['!cols'] = [
+            { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 18 },
+            { wch: 16 }, { wch: 26 }, { wch: 10 }, { wch: 40 },
+        ];
+        XLSX.utils.book_append_sheet(wb, logWs, 'Activity Log');
+
+        // Sheet 3 — Chat Sessions (one row per Student-AI session)
+        const sessionHeader = [
+            'Started', 'Last active', 'Name', 'Email', 'Role',
+            'Context', 'Mode', 'Status', 'Messages', 'First message',
+        ];
+        const sessionBody = sessions.map((s) => [
+            dateTime(s.createdAt),
+            dateTime(s.lastActive),
+            s.name || s.userId,
+            s.email || '',
+            formatRoles(s.roles),
+            s.contextTitle || prettyTool(s.contextType),
+            prettyTool(s.sessionMode),
+            s.status || '',
+            s.messageCount,
+            s.preview || '',
+        ]);
+        const sessionWs = XLSX.utils.aoa_to_sheet([sessionHeader, ...sessionBody]);
+        sessionWs['!cols'] = [
+            { wch: 20 }, { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 16 },
+            { wch: 28 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 50 },
+        ];
+        XLSX.utils.book_append_sheet(wb, sessionWs, 'Chat Sessions');
+
+        // Sheet 4 — Chat Messages (every prompt + AI answer)
+        const msgHeader = ['When', 'Name', 'Email', 'Session', 'Context', 'Sender', 'Message'];
+        const msgBody = messages.map((m) => [
+            dateTime(m.createdAt),
+            m.name || m.userId,
+            m.email || '',
+            m.sessionId,
+            m.contextTitle || prettyTool(m.contextType),
+            senderLabel(m.messageType),
+            m.content || '',
+        ]);
+        const msgWs = XLSX.utils.aoa_to_sheet([msgHeader, ...msgBody]);
+        msgWs['!cols'] = [
+            { wch: 20 }, { wch: 24 }, { wch: 30 }, { wch: 24 },
+            { wch: 26 }, { wch: 12 }, { wch: 80 },
+        ];
+        XLSX.utils.book_append_sheet(wb, msgWs, 'Chat Messages');
+
+        XLSX.writeFile(wb, `ai-credit-usage_${fileDate(range.startDate)}_${fileDate(range.endDate)}.xlsx`);
+    };
+
     const userColumns: ColumnDef<UserUsageRow>[] = useMemo(
         () => [
             {
                 accessorKey: 'name',
-                header: 'User',
+                header: 'Name',
+                size: 260,
                 cell: ({ row }) => (
-                    <div className="flex flex-col">
-                        <span className="font-medium text-neutral-700">
-                            {row.original.name || row.original.userId}
-                        </span>
-                        {row.original.email && (
-                            <span className="text-caption text-neutral-500">{row.original.email}</span>
-                        )}
-                    </div>
+                    <span
+                        className="block truncate font-medium text-neutral-700"
+                        title={row.original.name || row.original.userId}
+                    >
+                        {row.original.name || row.original.userId}
+                    </span>
                 ),
+            },
+            {
+                accessorKey: 'email',
+                header: 'Email',
+                size: 460,
+                cell: ({ row }) =>
+                    row.original.email ? (
+                        <span className="block truncate text-neutral-600" title={row.original.email}>
+                            {row.original.email}
+                        </span>
+                    ) : (
+                        <span className="text-neutral-400">—</span>
+                    ),
             },
             {
                 accessorKey: 'roles',
                 header: 'Role',
+                size: 200,
                 cell: ({ row }) => <RoleChips roles={row.original.roles} />,
             },
             {
                 accessorKey: 'totalCredits',
                 header: 'Credits used',
+                size: 170,
                 cell: ({ row }) => (
                     <span className="font-semibold text-neutral-800">
                         {row.original.totalCredits.toFixed(2)}
                     </span>
                 ),
             },
-            { accessorKey: 'requestCount', header: 'Requests' },
+            { accessorKey: 'requestCount', header: 'Requests', size: 150 },
             {
                 id: 'actions',
-                header: '',
+                header: 'Activity',
+                size: 160,
                 cell: ({ row }) => (
                     <MyButton
-                        buttonType="text"
+                        buttonType="secondary"
                         scale="small"
-                        onClick={() => {
-                            setSelectedUser({
+                        onClick={() =>
+                            setSelectedLearner({
                                 userId: row.original.userId,
                                 name: row.original.name || row.original.email || row.original.userId,
-                            });
-                            setLogPage(0);
-                        }}
+                                email: row.original.email,
+                                roles: row.original.roles,
+                                totalCredits: row.original.totalCredits,
+                                requestCount: row.original.requestCount,
+                            })
+                        }
                     >
+                        <Eye className="size-4" />
                         View logs
                     </MyButton>
-                ),
-            },
-        ],
-        []
-    );
-
-    const logColumns: ColumnDef<UsageLogRow>[] = useMemo(
-        () => [
-            {
-                accessorKey: 'createdAt',
-                header: 'When',
-                cell: ({ row }) =>
-                    row.original.createdAt ? new Date(row.original.createdAt).toLocaleString() : '—',
-            },
-            { accessorKey: 'requestType', header: 'Tool' },
-            {
-                accessorKey: 'model',
-                header: 'Model',
-                cell: ({ row }) => row.original.model || '—',
-            },
-            {
-                accessorKey: 'credits',
-                header: 'Credits',
-                cell: ({ row }) => (
-                    <span className="font-semibold text-neutral-800">
-                        {row.original.credits.toFixed(4)}
-                    </span>
                 ),
             },
         ],
@@ -163,7 +287,7 @@ export function AiUsageSection() {
                 </div>
                 <p className="text-body text-neutral-500">
                     Credits consumed per member in the selected period (net of refunds). Pick a member to
-                    see their detailed activity.
+                    see their detailed activity — including the prompts they sent and the AI's answers.
                 </p>
             </div>
 
@@ -189,6 +313,35 @@ export function AiUsageSection() {
                 <DateRangeFilter onChange={onDateChange} defaultFilter="7 Days" />
             </div>
 
+            {/* Name search + export */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                    <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                    <MyInput
+                        inputType="text"
+                        inputPlaceholder="Search by name or email…"
+                        input={nameInput}
+                        onChangeFunction={(e) => {
+                            setNameInput(e.target.value);
+                            setPage(0);
+                        }}
+                        size="medium"
+                        className="w-full pl-9 sm:w-80"
+                    />
+                </div>
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    layoutVariant="default"
+                    onAsyncClick={handleExport}
+                    loadingText="Exporting…"
+                    disable={!usersQ.data || usersQ.data.total_elements === 0}
+                >
+                    <DownloadSimple className="size-4" />
+                    Export to Excel
+                </MyButton>
+            </div>
+
             <MyTable<UserUsageRow>
                 data={usersQ.data}
                 columns={userColumns}
@@ -204,33 +357,11 @@ export function AiUsageSection() {
                 />
             )}
 
-            <MyDialog
-                open={!!selectedUser}
-                onOpenChange={(o) => { if (!o) setSelectedUser(null); }}
-                heading={selectedUser ? `Usage — ${selectedUser.name}` : 'Usage'}
-                dialogWidth="max-w-3xl"
-            >
-                <div className="space-y-3 p-6">
-                    <div className="flex items-center gap-2 text-body text-neutral-500">
-                        <ListBullets className="size-4" />
-                        Individual credit deductions in the selected period.
-                    </div>
-                    <MyTable<UsageLogRow>
-                        data={logsQ.data}
-                        columns={logColumns}
-                        isLoading={logsQ.isLoading}
-                        error={logsQ.error}
-                        currentPage={logPage}
-                    />
-                    {logsQ.data && logsQ.data.total_pages > 1 && (
-                        <MyPagination
-                            currentPage={logPage}
-                            totalPages={logsQ.data.total_pages}
-                            onPageChange={setLogPage}
-                        />
-                    )}
-                </div>
-            </MyDialog>
+            <LearnerActivityDialog
+                learner={selectedLearner}
+                range={range}
+                onClose={() => setSelectedLearner(null)}
+            />
         </div>
     );
 }

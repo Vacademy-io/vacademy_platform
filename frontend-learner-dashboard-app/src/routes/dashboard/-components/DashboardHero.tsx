@@ -3,26 +3,23 @@
  *
  * Priority order inside the hero:
  *   1. Live/imminent class banner (session live now or starting within 60 min)
- *   2. Resume band (reads the resume thread from localStorage)
- *   3. First-run onboarding (no resume entry and no progress anywhere)
+ *   2. First-run onboarding (no progress anywhere)
+ *   3. Returning learner — point back at courses to pick up where they left off
  *   4. Loading skeleton while the study library hydrates
+ *
+ * The "Continue learning" resume band lives only on the courses page
+ * (study-library/courses HeroSection); the dashboard no longer duplicates it.
  *
  * Play mode gets its own divergent hero elsewhere — this component is only
  * rendered for default/vibrant and must simply not break under .ui-play.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { BookOpen, Play, VideoCamera } from "@phosphor-icons/react";
+import { BookOpen, VideoCamera } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import {
-  getLatestResume,
-  resumeSearchParams,
-  RESUME_ROUTE,
-  type ResumeEntry,
-} from "@/services/resume-thread";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
 import {
@@ -53,7 +50,7 @@ const IMMINENT_WINDOW_MS = 60 * MINUTE_MS;
 function toSessionDate(
   meetingDate: string,
   time: string,
-  timezone?: string
+  timezone?: string,
 ): Date {
   if (timezone) {
     return convertSessionTimeToUserTimezone(meetingDate, time, timezone);
@@ -72,7 +69,7 @@ interface BannerSession {
  *  starting within the imminent window. */
 function resolveBannerSession(
   sessions: SessionDetails[] | undefined,
-  nowMs: number
+  nowMs: number,
 ): BannerSession | null {
   if (!sessions || sessions.length === 0) return null;
 
@@ -83,7 +80,7 @@ function resolveBannerSession(
     const start = toSessionDate(
       session.meeting_date,
       session.start_time,
-      session.timezone
+      session.timezone,
     );
     const startMs = start.getTime();
     if (Number.isNaN(startMs)) continue;
@@ -91,7 +88,7 @@ function resolveBannerSession(
     let end = toSessionDate(
       session.meeting_date,
       session.last_entry_time,
-      session.timezone
+      session.timezone,
     );
     let endMs = end.getTime();
     if (Number.isNaN(endMs)) endMs = startMs + HOUR_MS;
@@ -110,36 +107,15 @@ function resolveBannerSession(
       imminent = {
         session,
         isLive: false,
-        minutesUntilStart: Math.max(1, Math.ceil((startMs - nowMs) / MINUTE_MS)),
+        minutesUntilStart: Math.max(
+          1,
+          Math.ceil((startMs - nowMs) / MINUTE_MS),
+        ),
       };
     }
   }
 
   return imminent;
-}
-
-/** Compact relative time for the resume caption ("just now", "2h ago",
- *  "yesterday", "3 days ago", "May 12"). */
-function formatRelativeTime(thenMs: number, nowMs: number): string {
-  const diff = Math.max(0, nowMs - thenMs);
-  if (diff < MINUTE_MS) return "just now";
-  if (diff < HOUR_MS) return `${Math.floor(diff / MINUTE_MS)}m ago`;
-  if (diff < DAY_MS) return `${Math.floor(diff / HOUR_MS)}h ago`;
-
-  const now = new Date(nowMs);
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  ).getTime();
-  if (thenMs >= startOfToday - DAY_MS) return "yesterday";
-
-  const days = Math.floor(diff / DAY_MS);
-  if (days < 7) return `${days} days ago`;
-  return new Date(thenMs).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 // ── Band shell (shared visual language across all hero states) ──────────────
@@ -149,7 +125,7 @@ function formatRelativeTime(thenMs: number, nowMs: number): string {
 const bandClassName = cn(
   "relative w-full overflow-hidden rounded-2xl bg-muted/40 p-5 sm:p-8",
   "[.ui-vibrant_&]:bg-primary-50 dark:[.ui-vibrant_&]:bg-primary-500/10",
-  "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+  "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -161,11 +137,8 @@ export function DashboardHero({
   hasAnyProgress,
   studyLibraryLoaded,
   onJoinSession,
-}: DashboardHeroProps): JSX.Element {
+}: DashboardHeroProps): JSX.Element | null {
   const navigate = useNavigate();
-  // Read once per mount — the slides viewer writes entries; the dashboard
-  // remounts on every visit, so mount-time freshness is enough.
-  const [resume] = useState<ResumeEntry | null>(() => getLatestResume());
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Keep "Starts in Xm" current while sessions are on screen.
@@ -177,16 +150,16 @@ export function DashboardHero({
 
   const banner = useMemo(
     () => (isLoadingLive ? null : resolveBannerSession(liveSessions, nowMs)),
-    [liveSessions, isLoadingLive, nowMs]
+    [liveSessions, isLoadingLive, nowMs],
   );
 
   const coursesPlural = getTerminologyPlural(
     ContentTerms.Course,
-    SystemTerms.Course
+    SystemTerms.Course,
   );
   const liveClassLabel = getTerminology(
     ContentTerms.LiveSession,
-    SystemTerms.LiveSession
+    SystemTerms.LiveSession,
   );
 
   // 4. LOADING — skeleton matching the band's shape.
@@ -203,22 +176,6 @@ export function DashboardHero({
     );
   }
 
-  const handleResume = () => {
-    if (!resume) return;
-    navigate({
-      to: RESUME_ROUTE,
-      search: resumeSearchParams(resume) as {
-        courseId: string;
-        levelId?: string;
-        subjectId: string;
-        moduleId: string;
-        chapterId: string;
-        slideId: string;
-        sessionId: string;
-      },
-    });
-  };
-
   const goToCourses = () => navigate({ to: "/study-library/courses" });
 
   // 1. LIVE/IMMINENT CLASS BANNER — slim row above the main band content.
@@ -226,7 +183,7 @@ export function DashboardHero({
     <div
       className={cn(
         "mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-background/80 px-3 py-2.5",
-        "[.ui-vibrant_&]:bg-background/70"
+        "[.ui-vibrant_&]:bg-background/70",
       )}
     >
       {banner.isLive ? (
@@ -249,12 +206,10 @@ export function DashboardHero({
           "whitespace-nowrap text-caption",
           banner.isLive
             ? "font-semibold text-danger-600"
-            : "text-muted-foreground"
+            : "text-muted-foreground",
         )}
       >
-        {banner.isLive
-          ? "Live now"
-          : `Starts in ${banner.minutesUntilStart}m`}
+        {banner.isLive ? "Live now" : `Starts in ${banner.minutesUntilStart}m`}
       </span>
       <Button
         size="sm"
@@ -268,39 +223,7 @@ export function DashboardHero({
     </div>
   ) : null;
 
-  // 2. RESUME BAND — the main band when a resume entry exists.
-  if (resume) {
-    const relative = formatRelativeTime(resume.updatedAt, nowMs);
-    return (
-      <section className={bandClassName}>
-        {liveBanner}
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              Continue learning
-            </p>
-            <h2 className="line-clamp-2 break-words text-display-sm text-foreground">
-              {resume.slideTitle}
-            </h2>
-            <p className="truncate text-caption text-muted-foreground">
-              {resume.chapterName
-                ? `${resume.chapterName} · ${relative}`
-                : relative}
-            </p>
-          </div>
-          <Button
-            onClick={handleResume}
-            className="w-full gap-2 sm:w-auto md:shrink-0"
-          >
-            <Play size={16} weight="fill" />
-            Resume
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
-  // 3. FIRST-RUN — no resume entry and no progress anywhere.
+  // 2. FIRST-RUN — no progress anywhere.
   if (!hasAnyProgress) {
     return (
       <section className={bandClassName}>
@@ -314,8 +237,8 @@ export function DashboardHero({
               Start your first lesson
             </h2>
             <p className="text-body text-muted-foreground">
-              Browse your {coursesPlural.toLocaleLowerCase()} and begin
-              learning at your own pace.
+              Browse your {coursesPlural.toLocaleLowerCase()} and begin learning
+              at your own pace.
             </p>
           </div>
           <Button
@@ -330,30 +253,34 @@ export function DashboardHero({
     );
   }
 
-  // Returning learner with progress but no resume entry on this device
-  // (fresh install or cleared storage) — point them back at their content.
-  return (
-    <section className={bandClassName}>
-      {liveBanner}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-            {userName ? `Welcome back, ${userName}` : "Welcome back"}
-          </p>
-          <h2 className="text-display-sm text-foreground">Jump back in</h2>
-          <p className="text-body text-muted-foreground">
-            Open your {coursesPlural.toLocaleLowerCase()} to pick up where you
-            left off.
-          </p>
-        </div>
-        <Button
-          onClick={goToCourses}
-          className="w-full gap-2 sm:w-auto md:shrink-0"
-        >
-          <BookOpen size={16} weight="fill" />
-          Browse {coursesPlural}
-        </Button>
-      </div>
-    </section>
-  );
+  // 3. RETURNING LEARNER — has progress; the "Continue learning" resume band
+  // now lives only on the courses page, so the dashboard hero stays empty here
+  // (just surface a live/imminent class if there is one).
+  return banner ? <section className={bandClassName}>{liveBanner}</section> : null;
+
+  // Kept for reference — the old "Jump back in" returning-learner band.
+  // return (
+  //   <section className={bandClassName}>
+  //     {liveBanner}
+  //     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+  //       <div className="min-w-0 flex-1 space-y-1.5">
+  //         <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+  //           {userName ? `Welcome back, ${userName}` : "Welcome back"}
+  //         </p>
+  //         <h2 className="text-display-sm text-foreground">Jump back in</h2>
+  //         <p className="text-body text-muted-foreground">
+  //           Open your {coursesPlural.toLocaleLowerCase()} to pick up where you
+  //           left off.
+  //         </p>
+  //       </div>
+  //       <Button
+  //         onClick={goToCourses}
+  //         className="w-full gap-2 sm:w-auto md:shrink-0"
+  //       >
+  //         <BookOpen size={16} weight="fill" />
+  //         Browse {coursesPlural}
+  //       </Button>
+  //     </div>
+  //   </section>
+  // );
 }

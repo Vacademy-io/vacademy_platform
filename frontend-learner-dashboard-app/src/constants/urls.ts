@@ -129,6 +129,9 @@ export const REQUEST_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/request-generic
 export const VERIFY_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp`;
 export const VERIFY_WHATSAPP_OTP_LOGIN = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp-login`;
 export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
+// Public catalogue/course "Get Started" lead capture → creates an audience_response
+// (visible in admin Audience Manager → Recent Leads) and triggers lead workflows.
+export const CATALOGUE_LEAD_SUBMIT_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-catalogue`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
@@ -239,6 +242,7 @@ export const GENERATE_INTERVAL_TYPE_ID = `${BASE_URL}/admin-core-service/plannin
 export const GET_PUBLIC_MEDIA_DETAILS = `${BASE_URL}/media-service/public/get-details/id`;
 
 export const GET_AI_PROCESSED_LOGS = `${BASE_URL}/admin-core-service/llm-analytics/processed-logs`;
+export const PROCESS_AI_REPORT_ON_DEMAND = `${BASE_URL}/admin-core-service/llm-analytics/process-on-demand`;
 
 export const USER_LINKED_DATA = `${BASE_URL}/admin-core-service/v1/student-analysis/user-linked-data`;
 

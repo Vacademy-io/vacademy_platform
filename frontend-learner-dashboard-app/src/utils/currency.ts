@@ -113,8 +113,8 @@ export const formatCurrency = (amount: number, currencyCode: string): string => 
     case 'LKR':
     case 'NPR':
     case 'BDT':
-      // For Indian subcontinent currencies, show symbol after amount
-      return `${amount.toFixed(2)} ${symbol}`;
+      // Symbol before amount (e.g. ₹999.00)
+      return `${symbol}${amount.toFixed(2)}`;
     case 'JPY':
     case 'KRW':
     case 'VND':

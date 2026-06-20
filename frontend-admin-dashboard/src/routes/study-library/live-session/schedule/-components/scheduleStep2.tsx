@@ -49,6 +49,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/report-api-error';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { LiveSessionParticipantsTab } from './LiveSessionParticipantsTab';
@@ -692,11 +693,21 @@ export default function ScheduleStep2() {
             clearBulkSessionIds();
             navigate({ to: '/study-library/live-session' });
         } catch (error) {
-            console.error('Error submitting form:', error);
-
-            // Show error toast
-            toast.error('Failed to create live session. Please try again.', {
-                icon: <XCircle size={20} className="text-red-500" />,
+            // Capture to Sentry (feature-tagged) + show a toast in one call so
+            // create failures are no longer console-only.
+            reportApiError(error, {
+                feature: 'live-session-schedule-create',
+                fallbackMessage: 'Failed to create live session. Please try again.',
+                tags: {
+                    flow: isBulkFlow ? 'bulk-fanout' : 'single',
+                    mode: isEditState ? 'edit' : 'create',
+                },
+                extra: {
+                    sessionId,
+                    accessType: data.accessType,
+                    batchCount: data.selectedLevels?.length ?? 0,
+                    learnerCount: data.selectedLearners?.length ?? 0,
+                },
             });
         } finally {
             setIsSubmitting(false);
@@ -728,6 +739,35 @@ export default function ScheduleStep2() {
             icon: <XCircle size={20} className="text-red-500" />,
         });
     };
+
+    // A private class is restricted to specific participants, so creating one
+    // requires at least one target — a batch (Select Batch) or an individual
+    // learner (Select Individually). Enforced on CREATE only: edit mode doesn't
+    // reload individual-learner selections, so blocking there would wrongly stop
+    // admins from re-saving an existing, already-populated private class.
+    const privateNeedsParticipants = (data: z.infer<typeof addParticipantsSchema>) =>
+        !isEditState &&
+        data.accessType === AccessType.PRIVATE &&
+        (data.selectedLevels?.length ?? 0) === 0 &&
+        (data.selectedLearners?.length ?? 0) === 0;
+
+    // Set true once a create attempt is blocked for missing participants; the
+    // inline error below derives its visibility from the live values so it
+    // disappears as soon as the admin assigns a batch/learner.
+    const [attemptedPrivateCreate, setAttemptedPrivateCreate] = useState(false);
+
+    // Block opening the preview when a private class has no participants;
+    // surface both a toast and the inline error near the picker.
+    const handleOpenPreview = handleSubmit((data) => {
+        if (privateNeedsParticipants(data)) {
+            setAttemptedPrivateCreate(true);
+            toast.error('Assign at least one batch to a private live class.', {
+                icon: <XCircle size={20} className="text-red-500" />,
+            });
+            return;
+        }
+        setPreviewOpen(true);
+    }, onError);
 
     const previewSelectedLevels = watch('selectedLevels');
     const isWeeklyRecurring =
@@ -815,7 +855,7 @@ export default function ScheduleStep2() {
         <>
             <FormProvider {...form}>
                 <form
-                    onSubmit={handleSubmit(() => setPreviewOpen(true), onError)}
+                    onSubmit={handleOpenPreview}
                     className="flex flex-col gap-5"
                 >
                     <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
@@ -844,10 +884,7 @@ export default function ScheduleStep2() {
                             scale="large"
                             buttonType="primary"
                             disable={isSubmitting}
-                            onClick={handleSubmit(
-                                () => setPreviewOpen(true),
-                                onError
-                            )}
+                            onClick={handleOpenPreview}
                         >
                             {isSubmitting ? (
                                 <Loader2 className="animate-spin text-white" />
@@ -956,6 +993,16 @@ export default function ScheduleStep2() {
                                 courses={courses}
                                 currentSession={currentSession}
                             />
+                            {attemptedPrivateCreate &&
+                                !isEditState &&
+                                accessType === AccessType.PRIVATE &&
+                                (previewSelectedLevels?.length ?? 0) === 0 &&
+                                (watch('selectedLearners')?.length ?? 0) === 0 && (
+                                    <p className="text-sm text-danger-600">
+                                        Assign at least one batch (or individual learner) to a
+                                        private live class.
+                                    </p>
+                                )}
                         </div>
                     </SectionCard>
 

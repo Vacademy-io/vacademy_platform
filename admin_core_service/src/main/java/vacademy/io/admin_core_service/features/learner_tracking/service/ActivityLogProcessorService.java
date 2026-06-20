@@ -215,20 +215,57 @@ public class ActivityLogProcessorService {
         }
 
         /**
-         * Process a specific activity log by ID (for manual retry)
+         * Process the latest activity log for a user + source (assessment)
+         * synchronously, on demand. Triggered when a learner opens the AI report and no
+         * processed report exists yet, so they don't have to wait for the hourly
+         * scheduler.
+         *
+         * @return the activity log after processing (status 'processed' on success,
+         *         'failed' on LLM error), or {@code null} if no row exists for this
+         *         user + source (e.g. submission data was never captured).
          */
-        public void reprocessActivityLog(String activityLogId) {
-                log.info("[LLM-Analytics-Manual] Manual reprocess triggered for activity log ID: {}", activityLogId);
+        public ActivityLog processOnDemand(String userId, String sourceId) {
+                log.info("[LLM-Analytics-OnDemand] Triggered for userId: {}, sourceId: {}", userId, sourceId);
 
-                ActivityLog activityLog = activityLogRepository.findById(activityLogId)
-                                .orElseThrow(() -> new RuntimeException("Activity log not found: " + activityLogId));
+                List<ActivityLog> logs = activityLogRepository
+                                .findByUserIdAndSourceIdOrderByCreatedAtDesc(userId, sourceId);
 
-                // Reset status to raw to allow reprocessing
-                activityLog.setStatus(STATUS_RAW);
-                activityLogRepository.save(activityLog);
+                if (logs.isEmpty()) {
+                        log.warn("[LLM-Analytics-OnDemand] No activity log found for userId: {}, sourceId: {}",
+                                        userId, sourceId);
+                        return null;
+                }
 
-                // Create a projection-like object for processing
-                ActivityLogProcessingProjection projection = new ActivityLogProcessingProjection() {
+                ActivityLog activityLog = logs.get(0);
+
+                // Already processed by the scheduler (or a previous on-demand call) — return
+                // as-is, don't spend another LLM call.
+                if (STATUS_PROCESSED.equalsIgnoreCase(activityLog.getStatus())) {
+                        log.info("[LLM-Analytics-OnDemand] Activity log {} already processed, returning cached result",
+                                        activityLog.getId());
+                        return activityLog;
+                }
+
+                // Process synchronously (raw or failed -> retry). processActivityLog updates
+                // the row in place and marks it failed on error.
+                try {
+                        processActivityLog(toProcessingProjection(activityLog));
+                } catch (Exception e) {
+                        log.error("[LLM-Analytics-OnDemand] On-demand processing failed for activity log {}",
+                                        activityLog.getId(), e);
+                        // processActivityLog already marked the row as failed; fall through to
+                        // re-fetch.
+                }
+
+                return activityLogRepository.findById(activityLog.getId()).orElse(activityLog);
+        }
+
+        /**
+         * Adapt a full {@link ActivityLog} entity into the lightweight projection that
+         * {@link #processActivityLog} consumes.
+         */
+        private ActivityLogProcessingProjection toProcessingProjection(ActivityLog activityLog) {
+                return new ActivityLogProcessingProjection() {
                         @Override
                         public String getId() {
                                 return activityLog.getId();
@@ -256,12 +293,27 @@ public class ActivityLogProcessorService {
 
                         @Override
                         public LocalDateTime getCreatedAt() {
-                                return activityLog.getCreatedAt() != null ? activityLog.getCreatedAt().toLocalDateTime()
+                                return activityLog.getCreatedAt() != null
+                                                ? activityLog.getCreatedAt().toLocalDateTime()
                                                 : null;
                         }
                 };
+        }
 
-                processActivityLog(projection);
+        /**
+         * Process a specific activity log by ID (for manual retry)
+         */
+        public void reprocessActivityLog(String activityLogId) {
+                log.info("[LLM-Analytics-Manual] Manual reprocess triggered for activity log ID: {}", activityLogId);
+
+                ActivityLog activityLog = activityLogRepository.findById(activityLogId)
+                                .orElseThrow(() -> new RuntimeException("Activity log not found: " + activityLogId));
+
+                // Reset status to raw to allow reprocessing
+                activityLog.setStatus(STATUS_RAW);
+                activityLogRepository.save(activityLog);
+
+                processActivityLog(toProcessingProjection(activityLog));
         }
 
         /**

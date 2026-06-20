@@ -1,8 +1,12 @@
 import { getUserId } from "@/constants/getUserId";
-import { GET_AI_PROCESSED_LOGS, LEARNER_REPORT_COMPARISON_URL } from "@/constants/urls";
+import {
+  GET_AI_PROCESSED_LOGS,
+  LEARNER_REPORT_COMPARISON_URL,
+  PROCESS_AI_REPORT_ON_DEMAND,
+} from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { Preferences } from "@capacitor/preferences";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { AxiosResponse } from "axios";
 import { useEffect, useState } from "react";
 import z from "zod";
@@ -84,33 +88,35 @@ interface ParsedProcessedJSON {
 }
 
 function RouteComponent() {
-  const route = useRouter();
-  const { assessmentId, assessmentName, attemptId } = route.state.location.search;
+  const { assessmentId, assessmentName, attemptId } = Route.useSearch();
   const [parsedProcessedJSON, setParsedProcessedJSON] =
     useState<ParsedProcessedJSON | null>(null);
   const [comparisonData, setComparisonData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
-    async function fetchAIReport() {
+    async function loadAIReport() {
+      setLoading(true);
       try {
         const userId = await getUserId();
-
-        // Fetch AI processed data
-        const response: AxiosResponse<{
-          activity_logs: AIReportData[];
-          count: number;
-        }> = await authenticatedAxiosInstance({
-          method: "GET",
-          url: GET_AI_PROCESSED_LOGS,
-          params: { userId, sourceId: assessmentId },
-        });
-        if (response.status !== 200) {
-          throw new Error("Failed to fetch student report");
+        if (!userId) {
+          setLoading(false);
+          return;
         }
-        const json = parseProcessedJSON(
-          response.data.activity_logs[0]?.processed_json || ""
-        );
+
+        // 1. Try the already-processed report first.
+        let json = await fetchProcessedReport(userId, assessmentId);
+
+        // 2. Not generated yet → trigger on-demand processing instead of asking the
+        //    learner to wait for the hourly scheduler.
+        if (!json) {
+          setLoading(false);
+          setGenerating(true);
+          json = await triggerOnDemandReport(userId, assessmentId);
+          setGenerating(false);
+        }
+
         setParsedProcessedJSON(json);
 
         // Fetch comparison data (rank, leaderboard, you vs class)
@@ -132,11 +138,58 @@ function RouteComponent() {
         console.error("Error fetching student report:", error);
       } finally {
         setLoading(false);
+        setGenerating(false);
       }
     }
 
-    fetchAIReport();
+    loadAIReport();
   }, [assessmentId]);
+
+  // GET the already-processed AI report. Returns null when none exists yet.
+  async function fetchProcessedReport(
+    userId: string,
+    sourceId: string
+  ): Promise<ParsedProcessedJSON | null> {
+    const response: AxiosResponse<{
+      activity_logs: AIReportData[];
+      count: number;
+    }> = await authenticatedAxiosInstance({
+      method: "GET",
+      url: GET_AI_PROCESSED_LOGS,
+      params: { userId, sourceId },
+    });
+    if (response.status !== 200) return null;
+    return parseProcessedJSON(response.data.activity_logs[0]?.processed_json || "");
+  }
+
+  // POST to synchronously generate the report for this assessment. The backend runs
+  // the LLM and returns the processed result in the same response.
+  async function triggerOnDemandReport(
+    userId: string,
+    sourceId: string
+  ): Promise<ParsedProcessedJSON | null> {
+    try {
+      const response: AxiosResponse<{
+        activity_logs: AIReportData[];
+        count: number;
+      }> = await authenticatedAxiosInstance({
+        method: "POST",
+        url: PROCESS_AI_REPORT_ON_DEMAND,
+        params: { userId, sourceId },
+      });
+      return parseProcessedJSON(
+        response.data?.activity_logs?.[0]?.processed_json || ""
+      );
+    } catch (e) {
+      console.warn("On-demand AI report generation failed:", e);
+      // The server may have finished after a gateway timeout — re-fetch once.
+      try {
+        return await fetchProcessedReport(userId, sourceId);
+      } catch {
+        return null;
+      }
+    }
+  }
 
   const parseProcessedJSON = (jsonString: string) => {
     try {
@@ -155,6 +208,19 @@ function RouteComponent() {
           <div className="flex items-center justify-center min-h-screen">
             <DashboardLoader />
           </div>
+        ) : generating ? (
+          <div className="flex items-center justify-center min-h-screen w-full">
+            <div className="text-center flex flex-col items-center gap-3">
+              <DashboardLoader />
+              <h2 className="text-xl font-semibold text-gray-900">
+                Generating your AI report
+              </h2>
+              <p className="text-gray-600">
+                We&apos;re analyzing your assessment. This can take up to a
+                minute — please don&apos;t close this page.
+              </p>
+            </div>
+          </div>
         ) : !parsedProcessedJSON ? (
           <div className="flex items-center justify-center min-h-screen w-full">
             <div className="text-center">
@@ -162,8 +228,8 @@ function RouteComponent() {
                 Report Not Available
               </h2>
               <p className="text-gray-600 flex items-center flex-col gap-2">
-                The AI report for this assessment is not available.
-                <span>We generate reports every hour.</span>
+                We couldn&apos;t generate the AI report for this assessment
+                right now.
                 <span className="text-black">
                   Please check back after {formatTime(addHours(new Date(), 1))}.
                 </span>

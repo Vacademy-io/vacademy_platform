@@ -60,4 +60,21 @@ public interface CreditUsageRepository extends Repository<AiTokenUsage, UUID> {
                                 @Param("fromTs") Timestamp fromTs,
                                 @Param("toTs") Timestamp toTs,
                                 Pageable pageable);
+
+    // All deduction rows for the institute in the window (newest first), for the
+    // admin export. Object[]{ created_at, uid, request_type, model_name, amount, description }.
+    // Bounded by the caller via a large Pageable (export cap).
+    @Query(value = "SELECT ct.created_at, COALESCE(ct.subject_user_id, ct.user_id) AS uid, " +
+            "       ct.request_type, ct.model_name, ABS(ct.amount), ct.description " +
+            "FROM credit_transactions ct " +
+            "WHERE ct.institute_id = :instituteId " +
+            "  AND ct.transaction_type = 'USAGE_DEDUCTION' " +
+            "  AND COALESCE(ct.subject_user_id, ct.user_id) IS NOT NULL " +
+            "  AND ct.created_at >= :fromTs AND ct.created_at < :toTs " +
+            "ORDER BY ct.created_at DESC",
+            nativeQuery = true)
+    Page<Object[]> findAllLogs(@Param("instituteId") String instituteId,
+                               @Param("fromTs") Timestamp fromTs,
+                               @Param("toTs") Timestamp toTs,
+                               Pageable pageable);
 }

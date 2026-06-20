@@ -2,9 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import axios from "axios";
-import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, LEAD_COLLECTION_ENROLL_URL } from "@/constants/urls";
+import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, CATALOGUE_LEAD_SUBMIT_URL } from "@/constants/urls";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/bootstrap.css";
+import { isValidPhoneValue } from "@/lib/phone-validation";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 
 interface FieldOption {
   label: string;
@@ -47,6 +51,10 @@ interface LeadCollectionModalProps {
   };
   instituteId: string;
   mandatory: boolean;
+  /** Package session of the course this modal was opened from (course-detail
+   *  context). Used as a fallback for the lead payload when the form itself
+   *  doesn't carry one via a Level dropdown. */
+  packageSessionId?: string;
 }
 
 interface FormData {
@@ -60,6 +68,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   settings,
   instituteId,
   mandatory,
+  packageSessionId,
 }) => {
   const [formData, setFormData] = useState<FormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,25 +99,6 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
     const t = setTimeout(() => setOtpCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [otpCooldown]);
-
-  // Helper functions to extract level and package IDs from form data
-  const getLevelIdFromFormData = (levelValue: string): string => {
-    const levelField = settings.fields.find(field => field.name === 'Level');
-    if (levelField && levelField.options) {
-      const selectedOption = levelField.options.find(option => option.value === levelValue);
-      return selectedOption?.levelId || "";
-    }
-    return "";
-  };
-
-  const getPackageIdFromFormData = (levelValue: string): string => {
-    const levelField = settings.fields.find(field => field.name === 'Level');
-    if (levelField && levelField.options) {
-      const selectedOption = levelField.options.find(option => option.value === levelValue);
-      return selectedOption?.packageSessionId || "";
-    }
-    return "";
-  };
 
   // Debug logging
   console.log("[LeadCollectionModal] Props received:", {
@@ -146,16 +136,28 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   }, [isOpen]);
 
   // Validation functions
+  // Preferred / default phone country — same source the enroll-invite flow uses.
+  const preferredCountries = React.useMemo(() => {
+    const cached = getCachedPreferredCountries();
+    return cached && cached.length > 0 ? cached : ["in"];
+  }, []);
+  const defaultPhoneCountry = preferredCountries[0] ?? "in";
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  const validatePhone = (phone: string): boolean => {
-    // Remove all non-digit characters and check for exactly 10 digits
-    const cleanPhone = phone.replace(/\D/g, '');
-    return cleanPhone.length === 10 && /^[1-9]\d{9}$/.test(cleanPhone);
-  };
+  // Validate the full number for the selected country (libphonenumber) — not a
+  // hardcoded 10-digit rule. India → 10 digits, other countries → their length.
+  const validatePhone = (phone: string): boolean => isValidPhoneValue(phone);
+
+  // Detect the phone field even when the page-builder config doesn't type it as
+  // "tel" (some configs use "text" or rely on the field name/label).
+  const isPhoneField = (field: FormField) =>
+    field.type === "tel" ||
+    /phone|mobile|contact|whatsapp/i.test(field.name || "") ||
+    /phone|mobile|contact|whatsapp/i.test(field.label || "");
 
   // OTP verification functions
   const handleSendOtp = async () => {
@@ -273,7 +275,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
       if (field.type === 'email' && !validateEmail(value)) {
         return false;
       }
-      if (field.type === 'tel' && !validatePhone(value)) {
+      if (isPhoneField(field) && !validatePhone(value)) {
         return false;
       }
       
@@ -312,64 +314,66 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
       return;
     }
 
+    // Validate formats (email + phone) before submitting — don't submit bad data.
+    for (const field of settings.fields) {
+      const value = formData[field.name];
+      if (!value) continue;
+      if (field.type === "email" && !validateEmail(value)) {
+        toast.error("Please enter a valid email address");
+        return;
+      }
+      if (isPhoneField(field) && !validatePhone(value)) {
+        toast.error("Please enter a valid phone number");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     
     try {
-      // Create the payload for the new lead collection endpoint
+      // Carry every filled form field as a custom field value so the Recent
+      // Leads table can show them (name/email/phone are also sent top-level).
+      const customFieldValues: Record<string, string> = {};
+      settings.fields.forEach((field) => {
+        const value = formData[field.name];
+        if (value != null && String(value).trim() !== "") {
+          customFieldValues[field.name] = String(value);
+        }
+      });
+
+      // Public catalogue-lead endpoint: creates an audience_response so the lead
+      // shows up in admin Audience Manager → Recent Leads (and triggers lead
+      // workflows). The backend resolves/creates the per-institute audience.
       const payload = {
-        user_dto: {
-          id: "",
-          username: formData.email || "",
-          email: formData.email || "",
-          full_name: formData.name || "",
-          address_line: "",
-          city: "",
-          region: "",
-          pin_code: "",
-          mobile_number: formData.phone || "",
-          date_of_birth: null,
-          gender: "",
-          password: "",
-          profile_pic_file_id: "",
-          roles: [],
-          root_user: false
-        },
-        package_session_id: selectedPackageSessionId || "",
-        type: "COURSE_CATALOGUE_LEAD",
-        type_id: null,
-        source: "LEAD",
-        custom_field_values: [],
-        desired_level_id: formData.Level ? getLevelIdFromFormData(formData.Level) : "",
-        desired_package_id: formData.Level ? getPackageIdFromFormData(formData.Level) : ""
+        institute_id: instituteId,
+        full_name: formData.name || "",
+        email: formData.email || "",
+        mobile_number: formData.phone || "",
+        // package_session of the course the lead came from (empty on the catalogue home)
+        source_id: selectedPackageSessionId || packageSessionId || "",
+        custom_field_values: customFieldValues,
       };
 
-      // Call the new API endpoint
-      const response = await axios.post(
-        `${LEAD_COLLECTION_ENROLL_URL}?instituteId=${instituteId}`,
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await axios.post(CATALOGUE_LEAD_SUBMIT_URL, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
       console.log("Lead collection response:", response.data);
 
-      // Show success popup instead of toast
-      setSuccessMessage("Thank you for your interest! We'll be in touch soon.");
+      const alreadySubmitted =
+        typeof response.data === "string" &&
+        response.data.toLowerCase().includes("already submitted");
+      setSuccessMessage(
+        alreadySubmitted
+          ? "We already have your information. Thank you for your interest!"
+          : "Thank you for your interest! We'll be in touch soon."
+      );
       setShowSuccessPopup(true);
     } catch (error: any) {
       console.error("Error collecting lead data:", error);
-      
-      // Check if it's a duplicate entry error
-      if (error.response?.data?.ex === "User entry already exists" || 
-          error.response?.data?.responseCode === "510 NOT_EXTENDED") {
-        setSuccessMessage("We already have your information. Thank you for your interest! We'll get back to you soon.");
-        setShowSuccessPopup(true);
-      } else {
-        toast.error("Failed to submit your information. Please try again.");
-      }
+      toast.error("Failed to submit your information. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -530,22 +534,35 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
           {field.label} {field.required && "*"}
         </label>
         <div className="space-y-2">
-          <input
-            type={field.type}
-            id={field.name}
-            value={fieldValue}
-            onChange={(e) => handleInputChange(field.name, e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
-              (field.type === 'email' && fieldValue && !validateEmail(fieldValue)) ||
-              (field.type === 'tel' && fieldValue && !validatePhone(fieldValue))
-                ? 'border-red-300' 
-                : 'border-gray-300'
-            }`}
-            placeholder={field.type === 'tel' ? 'Enter your 10-digit phone number' : `Enter your ${field.label.toLowerCase()}`}
-            required={field.required}
-            maxLength={field.type === 'tel' ? 10 : undefined}
-            pattern={field.type === 'tel' ? '[0-9]{10}' : undefined}
-          />
+          {isPhoneField(field) ? (
+            <PhoneInput
+              country={defaultPhoneCountry}
+              enableSearch={true}
+              value={fieldValue}
+              onChange={(value) => handleInputChange(field.name, value)}
+              inputClass="!w-full !h-11 !rounded-md !border-gray-300"
+              buttonClass="!rounded-l-md !border-gray-300"
+              containerClass="!w-full"
+              placeholder="Enter your phone number"
+              countryCodeEditable={false}
+              enableAreaCodes={false}
+              preferredCountries={preferredCountries}
+            />
+          ) : (
+            <input
+              type={field.type}
+              id={field.name}
+              value={fieldValue}
+              onChange={(e) => handleInputChange(field.name, e.target.value)}
+              className={`w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                field.type === 'email' && fieldValue && !validateEmail(fieldValue)
+                  ? 'border-red-300'
+                  : 'border-gray-300'
+              }`}
+              placeholder={`Enter your ${field.label.toLowerCase()}`}
+              required={field.required}
+            />
+          )}
           
            {/* OTP Buttons - Responsive layout */}
            {field.type === 'email' && fieldValue && validateEmail(fieldValue) && !emailVerified && (
@@ -616,16 +633,16 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
          )}
         
         {/* Helper Text for Phone Numbers */}
-        {field.type === 'tel' && (
-          <p className="text-gray-500 text-xs">Enter exactly 10 digits (e.g., 9876543210)</p>
+        {isPhoneField(field) && (
+          <p className="text-gray-500 text-xs">Pick your country code and enter your number.</p>
         )}
         
         {/* Validation Messages */}
         {field.type === 'email' && fieldValue && !validateEmail(fieldValue) && (
           <p className="text-red-500 text-sm">Please enter a valid email address</p>
         )}
-        {field.type === 'tel' && fieldValue && !validatePhone(fieldValue) && (
-          <p className="text-red-500 text-sm">Please enter a valid 10-digit phone number</p>
+        {isPhoneField(field) && fieldValue && !validatePhone(fieldValue) && (
+          <p className="text-red-500 text-sm">Please enter a valid phone number for the selected country</p>
         )}
       </div>
     );

@@ -11,6 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { fromZonedTime, format as formatTZ, toZonedTime } from 'date-fns-tz';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
+import { reportApiError } from '@/lib/report-api-error';
 import {
     Copy,
     Plus,
@@ -208,18 +209,24 @@ const BULK_DEFAULT_FEEDBACK_QUESTIONS = [
  * a platform that auto-provisions one (Zoho / BBB). Shared by the live header
  * count badge and the preview dialog so both agree on what's submittable.
  */
-const isRowReady = (r: {
-    title?: string;
-    startDate?: string;
-    startTime?: string;
-    platform?: string;
-    link?: string;
-}) =>
+const isRowReady = (
+    r: {
+        title?: string;
+        startDate?: string;
+        startTime?: string;
+        platform?: string;
+        link?: string;
+        selectedLevels?: unknown[];
+    },
+    accessType?: AccessType
+) =>
     Boolean(
         r?.title &&
             r?.startDate &&
             r?.startTime &&
-            (r?.platform === 'zoho' || r?.platform === 'bbb' || r?.link)
+            (r?.platform === 'zoho' || r?.platform === 'bbb' || r?.link) &&
+            // Private rows additionally require at least one assigned batch.
+            (accessType !== AccessType.PRIVATE || (r?.selectedLevels?.length ?? 0) > 0)
     );
 
 // Stable empty fallback so the memoized RowEditor doesn't see a new `courses`
@@ -888,8 +895,17 @@ export function BulkScheduleGrid() {
                 );
             }
         } catch (err) {
-            console.error('Bulk create failed', err);
-            toast.error('Failed to create sessions. Please try again.');
+            // Capture to Sentry (feature-tagged) + show a toast in one call so
+            // bulk create failures are no longer console-only.
+            reportApiError(err, {
+                feature: 'live-session-bulk-schedule-create',
+                fallbackMessage: 'Failed to create sessions. Please try again.',
+                tags: { accessType: data.accessType },
+                extra: {
+                    rowCount: data.rows?.length ?? 0,
+                    accessType: data.accessType,
+                },
+            });
         } finally {
             setSubmitting(false);
             setCreateProgress(null);
@@ -903,7 +919,7 @@ export function BulkScheduleGrid() {
     // subscribing to every row — stays accurate without re-rendering the whole
     // form on each keystroke. The live header count uses <ReadyCountBadge>.
     const previewRows = form.getValues('rows') ?? [];
-    const previewValidCount = previewRows.filter(isRowReady).length;
+    const previewValidCount = previewRows.filter((r) => isRowReady(r, accessType)).length;
 
     // Wait for the institute to load before mounting the grid. `instituteDetails`
     // is consumed by onSubmit (batches_for_sessions, learner_portal_base_url),
@@ -3025,6 +3041,11 @@ const RowEditor = memo(function RowEditor({
                         />
                     )}
                 />
+                {rowErrors?.selectedLevels && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.selectedLevels.message as string}
+                    </p>
+                )}
             </TableCell>
             <TableCell>
                 <RowWaitingRoomPicker
@@ -3217,7 +3238,8 @@ function ReadyCountBadge({
     totalRows: number;
 }) {
     const rows = useWatch({ control, name: 'rows' });
-    const validRowCount = (rows ?? []).filter(isRowReady).length;
+    const accessType = useWatch({ control, name: 'accessType' });
+    const validRowCount = (rows ?? []).filter((r) => isRowReady(r, accessType)).length;
     return (
         <Badge
             variant="secondary"

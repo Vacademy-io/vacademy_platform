@@ -29,6 +29,74 @@ export interface UsageLogRow {
     description: string | null;
 }
 
+/** One Student-AI chat session in a learner's conversation drill-down. */
+export interface ConversationRow {
+    sessionId: string;
+    contextType: string | null; // slide | question | course_details | general
+    contextTitle: string | null; // best-effort label from context_meta
+    sessionMode: string | null; // text | voice_interview | voice_doubt | voice_oral_test
+    status: string | null;
+    createdAt: number | null; // epoch millis
+    lastActive: number | null; // epoch millis
+    messageCount: number;
+    preview: string | null; // first learner message, trimmed
+}
+
+/** One credit deduction (flat) for the institute-wide Activity Log export. */
+export interface FlatLogRow {
+    createdAt: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string | null;
+    requestType: string | null;
+    model: string | null;
+    credits: number;
+    description: string | null;
+}
+
+/** One chat session (flat, user-attributed) for the export's "Chat Sessions" sheet. */
+export interface FlatSessionRow {
+    createdAt: number | null;
+    lastActive: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    roles: string | null;
+    sessionId: string;
+    contextType: string | null;
+    contextTitle: string | null;
+    sessionMode: string | null;
+    status: string | null;
+    messageCount: number;
+    preview: string | null;
+}
+
+/** One chat message (flat, user-attributed) for the export's "Chat Messages" sheet. */
+export interface FlatMessageRow {
+    createdAt: number | null;
+    userId: string;
+    name: string | null;
+    email: string | null;
+    sessionId: string;
+    contextType: string | null;
+    contextTitle: string | null;
+    sessionMode: string | null;
+    messageType: string | null;
+    content: string | null;
+}
+
+export type ChatMessageType = 'user' | 'assistant' | 'tool_call' | 'tool_result';
+
+/** One message inside a chat session transcript. */
+export interface ConversationMessage {
+    id: string;
+    type: ChatMessageType | string;
+    content: string;
+    metadata: string | null; // raw JSON string
+    createdAt: number | null; // epoch millis
+}
+
 /** Shape MyTable expects. */
 export interface TableData<T> {
     content: T[];
@@ -67,7 +135,7 @@ export interface UsageDateRange {
 export const fetchUsageUsers = async (
     page: number,
     pageSize: number,
-    filters: UsageDateRange & { role?: string | null }
+    filters: UsageDateRange & { role?: string | null; name?: string | null }
 ): Promise<TableData<UserUsageRow>> => {
     const response = await authenticatedAxiosInstance.get<SpringPage<UserUsageRow>>(
         `${AI_USAGE_BASE}/users`,
@@ -76,6 +144,7 @@ export const fetchUsageUsers = async (
                 page,
                 size: pageSize,
                 role: filters.role || undefined,
+                name: filters.name?.trim() || undefined,
                 startDate: filters.startDate,
                 endDate: filters.endDate,
             },
@@ -112,11 +181,75 @@ export const fetchUsageUserLogs = async (
     return toTableData(response.data);
 };
 
+export const fetchUserConversations = async (
+    userId: string,
+    page: number,
+    pageSize: number,
+    filters: UsageDateRange
+): Promise<TableData<ConversationRow>> => {
+    const response = await authenticatedAxiosInstance.get<SpringPage<ConversationRow>>(
+        `${AI_USAGE_BASE}/users/${userId}/conversations`,
+        {
+            params: {
+                page,
+                size: pageSize,
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+            },
+        }
+    );
+    return toTableData(response.data);
+};
+
+export const fetchConversationMessages = async (
+    sessionId: string
+): Promise<ConversationMessage[]> => {
+    const response = await authenticatedAxiosInstance.get<ConversationMessage[]>(
+        `${AI_USAGE_BASE}/conversations/${sessionId}/messages`
+    );
+    return response.data ?? [];
+};
+
+/** Params shared by every institute-wide export fetcher. */
+type ExportFilters = UsageDateRange & { role?: string | null; name?: string | null };
+
+const exportParams = (filters: ExportFilters) => ({
+    role: filters.role || undefined,
+    name: filters.name?.trim() || undefined,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+});
+
+/** Flat institute-wide activity log for the export (honours role + name + date filters). */
+export const fetchAllLogs = async (filters: ExportFilters): Promise<FlatLogRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatLogRow[]>(`${AI_USAGE_BASE}/logs`, {
+        params: exportParams(filters),
+    });
+    return response.data ?? [];
+};
+
+/** Flat institute-wide chat sessions for the export. */
+export const fetchAllSessions = async (filters: ExportFilters): Promise<FlatSessionRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatSessionRow[]>(
+        `${AI_USAGE_BASE}/conversations/all`,
+        { params: exportParams(filters) }
+    );
+    return response.data ?? [];
+};
+
+/** Flat institute-wide chat messages (prompts + AI answers) for the export. */
+export const fetchAllMessages = async (filters: ExportFilters): Promise<FlatMessageRow[]> => {
+    const response = await authenticatedAxiosInstance.get<FlatMessageRow[]>(`${AI_USAGE_BASE}/messages`, {
+        params: exportParams(filters),
+    });
+    return response.data ?? [];
+};
+
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 export const useUsageUsersQuery = (
     page: number,
     pageSize: number,
-    filters: UsageDateRange & { role?: string | null },
+    filters: UsageDateRange & { role?: string | null; name?: string | null },
     enabled = true
 ) =>
     useQuery({
@@ -149,6 +282,31 @@ export const useUsageUserLogsQuery = (
         queryFn: () => fetchUsageUserLogs(userId as string, page, pageSize, filters),
         enabled: enabled && !!userId,
         placeholderData: keepPreviousData,
+        staleTime: 60_000,
+        retry: false,
+    });
+
+export const useUserConversationsQuery = (
+    userId: string | null,
+    page: number,
+    pageSize: number,
+    filters: UsageDateRange,
+    enabled = true
+) =>
+    useQuery({
+        queryKey: ['AI_USAGE_CONVERSATIONS', userId, page, pageSize, filters],
+        queryFn: () => fetchUserConversations(userId as string, page, pageSize, filters),
+        enabled: enabled && !!userId,
+        placeholderData: keepPreviousData,
+        staleTime: 60_000,
+        retry: false,
+    });
+
+export const useConversationMessagesQuery = (sessionId: string | null, enabled = true) =>
+    useQuery({
+        queryKey: ['AI_USAGE_CONVERSATION_MESSAGES', sessionId],
+        queryFn: () => fetchConversationMessages(sessionId as string),
+        enabled: enabled && !!sessionId,
         staleTime: 60_000,
         retry: false,
     });

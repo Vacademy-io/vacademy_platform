@@ -200,7 +200,24 @@ export const bulkSessionFormSchema = z.object({
             onLive: true,
             onAttendance: false,
         }),
-});
+})
+    .superRefine((data, ctx) => {
+        // Private bulk sessions are restricted to assigned batches (there's no
+        // individual-learner picker in the grid), so every row must have at
+        // least one batch — otherwise that class would be created with nobody
+        // able to join. Public rows join via the shared link and need none.
+        if (data.accessType === AccessType.PRIVATE) {
+            data.rows.forEach((row, index) => {
+                if ((row.selectedLevels?.length ?? 0) === 0) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message: 'Assign at least one batch to this private class.',
+                        path: ['rows', index, 'selectedLevels'],
+                    });
+                }
+            });
+        }
+    });
 
 export type BulkSessionRow = z.infer<typeof bulkSessionRowSchema>;
 export type BulkSharedOptions = z.infer<typeof bulkSharedOptionsSchema>;

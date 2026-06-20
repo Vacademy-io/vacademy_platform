@@ -23,9 +23,13 @@ import {
   BookOpen,
   CaretDown,
   ChalkboardTeacher,
+  Clock,
   File as FileIcon,
   GraduationCap,
+  House,
   Info,
+  Star,
+  Tag,
 } from "@phosphor-icons/react";
 
 // Helper function to check if HTML content has actual visible text
@@ -78,7 +82,7 @@ const HtmlWithViewMore: React.FC<{
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mt-1 text-sm font-medium text-primary-600 hover:underline focus:outline-none"
+          className="mt-1 text-sm font-medium text-primary-500 hover:underline focus:outline-none"
         >
           {expanded ? "View less" : "View more"}
         </button>
@@ -97,10 +101,10 @@ const HighlightSectionCard: React.FC<{
   title: string;
   children: React.ReactNode;
 }> = ({ icon, iconBgClass, overlayClass, title, children }) => (
-  <div className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
+  <div className="relative bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group">
     <div
       className={cn(
-        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md",
+        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl",
         overlayClass
       )}
     />
@@ -139,29 +143,31 @@ const CourseHighlightsAccordion: React.FC<{
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
         <span className="flex items-center gap-2 min-w-0">
-          <Info className="w-4 h-4 text-primary-600 flex-shrink-0" weight="bold" />
+          <div className="p-1 bg-primary-50 rounded-md">
+            <Info className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" weight="bold" />
+          </div>
           <span className="text-sm font-semibold truncate text-gray-900">
             {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
           </span>
         </span>
         <CaretDown
           className={cn(
-            "w-4 h-4 text-gray-500 flex-shrink-0 transition-transform duration-200",
+            "w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200",
             open ? "rotate-180" : "rotate-0"
           )}
           weight="bold"
         />
       </button>
       {open && (
-        <div className="px-3 sm:px-4 pb-4 pt-2 space-y-4 bg-gray-50/40">
+        <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-gray-100 bg-gray-50/50">
           {hasWhy && (
             <HighlightSectionCard
               title="What you'll learn"
@@ -244,7 +250,7 @@ const CourseHighlightsAccordion: React.FC<{
                     key={`${inst.email}-${idx}`}
                     className="flex items-center gap-3 p-2.5 bg-gray-50/80 rounded-lg hover:bg-gray-100/80 transition-all duration-300"
                   >
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-600 text-white text-xs font-semibold rounded-full flex items-center justify-center">
+                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-500 text-white text-xs font-semibold rounded-full flex items-center justify-center">
                       {inst.name ? inst.name.charAt(0).toUpperCase() : "I"}
                     </div>
                     <div>
@@ -801,6 +807,57 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     }
   }, [instituteThemeCode]);
 
+  // Apply the page-builder primary color (same as the catalogue page).
+  // The details page previously had NO theme injection, so its buttons fell
+  // back to the global ThemeProvider `--primary` — which can be a stale
+  // `theme-custom-color` cached in localStorage (e.g. an old bright green).
+  // Scope the catalogue's `theme.primaryColor` onto this page's wrapper so the
+  // CTAs honor the institute color the admin set, exactly like the catalogue.
+  const themeRootRef = useRef<HTMLDivElement>(null);
+  const detailsPrimaryColor = (catalogueData?.globalSettings as any)?.theme
+    ?.primaryColor as string | undefined;
+  useEffect(() => {
+    const el = themeRootRef.current;
+    if (!el) return;
+    if (detailsPrimaryColor && /^#[0-9a-fA-F]{6}$/.test(detailsPrimaryColor)) {
+      const r = parseInt(detailsPrimaryColor.slice(1, 3), 16) / 255;
+      const g = parseInt(detailsPrimaryColor.slice(3, 5), 16) / 255;
+      const b = parseInt(detailsPrimaryColor.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b),
+        min = Math.min(r, g, b);
+      const l = (max + min) / 2;
+      let h = 0,
+        s = 0;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      const H = Math.round(h * 360),
+        S = Math.round(s * 100),
+        L = Math.round(l * 100);
+      el.style.setProperty("--primary-500", `${H} ${S}% ${L}%`);
+      el.style.setProperty("--primary", `${H} ${S}% ${L}%`);
+      el.style.setProperty("--primary-400", `${H} ${S}% ${Math.min(L + 10, 90)}%`);
+      el.style.setProperty(
+        "--primary-200",
+        `${H} ${Math.max(S - 15, 10)}% ${Math.min(L + 28, 95)}%`,
+      );
+      el.style.setProperty(
+        "--primary-50",
+        `${H} ${Math.max(S - 30, 5)}% ${Math.min(L + 43, 98)}%`,
+      );
+    } else {
+      el.style.removeProperty("--primary-500");
+      el.style.removeProperty("--primary");
+      el.style.removeProperty("--primary-400");
+      el.style.removeProperty("--primary-200");
+      el.style.removeProperty("--primary-50");
+    }
+  }, [detailsPrimaryColor]);
+
   // Listen for openLeadCollection event from HeaderComponent
   useEffect(() => {
     const handleOpenLeadCollection = () => {
@@ -841,7 +898,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           </p>
           <button
             onClick={() => navigate({ to: `/${tagName}` })}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-400 transition-colors"
           >
             Back to Catalog
           </button>
@@ -851,7 +908,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-white w-full">
+    <div ref={themeRootRef} className="min-h-screen bg-white w-full">
       {/* Render header and footer - add them if not in JSON */}
       {!catalogueData && (
         <div className="container mx-auto p-8 text-center">
@@ -866,24 +923,33 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
       {catalogueData && (
         <>
-          {/* Header from JSON globalSettings */}
+          {/* Header from JSON globalSettings — sticky like the catalogue page
+              (it previously scrolled away on the details page). */}
           {(catalogueData.globalSettings as any).layout?.header &&
             (catalogueData.globalSettings as any).layout?.header?.enabled !==
               false && (
-              <JsonRenderer
-                page={{
-                  id: "header",
-                  route: "header",
-                  title: "Header",
-                  components: [
-                    (catalogueData.globalSettings as any).layout.header,
-                  ],
-                }}
-                globalSettings={catalogueData.globalSettings}
-                instituteId={instituteId}
-                tagName={tagName}
-                catalogueData={catalogueData}
-              />
+              <div
+                className={
+                  (catalogueData.globalSettings as any).stickyHeader !== false
+                    ? "sticky top-0 z-50"
+                    : ""
+                }
+              >
+                <JsonRenderer
+                  page={{
+                    id: "header",
+                    route: "header",
+                    title: "Header",
+                    components: [
+                      (catalogueData.globalSettings as any).layout.header,
+                    ],
+                  }}
+                  globalSettings={catalogueData.globalSettings}
+                  instituteId={instituteId}
+                  tagName={tagName}
+                  catalogueData={catalogueData}
+                />
+              </div>
             )}
 
           {/* Render details page components from JSON */}
@@ -908,7 +974,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {/* Course Content */}
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
-        <div className="py-8 sm:py-12 pb-24 bg-gray-50 w-full">
+        <div className="pt-4 pb-24 sm:pt-6 bg-gray-50 w-full">
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
               {/* Main Content */}
@@ -930,191 +996,167 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
                 {/* Course Overview Card - Mobile First */}
                 <div className="lg:hidden">
-                  <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                    style={{ animationDelay: "0.7s" }}
-                  >
-                    {/* Background gradient overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                  <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                      <div className="p-1.5 bg-primary-50 rounded-lg">
+                        <House size={16} className="text-primary-500" weight="duotone" />
+                      </div>
+                      <h2 className="text-sm font-semibold text-gray-900">
+                        Course Overview
+                      </h2>
+                    </div>
 
-                    {/* Floating orb effect */}
-                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-                    <div className="relative">
-                      {/* Header */}
-                      <div className="flex items-center space-x-2 mb-4">
-                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                          <svg
-                            className="w-4 h-4 text-primary-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM8 15V9h4v6H8z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
+                    {/* Course Stats */}
+                    <div className="space-y-2">
+                      {/* Price - Only show if payment is enabled */}
+                      {catalogueData?.globalSettings?.payment?.enabled !==
+                        false && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <Tag size={13} className="text-primary-400" />
+                            Price
+                          </span>
+                          <PriceWithMrp
+                            actual={courseData.price}
+                            elevated={courseData.elevatedPrice}
+                            currency={courseData.currency}
+                            size="md"
+                            className="text-primary-500 font-semibold"
+                          />
                         </div>
-                        <h2 className="text-base font-bold text-gray-900">
-                          Course Overview
-                        </h2>
+                      )}
+
+                      {/* Rating */}
+                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <Star size={13} className="text-yellow-400" weight="fill" />
+                          Rating
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                size={12}
+                                weight="fill"
+                                className={cn(
+                                  star <= Math.floor(courseData.rating)
+                                    ? "text-yellow-400"
+                                    : "text-gray-200"
+                                )}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-xs font-semibold text-gray-900">
+                            {courseData.rating > 0
+                              ? courseData.rating.toFixed(1)
+                              : "—"}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Course Stats */}
-                      <div className="space-y-3">
-                        {/* Price - Only show if payment is enabled */}
+                      {/* Level */}
+                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                          Level
+                        </span>
+                        <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          {courseData.level}
+                        </span>
+                      </div>
+
+                      {/* Duration */}
+                      {courseData.duration && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <Clock size={13} className="text-gray-400" weight="duotone" />
+                            Duration
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                            {courseData.duration}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Instructor */}
+                      {courseData.instructor && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <ChalkboardTeacher size={13} className="text-gray-400" weight="duotone" />
+                            {getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher,
+                            )}
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md max-w-32 truncate">
+                            {courseData.instructor}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Enroll Button */}
+                    <div className="pt-1 space-y-2">
+                      <button
+                        onClick={() => {
+                          // Check if payment is disabled and lead collection is enabled
+                          const globalSettings =
+                            catalogueData?.globalSettings as any;
+                          const leadCollectionConfig =
+                            globalSettings?.leadCollection;
+                          const paymentConfig = globalSettings?.payment;
+
+                          // Check if payment is explicitly disabled (showPayment=false)
+                          const showPayment = paymentConfig?.enabled === true;
+                          const leadCollectionEnabled =
+                            leadCollectionConfig?.enabled;
+
+                          console.log("Payment config:", paymentConfig);
+                          console.log(
+                            "Lead collection config:",
+                            leadCollectionConfig,
+                          );
+                          console.log("Show payment:", showPayment);
+                          console.log(
+                            "Lead collection enabled:",
+                            leadCollectionEnabled,
+                          );
+
+                          // Check if this is a "Get Started" button (when payment is disabled)
+                          const isGetStartedButton =
+                            catalogueData?.globalSettings?.payment
+                              ?.enabled === false;
+
+                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
+                          if (isGetStartedButton || !showPayment) {
+                            console.log(
+                              "Get Started button clicked - opening lead collection modal!",
+                            );
+                            // Force show lead collection
+                            setShowLeadCollection(true);
+                          } else {
+                            setEnrollmentDialogOpen(true);
+                          }
+                        }}
+                        className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                        style={{
+                          backgroundColor: domainRouting.instituteThemeCode
+                            ? `hsl(var(--primary))`
+                            : "#3b82f6", // design-lint-ignore: page-builder default color
+                        }}
+                      >
                         {catalogueData?.globalSettings?.payment?.enabled !==
-                          false && (
-                          <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                            <span className="text-xs font-medium text-primary-700">
-                              Price
-                            </span>
-                            <PriceWithMrp
-                              actual={courseData.price}
-                              elevated={courseData.elevatedPrice}
-                              currency={courseData.currency}
-                              size="md"
-                              className="text-primary-800"
-                            />
-                          </div>
-                        )}
-
-                        {/* Rating */}
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                          <span className="text-xs font-medium text-gray-700">
-                            Rating
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <div className="flex items-center">
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <svg
-                                  key={star}
-                                  className={`w-3 h-3 ${
-                                    star <= Math.floor(courseData.rating)
-                                      ? "text-yellow-400"
-                                      : "text-gray-300"
-                                  }`}
-                                  fill="currentColor"
-                                  viewBox="0 0 20 20"
-                                >
-                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                </svg>
-                              ))}
-                            </div>
-                            <span className="text-xs font-bold text-gray-900">
-                              {courseData.rating > 0
-                                ? courseData.rating.toFixed(1)
-                                : "No rating"}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Level */}
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                          <span className="text-xs font-medium text-gray-700">
-                            Level
-                          </span>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {courseData.level}
-                          </span>
-                        </div>
-
-                        {/* Duration */}
-                        {courseData.duration && (
-                          <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                            <span className="text-xs font-medium text-gray-700">
-                              Duration
-                            </span>
-                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                              {courseData.duration}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Instructor */}
-                        {courseData.instructor && (
-                          <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                            <span className="text-xs font-medium text-gray-700">
-                              {getTerminology(
-                                RoleTerms.Teacher,
-                                SystemTerms.Teacher,
-                              )}
-                            </span>
-                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                              {courseData.instructor}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Enroll Button */}
-                        <button
-                          onClick={() => {
-                            // Check if payment is disabled and lead collection is enabled
-                            const globalSettings =
-                              catalogueData?.globalSettings as any;
-                            const leadCollectionConfig =
-                              globalSettings?.leadCollection;
-                            const paymentConfig = globalSettings?.payment;
-
-                            // Check if payment is explicitly disabled (showPayment=false)
-                            const showPayment = paymentConfig?.enabled === true;
-                            const leadCollectionEnabled =
-                              leadCollectionConfig?.enabled;
-
-                            console.log("Payment config:", paymentConfig);
-                            console.log(
-                              "Lead collection config:",
-                              leadCollectionConfig,
-                            );
-                            console.log("Show payment:", showPayment);
-                            console.log(
-                              "Lead collection enabled:",
-                              leadCollectionEnabled,
-                            );
-
-                            // Check if this is a "Get Started" button (when payment is disabled)
-                            const isGetStartedButton =
-                              catalogueData?.globalSettings?.payment
-                                ?.enabled === false;
-
-                            // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
-                            if (isGetStartedButton || !showPayment) {
-                              console.log(
-                                "Get Started button clicked - opening lead collection modal!",
-                              );
-                              // Force show lead collection
-                              setShowLeadCollection(true);
-                            } else {
-                              setEnrollmentDialogOpen(true);
-                            }
-                          }}
-                          className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
-                          style={{
-                            backgroundColor: domainRouting.instituteThemeCode
-                              ? `hsl(var(--primary))`
-                              : "#3b82f6", // design-lint-ignore: page-builder default color
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform =
-                              "translateY(-1px)";
-                            e.currentTarget.style.boxShadow =
-                              "0 8px 25px rgba(0,0,0,0.15)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = "translateY(0)";
-                            e.currentTarget.style.boxShadow =
-                              "0 4px 15px rgba(0,0,0,0.1)";
-                          }}
-                        >
-                          {catalogueData?.globalSettings?.payment?.enabled !==
-                          false
-                            ? courseData.price === 0
-                              ? "Enroll for Free"
-                              : "Enroll Now"
-                            : "Get Started"}
-                        </button>
-                      </div>
+                        false
+                          ? courseData.price === 0
+                            ? "Enroll for Free"
+                            : "Enroll Now"
+                          : "Get Started"}
+                      </button>
+                      <p className="text-xs text-gray-400 text-center">
+                        Click to register for this course
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1136,203 +1178,164 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
               {/* Sidebar */}
               <div className="lg:col-span-1">
-                <div className="sticky top-4 space-y-4 lg:max-h-screen-minus-1 overflow-y-auto">
+                <div className="sticky top-4 space-y-4">
                   {/* Course Overview Card - Hidden on mobile, shown on desktop */}
-                  <div
-                    className="hidden lg:block relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                    style={{ animationDelay: "0.7s" }}
-                  >
-                    {/* Background gradient overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                  <div className="hidden lg:block bg-white border border-gray-200 rounded-xl shadow-sm p-4 space-y-3">
+                    {/* Header */}
+                    <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                      <div className="p-1.5 bg-primary-50 rounded-lg">
+                        <House size={16} className="text-primary-500" weight="duotone" />
+                      </div>
+                      <h2 className="text-sm font-semibold text-gray-900">
+                        Course Overview
+                      </h2>
+                    </div>
 
-                    {/* Floating orb effect */}
-                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
-
-                    <div className="relative">
-                      {/* Header */}
-                      <div className="flex items-center space-x-2 mb-4">
-                        <div className="p-1.5 bg-gradient-to-br from-primary-100 to-primary-200 rounded-lg shadow-sm">
-                          <svg
-                            className="w-4 h-4 text-primary-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM8 15V9h4v6H8z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
+                    {/* Course Stats */}
+                    <div className="space-y-2">
+                      {/* Price - Only show if payment is enabled */}
+                      {catalogueData?.globalSettings?.payment?.enabled !==
+                        false && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-primary-50 rounded-lg border border-primary-100">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <Tag size={13} className="text-primary-400" />
+                            Price
+                          </span>
+                          <PriceWithMrp
+                            actual={courseData.price}
+                            elevated={courseData.elevatedPrice}
+                            currency={courseData.currency}
+                            size="md"
+                            className="text-primary-500 font-semibold"
+                          />
                         </div>
-                        <h2 className="text-base font-bold text-gray-900">
-                          Course Overview
-                        </h2>
+                      )}
+
+                      {/* Rating */}
+                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <Star size={13} className="text-yellow-400" weight="fill" />
+                          Rating
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                size={12}
+                                weight="fill"
+                                className={cn(
+                                  star <= Math.floor(courseData.rating)
+                                    ? "text-yellow-400"
+                                    : "text-gray-200"
+                                )}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-xs font-semibold text-gray-900">
+                            {courseData.rating > 0
+                              ? courseData.rating.toFixed(1)
+                              : "—"}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Course Stats */}
-                      <div className="space-y-3">
-                        {/* Price - Only show if payment is enabled */}
-                        {catalogueData?.globalSettings?.payment?.enabled !==
-                          false && (
-                          <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg border border-primary-200">
-                            <span className="text-xs font-medium text-primary-700">
-                              Price
-                            </span>
-                            <PriceWithMrp
-                              actual={courseData.price}
-                              elevated={courseData.elevatedPrice}
-                              currency={courseData.currency}
-                              size="md"
-                              className="text-primary-800"
-                            />
-                          </div>
-                        )}
-
-                        {/* Rating */}
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                          <span className="text-xs font-medium text-gray-700">
-                            Rating
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <div className="flex items-center">
-                              {[1, 2, 3, 4, 5].map((star) => (
-                                <svg
-                                  key={star}
-                                  className={`w-3 h-3 ${
-                                    star <= Math.floor(courseData.rating)
-                                      ? "text-yellow-400"
-                                      : "text-gray-300"
-                                  }`}
-                                  fill="currentColor"
-                                  viewBox="0 0 20 20"
-                                >
-                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                </svg>
-                              ))}
-                            </div>
-                            <span className="text-xs font-bold text-gray-900">
-                              {courseData.rating > 0
-                                ? courseData.rating.toFixed(1)
-                                : "No rating"}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Level */}
-                        <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                          <span className="text-xs font-medium text-gray-700">
-                            Level
-                          </span>
-                          <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                            {courseData.level}
-                          </span>
-                        </div>
-
-                        {/* Duration */}
-                        {courseData.duration && (
-                          <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                            <span className="text-xs font-medium text-gray-700">
-                              Duration
-                            </span>
-                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                              {courseData.duration}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Instructor */}
-                        {courseData.instructor && (
-                          <div className="flex items-center justify-between p-2.5 bg-gray-50/80 rounded-lg">
-                            <span className="text-xs font-medium text-gray-700">
-                              {getTerminology(
-                                RoleTerms.Teacher,
-                                SystemTerms.Teacher,
-                              )}
-                            </span>
-                            <span className="text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded-md shadow-sm">
-                              {courseData.instructor}
-                            </span>
-                          </div>
-                        )}
+                      {/* Level */}
+                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                          <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                          Level
+                        </span>
+                        <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                          {courseData.level}
+                        </span>
                       </div>
 
-                      {/* Enroll Button with JSON Styling */}
-                      <div className="mt-4">
-                        <button
-                          onClick={() => {
-                            // Check if payment is disabled and lead collection is enabled
-                            const globalSettings =
-                              catalogueData?.globalSettings as any;
-                            const leadCollectionConfig =
-                              globalSettings?.leadCollection;
-                            const paymentConfig = globalSettings?.payment;
+                      {/* Duration */}
+                      {courseData.duration && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <Clock size={13} className="text-gray-400" weight="duotone" />
+                            Duration
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                            {courseData.duration}
+                          </span>
+                        </div>
+                      )}
 
-                            // Check if payment is explicitly disabled (showPayment=false)
-                            const showPayment = paymentConfig?.enabled === true;
-                            const leadCollectionEnabled =
-                              leadCollectionConfig?.enabled;
+                      {/* Instructor */}
+                      {courseData.instructor && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <ChalkboardTeacher size={13} className="text-gray-400" weight="duotone" />
+                            {getTerminology(
+                              RoleTerms.Teacher,
+                              SystemTerms.Teacher,
+                            )}
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md max-w-32 truncate">
+                            {courseData.instructor}
+                          </span>
+                        </div>
+                      )}
+                    </div>
 
-                            console.log("Payment config:", paymentConfig);
+                    {/* Enroll Button */}
+                    <div className="pt-1 space-y-2">
+                      <button
+                        onClick={() => {
+                          // Check if payment is disabled and lead collection is enabled
+                          const globalSettings =
+                            catalogueData?.globalSettings as any;
+                          const leadCollectionConfig =
+                            globalSettings?.leadCollection;
+                          const paymentConfig = globalSettings?.payment;
+
+                          // Check if payment is explicitly disabled (showPayment=false)
+                          const showPayment = paymentConfig?.enabled === true;
+                          const leadCollectionEnabled =
+                            leadCollectionConfig?.enabled;
+
+                          console.log("Payment config:", paymentConfig);
+                          console.log(
+                            "Lead collection config:",
+                            leadCollectionConfig,
+                          );
+                          console.log("Show payment:", showPayment);
+                          console.log(
+                            "Lead collection enabled:",
+                            leadCollectionEnabled,
+                          );
+
+                          // Check if this is a "Get Started" button (when payment is disabled)
+                          const isGetStartedButton =
+                            catalogueData?.globalSettings?.payment
+                              ?.enabled === false;
+
+                          // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
+                          if (isGetStartedButton || !showPayment) {
                             console.log(
-                              "Lead collection config:",
-                              leadCollectionConfig,
+                              "Get Started button clicked - opening lead collection modal!",
                             );
-                            console.log("Show payment:", showPayment);
-                            console.log(
-                              "Lead collection enabled:",
-                              leadCollectionEnabled,
-                            );
-
-                            // Check if this is a "Get Started" button (when payment is disabled)
-                            const isGetStartedButton =
-                              catalogueData?.globalSettings?.payment
-                                ?.enabled === false;
-
-                            // If this is a "Get Started" button or payment is disabled, check if lead collection is enabled
-                            if (isGetStartedButton || !showPayment) {
-                              console.log(
-                                "Get Started button clicked - opening lead collection modal!",
-                              );
-                              // Force show lead collection
-                              setShowLeadCollection(true);
-                            } else {
-                              setEnrollmentDialogOpen(true);
-                            }
-                          }}
-                          className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 transform shadow-lg"
-                          style={{
-                            backgroundColor: domainRouting.instituteThemeCode
-                              ? `hsl(var(--primary))`
-                              : "#3b82f6", // design-lint-ignore: page-builder default color
-                            transform: getCardStyling().hover?.scale
-                              ? `scale(${getCardStyling().hover.scale})`
-                              : "scale(1)",
-                            boxShadow: getCardStyling().hover?.shadow
-                              ? "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
-                              : "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor =
-                              domainRouting.instituteThemeCode
-                                ? `hsl(var(--primary))`
-                                : "#2563eb"; // design-lint-ignore: page-builder default color
-                            e.currentTarget.style.opacity = "0.9";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor =
-                              domainRouting.instituteThemeCode
-                                ? `hsl(var(--primary))`
-                                : "#3b82f6"; // design-lint-ignore: page-builder default color
-                            e.currentTarget.style.opacity = "1";
-                          }}
-                        >
-                          🎓 Enroll Now
-                        </button>
-
-                        <div className="text-xs text-gray-500 text-center mt-2">
-                          Click to register for this course
-                        </div>
-                      </div>
+                            // Force show lead collection
+                            setShowLeadCollection(true);
+                          } else {
+                            setEnrollmentDialogOpen(true);
+                          }
+                        }}
+                        className="w-full text-white py-3 px-4 rounded-lg text-sm font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                        style={{
+                          backgroundColor: domainRouting.instituteThemeCode
+                            ? `hsl(var(--primary))`
+                            : "#3b82f6", // design-lint-ignore: page-builder default color
+                        }}
+                      >
+                        Enroll Now
+                      </button>
+                      <p className="text-xs text-gray-400 text-center">
+                        Click to register for this course
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1408,6 +1411,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           mandatory={
             catalogueData?.globalSettings?.leadCollection?.mandatory || false
           }
+          packageSessionId={courseData.packageSessionId}
         />
       )}
 
@@ -1473,8 +1477,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                 }
 
                 try {
-                  // Fetch and store student details (same as SessionLoginForm.tsx)
-                  await fetchAndStoreStudentDetails(instituteId, userId);
+                  // Fetch and store student details. Pass a fallbackUser so a
+                  // just-enrolled learner — whose student record may not be
+                  // queryable yet right after enrollment — still gets
+                  // StudentDetails persisted. Without it the student API throws,
+                  // StudentDetails is never stored, isAuthenticated() returns
+                  // false, and the learner is bounced to /login instead of being
+                  // auto-logged-in.
+                  await fetchAndStoreStudentDetails(instituteId, userId, {
+                    id: userId,
+                    username: tokenData?.username || "",
+                    email: tokenData?.email || "",
+                    full_name: tokenData?.username || "",
+                    roles: ["STUDENT"],
+                  });
                 } catch (error) {
                   console.error("Error fetching student details:", error);
                 }
@@ -1506,20 +1522,26 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             {/* Get Started Button */}
             <button
               onClick={() => {
-                console.log(
-                  "[CourseDetailsPage] Mobile Get Started button clicked",
-                );
-                // Always show lead collection when Get Started is clicked, overriding the enabled setting
-                setShowLeadCollection(true);
+                // Mirror the desktop CTA: enroll when payment is enabled,
+                // otherwise fall back to the lead-collection form.
+                if (catalogueData?.globalSettings?.payment?.enabled === true) {
+                  setEnrollmentDialogOpen(true);
+                } else {
+                  setShowLeadCollection(true);
+                }
               }}
-              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+              className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
               style={{
                 backgroundColor: domainRouting.instituteThemeCode
                   ? `hsl(var(--primary))`
                   : "#3b82f6", // design-lint-ignore: page-builder default color
               }}
             >
-              Get Started
+              {catalogueData?.globalSettings?.payment?.enabled !== false
+                ? courseData.price === 0
+                  ? "Enroll for Free"
+                  : "Enroll Now"
+                : "Get Started"}
             </button>
 
             {/* Login Text */}

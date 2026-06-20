@@ -1,5 +1,6 @@
 import { formatCurrency, getCurrencySymbol } from "@/utils/currency";
 import { cn } from "@/lib/utils";
+import { Sparkle } from "@phosphor-icons/react";
 
 export interface PriceWithMrpProps {
   actual?: number | null;
@@ -144,6 +145,23 @@ export interface OfferBadgeProps {
 }
 
 export const OfferBadge = ({ actual, elevated, className }: OfferBadgeProps) => {
+  // Free course → show a "FREE" ribbon instead of a discount percentage.
+  // (A 0-priced course would otherwise read as "100% OFF", or show nothing
+  //  when there's no elevated price.) Green to match the "Free" price text.
+  if (actual === 0) {
+    // Solid green pill with a sparkle icon — playful, eye-catching "FREE".
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full bg-green-600 py-1 pl-2 pr-2.5 text-3xs font-bold uppercase tracking-wide text-white shadow-sm",
+          className
+        )}
+      >
+        <Sparkle weight="fill" className="size-3" />
+        FREE
+      </span>
+    );
+  }
   const percent = computeMrpPercent(actual, elevated);
   if (percent == null) return null;
   return (

@@ -42,6 +42,9 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 public class SessionService {
 
+    /** The single shared "default" session row used when a course has no real session. */
+    private static final String SESSION_DEFAULT_ID = "DEFAULT";
+
     private final SessionRepository sessionRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final LevelService levelService;
@@ -65,6 +68,19 @@ public class SessionService {
 
     public Session getSessionById(String sessionId) {
         return sessionRepository.findById(sessionId).orElseThrow(() -> new VacademyException("Session not found for id " + sessionId));
+    }
+
+    /**
+     * True when this session payload represents the shared "default" session.
+     * The FE sends id="DEFAULT" for any course with no real session (both on
+     * create and edit). Such payloads must always resolve to the single shared
+     * DEFAULT session row — never a freshly-minted per-institute UUID session —
+     * so create and a later edit land on the same session and don't create a
+     * duplicate batch. Matched on id only, so a real session a user happens to
+     * name "DEFAULT" is left untouched.
+     */
+    private boolean isDefaultSession(AddNewSessionDTO dto) {
+        return dto != null && SESSION_DEFAULT_ID.equalsIgnoreCase(dto.getId());
     }
     public List<SessionDTOWithDetails> getSessionsWithDetailsByInstituteId(String instituteId, CustomUserDetails user) {
         List<PackageSession> packageSessions = packageSessionRepository.findPackageSessionsByInstituteId(instituteId,List.of(PackageSessionStatusEnum.ACTIVE.name(),PackageSessionStatusEnum.HIDDEN.name()));
@@ -145,7 +161,15 @@ public class SessionService {
 
         Session session;
 
-        if (addNewSessionDTO.isNewSession()) {
+        if (isDefaultSession(addNewSessionDTO)) {
+            // Default (no real session) case: always bind to the single shared
+            // DEFAULT session row instead of minting a per-institute UUID session
+            // named "DEFAULT". This keeps create and a later edit on the SAME
+            // session, so re-saving the course can't spawn a duplicate batch (and
+            // matches the no-levels create path + the 500+ batches already on the
+            // shared DEFAULT session).
+            session = getSessionById(SESSION_DEFAULT_ID);
+        } else if (addNewSessionDTO.isNewSession()) {
             Optional<Session>optionalSession = sessionRepository.findLatestSessionByNameAndInstitute(addNewSessionDTO.getSessionName(),instituteId,List.of(SessionStatusEnum.ACTIVE.name()));
             if (optionalSession.isPresent()){
                 session = optionalSession.get();
@@ -320,6 +344,13 @@ public class SessionService {
     }
 
     private Session resolveSession(AddNewSessionDTO sessionDTO) {
+        if (isDefaultSession(sessionDTO)) {
+            // Reuse the shared DEFAULT session — never mint a new one, and never
+            // overwrite the shared row from a single course's edit. This is the
+            // root-cause fix for duplicate batches: create and edit must resolve
+            // to the SAME session for the default (no-real-session) case.
+            return getSessionById(SESSION_DEFAULT_ID);
+        }
         if (sessionDTO.isNewSession()) {
             Session newSession = new Session(
                     sessionDTO.getId(),

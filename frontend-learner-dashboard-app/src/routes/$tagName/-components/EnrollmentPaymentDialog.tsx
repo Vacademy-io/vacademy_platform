@@ -243,6 +243,10 @@ export const EnrollmentPaymentDialog: React.FC<
   const handlePaymentError = (error: string) => {
     setPaymentStatus("failure");
     setPaymentError(error);
+    // Surface the failure to the learner — previously this was written to
+    // state that was never rendered, so a failed (free or paid) enrollment
+    // looked like "nothing happened".
+    toast.error(error || "Enrollment failed. Please try again.");
   };
 
   const handleClose = () => {
@@ -958,6 +962,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           onSuccess={handlePaymentSuccess}
                           onError={handlePaymentError}
                           onBack={handleBack}
+                          appliedCouponCode={couponCtx.state.appliedCode}
                         />
                       ) : vendor === "RAZORPAY" ? (
                         <PaymentForm
@@ -974,6 +979,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           onError={handlePaymentError}
                           onBack={handleBack}
                           vendor={vendor}
+                          appliedCouponCode={couponCtx.state.appliedCode}
                         />
                       ) : stripePromise ? (
                         <Elements stripe={stripePromise}>
@@ -990,6 +996,7 @@ export const EnrollmentPaymentDialog: React.FC<
                             onSuccess={handlePaymentSuccess}
                             onError={handlePaymentError}
                             onBack={handleBack}
+                            appliedCouponCode={couponCtx.state.appliedCode}
                           />
                         </Elements>
                       ) : (
@@ -1073,6 +1080,7 @@ interface CashfreePaymentFormProps {
   onSuccess: (tokens: { accessToken: string; refreshToken: string }) => void;
   onError: (error: string) => void;
   onBack: () => void;
+  appliedCouponCode?: string | null;
 }
 
 const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
@@ -1088,6 +1096,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
   onSuccess,
   onError,
   onBack,
+  appliedCouponCode,
 }) => {
   const [cashfreeSessionData, setCashfreeSessionData] = useState<{
     paymentSessionId: string;
@@ -1149,7 +1158,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
                 ?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
-            coupon_code: couponCtx.state.appliedCode || null,
+            coupon_code: appliedCouponCode || null,
             payment_initiation_request: {
               vendor: "CASHFREE",
               amount,
@@ -1295,6 +1304,7 @@ interface PaymentFormProps {
   stripe?: any;
   elements?: any;
   vendor?: string;
+  appliedCouponCode?: string | null;
 }
 
 const StripeConnectedPaymentForm: React.FC<PaymentFormProps> = (props) => {
@@ -1319,6 +1329,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   stripe,
   elements,
   vendor: vendorProp,
+  appliedCouponCode,
 }) => {
   // const stripe = useStripe(); // Removed
   // const elements = useElements(); // Removed
@@ -1436,7 +1447,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
-          coupon_code: couponCtx.state.appliedCode || null,
+          coupon_code: appliedCouponCode || null,
           payment_initiation_request: {
             vendor: "RAZORPAY",
             amount: amount,
@@ -1595,7 +1606,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               enrollmentData?.package_session_to_payment_options?.[0]
                 ?.payment_option?.id || null,
             enroll_invite_id: finalEnrollInviteId,
-            coupon_code: couponCtx.state.appliedCode || null,
+            coupon_code: appliedCouponCode || null,
             payment_initiation_request: {
               amount: 0,
               currency: "USD",
@@ -1686,7 +1697,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
-            coupon_code: couponCtx.state.appliedCode || null,
+            coupon_code: appliedCouponCode || null,
             payment_initiation_request: {
               vendor: "RAZORPAY",
               amount: amount,
@@ -1848,7 +1859,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               ?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
-          coupon_code: couponCtx.state.appliedCode || null,
+          coupon_code: appliedCouponCode || null,
           payment_initiation_request: {
             vendor: "STRIPE",
             amount: amount,

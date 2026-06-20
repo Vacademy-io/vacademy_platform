@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { CaretLeft, CaretRight, Clock, ChalkboardTeacher } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,11 @@ interface HeroSectionProps {
   right?: {
     image?: string;
     alt?: string;
+    /** Optional extra images. When 2+ are provided, the hero media area
+     *  renders an auto-advancing carousel instead of a single image.
+     *  (1 image → single image; 0 → nothing.) Backward compatible: if this
+     *  is empty the single `image` above is used. */
+    images?: Array<{ image?: string; alt?: string }>;
   };
   styles?: {
     padding?: string;
@@ -57,7 +63,7 @@ const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "righ
       {tags.map((tag, i) => (
         <span
           key={`${tag}-${i}`}
-          className="catalogue-badge catalogue-badge-primary rounded-full uppercase tracking-wide"
+          className="inline-flex items-center rounded-full bg-primary-50 border border-primary-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary-500"
         >
           {tag}
         </span>
@@ -87,7 +93,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
     <div>
       <div
         ref={ref}
-        className={`text-lg sm:text-xl text-catalogue-text-secondary leading-relaxed ${
+        className={`text-lg sm:text-xl text-gray-600 leading-relaxed ${
           expanded ? "" : "line-clamp-4"
         }`}
         dangerouslySetInnerHTML={{ __html: html }}
@@ -100,6 +106,31 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
         >
           {expanded ? "View less" : "View more"}
         </button>
+      )}
+    </div>
+  );
+};
+
+// Small "meta" row: duration + instructor. Renders only when at least one value
+// is present. Keeps styling light so it doesn't compete with the title.
+const HeroMeta: React.FC<{ duration?: string; instructor?: string }> = ({
+  duration,
+  instructor,
+}) => {
+  if (!duration && !instructor) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-subtitle text-muted-foreground">
+      {duration && (
+        <span className="flex items-center gap-1.5">
+          <Clock size={16} weight="regular" className="shrink-0 text-primary-400" />
+          {duration}
+        </span>
+      )}
+      {instructor && (
+        <span className="flex items-center gap-1.5">
+          <ChalkboardTeacher size={16} weight="regular" className="shrink-0 text-primary-400" />
+          {instructor}
+        </span>
       )}
     </div>
   );
@@ -181,6 +212,10 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
     const heroImageAlt = right?.alt || sanitizedCourseTitle || "Course preview";
     const isHeroImagePlaceholder = isPlaceholderImage(heroImage);
     const isBackgroundImagePlaceholder = isPlaceholderImage(backgroundImage);
+    // Carousel images can carry the hero media even when no single image is set.
+    const hasCarouselImages = (right?.images || []).some(
+      (im) => im?.image && !isPlaceholderImage(im.image),
+    );
 
     const commonProps = {
       layout,
@@ -195,7 +230,7 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
       backgroundColor,
     };
 
-    if (isHeroImagePlaceholder) {
+    if (isHeroImagePlaceholder && !hasCarouselImages) {
       return <HeroSectionPlaceholder {...commonProps} />;
     }
 
@@ -245,51 +280,53 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
-      style={{ textAlign, ...(backgroundColor ? { backgroundColor } : {}) }} // design-lint-ignore: dynamic admin alignment + colour
+      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      style={{ textAlign, backgroundColor: backgroundColor || undefined }} // design-lint-ignore: page-builder background color
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Content */}
-            {(left || courseData) && (
-              <div className="space-y-5">
-                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
-                {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
-                    {heroTitle}
-                  </h1>
-                )}
-                <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
-                  >
-                    {left.button.text}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Centered Layout */
-          <div className="text-center space-y-5 max-w-3xl mx-auto">
+          /* No media in placeholder — span content full width, centered for balance */
+          <div className="mx-auto max-w-3xl space-y-4">
             {(left || courseData) && (
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
+                <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                  >
+                    {left.button.text}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          /* Centered Layout */
+          <div className="text-center space-y-4 max-w-3xl mx-auto">
+            {(left || courseData) && (
+              <>
+                <HeroTags tags={courseData?.tags} textAlign={textAlign} />
+                {heroTitle && (
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
+                    {heroTitle}
+                  </h1>
+                )}
+                <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
+                <HeroDescription html={heroDescription} />
+                {isHeroButtonEnabled(left?.button) && left?.button && (
+                  <button
+                    onClick={() => handleButtonClick(left.button!)}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>
@@ -300,6 +337,119 @@ const HeroSectionPlaceholder: React.FC<{
         )}
       </div>
     </section>
+  );
+};
+
+// Hero media — renders a single image, or an auto-advancing carousel when 2+
+// images are configured. Resolves media IDs (non-http strings) to public URLs.
+const HeroCarousel: React.FC<{
+  images: Array<{ src: string; alt: string }>;
+}> = ({ images }) => {
+  const [resolved, setResolved] = useState<string[]>([]);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const resolveOne = async (src: string) => {
+      if (!src || src.includes("/api/placeholder/") || src.startsWith("http")) {
+        return src;
+      }
+      try {
+        return await getPublicUrlWithoutLogin(src);
+      } catch {
+        return src;
+      }
+    };
+    Promise.all(images.map((i) => resolveOne(i.src))).then((urls) => {
+      if (active) setResolved(urls);
+    });
+    return () => {
+      active = false;
+    };
+  }, [images]);
+
+  const reduceMotion =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  useEffect(() => {
+    if (images.length <= 1 || reduceMotion) return;
+    const id = setInterval(
+      () => setIndex((i) => (i + 1) % images.length),
+      4500,
+    );
+    return () => clearInterval(id);
+  }, [images.length, reduceMotion]);
+
+  if (images.length === 0) return null;
+  const srcs = images.map((img, i) => resolved[i] || img.src);
+
+  if (images.length === 1) {
+    return (
+      <img
+        src={srcs[0]}
+        alt={images[0].alt}
+        className="h-auto max-h-96 w-full rounded-xl object-contain shadow-md"
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="group relative w-full overflow-hidden rounded-xl shadow-md">
+      <div
+        className="flex transition-transform duration-500 ease-out"
+        style={{ transform: `translateX(-${index * 100}%)` }} // design-lint-ignore: dynamic carousel offset
+      >
+        {srcs.map((src, i) => (
+          <img
+            key={i}
+            src={src}
+            alt={images[i].alt}
+            className="h-auto max-h-96 w-full shrink-0 object-contain"
+          />
+        ))}
+      </div>
+
+      {/* Dots */}
+      <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
+        {images.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setIndex(i)}
+            aria-label={`Go to slide ${i + 1}`}
+            className={cn(
+              "h-2 rounded-full bg-white transition-all duration-300",
+              i === index ? "w-5" : "w-2 bg-white/60 hover:bg-white/80",
+            )}
+          />
+        ))}
+      </div>
+
+      {/* Arrows (appear on hover) */}
+      <button
+        type="button"
+        onClick={() =>
+          setIndex((i) => (i - 1 + images.length) % images.length)
+        }
+        aria-label="Previous slide"
+        className="absolute left-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
+      >
+        <CaretLeft size={16} weight="bold" />
+      </button>
+      <button
+        type="button"
+        onClick={() => setIndex((i) => (i + 1) % images.length)}
+        aria-label="Next slide"
+        className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
+      >
+        <CaretRight size={16} weight="bold" />
+      </button>
+    </div>
   );
 };
 
@@ -382,12 +532,32 @@ const HeroSectionWithState: React.FC<{
 
   const hasBgImage = !!(resolvedBgUrl && !isBackgroundImagePlaceholder);
 
+  // Build the hero media list: explicit carousel images (2+ → carousel) or
+  // fall back to the single resolved image. 0 → no media slot.
+  const carouselImages = (right?.images || [])
+    .map((im) => ({ src: im.image || "", alt: im.alt || heroImageAlt }))
+    .filter((im) => im.src && !isPlaceholderImage(im.src));
+  const heroMedia =
+    carouselImages.length > 0
+      ? carouselImages
+      : heroImage && !isHeroImagePlaceholder
+        ? [{ src: resolvedImageUrl || heroImage, alt: heroImageAlt }]
+        : [];
+
+  // Course-details hero (gets courseData) uses the new wider 5/7 split + bigger
+  // title + meta. The homepage / landing hero (no courseData) keeps the
+  // original 50/50 split and title.
+  const isCourseDetail = !!courseData;
+  const titleClass = isCourseDetail
+    ? "text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight"
+    : "text-h1 font-bold text-gray-900 leading-tight tracking-tight";
+
   return (
     <section
-      className={cn("catalogue-hero-surface w-full overflow-hidden py-14 md:py-24", roundedEdges && "rounded-lg")}
-      style={{ // design-lint-ignore: dynamic admin alignment + background image/colour
+      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      style={{
         textAlign,
-        backgroundColor: !hasBgImage && backgroundColor ? backgroundColor : undefined,
+        backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -397,22 +567,29 @@ const HeroSectionWithState: React.FC<{
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Content */}
+          /* Course-details: 12-col grid (content 5 / banner 7). Homepage: 50/50. */
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-8 lg:gap-12 items-center",
+              isCourseDetail ? "lg:grid-cols-12" : "lg:grid-cols-2",
+            )}
+          >
+            {/* Left Content — 5/12 on desktop */}
             {(left || courseData) && (
-              <div className="space-y-5">
+              <div className={cn("space-y-4", isCourseDetail ? (heroMedia.length > 0 ? "lg:col-span-5" : "lg:col-span-12") : "")}>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className={titleClass}>
                     {heroTitle}
                   </h1>
                 )}
+                <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>
@@ -420,43 +597,42 @@ const HeroSectionWithState: React.FC<{
               </div>
             )}
 
-            {/* Right Content - Image */}
-            {(right || courseData) && heroImage && !isHeroImagePlaceholder && (
-              <div className="flex justify-center lg:justify-end">
-                <img
-                  src={resolvedImageUrl || heroImage}
-                  alt={heroImageAlt}
-                  fetchPriority="high"
-                  className="w-full h-auto max-h-96 lg:max-h-preview-480 rounded-xl object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
+            {/* Right Content — 7/12 on desktop: wider column gives the banner more room */}
+            {heroMedia.length > 0 && (
+              <div className={cn("flex w-full items-center justify-center lg:justify-end", isCourseDetail && "lg:col-span-7")}>
+                <HeroCarousel images={heroMedia} />
               </div>
             )}
           </div>
         ) : (
           /* Centered Layout */
-          <div className="text-center space-y-5 max-w-3xl mx-auto">
+          <div className="text-center space-y-4 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-catalogue-text-primary leading-tight tracking-tight">
+                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
                     {heroTitle}
                   </h1>
                 )}
+                <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
                 {isHeroButtonEnabled(left?.button) && left?.button && (
                   <button
                     onClick={() => handleButtonClick(left.button!)}
-                    className="catalogue-btn catalogue-btn-primary catalogue-btn-lg mt-4 shadow-lg transition-transform hover:-translate-y-0.5"
-                    style={left.button.backgroundColor ? { backgroundColor: left.button.backgroundColor } : undefined}
+                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
                   >
                     {left.button.text}
                   </button>
                 )}
               </>
+            )}
+            {/* Centered media — image or carousel below the text */}
+            {heroMedia.length > 0 && (
+              <div className="mx-auto mt-8 w-full max-w-2xl">
+                <HeroCarousel images={heroMedia} />
+              </div>
             )}
           </div>
         )}

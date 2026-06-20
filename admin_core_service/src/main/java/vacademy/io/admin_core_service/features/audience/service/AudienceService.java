@@ -423,6 +423,141 @@ public class AudienceService {
                 .build());
     }
 
+    /** Campaign name used for the auto-provisioned per-institute catalogue lead audience. */
+    private static final String CATALOGUE_AUDIENCE_NAME = "Course Catalogue Leads";
+
+    /**
+     * Submit a lead captured from the public course catalogue / course-details
+     * "Get Started" form. The caller only knows the institute (not an audienceId),
+     * so we resolve — or lazily create — a single per-institute "Course Catalogue
+     * Leads" audience and then route through the normal v2 lead pipeline. This is
+     * what makes catalogue leads appear in Audience Manager → Recent Leads (they
+     * previously landed in student_session_institute_group_mapping, which no lead
+     * screen reads).
+     *
+     * NOTE: deliberately NOT @Transactional. submitLeadV2 runs several "non-blocking"
+     * @Transactional sub-calls (lead score, counsellor assignment, workflow trigger)
+     * inside its own try/catch. On a freshly auto-provisioned audience (no pool /
+     * scoring / field config) one of those can throw; the catch swallows it, but the
+     * throw has already marked any *surrounding* transaction rollback-only — so an
+     * outer @Transactional here would fail the commit with "Transaction silently
+     * rolled back" and lose the lead. Without an outer transaction, the audience_
+     * response save commits on its own and a failing sub-op only rolls back its own
+     * tiny transaction. (submitLeadV2's own @Transactional is bypassed here anyway,
+     * since this is a same-bean self-invocation.)
+     */
+    public String submitCatalogueLead(CatalogueLeadRequestDTO dto) {
+        if (dto == null || !StringUtils.hasText(dto.getInstituteId())) {
+            throw new VacademyException("instituteId is required");
+        }
+        // submitLeadV2 builds the lead's user from the email; without an email it
+        // saves nothing and returns an error sentinel. The catalogue form already
+        // makes email mandatory, so require it here too rather than silently drop.
+        if (!StringUtils.hasText(dto.getEmail())) {
+            throw new VacademyException("Email is required to capture a lead");
+        }
+
+        Audience audience = getOrCreateCatalogueAudience(dto.getInstituteId());
+
+        UserDTO userDTO = UserDTO.builder()
+                .fullName(dto.getFullName())
+                .email(dto.getEmail())
+                .mobileNumber(dto.getMobileNumber())
+                .build();
+
+        // Carry the visible lead fields as custom field values too, so the
+        // Recent Leads table shows name/email/phone even before the admin
+        // defines a custom-field schema for the auto-created audience.
+        Map<String, String> customFieldValues = dto.getCustomFieldValues() != null
+                ? new HashMap<>(dto.getCustomFieldValues())
+                : new HashMap<>();
+        if (StringUtils.hasText(dto.getFullName())) {
+            customFieldValues.putIfAbsent("full_name", dto.getFullName());
+        }
+        if (StringUtils.hasText(dto.getEmail())) {
+            customFieldValues.putIfAbsent("email", dto.getEmail());
+        }
+        if (StringUtils.hasText(dto.getMobileNumber())) {
+            customFieldValues.putIfAbsent("phone", dto.getMobileNumber());
+        }
+
+        final String sourceId = StringUtils.hasText(dto.getSourceId()) ? dto.getSourceId() : "course-catalogue";
+
+        // Create the lead directly rather than via submitLeadV2: that method is built
+        // for fully-configured campaigns and its email/workflow/score machinery throws
+        // on a freshly auto-provisioned audience (no pool / scoring / field schema),
+        // getting swallowed into a generic sentinel. Here the two essential steps
+        // (user + audience_response) surface real errors, and the enrichment steps are
+        // best-effort so a lead is never lost over optional config.
+
+        // 1. Create/fetch the lead's user in auth_service (no credentials email).
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
+        String userId = createdUser != null ? createdUser.getId() : null;
+
+        // 2. Dedup per person per campaign (same behaviour as submitLeadV2).
+        if (StringUtils.hasText(userId)
+                && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            return "You have already submitted your response for this campaign";
+        }
+
+        // 3. Persist the lead — this is what Audience Manager → Recent Leads reads.
+        AudienceResponse savedResponse = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("COURSE_CATALOGUE")
+                .sourceId(sourceId)
+                .userId(userId)
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        // 4. Enrichment — best-effort; never block the saved lead.
+        try {
+            logLeadSubmitted(savedResponse);
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: logLeadSubmitted failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            if (!CollectionUtils.isEmpty(customFieldValues)) {
+                saveCustomFieldValues(savedResponse.getId(), customFieldValues, audience.getInstituteId(),
+                        audience.getId());
+            }
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: saveCustomFieldValues failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(savedResponse.getId(), savedResponse.getAudienceId(),
+                    audience.getInstituteId(), savedResponse.getSourceType(), savedResponse.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Catalogue lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
+        }
+
+        return savedResponse.getId();
+    }
+
+    /**
+     * Resolve the per-institute "Course Catalogue Leads" audience, creating a
+     * minimal ACTIVE one on first use so no manual campaign setup is required.
+     */
+    private Audience getOrCreateCatalogueAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, CATALOGUE_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(CATALOGUE_AUDIENCE_NAME)
+                            .campaignType("WEBSITE")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from the public course catalogue and course pages")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned Course Catalogue Leads audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
     /**
      * Submit a lead from website form
      * Automatically creates/fetches user from auth_service

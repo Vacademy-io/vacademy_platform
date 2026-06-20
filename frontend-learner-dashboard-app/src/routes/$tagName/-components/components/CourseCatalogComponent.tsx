@@ -9,16 +9,19 @@ import {
   Funnel,
   CaretDown,
   CaretUp,
+  CaretLeft,
+  CaretRight,
   MagnifyingGlass,
   SortAscending,
   ShoppingCart,
   Plus,
   Minus,
   BookOpen,
-  Star,
   X,
+  Clock,
+  ChartBarHorizontal,
 } from "@phosphor-icons/react";
-import { toTitleCase, cn } from "@/lib/utils";
+import { cn, toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import {
@@ -27,6 +30,20 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
+
+// Compact, scaling page list with ellipsis. Always keeps a consistent number
+// of controls (~6-7) no matter how many pages there are — so the catalogue can
+// grow to hundreds of pages without the pagination ever overflowing.
+//   near start:  [1, 2, 3, 4, …, 50]
+//   middle:      [1, …, 24, 25, 26, …, 50]
+//   near end:    [1, …, 47, 48, 49, 50]
+const getPageNumbers = (current: number, total: number): (number | "...")[] => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 3) return [1, 2, 3, 4, "...", total];
+  if (current >= total - 2)
+    return [1, "...", total - 3, total - 2, total - 1, total];
+  return [1, "...", current - 1, current, current + 1, "...", total];
+};
 // EnrollmentPaymentDialog import removed - not used in catalog
 
 type PriceRangeState = { min?: number; max?: number } | null;
@@ -402,154 +419,27 @@ const CartControls: React.FC<{
   return null;
 };
 
-// ─── Course card — elevated, image-zoom, themed badges (Modern EdTech depth) ──
+// ─── Category color palette (deterministic, JIT-safe literal strings) ────────
+const CATEGORY_PALETTE = [
+  { band: "from-violet-100 to-violet-50", text: "text-violet-600", icon: "text-violet-400" },
+  { band: "from-teal-100 to-teal-50",    text: "text-teal-600",   icon: "text-teal-400"   },
+  { band: "from-amber-100 to-amber-50",  text: "text-amber-600",  icon: "text-amber-400"  },
+  { band: "from-pink-100 to-pink-50",    text: "text-pink-600",   icon: "text-pink-400"   },
+  { band: "from-blue-100 to-blue-50",    text: "text-blue-600",   icon: "text-blue-400"   },
+  { band: "from-emerald-100 to-emerald-50", text: "text-emerald-600", icon: "text-emerald-400" },
+  { band: "from-orange-100 to-orange-50", text: "text-orange-600", icon: "text-orange-400" },
+  { band: "from-indigo-100 to-indigo-50", text: "text-indigo-600", icon: "text-indigo-400" },
+] as const;
 
-interface CourseCardProps {
-  course: Course;
-  globalSettings?: any;
-  render?: { styles?: { roundedEdges?: boolean } };
-  cartButtonConfig?: {
-    enabled?: boolean;
-    showAddToCartButton?: boolean;
-    showQuantitySelector?: boolean;
-    quantityMin?: number;
-  };
-  displayTitle: boolean;
-  displayDescription: boolean;
-  displayImage: boolean;
-  displayPrice: boolean;
-  displayLevel: boolean;
-  displayRating: boolean;
-  showCartControls: boolean;
-  onView: () => void;
-  addItem: (item: Omit<CartItem, "quantity">) => void;
-  removeItem: (enrollInviteId: string) => void;
-  updateQuantity: (enrollInviteId: string, quantity: number) => void;
-  getItemByEnrollInviteId: (id: string) => CartItem | undefined;
+function getCategoryStyle(key: string) {
+  if (!key) return CATEGORY_PALETTE[0];
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
 }
-
-const CourseCard: React.FC<CourseCardProps> = ({
-  course,
-  globalSettings,
-  render,
-  cartButtonConfig,
-  displayTitle,
-  displayDescription,
-  displayImage,
-  displayPrice,
-  displayLevel,
-  displayRating,
-  showCartControls,
-  onView,
-  addItem,
-  removeItem,
-  updateQuantity,
-  getItemByEnrollInviteId,
-}) => {
-  const levelLabel = displayLevelName(course.level);
-  const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
-  const hasMeta =
-    (displayLevel && !!levelLabel) ||
-    (displayRating && course.rating > 0) ||
-    showCartControls;
-
-  return (
-    <div
-      className={cn(
-        "catalogue-card-elevated group flex cursor-pointer flex-col",
-        render?.styles?.roundedEdges === false && "rounded-none",
-      )}
-      onClick={onView}
-    >
-      {/* Thumbnail with zoom-on-hover + offer badge overlay */}
-      {displayImage && (
-        <div className="catalogue-img-zoom relative">
-          <CourseImage
-            previewImageUrl={course.thumbnail}
-            alt={course.title}
-            className="h-44 w-full object-cover"
-          />
-          <div className="absolute left-3 top-3">
-            <OfferBadge actual={course.price} elevated={course.elevatedPrice} />
-          </div>
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="flex flex-1 flex-col p-4">
-        {displayTitle && (
-          <h3 className="mb-1.5 line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">
-            {course.title}
-          </h3>
-        )}
-
-        {displayDescription &&
-          course.description &&
-          course.description !== "No description available" && (
-            <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
-              {course.description}
-            </p>
-          )}
-
-        {displayPrice && globalSettings?.payment?.enabled !== false && (
-          <PriceWithMrp
-            actual={course.price}
-            elevated={course.elevatedPrice}
-            currency={course.currency}
-            size="md"
-            className="mb-3 text-primary-500"
-          />
-        )}
-
-        <div className="mt-auto flex flex-col gap-3 pt-1">
-          {hasMeta && (
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {displayLevel && levelLabel && (
-                  <span className="catalogue-badge catalogue-badge-primary">
-                    {levelLabel}
-                  </span>
-                )}
-                {displayRating && course.rating > 0 && (
-                  <span className="catalogue-chip-rating">
-                    <Star size={12} weight="fill" aria-hidden="true" />
-                    {course.rating.toFixed(1)}
-                  </span>
-                )}
-              </div>
-
-              {showCartControls && (
-                <CartControls
-                  course={course}
-                  globalSettings={globalSettings}
-                  cartButtonConfig={cartButtonConfig}
-                  addItem={addItem}
-                  getItemByEnrollInviteId={getItemByEnrollInviteId}
-                  updateQuantity={updateQuantity}
-                  removeItem={removeItem}
-                />
-              )}
-            </div>
-          )}
-
-          {/* Explicit, keyboard-focusable CTA (also the accessible action for the
-              whole-card mouse click above). */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onView();
-            }}
-            className="catalogue-btn catalogue-btn-primary w-full"
-            aria-label={`View ${course.title}`}
-          >
-            View {courseTerm}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   title,
@@ -575,7 +465,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState("Newest");
-  const [totalApiElements, setTotalApiElements] = useState(0);
 
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -587,7 +476,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 9;
+  const itemsPerPage = 12;
 
   // Derive filter options from loaded courses (before shouldShow* checks)
   const levels = useMemo(
@@ -639,7 +528,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const displayDescription = isCardFieldEnabled("course_html_description_html");
   const displayImage = isCardFieldEnabled("course_preview_image_media_id");
   const displayLevel = isCardFieldEnabled("level_name");
-  const displayRating = isCardFieldEnabled("rating");
   const displayPrice = isCardFieldEnabled("price");
   const displayQuantity = isCardFieldEnabled("quantity");
   const displayCartActions = isCardFieldEnabled("cart_actions");
@@ -816,10 +704,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             params: {
               instituteId: instituteId,
               page: 0,
-              // Interim cap-raise: the grid filters/sorts/paginates client-side,
-              // so fetch enough to avoid silently dropping courses (51+ were
-              // previously unreachable). TODO: move to server-side pagination + facets.
-              size: 500,
+              // Load the full catalogue so client-side filters, search and
+              // pagination span every course. The API is server-paginated;
+              // fetching a single 50-item page previously capped the UI at ~6
+              // pages even when the institute had many more courses.
+              // TODO: move to true server-side pagination + facets.
+              size: 1000,
               sort: "createdAt,desc",
             },
             headers: {
@@ -877,9 +767,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             instructor:
               course.instructors?.[0]?.full_name || "Unknown Instructor",
             duration:
-              course.estimated_duration ||
-              course.duration ||
-              "Unknown Duration",
+              course.estimated_duration || course.duration || "",
             rating: course.rating || 0,
             packageSessionId: course.package_session_id,
             enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
@@ -890,9 +778,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           };
         });
 
-        setTotalApiElements(
-          response.data?.totalElements || transformedCourses.length,
-        );
+        if (
+          typeof response.data?.totalElements === "number" &&
+          response.data.totalElements > transformedCourses.length
+        ) {
+          console.warn(
+            `[CourseCatalogComponent] Loaded ${transformedCourses.length} of ${response.data.totalElements} courses — raise the fetch size for full pagination.`,
+          );
+        }
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
       } catch (error) {
@@ -1422,30 +1315,190 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
             {/* Course Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {paginatedCourses.map((course, idx) => (
-                <CourseCard
-                  key={
-                    course.enrollInviteId ??
-                    `${course.id}-${course.packageSessionId ?? ""}-${idx}`
-                  }
-                  course={course}
-                  globalSettings={globalSettings}
-                  render={render}
-                  cartButtonConfig={cartButtonConfig}
-                  displayImage={displayImage}
-                  displayTitle={displayTitle}
-                  displayDescription={displayDescription}
-                  displayPrice={displayPrice}
-                  displayLevel={displayLevel}
-                  displayRating={displayRating}
-                  showCartControls={shouldShowCartControls}
-                  onView={() => handleCourseClick(course)}
-                  addItem={addItem}
-                  getItemByEnrollInviteId={getItemByEnrollInviteId}
-                  updateQuantity={updateQuantity}
-                  removeItem={removeItem}
-                />
-              ))}
+              {paginatedCourses.map((course, index) => {
+                // Compute category label: first tag > non-General type > level
+                const category =
+                  course.tags?.[0] ||
+                  (course.type && course.type !== "General" ? course.type : "") ||
+                  course.level ||
+                  "";
+                const categoryStyle = getCategoryStyle(category);
+                const courseTerm = getTerminology(
+                  ContentTerms.Course,
+                  SystemTerms.Course,
+                );
+                const levelLabel = displayLevelName(course.level);
+
+                // Determine whether the course has a real image to display
+                const hasRealImage =
+                  displayImage &&
+                  course.thumbnail &&
+                  !course.thumbnail.includes("/api/placeholder/") &&
+                  course.thumbnail.trim() !== "" &&
+                  course.thumbnail !== "null" &&
+                  course.thumbnail !== "undefined";
+
+                return (
+                  <div
+                    key={
+                      course.enrollInviteId ??
+                      `${course.id}-${course.packageSessionId ?? ""}-${index}`
+                    }
+                    className={cn(
+                      "bg-white flex flex-col cursor-pointer border border-gray-100",
+                      "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
+                      render?.styles?.roundedEdges !== false
+                        ? "rounded-xl overflow-hidden"
+                        : "rounded-none overflow-hidden",
+                    )}
+                    onClick={() => handleCourseClick(course)}
+                  >
+                    {/* ── Header band (image or gradient fallback) ── */}
+                    {displayImage && (
+                      <div className="relative h-44 overflow-hidden flex-shrink-0">
+                        {hasRealImage ? (
+                          /* Real image: fill the band */
+                          <div className="w-full h-full">
+                            <CourseImage
+                              previewImageUrl={course.thumbnail}
+                              alt={course.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          /* No image: pastel gradient + centered icon */
+                          <div
+                            className={cn(
+                              "w-full h-full flex items-center justify-center",
+                              "bg-gradient-to-br",
+                              categoryStyle.band,
+                            )}
+                          >
+                            <BookOpen
+                              size={56}
+                              weight="duotone"
+                              className={categoryStyle.icon}
+                            />
+                          </div>
+                        )}
+                        {/* Offer badge: top-left overlay */}
+                        <div className="absolute top-3 left-3">
+                          <OfferBadge
+                            actual={course.price}
+                            elevated={course.elevatedPrice}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Card body ── */}
+                    <div className="flex flex-col flex-1 p-5 gap-2">
+                      {/* Category label */}
+                      {category && (
+                        <span
+                          className={cn(
+                            "text-xs font-bold uppercase tracking-wide",
+                            categoryStyle.text,
+                          )}
+                        >
+                          {category}
+                        </span>
+                      )}
+
+                      {/* Title */}
+                      {displayTitle && (
+                        <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-snug">
+                          {course.title}
+                        </h3>
+                      )}
+
+                      {/* Description — guard against placeholder text */}
+                      {displayDescription &&
+                        course.description &&
+                        course.description !== "No description available" && (
+                          <p className="text-sm text-gray-500 line-clamp-2 leading-relaxed">
+                            {course.description}
+                          </p>
+                        )}
+
+                      {/* Spacer pushes meta row to the bottom */}
+                      <div className="flex-1" />
+
+                      {/* ── Meta footer row ── */}
+                      <div className="border-t border-gray-100 pt-3 flex items-center justify-between gap-2">
+                        {/* Left: duration + level */}
+                        <div className="flex items-center gap-3 text-xs text-gray-500 min-w-0">
+                          {course.duration && (
+                            <span className="flex items-center gap-1 shrink-0">
+                              <Clock size={13} weight="bold" aria-hidden="true" />
+                              {course.duration}
+                            </span>
+                          )}
+                          {displayLevel && levelLabel && (
+                            <span className="flex items-center gap-1 truncate">
+                              <ChartBarHorizontal size={13} weight="bold" aria-hidden="true" />
+                              {levelLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Right: price */}
+                        {displayPrice &&
+                          globalSettings?.payment?.enabled !== false && (
+                            <div className="shrink-0">
+                              {course.price === 0 ? (
+                                <span className="text-xs font-bold text-green-600">
+                                  100% Free
+                                </span>
+                              ) : (
+                                <PriceWithMrp
+                                  actual={course.price}
+                                  elevated={course.elevatedPrice}
+                                  currency={course.currency}
+                                  size="sm"
+                                  layout="inline"
+                                  hideBadge
+                                />
+                              )}
+                            </div>
+                          )}
+                      </div>
+
+                      {/* Cart controls */}
+                      {shouldShowCartControls && (
+                        <div
+                          className="mt-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <CartControls
+                            course={course}
+                            globalSettings={globalSettings}
+                            cartButtonConfig={cartButtonConfig}
+                            addItem={addItem}
+                            getItemByEnrollInviteId={getItemByEnrollInviteId}
+                            updateQuantity={updateQuantity}
+                            removeItem={removeItem}
+                          />
+                        </div>
+                      )}
+
+                      {/* Keyboard-focusable CTA — also the accessible action for
+                          the whole-card mouse click above. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCourseClick(course);
+                        }}
+                        className="catalogue-btn catalogue-btn-primary mt-2 w-full"
+                        aria-label={`View ${courseTerm}`}
+                      >
+                        View {courseTerm}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* No Results */}
@@ -1475,34 +1528,49 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-1.5">
+              <div className="mt-8 flex flex-col items-center gap-4">
+                <nav
+                  aria-label="Pagination"
+                  className="flex flex-wrap items-center justify-center gap-1.5"
+                >
                   <button
                     type="button"
                     onClick={() =>
                       setCurrentPage((prev) => Math.max(prev - 1, 1))
                     }
                     disabled={currentPage === 1}
-                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Previous page"
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Previous
+                    <CaretLeft size={15} weight="bold" />
+                    <span className="hidden sm:inline">Previous</span>
                   </button>
 
-                  {[...Array(totalPages)].map((_, i) => (
-                    <button
-                      key={i + 1}
-                      type="button"
-                      onClick={() => setCurrentPage(i + 1)}
-                      className={cn(
-                        "catalogue-btn catalogue-btn-sm font-medium",
-                        currentPage === i + 1
-                          ? "catalogue-btn-primary"
-                          : "catalogue-btn-secondary",
-                      )}
-                    >
-                      {i + 1}
-                    </button>
-                  ))}
+                  {getPageNumbers(currentPage, totalPages).map((p, i) =>
+                    p === "..." ? (
+                      <span
+                        key={`dots-${i}`}
+                        className="select-none px-1.5 text-gray-400"
+                      >
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p as number)}
+                        aria-current={currentPage === p ? "page" : undefined}
+                        className={cn(
+                          "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-medium transition-colors",
+                          currentPage === p
+                            ? "border-primary-500 bg-primary-500 text-white shadow-sm"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                        )}
+                      >
+                        {p}
+                      </button>
+                    ),
+                  )}
 
                   <button
                     type="button"
@@ -1510,17 +1578,29 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       setCurrentPage((prev) => Math.min(prev + 1, totalPages))
                     }
                     disabled={currentPage === totalPages}
-                    className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    aria-label="Next page"
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Next
+                    <span className="hidden sm:inline">Next</span>
+                    <CaretRight size={15} weight="bold" />
                   </button>
-                </div>
-                {totalApiElements > courses.length && (
-                  <p className="text-xs text-catalogue-text-secondary">
-                    Showing {courses.length} of {totalApiElements}{" "}
-                    {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}
-                  </p>
-                )}
+                </nav>
+
+                <p className="text-sm text-catalogue-text-secondary">
+                  Showing{" "}
+                  <span className="font-semibold text-catalogue-text-primary">
+                    {(currentPage - 1) * itemsPerPage + 1}–
+                    {Math.min(
+                      currentPage * itemsPerPage,
+                      filteredCourses.length,
+                    )}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold text-catalogue-text-primary">
+                    {filteredCourses.length}
+                  </span>{" "}
+                  {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}
+                </p>
               </div>
             )}
           </div>

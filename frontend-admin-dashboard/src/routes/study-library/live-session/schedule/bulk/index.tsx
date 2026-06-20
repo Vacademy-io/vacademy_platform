@@ -3,11 +3,11 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { Helmet } from 'react-helmet';
 import { useEffect } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { CaretLeft } from '@phosphor-icons/react';
+import { CaretLeft, CircleNotch } from '@phosphor-icons/react';
 import ScheduleBulkPage from '../-components/scheduleBulkPage';
+import { ScheduleErrorBoundary } from '../-components/ScheduleErrorBoundary';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-import { Loader2 } from 'lucide-react';
 
 export const Route = createFileRoute('/study-library/live-session/schedule/bulk/')({
     component: RouteComponent,
@@ -55,7 +55,7 @@ function RouteComponent() {
         return (
             <LayoutContainer>
                 <div className="flex h-64 items-center justify-center">
-                    <Loader2 className="size-8 animate-spin text-neutral-400" />
+                    <CircleNotch className="size-8 animate-spin text-neutral-400" />
                 </div>
             </LayoutContainer>
         );
@@ -70,7 +70,9 @@ function RouteComponent() {
                     content="Schedule many live sessions at once in a single sheet."
                 />
             </Helmet>
-            <ScheduleBulkPage />
+            <ScheduleErrorBoundary feature="live-session-bulk-schedule">
+                <ScheduleBulkPage />
+            </ScheduleErrorBoundary>
         </LayoutContainer>
     );
 }

@@ -32,6 +32,10 @@ cp "$SCRIPT_DIR/worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/transcribe_worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/screenshot_worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/audio_ops.py" "$BUILD_DIR/"
+# pptx_anim.py: .pptx -> build-step snapshots + manifest (the /pptx-anim-jobs
+# handler does `from pptx_anim import convert_deck_to_s3`). Without this line the
+# curated build context omits it and the image ModuleNotFoundErrors at job time.
+cp "$SCRIPT_DIR/pptx_anim.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/Dockerfile" "$BUILD_DIR/"
 

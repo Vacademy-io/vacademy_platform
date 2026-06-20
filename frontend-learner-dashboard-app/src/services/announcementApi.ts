@@ -109,15 +109,23 @@ export const getSystemAlertUnreadCount = async () => {
 };
 
 // Dashboard Pins API
-export const getDashboardPins = async () => {
+export const getDashboardPins = async (): Promise<UserMessage[]> => {
   try {
     const { userId } = await getUserContext();
     if (!userId) throw new Error('User ID not found');
 
-    const response = await notificationApi.get<UserMessage[]>(
+    const response = await notificationApi.get(
       `/user-messages/user/${userId}/dashboard-pins`
     );
-    return response.data;
+    // The endpoint returns a plain array, but a cached/proxied 200 can hand back a
+    // non-array body (HTML error page, paginated envelope, etc.). Always normalize to
+    // an array so downstream consumers never call .filter/.map on a non-array.
+    const data = response.data as unknown;
+    if (Array.isArray(data)) return data as UserMessage[];
+    if (data && Array.isArray((data as { content?: unknown }).content)) {
+      return (data as { content: UserMessage[] }).content;
+    }
+    return [];
   } catch (error) {
     console.error('Error fetching dashboard pins:', error);
     return [];

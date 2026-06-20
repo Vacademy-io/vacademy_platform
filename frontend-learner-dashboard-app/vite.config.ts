@@ -46,6 +46,12 @@ export default defineConfig({
             '/ai-service': { target: 'http://localhost:8077', changeOrigin: true },
         },
     },
+    esbuild: {
+        // Strip noisy console.* from PRODUCTION bundles only — minify drops these
+        // pure-annotated unused calls; dev serve (no minify) keeps them.
+        // console.warn / console.error are intentionally preserved.
+        pure: ['console.log', 'console.info', 'console.debug'],
+    },
     build: {
         // Optimize build for memory usage
         chunkSizeWarningLimit: 1000,

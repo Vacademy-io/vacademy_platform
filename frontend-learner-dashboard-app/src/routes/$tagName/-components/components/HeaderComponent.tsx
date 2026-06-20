@@ -587,8 +587,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
               {isCourseCatalogeTypeEnabled && !isAuthenticated && (
                 <button
                   onClick={() => navigate({ to: '/login' })}
-                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white hover:opacity-90 transition-opacity duration-200"
-                  style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }} // design-lint-ignore: page-builder default color
+                  className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                 >
                   Login
                 </button>
@@ -628,16 +627,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           handleNavigation(link.route, link.label);
                         }
                       }}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${index === 0
-                        ? 'text-white hover:opacity-90'
-                        : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${index === 0
+                        ? 'bg-primary-500 text-white hover:bg-primary-400'
+                        : 'border border-primary-500 text-primary-500 hover:bg-primary-50'
                         }`}
-                      style={index === 0 ? {
-                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                      } : {
-                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
-                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                      }}
                     >
                       {link.label}
                     </button>
@@ -692,8 +685,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       setIsMobileMenuOpen(false);
                       navigate({ to: '/login' });
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white hover:opacity-90 transition-opacity duration-200"
-                    style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }} // design-lint-ignore: page-builder default color
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium bg-primary-500 text-white hover:bg-primary-400 transition-colors duration-200"
                   >
                     <span>Login</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -898,15 +890,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 navigate({ to: link.route });
                               }
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-all duration-200 ${index === 0
-                              ? 'text-white hover:opacity-90'
-                              : 'hover:opacity-80'
+                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                              ? 'bg-primary-500 text-white hover:bg-primary-400'
+                              : 'text-primary-500 hover:bg-primary-50'
                               }`}
-                            style={index === 0 ? {
-                                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                            } : {
-                                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                            }}
                           >
                             {link.label}
                           </button>

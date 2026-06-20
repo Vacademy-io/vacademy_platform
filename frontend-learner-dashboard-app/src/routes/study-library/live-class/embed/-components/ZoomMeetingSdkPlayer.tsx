@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
+import { AppLauncher } from "@capacitor/app-launcher";
+import { ArrowSquareOut } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ZOOM_SDK_SIGNATURE_ENDPOINT } from "@/constants/urls";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
+import { Button } from "@/components/ui/button";
 
 /**
  * Joins a live Zoom meeting using the Web Meeting SDK **Client View** (the
@@ -114,6 +119,18 @@ function ensureZmmtgRoot(): HTMLElement {
     return root;
 }
 
+/**
+ * Hides the singleton #zmmtg-root. Zoom's bootstrap.css makes it a fixed,
+ * full-viewport, high-z-index overlay, so it MUST be hidden on every error path
+ * after ensureZmmtgRoot() ran — otherwise the (empty) Zoom shell covers our
+ * error message and the "Open in Zoom" fallback button. The node is kept (not
+ * removed) so a re-init can reuse it.
+ */
+function hideZmmtgRoot(): void {
+    const root = document.getElementById("zmmtg-root");
+    if (root) root.style.display = "none";
+}
+
 interface ZoomSdkSignature {
     signature: string;
     sdkKey: string;
@@ -128,13 +145,50 @@ interface ZoomSdkSignature {
 
 type Phase = "loading" | "joining" | "joined" | "error";
 
+/**
+ * Native escape hatch when the in-WebView Client View can't run: open the meeting
+ * in the Zoom APP via the zoommtg:// deep link (built from the signature payload),
+ * falling back to the web join URL in an in-app browser if the Zoom app isn't
+ * installed. canOpenUrl needs the zoommtg scheme declared (Android manifest
+ * <queries>, iOS LSApplicationQueriesSchemes) — both are present.
+ */
+async function launchZoomExternally(
+    data: ZoomSdkSignature | undefined,
+    webUrl: string
+): Promise<void> {
+    try {
+        if (data?.meetingNumber) {
+            const { value } = await AppLauncher.canOpenUrl({ url: "zoommtg://" });
+            if (value) {
+                const deepLink =
+                    "zoommtg://zoom.us/join?action=join" +
+                    `&confno=${encodeURIComponent(data.meetingNumber)}` +
+                    `&pwd=${encodeURIComponent(data.passcode ?? "")}` +
+                    `&uname=${encodeURIComponent(data.userName ?? "")}` +
+                    "&zc=0";
+                await AppLauncher.openUrl({ url: deepLink });
+                return;
+            }
+        }
+    } catch {
+        /* Zoom app not installed / scheme not queryable → fall through to browser */
+    }
+    await Browser.open({ url: webUrl, presentationStyle: "fullscreen" });
+}
+
 export default function ZoomMeetingSdkPlayer({
     scheduleId,
     leaveUrl,
+    nativeFallbackUrl,
 }: {
     scheduleId: string;
     /** Where Zoom's "Leave" sends the browser. Defaults to the app origin. */
     leaveUrl?: string;
+    /** On Capacitor, if the Zoom Client View hits a load/init/join/signature error,
+     *  offer to open the meeting in the Zoom app (zoommtg:// deep link), falling back
+     *  to this web join URL in a browser. (Camera/mic denial is handled inside the SDK
+     *  and does NOT route here.) */
+    nativeFallbackUrl?: string;
 }) {
     const startedRef = useRef(false);
     const [phase, setPhase] = useState<Phase>("loading");
@@ -220,6 +274,7 @@ export default function ZoomMeetingSdkPlayer({
                             error: (err: any) => {
                                 console.error("[Zoom Learner ClientView] join failed:", err);
                                 if (!cancelled) {
+                                    hideZmmtgRoot(); // else the empty Zoom shell covers the error UI
                                     setErrorMsg(`Could not join the Zoom meeting (${err?.errorCode ?? "join error"}).`);
                                     setPhase("error");
                                 }
@@ -233,6 +288,7 @@ export default function ZoomMeetingSdkPlayer({
                     error: (err: any) => {
                         console.error("[Zoom Learner ClientView] init failed:", err);
                         if (!cancelled) {
+                            hideZmmtgRoot();
                             setErrorMsg(`Could not initialise the Zoom meeting (${err?.errorCode ?? "init error"}).`);
                             setPhase("error");
                         }
@@ -241,6 +297,7 @@ export default function ZoomMeetingSdkPlayer({
             } catch (err: unknown) {
                 if (cancelled) return;
                 console.error("[Zoom Learner ClientView] load failed:", err);
+                hideZmmtgRoot();
                 setErrorMsg("Could not load the Zoom meeting. Check your connection and try again.");
                 setPhase("error");
             }
@@ -253,17 +310,27 @@ export default function ZoomMeetingSdkPlayer({
             } catch {
                 /* ignore */
             }
-            const root = document.getElementById("zmmtg-root");
-            if (root) root.style.display = "none";
+            hideZmmtgRoot();
             startedRef.current = false;
         };
     }, [data, leaveUrl]);
 
     if (error || phase === "error") {
+        // Capture the URL so TS narrows it (no non-null assertion in the handler).
+        const fallbackUrl = Capacitor.isNativePlatform() ? nativeFallbackUrl : undefined;
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-center">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
                 <p className="text-red-600">{errorMsg ?? "Failed to load the Zoom meeting."}</p>
                 <p className="text-sm text-neutral-500">Please refresh the page or try rejoining.</p>
+                {fallbackUrl && (
+                    <Button
+                        className="mt-2 gap-2"
+                        onClick={() => void launchZoomExternally(data, fallbackUrl)}
+                    >
+                        <ArrowSquareOut size={18} />
+                        Open in Zoom app
+                    </Button>
+                )}
             </div>
         );
     }

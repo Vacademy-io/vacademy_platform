@@ -21,6 +21,7 @@ import { SlidesMenuOption } from './slides-menu-options/slides-menu-option';
 import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { useRouter } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
+import DeckPlayer from './deck-player';
 import { PublishDialog } from './publish-slide-dialog';
 import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
@@ -1486,6 +1487,22 @@ export const SlideMaterial = ({
                                 }}
                             />
                         </Suspense>
+                    </div>
+                );
+                return;
+            }
+
+            if (documentType === 'PPT_ANIM') {
+                // .pptx converted to build-step snapshots; data/published_data holds
+                // the deck base URL (manifest.json lives at <base>/manifest.json).
+                const deckBase = isLearnerView
+                    ? activeItem.document_slide?.published_data || ''
+                    : activeItem.status === 'PUBLISHED'
+                      ? activeItem.document_slide?.published_data || ''
+                      : activeItem.document_slide?.data || '';
+                setContent(
+                    <div className="size-full">
+                        <DeckPlayer baseUrl={deckBase} />
                     </div>
                 );
                 return;
@@ -2981,7 +2998,10 @@ export const SlideMaterial = ({
 
             <div
                 className={`mx-auto mt-14 ${
-                    activeItem?.document_slide?.type === 'PDF' ? 'h-[calc(100vh-200px)]' : 'h-full'
+                    activeItem?.document_slide?.type === 'PDF' ||
+                    activeItem?.document_slide?.type === 'PPT_ANIM'
+                        ? 'h-[calc(100vh-200px)]'
+                        : 'h-full'
                 } relative z-20 w-full ${
                     activeItem?.document_slide?.type === 'DOC'
                         ? 'overflow-visible'

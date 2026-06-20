@@ -159,6 +159,51 @@ class RenderService:
             return False
 
     # ------------------------------------------------------------------
+    # PPTX -> animated-HTML build-step snapshots (LibreOffice on the worker).
+    # Async on the worker side (submit returns a job_id; poll for completion),
+    # mirroring the /jobs render pattern above.
+    # ------------------------------------------------------------------
+
+    def submit_pptx_anim(
+        self, pptx_url: str, dpi: int = 110, deck_id: Optional[str] = None
+    ) -> str:
+        """Submit a .pptx (public URL) for build-step conversion. Returns job_id."""
+        payload: dict = {"pptx_url": pptx_url, "dpi": dpi}
+        if deck_id:
+            payload["deck_id"] = deck_id
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                resp = client.post(
+                    f"{self.base_url}/pptx-anim-jobs",
+                    json=payload,
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                job_id = resp.json()["job_id"]
+                logger.info(f"[RenderService] Submitted pptx-anim job {job_id}")
+                return job_id
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"Render server returned {e.response.status_code}: {e.response.text}"
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to submit pptx-anim job: {e}")
+
+    def check_pptx_anim_status(self, job_id: str) -> Dict[str, Any]:
+        """Status of a pptx-anim job: {status, progress, result:{deck_base,...}, error}."""
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                resp = client.get(
+                    f"{self.base_url}/pptx-anim-jobs/{job_id}",
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"[RenderService] pptx-anim status check failed for {job_id}: {e}")
+            return {"status": "unknown", "error": str(e)}
+
+    # ------------------------------------------------------------------
     # Audio operations — sentence-level slicing & splicing.
     # Both endpoints are synchronous on the worker side; a typical request
     # finishes in seconds. Use a longer timeout than the default 30s

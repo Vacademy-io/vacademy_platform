@@ -15,10 +15,10 @@ import * as pdfjs from 'pdfjs-dist';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CheckCircle, PresentationChart } from '@phosphor-icons/react';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
-import { CONVERT_PPT_TO_PDF_BY_ID_URL } from '@/constants/urls';
+import { CONVERT_PPT_TO_PDF_BY_ID_URL, ANIMATE_PPTX_URL } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { UploadFileInS3 } from '@/services/upload_file';
+import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import {
     buildAppendReorderPayload,
     getNextSlideOrder,
@@ -172,6 +172,144 @@ export const AddPptDialog = ({
         toast.success('PPT file selected successfully');
     };
 
+    // Create a document slide. `data` is the slide payload — a PDF fileId, or for
+    // PPT_ANIM the converted deck's base URL (manifest.json sits at <base>/manifest.json).
+    const createDocumentSlide = async (
+        type: string,
+        data: string,
+        totalPages: number
+    ): Promise<string> => {
+        const slideStatus = getSlideStatusForUser();
+        const response: string = await addUpdateDocumentSlide({
+            id: crypto.randomUUID(),
+            title: form.getValues('pptTitle'),
+            image_file_id: '',
+            description: null,
+            slide_order: getNextSlideOrder(items || []),
+            document_slide: {
+                id: crypto.randomUUID(),
+                type,
+                data,
+                title: form.getValues('pptTitle'),
+                cover_file_id: '',
+                total_pages: totalPages,
+                published_data: slideStatus === 'PUBLISHED' ? data : null,
+                published_document_total_pages: slideStatus === 'PUBLISHED' ? totalPages : 1,
+            },
+            status: slideStatus,
+            new_slide: true,
+            notify: false,
+        });
+        if (response) {
+            await reorderSlidesAfterNewSlide(response);
+        }
+        return response;
+    };
+
+    // Primary path: convert to an interactive slideshow (build-step snapshots +
+    // manifest) on the AI service, preserving entrance animations. The learner
+    // plays it via <DeckPlayer> (slide type PPT_ANIM).
+    const uploadAsAnimated = async (): Promise<string> => {
+        const decoded = data as { userId?: string; sub?: string } | undefined;
+        const userId = decoded?.userId || decoded?.sub || '';
+
+        setStatusMessage('Uploading presentation…');
+        setUploadProgress(15);
+        const pptFileId = await UploadFileInS3(
+            file!,
+            () => {},
+            userId,
+            'PPT_PRESENTATIONS',
+            INSTITUTE_ID || 'STUDENTS',
+            true // public — the worker fetches the source; the output is served to learners
+        );
+        if (!pptFileId) throw new Error('Failed to upload presentation for conversion.');
+
+        const pptxUrl = await getPublicUrl(pptFileId);
+        if (!pptxUrl) throw new Error('Failed to resolve the uploaded presentation URL.');
+
+        setStatusMessage('Converting (animations preserved)…');
+        setUploadProgress(30);
+        const submit = await authenticatedAxiosInstance.post(ANIMATE_PPTX_URL, {
+            pptx_url: pptxUrl,
+            dpi: 110,
+        });
+        const jobId: string | undefined = submit.data?.job_id;
+        if (!jobId) throw new Error('Conversion did not start.');
+
+        // Poll the worker job (via the AI-service proxy) until it finishes. Bail
+        // fast (→ PDF fallback) if the conversion service stops responding rather
+        // than spinning out the whole timeout.
+        let result: { deck_base?: string; slide_count?: number } | null = null;
+        let unreachable = 0;
+        for (let attempt = 0; attempt < 200; attempt++) {
+            await new Promise((r) => setTimeout(r, 3000));
+            let job: {
+                status?: string;
+                progress?: number;
+                result?: { deck_base?: string; slide_count?: number };
+                error?: string;
+            };
+            try {
+                const status = await authenticatedAxiosInstance.get(`${ANIMATE_PPTX_URL}/${jobId}`);
+                job = status.data || {};
+            } catch {
+                if (++unreachable >= 3) throw new Error('Lost contact with the conversion service.');
+                continue;
+            }
+            // "unknown" = the proxy couldn't reach the worker; a run of them means
+            // a dead worker — fall back instead of waiting out the timeout.
+            if (!job.status || job.status === 'unknown') {
+                if (++unreachable >= 3) throw new Error('Conversion service is not responding.');
+                continue;
+            }
+            unreachable = 0;
+            if (typeof job.progress === 'number') {
+                setUploadProgress(Math.min(90, 30 + Math.round(job.progress * 0.6)));
+            }
+            if (job.status === 'completed') {
+                result = job.result || {};
+                break;
+            }
+            if (job.status === 'failed') {
+                throw new Error(job.error || 'Presentation conversion failed.');
+            }
+        }
+        if (!result?.deck_base) throw new Error('Presentation conversion timed out.');
+
+        setStatusMessage('Creating slide…');
+        setUploadProgress(95);
+        return createDocumentSlide('PPT_ANIM', result.deck_base, result.slide_count || 1);
+    };
+
+    // Fallback path: the original static-PDF conversion (CloudConvert via
+    // media-service). Used when the animated conversion is unavailable or fails.
+    const uploadAsPdf = async (): Promise<string> => {
+        setStatusMessage('Converting PPT to PDF…');
+        setUploadProgress(40);
+        const pdfFile = await convertPptToPdf(file!);
+
+        setStatusMessage('Analyzing PDF pages…');
+        const arrayBuffer = await pdfFile.arrayBuffer();
+        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+        const totalPages = pdf.numPages;
+
+        setStatusMessage('Uploading converted PDF…');
+        setUploadProgress(70);
+        const fileId = await uploadFile({
+            file: pdfFile,
+            setIsUploading,
+            userId: 'your-user-id',
+            source: INSTITUTE_ID,
+            sourceId: 'PDF_DOCUMENTS',
+        });
+        if (!fileId) throw new Error('Failed to upload the converted PDF.');
+
+        setStatusMessage('Creating slide…');
+        setUploadProgress(90);
+        return createDocumentSlide('PDF', fileId, totalPages);
+    };
+
     const handleUpload = async () => {
         if (!file) {
             toast.error('Please select a file first');
@@ -183,68 +321,24 @@ export const AddPptDialog = ({
         setError(null);
 
         try {
-            // Step 1: Convert PPT to PDF
-            setStatusMessage('Converting PPT to PDF...');
-            setUploadProgress(10);
-            const pdfFile = await convertPptToPdf(file);
-            setUploadProgress(40);
-
-            // Step 2: Read the PDF to get page count
-            setStatusMessage('Analyzing PDF pages...');
-            const arrayBuffer = await pdfFile.arrayBuffer();
-            const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-            const totalPages = pdf.numPages;
-            setUploadProgress(50);
-
-            // Step 3: Upload the converted PDF to S3
-            setStatusMessage('Uploading converted PDF...');
-            const fileId = await uploadFile({
-                file: pdfFile,
-                setIsUploading,
-                userId: 'your-user-id',
-                source: INSTITUTE_ID,
-                sourceId: 'PDF_DOCUMENTS',
-            });
-            setUploadProgress(80);
-
-            if (fileId) {
-                // Step 4: Create the slide (treated as PDF internally)
-                setStatusMessage('Creating slide...');
-                const slideId = crypto.randomUUID();
-                const slideStatus = getSlideStatusForUser();
-
-                const response: string = await addUpdateDocumentSlide({
-                    id: slideId,
-                    title: form.getValues('pptTitle'),
-                    image_file_id: '',
-                    description: null,
-                    slide_order: getNextSlideOrder(items || []),
-                    document_slide: {
-                        id: crypto.randomUUID(),
-                        type: 'PDF',
-                        data: fileId,
-                        title: form.getValues('pptTitle'),
-                        cover_file_id: '',
-                        total_pages: totalPages,
-                        published_data: slideStatus === 'PUBLISHED' ? fileId : null,
-                        published_document_total_pages:
-                            slideStatus === 'PUBLISHED' ? totalPages : 1,
-                    },
-                    status: slideStatus,
-                    new_slide: true,
-                    notify: false,
-                });
-
-                if (response) {
-                    await reorderSlidesAfterNewSlide(response);
-                    openState?.(false);
-                    toast.success('PPT uploaded and converted successfully!');
-                }
+            let response: string;
+            try {
+                // Prefer the interactive animated slideshow.
+                response = await uploadAsAnimated();
+            } catch (animErr) {
+                // Resilience: any failure (worker down, unsupported deck, timeout)
+                // degrades to the static PDF the product already shipped.
+                console.warn('Animated conversion failed; falling back to PDF.', animErr);
+                setStatusMessage('Falling back to PDF…');
+                response = await uploadAsPdf();
             }
 
+            if (response) {
+                openState?.(false);
+                toast.success('PPT uploaded successfully!');
+            }
             setUploadProgress(100);
             setStatusMessage('');
-            openState && openState(false);
         } catch (err) {
             const errorMessage =
                 err instanceof Error ? err.message : 'Upload failed. Please try again.';

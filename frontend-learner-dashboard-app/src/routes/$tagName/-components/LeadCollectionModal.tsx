@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import axios from "axios";
 import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, CATALOGUE_LEAD_SUBMIT_URL } from "@/constants/urls";
-import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { isValidPhoneValue } from "@/lib/phone-validation";
@@ -69,7 +70,6 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   mandatory,
   packageSessionId,
 }) => {
-  const domainRouting = useDomainRouting();
   const [formData, setFormData] = useState<FormData>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -80,6 +80,25 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
   const [emailVerified, setEmailVerified] = useState(false);
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const successCloseRef = useRef<HTMLButtonElement>(null);
+  const showSuccessPopupRef = useRef(false);
+
+  // When the success popup appears it manages its own focus; move focus to its
+  // Close button and let the dialog focus-trap stand down (see onKeyDown below).
+  useEffect(() => {
+    showSuccessPopupRef.current = showSuccessPopup;
+    if (showSuccessPopup) successCloseRef.current?.focus();
+  }, [showSuccessPopup]);
+
+  // Resend-OTP cooldown countdown
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const t = setTimeout(() => setOtpCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpCooldown]);
 
   // Debug logging
   console.log("[LeadCollectionModal] Props received:", {
@@ -169,8 +188,8 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
         }
       );
 
-      console.log("[LeadCollectionModal] OTP API response:", response);
       setEmailOtpSent(true);
+      setOtpCooldown(30);
       toast.success("OTP sent to your email");
     } catch (error) {
       console.error("[LeadCollectionModal] Error sending OTP:", error);
@@ -368,6 +387,52 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
     onClose();
   };
 
+  // Accessibility: focus the dialog on open, trap Tab within it, close on Escape
+  // (Escape no-ops when mandatory, mirroring the backdrop/close-button behavior),
+  // and restore focus to the previously-focused element on close.
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const node = dialogRef.current;
+    const getFocusable = () =>
+      node
+        ? Array.from(
+            node.querySelectorAll<HTMLElement>(
+              'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((el) => el.offsetParent !== null)
+        : [];
+    (getFocusable()[0] || node)?.focus();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // The success popup overlays the form and owns focus; don't trap.
+      if (showSuccessPopupRef.current) return;
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        handleClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    node?.addEventListener("keydown", onKeyDown);
+    return () => {
+      node?.removeEventListener("keydown", onKeyDown);
+      previouslyFocusedRef.current?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   // Progress bar component
   const renderProgressBar = () => {
     if (!formStyle.showProgress || formStyle.type === 'single') return null;
@@ -506,23 +571,30 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                  <button
                    type="button"
                    onClick={handleSendOtp}
-                   className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 text-sm"
-                   style={{
-                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                   }}
+                   className="catalogue-btn catalogue-btn-primary catalogue-btn-sm w-full sm:w-auto"
                  >
                    Send OTP
                  </button>
                ) : (
-                 <div className="flex items-center justify-center sm:justify-end px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm">
-                   ✓ OTP Sent to your email
+                 <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                   <span className="inline-flex items-center px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm" role="status" aria-live="polite">
+                     ✓ OTP sent to your email
+                   </span>
+                   <button
+                     type="button"
+                     onClick={handleSendOtp}
+                     disabled={otpCooldown > 0}
+                     className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                   >
+                     {otpCooldown > 0 ? `Resend in ${otpCooldown}s` : "Resend OTP"}
+                   </button>
                  </div>
                )}
              </div>
            )}
           
           {field.type === 'email' && emailVerified && (
-            <div className="flex items-center justify-center sm:justify-start px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm">
+            <div className="flex items-center justify-center sm:justify-start px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm" role="status" aria-live="polite">
               ✓ Email Verified
             </div>
           )}
@@ -531,27 +603,27 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
          {/* OTP Verification Section */}
          {field.type === 'email' && emailOtpSent && !emailVerified && (
            <div className="space-y-2">
-             <label className="block text-sm font-medium text-gray-700">
+             <label htmlFor="lead-otp-input" className="block text-sm font-medium text-gray-700">
                Enter OTP sent to your email
              </label>
              <div className="space-y-2">
                <input
+                 id="lead-otp-input"
                  type="text"
+                 inputMode="numeric"
+                 autoComplete="one-time-code"
                  value={emailOtp}
                  onChange={(e) => setEmailOtp(e.target.value)}
                  placeholder="Enter 6-digit OTP"
                  maxLength={6}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                />
                <div className="flex justify-end">
                  <button
                    type="button"
                    onClick={handleVerifyOtp}
                    disabled={isVerifyingOtp || emailOtp.length !== 6}
-                   className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
-                   style={{
-                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                   }}
+                   className="catalogue-btn catalogue-btn-primary catalogue-btn-sm w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
                  >
                    {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
                  </button>
@@ -588,20 +660,30 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
         />
 
         {/* Modal */}
-        <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-auto">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lead-modal-title"
+          tabIndex={-1}
+          className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-auto outline-none"
+        >
           {/* Header */}
           <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {mandatory ? "Complete Your Registration" : "Get Course Details"}
+            <h2 id="lead-modal-title" className="text-lg sm:text-xl font-semibold text-gray-900">
+              {mandatory
+                ? "Complete Your Registration"
+                : `Get ${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
             </h2>
             <div className="flex items-center gap-2">
             {!mandatory && (
               <button
                 onClick={handleClose}
                 className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100"
+                aria-label="Close"
                 title="Close"
               >
-                  <X className="w-6 h-6" />
+                  <X className="w-6 h-6" aria-hidden="true" />
               </button>
             )}
             </div>
@@ -653,10 +735,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                 <button
                   type="button"
                   onClick={handleClose}
-                    className="px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors"
-                    style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                    }}
+                    className="catalogue-btn catalogue-btn-secondary"
                 >
                     Cancel
                 </button>
@@ -670,22 +749,16 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                     type="button"
                     onClick={handleNextStep}
                     disabled={!canProceedToNextStep()}
-                    className="flex items-center px-6 py-2 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                    }}
+                    className="catalogue-btn catalogue-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
-                    <CaretRight className="w-4 h-4 ml-1" />
+                    <CaretRight className="w-4 h-4" aria-hidden="true" />
                   </button>
                 ) : (
               <button
                 type="submit"
                     disabled={isSubmitting || (formStyle.type === 'multiStep' && !canProceedToNextStep())}
-                    className="px-6 py-2 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                    }}
+                    className="catalogue-btn catalogue-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? "Submitting..." : "Submit"}
               </button>
@@ -724,14 +797,12 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
               <h3 className="text-lg font-medium text-gray-900 mb-2">Request Sent</h3>
               <p className="text-sm text-gray-600 mb-6">{successMessage}</p>
               <button
+                ref={successCloseRef}
                 onClick={() => {
                   setShowSuccessPopup(false);
                   onSubmit();
                 }}
-                className="w-full px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors"
-                style={{
-                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                }}
+                className="catalogue-btn catalogue-btn-primary w-full"
               >
                 Close
               </button>

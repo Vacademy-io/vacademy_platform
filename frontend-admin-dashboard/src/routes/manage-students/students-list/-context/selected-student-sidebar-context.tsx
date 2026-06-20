@@ -32,6 +32,15 @@ interface StudentSidebarContextType {
     learnerListPosition: { index: number; total: number } | null;
     goPrevLearner: () => void;
     goNextLearner: () => void;
+    /**
+     * True when the sidebar/overlay is mounted over assessment submission data,
+     * where the learner id lives in `selectedStudent.id` (the participant row)
+     * rather than `selectedStudent.user_id`. Section components read this to pick
+     * the right id; the overlay forwards it so its sections resolve the same data
+     * the compact sheet shows. Undefined/false on the canonical students-list
+     * surface, which keys off `user_id`.
+     */
+    isSubmissionTab?: boolean;
 }
 
 export const StudentSidebarContext = createContext<StudentSidebarContextType | undefined>(

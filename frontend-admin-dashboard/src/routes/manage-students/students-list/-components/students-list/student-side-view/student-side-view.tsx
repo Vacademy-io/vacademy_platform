@@ -331,14 +331,23 @@ export const StudentSidebar = ({
                                 )}
                             </div>
 
-                            <button
-                                onClick={() => openOverlay()}
-                                className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                                aria-label="Open full profile"
-                                title="Open full profile"
-                            >
-                                <ArrowsOutSimple className="size-5" />
-                            </button>
+                            {/* The full-screen profile overlay is mounted only by the
+                                canonical StudentSidebarProvider (students list, contacts,
+                                leads, admissions). Surfaces that reuse this sheet under a
+                                lighter ad-hoc context — e.g. the assessment / homework /
+                                evaluation submission tabs — don't supply `openOverlay`,
+                                so we hide the expand affordance there instead of crashing
+                                on click (TypeError: openOverlay is not a function). */}
+                            {typeof openOverlay === 'function' && (
+                                <button
+                                    onClick={() => openOverlay()}
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                    aria-label="Open full profile"
+                                    title="Open full profile"
+                                >
+                                    <ArrowsOutSimple className="size-5" />
+                                </button>
+                            )}
                             <button
                                 onClick={closeSidebar}
                                 className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"

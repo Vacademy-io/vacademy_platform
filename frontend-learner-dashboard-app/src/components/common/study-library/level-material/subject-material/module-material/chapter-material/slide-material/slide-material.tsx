@@ -830,9 +830,12 @@ export const SlideMaterial = ({
               </div>
             );
           } else if (activeItem.document_slide?.type === "PPT_ANIM") {
-            // .pptx converted to build-step snapshots; published_data holds the
-            // deck base URL (manifest.json lives at <base>/manifest.json).
-            const deckBase = activeItem.document_slide.published_data || "";
+            // .pptx converted to build-step snapshots; data/published_data holds
+            // the deck base URL (manifest.json lives at <base>/manifest.json).
+            const deckBase =
+              activeItem.document_slide.published_data ||
+              activeItem.document_slide.data ||
+              "";
             if (!deckBase) throw new Error("Failed to retrieve presentation URL");
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">

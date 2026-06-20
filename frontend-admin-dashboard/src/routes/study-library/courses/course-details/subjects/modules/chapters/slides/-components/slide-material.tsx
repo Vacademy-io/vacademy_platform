@@ -2998,7 +2998,10 @@ export const SlideMaterial = ({
 
             <div
                 className={`mx-auto mt-14 ${
-                    activeItem?.document_slide?.type === 'PDF' ? 'h-[calc(100vh-200px)]' : 'h-full'
+                    activeItem?.document_slide?.type === 'PDF' ||
+                    activeItem?.document_slide?.type === 'PPT_ANIM'
+                        ? 'h-[calc(100vh-200px)]'
+                        : 'h-full'
                 } relative z-20 w-full ${
                     activeItem?.document_slide?.type === 'DOC'
                         ? 'overflow-visible'

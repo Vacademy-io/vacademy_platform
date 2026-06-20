@@ -11,7 +11,7 @@ import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 
 /**
- * DeckPlayer — plays a .pptx that was converted to build-step snapshot images
+ * DeckPlayer — plays a .pptx converted to build-step snapshot images
  * (ai_service render_worker /pptx-anim-jobs). Each original slide is a group of
  * ordered step images; advancing WITHIN a slide cross-fades (so an entrance
  * animation replays as a real fade), while moving to a new slide is a hard cut.
@@ -39,7 +39,9 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
     const [error, setError] = useState<string | null>(null);
     const [index, setIndex] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [controlsVisible, setControlsVisible] = useState(true);
     const containerRef = useRef<HTMLDivElement>(null);
+    const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 
@@ -94,6 +96,19 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
         [total]
     );
 
+    // Reveal the controls, then auto-hide them after a short idle.
+    const revealControls = useCallback(() => {
+        setControlsVisible(true);
+        if (hideTimer.current) clearTimeout(hideTimer.current);
+        hideTimer.current = setTimeout(() => setControlsVisible(false), 2500);
+    }, []);
+    useEffect(() => {
+        revealControls();
+        return () => {
+            if (hideTimer.current) clearTimeout(hideTimer.current);
+        };
+    }, [revealControls, index]);
+
     // Arrow/space navigation — only while presenting (fullscreen), so it never
     // hijacks the keys during normal editing.
     useEffect(() => {
@@ -140,7 +155,7 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
 
     if (error) {
         return (
-            <div className="flex size-full flex-col items-center justify-center gap-2 bg-neutral-50 text-neutral-500">
+            <div className="flex size-full flex-col items-center justify-center gap-2 rounded-lg bg-neutral-900 text-neutral-300">
                 <WarningCircle size={32} className="text-danger-500" />
                 <p className="text-body">{error}</p>
             </div>
@@ -149,7 +164,7 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
 
     if (!steps) {
         return (
-            <div className="flex size-full items-center justify-center bg-neutral-50 text-neutral-400">
+            <div className="flex size-full items-center justify-center rounded-lg bg-neutral-900 text-neutral-400">
                 <Spinner size={28} className="animate-spin" />
             </div>
         );
@@ -157,13 +172,20 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
 
     const slideCount = (steps[steps.length - 1]?.slideIndex ?? 0) + 1;
     const currentSlideNo = current ? current.slideIndex + 1 : 0;
+    const atStart = index === 0;
+    const atEnd = index >= total - 1;
+    // Width tracks position through the deck — a genuinely dynamic value, so it
+    // rides an inline style (kept out of the className per the design system).
+    const progressStyle = { width: `${total > 1 ? (index / (total - 1)) * 100 : 100}%` };
 
     return (
         <div
             ref={containerRef}
+            onPointerMove={revealControls}
+            onPointerDown={revealControls}
             className={cn(
-                'relative flex size-full items-center justify-center bg-neutral-200',
-                isFullscreen && 'fixed inset-0 z-50'
+                'relative flex size-full items-center justify-center overflow-hidden rounded-lg bg-neutral-900',
+                isFullscreen && 'fixed inset-0 z-50 rounded-none'
             )}
         >
             <div className="relative size-full">
@@ -188,38 +210,61 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
                 )}
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 bg-neutral-600/80 p-4">
+            {/* Deck progress */}
+            <div className="absolute inset-x-0 bottom-0 h-1 bg-neutral-50/15">
+                <div
+                    className="h-full bg-primary-500 transition-all duration-300"
+                    style={progressStyle}
+                />
+            </div>
+
+            {/* Floating control pill — auto-hides on idle, reappears on mouse move */}
+            <div
+                onMouseEnter={revealControls}
+                className={cn(
+                    'absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-neutral-900/70 px-2 py-1 shadow-lg backdrop-blur-sm transition-opacity duration-300',
+                    controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+                )}
+            >
                 <MyButton
                     layoutVariant="icon"
                     scale="medium"
-                    buttonType="secondary"
+                    buttonType="text"
+                    className="rounded-full hover:bg-neutral-50/10"
                     onClick={() => go(-1)}
-                    disable={index === 0}
+                    disable={atStart}
                     aria-label="Previous"
                 >
-                    <CaretLeft size={18} />
+                    <CaretLeft size={18} className={atStart ? 'text-neutral-50/30' : 'text-neutral-50'} />
                 </MyButton>
-                <span className="w-16 text-center text-caption font-semibold text-neutral-50">
+                <span className="w-16 text-center text-caption font-semibold tabular-nums text-neutral-50">
                     {currentSlideNo} / {slideCount}
                 </span>
                 <MyButton
                     layoutVariant="icon"
                     scale="medium"
-                    buttonType="secondary"
+                    buttonType="text"
+                    className="rounded-full hover:bg-neutral-50/10"
                     onClick={() => go(1)}
-                    disable={index >= total - 1}
+                    disable={atEnd}
                     aria-label="Next"
                 >
-                    <CaretRight size={18} />
+                    <CaretRight size={18} className={atEnd ? 'text-neutral-50/30' : 'text-neutral-50'} />
                 </MyButton>
+                <span className="mx-1 h-5 w-px bg-neutral-50/25" aria-hidden />
                 <MyButton
                     layoutVariant="icon"
                     scale="medium"
-                    buttonType="secondary"
+                    buttonType="text"
+                    className="rounded-full hover:bg-neutral-50/10"
                     onClick={toggleFullscreen}
                     aria-label={isFullscreen ? 'Exit full screen' : 'Play full screen'}
                 >
-                    {isFullscreen ? <CornersIn size={18} /> : <CornersOut size={18} />}
+                    {isFullscreen ? (
+                        <CornersIn size={18} className="text-neutral-50" />
+                    ) : (
+                        <CornersOut size={18} className="text-neutral-50" />
+                    )}
                 </MyButton>
             </div>
         </div>

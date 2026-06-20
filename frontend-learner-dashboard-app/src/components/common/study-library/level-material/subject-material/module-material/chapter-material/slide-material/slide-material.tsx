@@ -837,9 +837,12 @@ export const SlideMaterial = ({
               activeItem.document_slide.data ||
               "";
             if (!deckBase) throw new Error("Failed to retrieve presentation URL");
+            // aspect-video gives the player an intrinsic 16:9 height so it never
+            // depends on the parent resolving a height (a pure h-full child
+            // collapses to 0 here, unlike PDF/pdf.js which self-sizes).
             setContent(
-              <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
+              <div className="flex h-full w-full items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="aspect-video w-full overflow-hidden rounded-lg border border-neutral-200">
                   <DeckPlayer baseUrl={deckBase} />
                 </div>
               </div>

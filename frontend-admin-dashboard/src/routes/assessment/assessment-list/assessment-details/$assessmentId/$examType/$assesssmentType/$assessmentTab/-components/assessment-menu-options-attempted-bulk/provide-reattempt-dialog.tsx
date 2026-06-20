@@ -2,6 +2,11 @@ import { ReactNode } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { useSubmissionsBulkActionsDialogStoreAttempted } from '../bulk-actions-zustand-store/useSubmissionsBulkActionsDialogStoreAttempted';
+import { useMutation } from '@tanstack/react-query';
+import { provideReattemptToParticipants } from '../../-services/assessment-details-services';
+import { toast } from 'sonner';
+import { Route } from '../..';
+import { getInstituteId } from '@/constants/helper';
 
 interface ProvideDialogDialogProps {
     trigger: ReactNode;
@@ -12,16 +17,39 @@ interface ProvideDialogDialogProps {
 const ProvideReattemptDialogContent = () => {
     const { selectedStudent, bulkActionInfo, isBulkAction, closeAllDialogs } =
         useSubmissionsBulkActionsDialogStoreAttempted();
-
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
     const displayText = isBulkAction ? bulkActionInfo?.displayText : selectedStudent?.student_name;
+
+    const provideReattemptMutation = useMutation({
+        mutationFn: ({ registrationIds }: { registrationIds: string[] }) =>
+            provideReattemptToParticipants(assessmentId, instituteId, registrationIds),
+        onSuccess: () => {
+            toast.success('Reattempt has been provided to the selected participant(s).', {
+                className: 'success-toast',
+                duration: 4000,
+            });
+            closeAllDialogs();
+        },
+        onError: (error: unknown) => {
+            throw error;
+        },
+    });
 
     const handleSubmit = () => {
         if (isBulkAction && bulkActionInfo?.selectedStudents) {
-            console.log('bulk actions');
+            provideReattemptMutation.mutate({
+                registrationIds: bulkActionInfo.selectedStudents.map(
+                    (student) => student.registration_id
+                ),
+            });
         } else if (selectedStudent) {
-            console.log('individual student');
+            provideReattemptMutation.mutate({
+                registrationIds: [selectedStudent.registration_id],
+            });
+        } else {
+            closeAllDialogs();
         }
-        closeAllDialogs();
     };
 
     return (
@@ -35,6 +63,7 @@ const ProvideReattemptDialogContent = () => {
                 scale="large"
                 layoutVariant="default"
                 onClick={handleSubmit}
+                disable={provideReattemptMutation.isPending}
             >
                 Done
             </MyButton>

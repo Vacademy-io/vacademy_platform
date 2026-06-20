@@ -22,6 +22,7 @@ import {
     GET_RELEASE_STUDENT_RESULT,
     GET_REVALUATE_STUDENT_RESULT,
     PRIVATE_ADD_QUESTIONS,
+    PROVIDE_REATTEMPT_URL,
     STUDENT_REPORT_DETAIL_URL,
     STUDENT_REPORT_URL,
     UPDATE_ATTEMPT,
@@ -662,6 +663,27 @@ export const getReleaseStudentResult = async (
             methodType,
         },
         data: selectedFilter,
+    });
+    return response?.data;
+};
+
+export const provideReattemptToParticipants = async (
+    assessmentId: string,
+    instituteId: string | undefined,
+    registrationIds: string[],
+    reattemptCount = 1
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: PROVIDE_REATTEMPT_URL,
+        params: {
+            assessmentId,
+            instituteId,
+        },
+        data: {
+            registration_ids: registrationIds,
+            reattempt_count: reattemptCount,
+        },
     });
     return response?.data;
 };

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { isIOSNative } from "@/utils/ios-iap-compliance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -915,7 +916,9 @@ export function ModularDynamicSignupContainer({
         </div>
       </SignupStep>
 
-      {/* OAuth Providers */}
+      {/* OAuth Providers — hidden on native iOS (Apple 4.8: social login needs
+          Sign in with Apple parity, not yet implemented). web/Android unaffected. */}
+      {!isIOSNative() && (
       <SignupStep delay={0.2}>
         <div className="space-y-2 mb-6">
           {effectiveSettings.providers.google && (
@@ -947,6 +950,7 @@ export function ModularDynamicSignupContainer({
           )}
         </div>
       </SignupStep>
+      )}
 
       {/* Divider */}
       {effectiveSettings.providers.emailOtp && (

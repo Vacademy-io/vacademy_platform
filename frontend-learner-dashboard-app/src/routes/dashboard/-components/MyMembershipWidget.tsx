@@ -6,6 +6,7 @@ import { GET_BATCH_LIST, urlPublicCourseDetails, urlInstituteDetails } from "@/c
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { Crown, BookOpen } from "@phosphor-icons/react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyMembershipWidgetProps {
     className?: string;
@@ -155,6 +156,12 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
         fetchData();
     }, []);
+
+    // Reader mode: "My Membership" + "Plan Active" + "Days Remaining" reads as a
+    // paid subscription status to App Review (Apple 3.1.1) — hide it entirely.
+    if (shouldHidePaidPurchaseUI()) {
+        return null;
+    }
 
     if (loading) {
         return (

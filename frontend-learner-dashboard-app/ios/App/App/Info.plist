@@ -60,30 +60,32 @@
 			LSRequiresIPhoneOS
 		</key>
 		<true />
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false />
 		<!-- Camera Permissions -->
 		<key>
 			NSCameraUsageDescription
 		</key>
 		<string>
-			We need access to your camera to capture photos and record videos for property reviews and inspections.
+			We need access to your camera so you can upload a profile photo, share images or videos in course discussions and assignments, and complete proctored assessments and live classes.
 		</string>
 		<key>
 			NSPhotoLibraryAddUsageDescription
 		</key>
 		<string>
-			We need access to add photos to your library.
+			We need access to save course content and assignment materials to your photo library.
 		</string>
 		<key>
 			NSPhotoLibraryUsageDescription
 		</key>
 		<string>
-			We need access to your photos to allow selecting images for upload.
+			We need access to your photos so you can select and upload images for your profile and course assignments.
 		</string>
 		<key>
 			NSMicrophoneUsageDescription
 		</key>
 		<string>
-			We need access to your microphone to record audio and videos for property reviews and inspections.
+			We need access to your microphone so you can record audio and video submissions for assignments and participate in live class sessions.
 		</string>
 		<key>
 			UILaunchStoryboardName

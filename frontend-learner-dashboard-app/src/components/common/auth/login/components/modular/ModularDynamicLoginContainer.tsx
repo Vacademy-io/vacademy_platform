@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: Google brand logo
 import { ArrowRight } from "@phosphor-icons/react";
+import { isIOSNative } from "@/utils/ios-iap-compliance";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
@@ -688,8 +689,10 @@ export function ModularDynamicLoginContainer({
         </div>
       </motion.div>
 
-      {/* OAuth Providers */}
-      {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
+      {/* OAuth Providers — hidden on native iOS (Apple 4.8: third-party social
+          login needs Sign in with Apple parity, not yet implemented). web /
+          Android / Electron unaffected. */}
+      {!isIOSNative() && (effectiveSettings.providers.google || effectiveSettings.providers.github) && (
         <motion.div
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}

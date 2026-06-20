@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { isIOSNative } from "@/utils/ios-iap-compliance";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -978,7 +979,12 @@ export function LoginForm({
                   transition={{ delay: 0.7 }}
                   className="grid grid-cols-1 gap-3"
                 >
-                  {authProviders?.google && (
+                  {/* Apple Guideline 4.8: an iOS app that offers third-party
+                      social login (Google/GitHub) must also offer Sign in with
+                      Apple. Until that's implemented, hide social login on
+                      native iOS (email-OTP / username-password / phone remain).
+                      web / Android / Electron are unaffected. */}
+                  {!isIOSNative() && authProviders?.google && (
                     <Button
                       variant="outline"
                       className="w-full relative h-11"
@@ -989,7 +995,7 @@ export function LoginForm({
                       Continue with Google
                     </Button>
                   )}
-                  {authProviders?.github && (
+                  {!isIOSNative() && authProviders?.github && (
                     <Button
                       variant="outline"
                       className="w-full relative h-11"
@@ -1003,7 +1009,7 @@ export function LoginForm({
                 </motion.div>
 
                 {/* Divider */}
-                {(authProviders?.google || authProviders?.github) && (
+                {!isIOSNative() && (authProviders?.google || authProviders?.github) && (
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />

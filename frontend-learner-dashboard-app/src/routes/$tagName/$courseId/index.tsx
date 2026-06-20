@@ -1,12 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { CourseDetailsPage } from "./-components/CourseDetailsPage";
 import { CourseSubPage } from "../-components/CourseSubPage";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
 import { useEffect, useState } from "react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 export const Route = createFileRoute("/$tagName/$courseId/")({
+  // Reader mode (iOS always / reader-mode institutes): the public course
+  // details / enroll page is a marketplace surface — block it (Apple 3.1.1).
+  beforeLoad: () => {
+    if (shouldHidePaidPurchaseUI()) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   component: RouteComponent,
   validateSearch: (search: Record<string, unknown>) => ({
     enrollInviteId: (search.enrollInviteId as string) || undefined,

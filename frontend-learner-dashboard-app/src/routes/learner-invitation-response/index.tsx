@@ -1,6 +1,7 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter, redirect } from "@tanstack/react-router";
 import { z } from "zod";
 import EnrollByInvite from "@/components/common/enroll-by-invite/enroll-form";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetEnrollInviteData } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
@@ -151,6 +152,15 @@ function InviteErrorComponent({ error }: { error: unknown }) {
 
 export const Route = createFileRoute("/learner-invitation-response/")({
   validateSearch: inviteParamsSchema,
+  // Reader mode (iOS always / reader-mode institutes): the enroll-by-invite
+  // flow contains paid plan selection + external payment gateways + "Upgrade
+  // Now" redirects across many sub-steps. Block the whole route so none of it
+  // can render (Apple 3.1.1). Mirrors the $tagName marketplace guards.
+  beforeLoad: () => {
+    if (shouldHidePaidPurchaseUI()) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   component: RouteComponent,
   errorComponent: ({ error }) => <InviteErrorComponent error={error} />,
 });

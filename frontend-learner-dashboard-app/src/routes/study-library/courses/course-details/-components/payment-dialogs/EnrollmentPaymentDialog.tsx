@@ -12,6 +12,7 @@ import { FreeEnrollmentConfirmationDialog } from "./FreeEnrollmentConfirmationDi
 import { EnhancedEnrollmentDialog } from "./EnhancedEnrollmentDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface EnrollmentPaymentRouterProps {
   open: boolean;
@@ -104,6 +105,16 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   // Function to render the appropriate dialog based on payment type
   const renderPaymentDialog = () => {
     if (!paymentType) return null;
+
+    // Reader mode (iOS / reader-mode institutes): only the FREE path may
+    // render; every paid branch (donation / subscription / one-time) is hidden
+    // (Apple 3.1.1). Defense-in-depth — the enroll CTAs are already gated.
+    const normalizedType = paymentType.toLowerCase();
+    const isFreePlan =
+      normalizedType === "free" || normalizedType === "free_plan";
+    if (!isFreePlan && shouldHidePaidPurchaseUI()) {
+      return null;
+    }
 
     const commonProps = {
       packageSessionId,

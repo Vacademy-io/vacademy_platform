@@ -426,6 +426,7 @@ const HeroSectionWithState: React.FC<{
                 <img
                   src={resolvedImageUrl || heroImage}
                   alt={heroImageAlt}
+                  fetchPriority="high"
                   className="w-full h-auto max-h-96 lg:max-h-preview-480 rounded-xl object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';

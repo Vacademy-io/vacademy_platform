@@ -17,6 +17,10 @@ export const BASE_URL_LEARNER_DASHBOARD =
 export const AI_SERVICE_BASE_URL =
     import.meta.env.VITE_AI_SERVICE_BASE_URL || `${BACKEND_BASE_URL}/ai-service`;
 
+// PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
+// {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.
+export const ANIMATE_PPTX_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/animate-pptx`;
+
 // AI Video URLs API
 export const GET_VIDEO_URLS = (videoId: string) => `${AI_SERVICE_BASE_URL}/video/urls/${videoId}`;
 export const SCRAPE_URL = `${AI_SERVICE_BASE_URL}/utils/scrape-url`;

@@ -4,6 +4,8 @@ import { IntroPage } from '../-types/course-catalogue-types';
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import { useDomainRouting } from '@/hooks/use-domain-routing';
 import { getPublicUrlWithoutLogin } from '@/services/upload_file';
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface IntroPageComponentProps {
   introPage: IntroPage;
@@ -216,9 +218,10 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-30 text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+          aria-label="Close"
           title="Close"
         >
-          <X className="w-6 h-6" />
+          <X className="w-6 h-6" aria-hidden="true" />
         </button>
       )}
 
@@ -327,12 +330,15 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             <div className="w-full max-w-2xl">
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900">Get Course Details</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    Get {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
+                  </h2>
                   <button
                     onClick={handleLeadFormClose}
                     className="text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Close"
                   >
-                    <X className="w-6 h-6" />
+                    <X className="w-6 h-6" aria-hidden="true" />
                   </button>
                 </div>
                 

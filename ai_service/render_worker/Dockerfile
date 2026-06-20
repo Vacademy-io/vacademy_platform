@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
     libasound2 libgtk-3-0 fonts-liberation fonts-noto fonts-noto-color-emoji \
     libsndfile1 \
+    libreoffice-impress libreoffice-core \
     wget curl \
     && rm -rf /var/lib/apt/lists/*
 

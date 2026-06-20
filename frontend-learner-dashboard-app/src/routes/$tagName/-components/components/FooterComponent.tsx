@@ -146,6 +146,7 @@ export const FooterComponent: React.FC<FooterProps & {
                     key={linkIndex}
                     onClick={() => handleSocialLinkNavigation(social.url, social.openInSameTab)}
                     className="text-catalogue-text-muted hover:text-primary-500 transition-colors"
+                    aria-label={social.platform}
                     title={social.platform}
                   >
                     {getSocialIcon(social.icon)}
@@ -166,7 +167,8 @@ export const FooterComponent: React.FC<FooterProps & {
                       className="text-catalogue-text-muted hover:text-primary-500 transition-colors"
                       target="_blank"
                       rel="noopener noreferrer"
-                      title={social.platform}
+                      aria-label={social.platform}
+                    title={social.platform}
                     >
                       {getSocialIcon(social.icon)}
                     </a>
@@ -334,7 +336,7 @@ export const FooterComponent: React.FC<FooterProps & {
 
         {/* Bottom Note - NEUTRAL with subtle primary accent */}
         <div className="border-t border-catalogue-border-subtle mt-6 sm:mt-8 pt-5 sm:pt-6 text-center">
-          <p className="text-catalogue-text-muted text-xs">
+          <p className="text-catalogue-text-secondary text-xs">
             {bottomNote}
           </p>
         </div>

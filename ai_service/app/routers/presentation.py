@@ -81,3 +81,35 @@ async def regenerate_slide(
         logger.exception("Presentation regenerate failed")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return Response(content=valid_json, media_type="application/json")
+
+
+class AnimatePptxRequest(BaseModel):
+    """Convert an uploaded .pptx (public S3 URL) into build-step snapshots."""
+    model_config = ConfigDict(extra="ignore", protected_namespaces=())
+
+    pptx_url: str
+    dpi: Optional[int] = 110
+    deck_id: Optional[str] = None
+
+
+@router.post("/animate-pptx")
+async def animate_pptx(req: AnimatePptxRequest) -> dict:
+    """Kick off PPTX -> animated-HTML conversion on the render worker. Returns
+    {job_id}; poll GET /animate-pptx/{job_id} until status == "completed", then
+    read result.deck_base + result.slide_count for the slide."""
+    if not req.pptx_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pptx_url is required")
+    try:
+        job_id = await presentation_service.submit_pptx_anim(
+            pptx_url=req.pptx_url, dpi=req.dpi or 110, deck_id=req.deck_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("animate-pptx submit failed")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/animate-pptx/{job_id}")
+async def animate_pptx_status(job_id: str) -> dict:
+    """Poll a pptx-anim job's status (proxied from the render worker)."""
+    return await presentation_service.get_pptx_anim_status(job_id)

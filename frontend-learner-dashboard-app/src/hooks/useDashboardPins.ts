@@ -122,7 +122,10 @@ export const useDashboardPins = (options: UseDashboardPinsOptions = {}) => {
   // Get active pins (filter out expired ones)
   const getActivePins = useCallback(() => {
     const now = new Date();
-    return dashboardPins.items.filter(pin => {
+    // Defensive: items should always be an array, but a malformed/cached API
+    // response could make it otherwise — never call .filter on a non-array.
+    const items = Array.isArray(dashboardPins.items) ? dashboardPins.items : [];
+    return items.filter(pin => {
       if (!pin.pinEndTime) return true;
       const endTime = new Date(pin.pinEndTime);
       return endTime > now;
@@ -160,7 +163,7 @@ export const useDashboardPins = (options: UseDashboardPinsOptions = {}) => {
   return {
     // State
     pins: getActivePins(),
-    allPins: dashboardPins.items,
+    allPins: Array.isArray(dashboardPins.items) ? dashboardPins.items : [],
     loading: dashboardPins.loading || isLoadingSettings,
     error: dashboardPins.error,
     isEnabled,

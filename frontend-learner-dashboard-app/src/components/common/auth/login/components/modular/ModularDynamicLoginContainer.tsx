@@ -1,7 +1,14 @@
 import { motion } from "framer-motion";
 import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: Google brand logo
 import { ArrowRight } from "@phosphor-icons/react";
+import { isIOSNative } from "@/utils/ios-iap-compliance";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
+import {
+  loginWithAppleNative,
+  AppleSessionLimitError,
+  AppleSignInCancelledError,
+} from "@/lib/auth/appleNativeAuth";
+import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -98,6 +105,7 @@ export function ModularDynamicLoginContainer({
 
   // State to track OAuth processing (after popup closes, before redirect)
   const [isOAuthProcessing, setIsOAuthProcessing] = useState(false);
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
   // When we open OAuth popup, set this so we only accept results written after open (avoids stale data)
   const oauthPopupOpenedAtRef = useRef<number>(0);
 
@@ -433,7 +441,36 @@ export function ModularDynamicLoginContainer({
     };
   }, [onLoginSuccess]);
 
-  const handleOAuthLogin = async (provider: "google" | "github") => {
+  const handleOAuthLogin = async (provider: "google" | "github" | "apple") => {
+    // Native iOS "Sign in with Apple" uses the native sheet (no popup / redirect)
+    // and completes the auth cycle itself.
+    if (provider === "apple" && isIOSNative()) {
+      try {
+        setIsAppleLoading(true);
+        const urlInstituteId =
+          new URLSearchParams(window.location.search).get("instituteId") ||
+          instituteId;
+        await loginWithAppleNative({ instituteId: urlInstituteId });
+      } catch (e) {
+        setIsAppleLoading(false);
+        if (e instanceof AppleSignInCancelledError) {
+          return; // user dismissed the sheet — no error UI
+        }
+        if (e instanceof AppleSessionLimitError) {
+          toast.error(
+            "You've reached the active session limit. Please log out from another device and try again.",
+          );
+        } else {
+          toast.error(
+            e instanceof Error
+              ? e.message
+              : "Failed to sign in with Apple. Please try again.",
+          );
+        }
+      }
+      return;
+    }
+
     try {
       // Get current page information for redirection after login
       const currentPath = window.location.pathname;
@@ -688,7 +725,9 @@ export function ModularDynamicLoginContainer({
         </div>
       </motion.div>
 
-      {/* OAuth Providers */}
+      {/* OAuth Providers. On native iOS, Sign in with Apple (below) provides the
+          Guideline 4.8 parity that previously required hiding Google/GitHub.
+          web / Android / Electron unaffected. */}
       {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
         <motion.div
           initial={{ y: 10, opacity: 0 }}
@@ -727,8 +766,19 @@ export function ModularDynamicLoginContainer({
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
           )}
+
+          {/* Sign in with Apple — native iOS only (no Android plugin support).
+              Shown whenever a third-party provider is offered, per Apple 4.8. */}
+          {isIOSNative() &&
+            (effectiveSettings.providers.google ||
+              effectiveSettings.providers.github) && (
+              <AppleSignInButton
+                onClick={() => handleOAuthLogin("apple")}
+                disabled={isAppleLoading}
+              />
+            )}
         </motion.div>
-      )} 
+      )}
 
       {/* Spacing between OAuth and forms */}
       {(effectiveSettings.providers.emailOtp || effectiveSettings.providers.usernamePassword) && (

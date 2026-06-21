@@ -30,6 +30,9 @@ export const HOLISTIC_INSTITUTE_ID =
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+// Native iOS "Sign in with Apple" — the app POSTs the Apple identityToken here
+// (the native sheet returns it directly, so there is no browser-redirect round-trip).
+export const LOGIN_URL_APPLE_NATIVE = `${BASE_URL}/auth-service/learner/v1/oauth/apple/native`;
 export const LOGIN_USING_USERNAME = `${BASE_URL}/auth-service/open/user-details/by-username`;
 export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-ten-days`;
 

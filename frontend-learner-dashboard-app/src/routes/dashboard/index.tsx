@@ -74,6 +74,7 @@ import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
 import { MyBooksWidget } from "./-components/MyBooksWidget";
 import { MyOrdersWidget } from "./-components/MyOrdersWidget";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
@@ -886,8 +887,10 @@ export function DashboardComponent() {
               </Card>
             )}
 
-            {/* Explore Buttons Section — commerce, hidden for the play (K-12) audience */}
-            {!isPlayTheme && (
+            {/* Explore Buttons Section — commerce, hidden for the play (K-12)
+                audience and in reader mode (iOS / reader-mode institutes,
+                Apple 3.1.1). */}
+            {!isPlayTheme && !shouldHidePaidPurchaseUI() && (
               <div className="flex flex-wrap items-center justify-center gap-3 mt-4 pb-12 px-4">
                 {isWidgetVisible("myMembership") && (
                   <Button

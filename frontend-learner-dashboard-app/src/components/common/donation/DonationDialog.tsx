@@ -12,6 +12,7 @@ import { fetchAndStoreInstituteDetails, type InstituteDetails } from "@/services
 import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 export interface DonationDialogProps {
   open: boolean;
@@ -155,6 +156,12 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
 
     fetchInstituteBranding();
   }, [open, instituteId, enrollmentData, instituteBranding]);
+
+  // Reader mode (iOS / reader-mode institutes): donations via external gateways
+  // are forbidden in-app (Apple 3.1.1) — never render the donation dialog.
+  if (shouldHidePaidPurchaseUI()) {
+    return null;
+  }
 
   // Show loading state
   if (loading) {

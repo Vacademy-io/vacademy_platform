@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App-target Apple privacy manifest (Apple Guideline 5.1.1 / required-reason APIs).
+  Declares the "required reason" APIs the first-party app + the Capgo OTA updater
+  use (UserDefaults, file modification timestamps). Firebase / GoogleUtilities /
+  Alamofire ship their own manifests inside Pods, so they are NOT redeclared here.
+
+  NOTE: this file must be added to the "Copy Bundle Resources" build phase of EVERY
+  shipping target (App + each per-institute brand target) in App.xcodeproj for it to
+  take effect — see VACADEMY_IOS_COMPLIANCE_CHECKLIST.md.
+
+  NSPrivacyTracking is false: analytics (Amplitude) is disabled on native iOS, so the
+  app performs no tracking. Keep this consistent with the App Store Connect privacy labels.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from urllib.parse import parse_qs, urlparse
 
 import psycopg
 from sqlalchemy import text
@@ -96,16 +97,39 @@ WHERE id = :id AND type = 'PDF'
 """)
 
 
-def _media_dsn() -> str:
-    dsn = get_settings().media_service_db_url
-    if not dsn:
+def _media_conn_kwargs() -> dict:
+    """psycopg connect kwargs for the media DB.
+
+    MEDIA_SERVICE_DB_URL is typically a JDBC URL (jdbc:postgresql://host:port/db
+    [?params]) with no inline credentials — psycopg can't parse that string, so
+    strip the jdbc: prefix, pull host/port/db out, and fall back to DB_USERNAME/
+    DB_PASSWORD for credentials (same cluster as admin-core, via pgbouncer).
+    """
+    settings = get_settings()
+    raw = settings.media_service_db_url
+    if not raw:
         raise RuntimeError("MEDIA_SERVICE_DB_URL is not configured on this server")
-    return dsn
+
+    url = raw[len("jdbc:"):] if raw.startswith("jdbc:") else raw
+    if "://" not in url:
+        url = "postgresql://" + url
+    parsed = urlparse(url)
+    kwargs = {
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "dbname": (parsed.path or "").lstrip("/") or "media_service",
+        "user": parsed.username or settings.db_username,
+        "password": parsed.password or settings.db_password,
+    }
+    qs = parse_qs(parsed.query)
+    if "sslmode" in qs:  # keep libpq-recognised params; drop JDBC-only ones (currentSchema)
+        kwargs["sslmode"] = qs["sslmode"][0]
+    return kwargs
 
 
 def build_plan(institute_id: str) -> dict:
     """Blocking: read both DBs and match by normalised title. No writes."""
-    with psycopg.connect(_media_dsn()) as conn, conn.cursor() as cur:
+    with psycopg.connect(**_media_conn_kwargs()) as conn, conn.cursor() as cur:
         cur.execute(_MEDIA_SQL, (institute_id,))
         pptx_rows = cur.fetchall()  # (id, file_name, key)
 

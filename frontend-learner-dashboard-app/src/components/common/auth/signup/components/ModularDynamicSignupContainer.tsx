@@ -15,6 +15,12 @@ import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: brand logo, no
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import { ArrowRight } from "@phosphor-icons/react";
 import {
+  loginWithAppleNative,
+  AppleSessionLimitError,
+  AppleSignInCancelledError,
+} from "@/lib/auth/appleNativeAuth";
+import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
+import {
   LOGIN_URL_GOOGLE_GITHUB,
   LIVE_SESSION_REQUEST_OTP,
 } from "@/constants/urls";
@@ -67,6 +73,7 @@ export function ModularDynamicSignupContainer({
   const { setPrimaryColor } = useTheme();
   const { registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<SignupStep>("providers");
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
   const [emailInput, setEmailInput] = useState(initialEmail); // Pre-fill if provided
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
@@ -591,9 +598,39 @@ export function ModularDynamicSignupContainer({
     }
   };
 
+  const handleAppleNativeSignup = async () => {
+    // Native iOS Apple sign-in is login-or-signup: the backend auto-creates the
+    // learner per the institute signup policy, then returns tokens.
+    try {
+      setIsAppleLoading(true);
+      await loginWithAppleNative({ instituteId });
+    } catch (e) {
+      setIsAppleLoading(false);
+      if (e instanceof AppleSignInCancelledError) {
+        return; // user dismissed the sheet — no error UI
+      }
+      if (e instanceof AppleSessionLimitError) {
+        toast.error(
+          "You've reached the active session limit. Please log out from another device and try again.",
+        );
+      } else {
+        toast.error(
+          e instanceof Error
+            ? e.message
+            : "Failed to sign in with Apple. Please try again.",
+        );
+      }
+    }
+  };
+
   const handleProviderSelect = (provider: string) => {
     if (provider === "google" || provider === "github") {
       handleOAuthSignUp(provider as "google" | "github");
+      return;
+    }
+
+    if (provider === "apple") {
+      handleAppleNativeSignup();
       return;
     }
 
@@ -916,9 +953,10 @@ export function ModularDynamicSignupContainer({
         </div>
       </SignupStep>
 
-      {/* OAuth Providers — hidden on native iOS (Apple 4.8: social login needs
-          Sign in with Apple parity, not yet implemented). web/Android unaffected. */}
-      {!isIOSNative() && (
+      {/* OAuth Providers. On native iOS, Sign in with Apple (below) provides the
+          Guideline 4.8 parity that previously required hiding Google/GitHub.
+          web/Android unaffected. */}
+      {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
       <SignupStep delay={0.2}>
         <div className="space-y-2 mb-6">
           {effectiveSettings.providers.google && (
@@ -948,6 +986,17 @@ export function ModularDynamicSignupContainer({
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
           )}
+
+          {/* Sign in with Apple — native iOS only (no Android plugin support).
+              Shown whenever a third-party provider is offered, per Apple 4.8. */}
+          {isIOSNative() &&
+            (effectiveSettings.providers.google ||
+              effectiveSettings.providers.github) && (
+              <AppleSignInButton
+                onClick={() => handleProviderSelect("apple")}
+                disabled={isAppleLoading}
+              />
+            )}
         </div>
       </SignupStep>
       )}

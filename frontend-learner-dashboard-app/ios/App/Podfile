@@ -21,6 +21,7 @@ def capacitor_pods
   pod 'CapacitorStorage', :path => '../../node_modules/.pnpm/@capacitor+storage@1.2.5_@capacitor+core@7.4.2/node_modules/@capacitor/storage'
   pod 'CapawesomeCapacitorAppUpdate', :path => '../../node_modules/.pnpm/@capawesome+capacitor-app-update@7.0.1_@capacitor+core@7.4.2/node_modules/@capawesome/capacitor-app-update'
   pod 'CapgoCapacitorUpdater', :path => '../../node_modules/.pnpm/@capgo+capacitor-updater@8.45.1_@capacitor+core@7.4.2/node_modules/@capgo/capacitor-updater'
+  pod 'CapacitorCommunityAppleSignIn', :path => '../../node_modules/.pnpm/@capacitor-community+apple-sign-in@7.1.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/apple-sign-in'
 end
 
 target 'App' do

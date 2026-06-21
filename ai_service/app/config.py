@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # If only JDBC URL is available from admin core envs, we can parse it
     admin_core_jdbc_url: Optional[str] = os.getenv("ADMIN_CORE_SERVICE_DB_URL")
 
+    # HOTFIX (ppt-anim backfill): the media-service Postgres is a SEPARATE DB, so
+    # reading its file_metadata needs its own DSN, e.g.
+    # postgresql://user:pass@host:5432/media_service
+    media_service_db_url: Optional[str] = os.getenv("MEDIA_SERVICE_DB_URL")
+
     # SQLAlchemy pool tuning
     db_pool_size: int = 10
     db_max_overflow: int = 20

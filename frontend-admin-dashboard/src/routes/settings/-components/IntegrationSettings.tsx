@@ -8,7 +8,19 @@ import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { Copy, Check, ArrowSquareOut, Trash, Plus, PencilSimple, X } from '@phosphor-icons/react';
+import {
+    Copy,
+    Check,
+    ArrowSquareOut,
+    Trash,
+    Plus,
+    PencilSimple,
+    X,
+    Pulse,
+    ArrowsClockwise,
+    Warning,
+    CircleNotch,
+} from '@phosphor-icons/react';
 import {
     Dialog,
     DialogContent,
@@ -27,11 +39,14 @@ import {
     listConnectors,
     deactivateConnector,
     updateConnector,
+    checkConnectorHealth,
+    resubscribeConnector,
     buildGoogleWebhookUrl,
     fetchAudienceCustomFields,
     buildFieldMappingJson,
     type MetaPage,
     type ConnectorListItem,
+    type ConnectorHealth,
     type PlatformFormField,
     type AudienceCustomField,
 } from '../-services/ad-platform-service';
@@ -316,11 +331,17 @@ function ConnectorTable({
     audiences,
     onDelete,
     onEdit,
+    onTest,
+    onResubscribe,
+    testingId,
 }: {
     connectors: ConnectorListItem[];
     audiences: AudienceOption[];
     onDelete: (id: string) => void;
     onEdit: (connector: ConnectorListItem) => void;
+    onTest: (id: string) => void;
+    onResubscribe: (id: string) => void;
+    testingId: string | null;
 }) {
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const audienceNameById = new Map(audiences.map((a) => [a.id, a.name]));
@@ -425,15 +446,29 @@ function ConnectorTable({
                                     {c.producesSourceType ?? '-'}
                                 </td>
                                 <td className="px-4 py-2.5">
-                                    <span
-                                        className={`text-xs font-medium ${
-                                            c.connectionStatus === 'ACTIVE'
-                                                ? 'text-green-600'
-                                                : 'text-neutral-400'
-                                        }`}
-                                    >
-                                        {c.connectionStatus}
-                                    </span>
+                                    {c.connectionStatus === 'ACTIVE' ? (
+                                        <span className="text-xs font-medium text-success-600">
+                                            ACTIVE
+                                        </span>
+                                    ) : c.connectionStatus === 'ACTION_REQUIRED' ? (
+                                        <span
+                                            className="inline-flex items-center gap-1 text-xs font-medium text-warning-700"
+                                            title={c.statusDetail ?? undefined}
+                                        >
+                                            <Warning className="size-3.5" weight="fill" />
+                                            Action needed
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs font-medium text-neutral-400">
+                                            {c.connectionStatus}
+                                        </span>
+                                    )}
+                                    {c.connectionStatus === 'ACTION_REQUIRED' &&
+                                        c.statusDetail && (
+                                            <p className="mt-0.5 max-w-xs text-caption leading-snug text-warning-700">
+                                                {c.statusDetail}
+                                            </p>
+                                        )}
                                 </td>
                                 <td className="px-4 py-2.5">
                                     {c.vendor === 'GOOGLE_LEAD_ADS' && c.platformFormId && (
@@ -453,21 +488,47 @@ function ConnectorTable({
                                         <span className="text-xs text-neutral-400">auto</span>
                                     )}
                                 </td>
-                                <td className="flex items-center gap-2 px-4 py-2.5">
-                                    <button
-                                        onClick={() => onEdit(c)}
-                                        className="text-neutral-400 hover:text-primary-600"
-                                        title="Edit default values"
-                                    >
-                                        <PencilSimple className="size-4" />
-                                    </button>
-                                    <button
-                                        onClick={() => onDelete(c.id)}
-                                        className="text-neutral-400 hover:text-red-600"
-                                        title="Deactivate connector"
-                                    >
-                                        <Trash className="size-4" />
-                                    </button>
+                                <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-2">
+                                        {c.vendor === 'META_LEAD_ADS' && (
+                                            <button
+                                                onClick={() => onTest(c.id)}
+                                                disabled={testingId === c.id}
+                                                className="text-neutral-400 hover:text-primary-600 disabled:opacity-50"
+                                                title="Test connection"
+                                            >
+                                                {testingId === c.id ? (
+                                                    <CircleNotch className="size-4 animate-spin" />
+                                                ) : (
+                                                    <Pulse className="size-4" />
+                                                )}
+                                            </button>
+                                        )}
+                                        {c.vendor === 'META_LEAD_ADS' &&
+                                            c.connectionStatus === 'ACTION_REQUIRED' && (
+                                                <button
+                                                    onClick={() => onResubscribe(c.id)}
+                                                    className="text-neutral-400 hover:text-success-600"
+                                                    title="Re-subscribe (after granting Full control)"
+                                                >
+                                                    <ArrowsClockwise className="size-4" />
+                                                </button>
+                                            )}
+                                        <button
+                                            onClick={() => onEdit(c)}
+                                            className="text-neutral-400 hover:text-primary-600"
+                                            title="Edit default values"
+                                        >
+                                            <PencilSimple className="size-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => onDelete(c.id)}
+                                            className="text-neutral-400 hover:text-danger-600"
+                                            title="Deactivate connector"
+                                        >
+                                            <Trash className="size-4" />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         );
@@ -475,6 +536,108 @@ function ConnectorTable({
                 </tbody>
             </table>
         </div>
+    );
+}
+
+// ── Connection health dialog ──────────────────────────────────────────────────
+
+const HEALTH_STATUS_STYLES: Record<string, string> = {
+    PASS: 'text-success-600',
+    WARN: 'text-warning-700',
+    FAIL: 'text-danger-600',
+    SKIP: 'text-neutral-400',
+};
+
+const OVERALL_LABELS: Record<string, { label: string; className: string }> = {
+    VERIFIED: { label: 'Verified', className: 'text-success-600' },
+    DEGRADED: { label: 'Degraded', className: 'text-warning-700' },
+    ACTION_REQUIRED: { label: 'Action required', className: 'text-warning-700' },
+    BROKEN: { label: 'Broken', className: 'text-danger-600' },
+    UNKNOWN: { label: 'Unknown', className: 'text-neutral-500' },
+};
+
+function ConnectorHealthDialog({
+    health,
+    open,
+    onOpenChange,
+    onResubscribe,
+}: {
+    health: ConnectorHealth | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onResubscribe: (id: string) => void;
+}) {
+    if (!health) return null;
+    const overall = OVERALL_LABELS[health.overall] ?? OVERALL_LABELS.UNKNOWN!;
+    const needsResubscribe = health.checks.some(
+        (c) => c.key === 'SUBSCRIPTION' && c.status === 'FAIL'
+    );
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Connection test</DialogTitle>
+                    <DialogDescription>
+                        Status:{' '}
+                        <span className={`font-semibold ${overall.className}`}>
+                            {overall.label}
+                        </span>
+                        {health.lastLeadAt && (
+                            <>
+                                {' · '}last lead{' '}
+                                {new Date(health.lastLeadAt).toLocaleString()}
+                            </>
+                        )}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <ul className="space-y-2.5">
+                    {health.checks.map((c) => (
+                        <li key={c.key} className="flex items-start gap-2 text-sm">
+                            <span
+                                className={`mt-0.5 shrink-0 ${
+                                    HEALTH_STATUS_STYLES[c.status] ?? 'text-neutral-400'
+                                }`}
+                            >
+                                {c.status === 'PASS' ? (
+                                    <Check className="size-4" weight="bold" />
+                                ) : c.status === 'SKIP' ? (
+                                    <X className="size-4" />
+                                ) : (
+                                    <Warning className="size-4" weight="fill" />
+                                )}
+                            </span>
+                            <div>
+                                <p className="font-medium text-neutral-700">{c.label}</p>
+                                <p className="text-caption text-neutral-500">{c.message}</p>
+                                {c.remediation && c.status !== 'PASS' && (
+                                    <p className="mt-0.5 text-caption text-warning-700">
+                                        {c.remediation}
+                                    </p>
+                                )}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+
+                <DialogFooter>
+                    {needsResubscribe && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={() => onResubscribe(health.connectorId)}
+                        >
+                            <ArrowsClockwise className="size-4" />
+                            Re-subscribe
+                        </MyButton>
+                    )}
+                    <MyButton scale="medium" onClick={() => onOpenChange(false)}>
+                        Close
+                    </MyButton>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -702,7 +865,15 @@ function AddMetaForm({
             });
         },
         onSuccess: (result) => {
-            toast.success(result.message);
+            // The connector is saved either way, but if the page→app subscribe
+            // failed (e.g. the connecting account lacks Full control), leads won't
+            // flow until that's fixed — surface it as an actionable warning, not a
+            // green "success" that hides the problem.
+            if (result.subscribed === 'false' || result.status === 'ACTION_REQUIRED') {
+                toast.warning(result.message, { duration: 10000 });
+            } else {
+                toast.success(result.message);
+            }
             // Keep sessionKey AND selectedPageId so the admin can immediately add
             // another form (often on the same page) without reconnecting or
             // re-picking the page — the backend keeps the session valid for more saves.
@@ -777,9 +948,26 @@ function AddMetaForm({
                                 {pages.map((p: MetaPage) => (
                                     <option key={p.id} value={p.id}>
                                         {p.name}
+                                        {p.canReceiveLeads === false
+                                            ? ' — needs Full control'
+                                            : ''}
                                     </option>
                                 ))}
                             </select>
+                            {(() => {
+                                const sel = pages?.find(
+                                    (p: MetaPage) => p.id === selectedPageId
+                                );
+                                return sel?.warning ? (
+                                    <div className="mt-1 flex items-start gap-1.5 rounded-md border border-warning-200 bg-warning-50 p-2 text-caption text-warning-700">
+                                        <Warning
+                                            className="mt-0.5 size-3.5 shrink-0"
+                                            weight="fill"
+                                        />
+                                        <span>{sel.warning}</span>
+                                    </div>
+                                ) : null;
+                            })()}
                         </div>
                         <div className="space-y-1">
                             <Label className="text-xs">Lead Gen Form</Label>
@@ -971,6 +1159,38 @@ export default function IntegrationSettings() {
         onError: () => toast.error('Failed to deactivate connector'),
     });
 
+    // "Test connection" — runs the live health check and shows the result.
+    const [healthResult, setHealthResult] = useState<ConnectorHealth | null>(null);
+    const {
+        mutate: testConnector,
+        isPending: isTesting,
+        variables: testingVar,
+    } = useMutation({
+        mutationFn: checkConnectorHealth,
+        onSuccess: (data) => {
+            setHealthResult(data);
+            // The server may have flipped the status (e.g. back to ACTIVE) — refetch.
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: () => toast.error('Could not run the connection test'),
+    });
+    const testingId = isTesting ? (testingVar ?? null) : null;
+
+    const { mutate: resubscribe } = useMutation({
+        mutationFn: resubscribeConnector,
+        onSuccess: (data) => {
+            if (data.subscribed === 'true') toast.success(data.message);
+            else toast.warning(data.message);
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: (err: unknown) => {
+            const msg =
+                (err as { response?: { data?: { message?: string } } })?.response?.data
+                    ?.message ?? 'Re-subscribe failed';
+            toast.error(msg);
+        },
+    });
+
     const [editingConnector, setEditingConnector] = useState<ConnectorListItem | null>(null);
 
     const { mutate: saveConnectorEdits, isPending: isSavingEdits } = useMutation({
@@ -1030,6 +1250,9 @@ export default function IntegrationSettings() {
                             audiences={audiences}
                             onDelete={(id) => deleteConnector(id)}
                             onEdit={(c) => setEditingConnector(c)}
+                            onTest={(id) => testConnector(id)}
+                            onResubscribe={(id) => resubscribe(id)}
+                            testingId={testingId}
                         />
                     )}
                 </CardContent>
@@ -1091,6 +1314,18 @@ export default function IntegrationSettings() {
                     })
                 }
                 isSaving={isSavingEdits}
+            />
+
+            <ConnectorHealthDialog
+                health={healthResult}
+                open={!!healthResult}
+                onOpenChange={(o) => {
+                    if (!o) setHealthResult(null);
+                }}
+                onResubscribe={(id) => {
+                    resubscribe(id);
+                    setHealthResult(null);
+                }}
             />
         </div>
     );

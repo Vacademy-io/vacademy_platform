@@ -689,6 +689,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         Long countByAudienceId(String audienceId);
 
         /**
+         * Most recent response for an audience — used by the connector health
+         * check as a "leads are actually arriving" heartbeat.
+         */
+        Optional<AudienceResponse> findTopByAudienceIdOrderBySubmittedAtDesc(String audienceId);
+
+        /**
          * Count converted leads for a campaign
          */
         @Query("SELECT COUNT(ar) FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")

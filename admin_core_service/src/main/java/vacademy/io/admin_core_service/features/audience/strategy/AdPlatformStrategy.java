@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.strategy;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
+import vacademy.io.admin_core_service.features.audience.dto.WebhookSubscriptionResult;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 
 import java.util.List;
@@ -85,8 +86,13 @@ public interface AdPlatformStrategy {
     /**
      * Subscribe the connector's page to receive lead webhooks.
      * Called once after OAuth + page selection.
+     *
+     * @return a {@link WebhookSubscriptionResult} describing success or the
+     *         platform error (e.g. Meta #200 when the connecting account lacks
+     *         Full control of the Page). Callers MUST act on a failure instead
+     *         of treating the connector as healthy.
      */
-    void subscribePageToWebhooks(FormWebhookConnector connector, String decryptedToken);
+    WebhookSubscriptionResult subscribePageToWebhooks(FormWebhookConnector connector, String decryptedToken);
 
     // ── Token lifecycle ──────────────────────────────────────────────────────
 

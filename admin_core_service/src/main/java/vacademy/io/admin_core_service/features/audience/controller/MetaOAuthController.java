@@ -11,16 +11,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
+import vacademy.io.admin_core_service.features.audience.dto.ConnectorHealthDTO;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorListItemDTO;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorUpdateRequest;
 import vacademy.io.admin_core_service.features.audience.dto.MetaPageDTO;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
+import vacademy.io.admin_core_service.features.audience.dto.WebhookSubscriptionResult;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.entity.OAuthConnectState;
 import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
 import vacademy.io.admin_core_service.features.audience.service.AdPlatformWebhookService;
+import vacademy.io.admin_core_service.features.audience.service.MetaConnectorHealthService;
 import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 import vacademy.io.admin_core_service.features.audience.strategy.MetaLeadAdsStrategy;
 import vacademy.io.common.exceptions.VacademyException;
@@ -69,6 +72,7 @@ public class MetaOAuthController {
 
     private final MetaLeadAdsStrategy metaStrategy;
     private final AdPlatformWebhookService adPlatformWebhookService;
+    private final MetaConnectorHealthService connectorHealthService;
     private final OAuthConnectStateRepository stateRepository;
     private final FormWebhookConnectorRepository connectorRepository;
     private final TokenEncryptionService tokenEncryptionService;
@@ -171,6 +175,12 @@ public class MetaOAuthController {
                 entry.put("id", page.get("id"));
                 entry.put("name", page.get("name"));
                 entry.put("token_enc", tokenEncryptionService.encrypt(pageToken));
+                // Carry the connecting user's page tasks so the page selector can warn
+                // about pages that lack the MANAGE (Full control) task — those can read
+                // leads but Meta rejects the webhook subscribe (#200), so they'd never
+                // actually deliver leads.
+                if (page.get("tasks") != null) entry.put("tasks", page.get("tasks"));
+                if (page.get("has_manage") != null) entry.put("has_manage", page.get("has_manage"));
                 pagesForStorage.add(entry);
             }
 
@@ -223,10 +233,7 @@ public class MetaOAuthController {
 
         List<MetaPageDTO> pages = decryptAndListPages(state)
                 .stream()
-                .map(p -> MetaPageDTO.builder()
-                        .id(p.get("id"))
-                        .name(p.get("name"))
-                        .build())
+                .map(this::toPageDTO)
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(pages);
@@ -348,12 +355,25 @@ public class MetaOAuthController {
 
         FormWebhookConnector saved = adPlatformWebhookService.saveConnector(connector, tokenResult);
 
-        // Subscribe the page to receive leadgen webhooks
+        // Subscribe the page to receive leadgen webhooks. This is the step that,
+        // when it fails (Meta #200 — the connecting account lacks Full control of
+        // the Page), used to be swallowed, leaving the connector falsely ACTIVE
+        // with zero leads ever arriving. Capture the result and reflect it so the
+        // admin gets an honest status + remediation instead of silent breakage.
+        WebhookSubscriptionResult subResult;
         try {
-            metaStrategy.subscribePageToWebhooks(saved, pageToken);
+            subResult = metaStrategy.subscribePageToWebhooks(saved, pageToken);
         } catch (Exception e) {
-            log.warn("Page webhook subscription failed for page={}: {}",
+            log.warn("Page webhook subscription threw for page={}: {}",
                     request.getSelectedPageId(), e.getMessage());
+            subResult = WebhookSubscriptionResult.failure(null, e.getMessage(),
+                    "Couldn't link this Page to Vacademy. Try reconnecting.");
+        }
+
+        if (!subResult.isSuccess()) {
+            saved.setConnectionStatus("ACTION_REQUIRED");
+            saved.setStatusDetail(subResult.getRemediation());
+            connectorRepository.save(saved);
         }
 
         // Keep the session AUTHORIZED so the admin can add more form→audience
@@ -363,16 +383,19 @@ public class MetaOAuthController {
         state.setExpiresAt(LocalDateTime.now().plusMinutes(30));
         stateRepository.save(state);
 
-        log.info("Meta connector created: id={}, page={} ({}), form={}",
+        log.info("Meta connector created: id={}, page={} ({}), form={}, subscribed={}",
                 saved.getId(), pageName, request.getSelectedPageId(),
-                request.getPlatformFormId());
+                request.getPlatformFormId(), subResult.isSuccess());
 
-        return ResponseEntity.ok(Map.of(
-                "connector_id", saved.getId(),
-                "page_name", pageName != null ? pageName : request.getSelectedPageId(),
-                "status", "ACTIVE",
-                "message", "Meta Lead Ads connector created successfully"
-        ));
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("connector_id", saved.getId());
+        body.put("page_name", pageName != null ? pageName : request.getSelectedPageId());
+        body.put("status", saved.getConnectionStatus());
+        body.put("subscribed", String.valueOf(subResult.isSuccess()));
+        body.put("message", subResult.isSuccess()
+                ? "Meta Lead Ads connector created and the Page is linked for lead delivery."
+                : subResult.getRemediation());
+        return ResponseEntity.ok(body);
     }
 
     // ── Google connector (no OAuth) ───────────────────────────────────────────
@@ -506,6 +529,61 @@ public class MetaOAuthController {
         return ResponseEntity.ok(ConnectorListItemDTO.from(saved));
     }
 
+    // ── Connection health + re-subscribe ─────────────────────────────────────
+
+    /**
+     * Live health check ("Test connection") for a connector. Verifies the whole
+     * lead-delivery chain — token, page→app subscription, lead-read access, and a
+     * recent-lead heartbeat — and reflects a broken subscription into the
+     * connector's status so the list view stays honest.
+     */
+    @GetMapping("/connectors/{connectorId}/health")
+    public ResponseEntity<ConnectorHealthDTO> connectorHealth(@PathVariable String connectorId) {
+        return ResponseEntity.ok(connectorHealthService.checkHealth(connectorId));
+    }
+
+    /**
+     * Re-attempt the page→app webhook subscription using the connector's stored
+     * token. Use after granting the connecting account Full control of the Page
+     * (fixes the #200 case) — no need to redo the whole OAuth.
+     */
+    @PostMapping("/connectors/{connectorId}/resubscribe")
+    @Transactional
+    public ResponseEntity<Map<String, String>> resubscribeConnector(
+            @PathVariable String connectorId) {
+        FormWebhookConnector connector = connectorRepository.findById(connectorId)
+                .orElseThrow(() -> new VacademyException("Connector not found"));
+        if (!"META_LEAD_ADS".equals(connector.getVendor())) {
+            throw new VacademyException("Re-subscribe is only supported for Meta connectors");
+        }
+        if (connector.getOauthAccessTokenEnc() == null) {
+            throw new VacademyException(
+                    "No stored token for this connector — reconnect the Page first.");
+        }
+
+        String pageToken = tokenEncryptionService.decrypt(connector.getOauthAccessTokenEnc());
+        WebhookSubscriptionResult result = metaStrategy.subscribePageToWebhooks(connector, pageToken);
+
+        if (result.isSuccess()) {
+            connector.setConnectionStatus("ACTIVE");
+            connector.setStatusDetail(null);
+        } else {
+            connector.setConnectionStatus("ACTION_REQUIRED");
+            connector.setStatusDetail(result.getRemediation());
+        }
+        connector.setLastCheckedAt(LocalDateTime.now());
+        connectorRepository.save(connector);
+
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("connector_id", connector.getId());
+        body.put("status", connector.getConnectionStatus());
+        body.put("subscribed", String.valueOf(result.isSuccess()));
+        body.put("message", result.isSuccess()
+                ? "Page re-subscribed — leads will now flow."
+                : result.getRemediation());
+        return ResponseEntity.ok(body);
+    }
+
     // ── One-time backfill: platform_form_name on legacy connectors ───────────
 
     /**
@@ -566,6 +644,32 @@ public class MetaOAuthController {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Map a stored page entry to the safe DTO, deriving the Full-control warning.
+     * A page without the MANAGE task can be selected but won't deliver leads —
+     * Meta rejects the webhook subscribe with #200 — so we flag it up front.
+     */
+    private MetaPageDTO toPageDTO(Map<String, String> p) {
+        String tasksCsv = p.getOrDefault("tasks", "");
+        List<String> tasks = tasksCsv.isBlank()
+                ? List.of()
+                : Arrays.asList(tasksCsv.split(","));
+        boolean hasManage = Boolean.parseBoolean(p.getOrDefault("has_manage", "false"))
+                || tasks.contains("MANAGE");
+        String warning = hasManage ? null
+                : "You have Leads access to this Page but not Full control, which Facebook "
+                + "requires to auto-sync leads. Ask a Page admin to grant your account Full "
+                + "control, then reconnect.";
+        return MetaPageDTO.builder()
+                .id(p.get("id"))
+                .name(p.get("name"))
+                .tasks(tasks)
+                .hasManageTask(hasManage)
+                .canReceiveLeads(hasManage)
+                .warning(warning)
+                .build();
+    }
 
     /**
      * Decrypts the pages JSON blob and returns the raw list (includes token_enc entries).

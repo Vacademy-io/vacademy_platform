@@ -34,6 +34,11 @@ logger = logging.getLogger(__name__)
 
 _CONV_POLL_INTERVAL_S = 3
 _CONV_POLL_MAX_TRIES = 200  # ~10 min/deck ceiling
+# The render worker is single-concurrency (MAX_CONCURRENT_JOBS); a submit can be
+# rejected 429 "Server busy" when another job holds the slot. Wait it out rather
+# than dropping the deck. 90 * 10s = ~15 min patience for a free slot.
+_SUBMIT_MAX_TRIES = 90
+_SUBMIT_RETRY_WAIT_S = 10
 
 
 def _norm_title(name):
@@ -175,8 +180,25 @@ def _update_slide(slide_doc_id: str, deck: str) -> int:
 
 
 async def _convert(pptx_url: str, dpi: int) -> str:
-    """Submit a deck to the render worker and poll until done. Returns deck_base."""
-    job_id = await presentation_service.submit_pptx_anim(pptx_url=pptx_url, dpi=dpi)
+    """Submit a deck to the render worker and poll until done. Returns deck_base.
+
+    Submits are retried while the worker is busy (429) so a deck isn't dropped
+    just because another render held the single job slot at that moment.
+    """
+    job_id = None
+    for _ in range(_SUBMIT_MAX_TRIES):
+        try:
+            job_id = await presentation_service.submit_pptx_anim(pptx_url=pptx_url, dpi=dpi)
+            break
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if "429" in msg or "busy" in msg.lower():
+                await asyncio.sleep(_SUBMIT_RETRY_WAIT_S)
+                continue
+            raise
+    if not job_id:
+        raise RuntimeError("render worker stayed busy — exceeded submit retries")
+
     for _ in range(_CONV_POLL_MAX_TRIES):
         await asyncio.sleep(_CONV_POLL_INTERVAL_S)
         st = await presentation_service.get_pptx_anim_status(job_id)

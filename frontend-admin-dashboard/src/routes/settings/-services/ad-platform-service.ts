@@ -9,6 +9,14 @@ const WEBHOOK_BASE = `${BASE_URL}/admin-core-service/api/v1/webhook`;
 export interface MetaPage {
     id: string;
     name: string;
+    /** Page tasks the connecting user holds (MANAGE, MANAGE_LEADS, ADVERTISE, ...). */
+    tasks?: string[];
+    /** True when the user has the MANAGE task (Full control) — required to receive leads. */
+    hasManageTask?: boolean;
+    /** Alias of hasManageTask. When explicitly false, leads can't be auto-synced. */
+    canReceiveLeads?: boolean;
+    /** Warning to show next to a page the user can pick but that won't deliver leads. */
+    warning?: string | null;
 }
 
 export interface PlatformFormField {
@@ -46,6 +54,8 @@ export interface ConnectorSaveResult {
     message: string;
     page_name?: string;
     webhook_url?: string;
+    /** "true"/"false" — whether the page→app webhook subscribe actually succeeded. */
+    subscribed?: string;
 }
 
 // ── Meta OAuth endpoints ─────────────────────────────────────────────────────
@@ -122,6 +132,9 @@ export interface ConnectorListItem {
     /** Human-readable form name captured at create time. Null on older rows. */
     platformFormName: string | null;
     connectionStatus: string;
+    /** Human reason/remediation when connectionStatus is not ACTIVE (e.g. needs Full control). */
+    statusDetail?: string | null;
+    lastCheckedAt?: string | null;
     producesSourceType: string | null;
     createdAt: string | null;
     tokenExpiresAt: string | null;
@@ -152,6 +165,52 @@ export const listConnectors = async (
 /** Deactivate (soft-delete) a connector. */
 export const deactivateConnector = async (connectorId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(`${BASE}/connectors/${connectorId}`);
+};
+
+// ── Connection health + re-subscribe ──────────────────────────────────────
+
+export interface ConnectorHealthCheck {
+    /** TOKEN | SUBSCRIPTION | LEAD_READ | HEARTBEAT */
+    key: string;
+    label: string;
+    status: 'PASS' | 'WARN' | 'FAIL' | 'SKIP';
+    message: string;
+    remediation?: string | null;
+}
+
+export interface ConnectorHealth {
+    connectorId: string;
+    vendor: string;
+    /** VERIFIED | DEGRADED | ACTION_REQUIRED | BROKEN | UNKNOWN */
+    overall: string;
+    lastLeadAt?: string | null;
+    checks: ConnectorHealthCheck[];
+}
+
+/**
+ * Run a live health check ("Test connection") on a connector — verifies the
+ * whole lead-delivery chain (token, page→app subscription, lead-read, heartbeat).
+ * Side effect: the server flips the connector to ACTION_REQUIRED (or back to
+ * ACTIVE) based on the result, so callers should refetch the connector list.
+ */
+export const checkConnectorHealth = async (connectorId: string): Promise<ConnectorHealth> => {
+    const res = await authenticatedAxiosInstance.get(
+        `${BASE}/connectors/${connectorId}/health`
+    );
+    return res.data;
+};
+
+/**
+ * Re-attempt the page→app webhook subscription using the connector's stored
+ * token. Use after granting the connecting account Full control of the Page.
+ */
+export const resubscribeConnector = async (
+    connectorId: string
+): Promise<ConnectorSaveResult> => {
+    const res = await authenticatedAxiosInstance.post(
+        `${BASE}/connectors/${connectorId}/resubscribe`
+    );
+    return res.data;
 };
 
 /** Fetch a single connector by id (includes defaultValuesJson for editing). */

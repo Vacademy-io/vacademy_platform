@@ -123,6 +123,7 @@ export const StudentProfileOverlay = () => {
         learnerListPosition,
         goPrevLearner,
         goNextLearner,
+        isSubmissionTab,
     } = useStudentSidebar();
     const hasPrev = !!learnerListPosition && learnerListPosition.index > 0;
     const hasNext =
@@ -227,25 +228,25 @@ export const StudentProfileOverlay = () => {
     const renderSection = (id: SectionId) => {
         switch (id) {
             case 'overview':
-                return <StudentOverview />;
+                return <StudentOverview isSubmissionTab={isSubmissionTab} />;
             case 'courses':
-                return <StudentCourses />;
+                return <StudentCourses isSubmissionTab={isSubmissionTab} />;
             case 'learningProgress':
-                return <StudentLearningProgress />;
+                return <StudentLearningProgress isSubmissionTab={isSubmissionTab} />;
             case 'testRecord':
                 return <StudentTestRecord selectedTab={undefined} examType={undefined} />;
             case 'notifications':
                 return <StudentCommunicationTimeline />;
             case 'membership':
-                return <StudentMembership />;
+                return <StudentMembership isSubmissionTab={isSubmissionTab} />;
             case 'paymentHistory':
                 return <StudentPaymentHistory />;
             case 'userTagging':
-                return <StudentUserTagging />;
+                return <StudentUserTagging isSubmissionTab={isSubmissionTab} />;
             case 'files':
                 return <StudentFiles />;
             case 'portalAccess':
-                return <StudentPortalAccess />;
+                return <StudentPortalAccess isSubmissionTab={isSubmissionTab} />;
             case 'reports':
                 return <StudentReports />;
             case 'enrollDeroll':
@@ -263,7 +264,7 @@ export const StudentProfileOverlay = () => {
                     />
                 );
             case 'subOrg':
-                return <StudentSubOrg />;
+                return <StudentSubOrg isSubmissionTab={isSubmissionTab} />;
             default:
                 return null;
         }

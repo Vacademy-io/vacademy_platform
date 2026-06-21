@@ -4,6 +4,7 @@ package vacademy.io.assessment_service.features.assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ProvideReattemptRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ReleaseRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.manager.AssessmentParticipantsManager;
@@ -33,6 +34,15 @@ public class AdminParticipantsController {
                                                 @RequestParam("methodType") String type) {
 
         return assessmentParticipantsManager.releaseParticipantsResult(userDetails, assessmentId, instituteId, request, type);
+    }
+
+    @PostMapping("/provide-reattempt")
+    public ResponseEntity<String> provideReattempt(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                   @RequestParam("assessmentId") String assessmentId,
+                                                   @RequestParam("instituteId") String instituteId,
+                                                   @RequestBody ProvideReattemptRequestDto request) {
+
+        return assessmentParticipantsManager.provideReattempt(userDetails, assessmentId, instituteId, request);
     }
 
 

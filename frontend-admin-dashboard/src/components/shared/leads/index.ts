@@ -29,6 +29,7 @@ export { LeadViewToggle, type LeadView } from './lead-view-toggle';
 export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';
 export { usePlaceCall } from './use-place-call';
+export { usePlaceAiCall } from './use-place-ai-call';
 export {
     openPostCallDisposition,
     isPostCallAutoOpenDisabled,

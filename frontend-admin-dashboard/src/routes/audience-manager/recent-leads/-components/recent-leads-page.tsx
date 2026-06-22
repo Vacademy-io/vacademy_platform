@@ -52,6 +52,7 @@ import {
     LeadPagination,
     useUpdateLeadTier,
     usePlaceCall,
+    usePlaceAiCall,
     recentLeadToVM,
     type LeadActionHandlers,
 } from '@/components/shared/leads';
@@ -426,6 +427,7 @@ const RecentLeadsContent = () => {
     const invalidateKeys = [['recent-leads'], ['lead-profiles-batch']];
     const updateTier = useUpdateLeadTier({ invalidateKeys });
     const placeCall = usePlaceCall({ invalidateKeys });
+    const placeAiCall = usePlaceAiCall({ invalidateKeys });
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -454,8 +456,16 @@ const RecentLeadsContent = () => {
                     return { allowed: false, reason: 'Another call is starting…' };
                 return { allowed: true };
             },
+            onAiCallLead: (vm) => {
+                if (!vm.responseId) return;
+                placeAiCall.mutate({
+                    responseId: vm.responseId,
+                    userId: vm.userId ?? undefined,
+                    leadName: vm.name,
+                });
+            },
         }),
-        [setSelectedStudent, updateTier, placeCall]
+        [setSelectedStudent, updateTier, placeCall, placeAiCall]
     );
 
     // The backend mirrors a per-response status change onto the user's profile

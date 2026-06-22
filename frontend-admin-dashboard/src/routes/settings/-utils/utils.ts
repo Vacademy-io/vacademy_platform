@@ -28,6 +28,7 @@ import CouponSettings from '../-components/Coupons/CouponSettings';
 import TelephonySettings from '../-components/TelephonySettings';
 import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
 import LmsSettings from '../-components/Lms/LmsSettings';
+import AiCallingSettings from '../-components/AiCallingSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -168,6 +169,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Telephony,
             value: 'Calling (Telephony)',
             component: TelephonySettings,
+        },
+        {
+            tab: SettingsTabs.AiCalling,
+            value: 'AI Calling',
+            component: AiCallingSettings,
         },
         {
             tab: SettingsTabs.PaymentGateways,

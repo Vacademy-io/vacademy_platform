@@ -7,6 +7,8 @@ package vacademy.io.admin_core_service.features.telephony.enums;
  */
 public final class ProviderType {
     public static final String EXOTEL = "EXOTEL";
+    /** Aavtaar.ai autonomous AI voice agent (Plivo-backed). End-of-call webhook only. */
+    public static final String AAVTAAR = "AAVTAAR";
     // Future: PLIVO, TWILIO, KNOWLARITY, KALEYRA, …
 
     private ProviderType() {}

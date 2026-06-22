@@ -33,4 +33,23 @@ public class TelephonyAsyncConfig {
         ex.initialize();
         return ex;
     }
+
+    /**
+     * Runs bulk "AI calls first for an audience" dispatch off the request thread.
+     * Each campaign occupies ONE thread for its whole paced run (it sleeps {@code
+     * aavtaar.bulk.pace-ms} between calls), so the pool is intentionally small —
+     * a few campaigns run concurrently and the rest queue. The default abort
+     * policy throws when the queue is full; AiCallCampaignService turns that into
+     * a friendly "try again shortly" error.
+     */
+    @Bean(name = "aiCallDispatchExecutor")
+    public Executor aiCallDispatchExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(2);
+        ex.setMaxPoolSize(4);
+        ex.setQueueCapacity(25);
+        ex.setThreadNamePrefix("ai-call-bulk-");
+        ex.initialize();
+        return ex;
+    }
 }

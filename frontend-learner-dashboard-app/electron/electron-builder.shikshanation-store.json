@@ -26,7 +26,7 @@
     "target": [
       {
         "target": "appx",
-        "arch": ["x64"]
+        "arch": ["x64", "ia32"]
       }
     ],
     "icon": "assets/shiksha_nation.ico"

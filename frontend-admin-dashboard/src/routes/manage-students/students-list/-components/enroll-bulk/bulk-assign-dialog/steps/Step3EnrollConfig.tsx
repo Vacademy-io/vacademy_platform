@@ -21,7 +21,7 @@ import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { getActiveWorkflowsQuery } from '@/services/workflow-service';
@@ -152,6 +152,19 @@ export const Step3EnrollConfig = ({
     const showNotifyLearners = enrollmentNotifications?.showNotifyLearners ?? true;
     const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
 
+    // Controlled so the calendar popover closes as soon as a date is picked.
+    const [paymentDateOpen, setPaymentDateOpen] = useState(false);
+
+    const PAYMENT_MODES = [
+        { value: 'CASH', label: 'Cash' },
+        { value: 'UPI', label: 'UPI' },
+        { value: 'CARD', label: 'Card' },
+        { value: 'NET_BANKING', label: 'Net Banking' },
+        { value: 'CHEQUE', label: 'Cheque' },
+        { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+        { value: 'OTHER', label: 'Other' },
+    ];
+
     const updateSession = (packageSessionId: string, patch: Partial<SelectedPackageSession>) => {
         onSelectedPackageSessionsChange(
             selectedPackageSessions.map((ps) =>
@@ -269,7 +282,7 @@ export const Step3EnrollConfig = ({
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
                             Payment Date (Optional)
                         </Label>
-                        <Popover>
+                        <Popover open={paymentDateOpen} onOpenChange={setPaymentDateOpen}>
                             <PopoverTrigger asChild>
                                 <Button
                                     variant="outline"
@@ -304,6 +317,8 @@ export const Step3EnrollConfig = ({
                                                 ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
                                                 : '',
                                         });
+                                        // Close the popover once a date is chosen.
+                                        if (date) setPaymentDateOpen(false);
                                     }}
                                     disabled={(date) => date > new Date()}
                                     initialFocus
@@ -333,6 +348,59 @@ export const Step3EnrollConfig = ({
                         />
                         <p className="mt-1 text-xs text-neutral-400">
                             External payment transaction reference
+                        </p>
+                    </div>
+
+                    {/* Payment Amount (Optional) */}
+                    <div>
+                        <Label className="mb-1 text-sm font-medium text-neutral-700">
+                            Payment Amount (Optional)
+                        </Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Enter amount collected"
+                            value={options.paymentAmount}
+                            onChange={(e) =>
+                                onOptionsChange({
+                                    ...options,
+                                    paymentAmount: e.target.value,
+                                })
+                            }
+                        />
+                        <p className="mt-1 text-xs text-neutral-400">
+                            Leave blank to use the plan price
+                        </p>
+                    </div>
+
+                    {/* Payment Mode (Optional) */}
+                    <div>
+                        <Label className="mb-1 text-sm font-medium text-neutral-700">
+                            Payment Mode (Optional)
+                        </Label>
+                        <Select
+                            value={options.paymentMode || undefined}
+                            onValueChange={(v) =>
+                                onOptionsChange({
+                                    ...options,
+                                    paymentMode: v,
+                                })
+                            }
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select payment mode" />
+                            </SelectTrigger>
+                            <SelectContent className="z-popover-above-modal">
+                                {PAYMENT_MODES.map((m) => (
+                                    <SelectItem key={m.value} value={m.value}>
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="mt-1 text-xs text-neutral-400">
+                            How the payment was collected
                         </p>
                     </div>
                 </div>

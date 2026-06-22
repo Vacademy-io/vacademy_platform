@@ -23,4 +23,5 @@ public class PaymentLogDTO {
     private String trackingId;
     private String trackingSource;
     private String orderStatus;
+    private String paymentMode;
 }

@@ -92,6 +92,8 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         sendCredentials: false,
         transactionId: '',
         paymentDate: '',
+        paymentAmount: '',
+        paymentMode: '',
     });
     const [previewResponse, setPreviewResponse] = useState<BulkAssignResponse | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -130,6 +132,11 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 send_credentials: showSendCredentials ? options.sendCredentials : false,
                 transaction_id: options.transactionId || undefined,
                 payment_date: options.paymentDate || undefined,
+                payment_amount:
+                    options.paymentAmount !== '' && !Number.isNaN(Number(options.paymentAmount))
+                        ? Number(options.paymentAmount)
+                        : undefined,
+                payment_mode: options.paymentMode || undefined,
                 dry_run: dryRun,
             },
         };
@@ -169,7 +176,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         setStep(0);
         setSelectedLearners([]);
         setSelectedPackageSessions(buildInitialSelection());
-        setOptions({ duplicateHandling: 'SKIP', notifyLearners: false, sendCredentials: false, transactionId: '', paymentDate: '' });
+        setOptions({ duplicateHandling: 'SKIP', notifyLearners: false, sendCredentials: false, transactionId: '', paymentDate: '', paymentAmount: '', paymentMode: '' });
         setPreviewResponse(null);
         onOpenChange(false);
     };

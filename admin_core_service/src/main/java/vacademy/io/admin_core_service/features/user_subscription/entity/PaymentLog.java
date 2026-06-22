@@ -94,6 +94,13 @@ public class PaymentLog {
     @Column(name = "order_status")
     private String orderStatus;
 
+    /**
+     * How the payment was collected (PaymentMode enum name: CASH/UPI/CARD/...).
+     * Nullable — only set on paths that capture it (e.g. admin bulk-assign).
+     */
+    @Column(name = "payment_mode")
+    private String paymentMode;
+
     public PaymentLogDTO mapToDTO() {
         PaymentLogDTO paymentLogDTO = new PaymentLogDTO();
         paymentLogDTO.setId(id);
@@ -108,6 +115,7 @@ public class PaymentLog {
         paymentLogDTO.setTrackingId(trackingId);
         paymentLogDTO.setTrackingSource(trackingSource);
         paymentLogDTO.setOrderStatus(orderStatus);
+        paymentLogDTO.setPaymentMode(paymentMode);
 
         // Safely parse transactionId if possible
         if (paymentSpecificData != null) {

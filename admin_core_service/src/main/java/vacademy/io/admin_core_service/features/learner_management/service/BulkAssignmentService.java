@@ -752,9 +752,14 @@ public class BulkAssignmentService {
         // Create payment log if any payment date or transaction ID is provided.
         // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
         // (and uses the partial amount the admin specified instead of the full plan price).
-        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId))) {
+        String paymentMode = options != null ? options.getPaymentMode() : null;
+        Double overrideAmount = options != null ? options.getPaymentAmount() : null;
+        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null
+                || StringUtils.hasText(transactionId) || StringUtils.hasText(paymentMode) || overrideAmount != null)) {
             try {
-                Double amount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
+                // Admin-recorded amount wins; otherwise fall back to the plan's actual price.
+                Double amount = overrideAmount != null ? overrideAmount
+                        : (config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0);
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
                         : (config.getEnrollInvite().getCurrency() != null ? config.getEnrollInvite().getCurrency() : "INR");
                 Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
@@ -768,7 +773,8 @@ public class BulkAssignmentService {
                         currency,
                         userPlan,
                         null,
-                        paymentDate);
+                        paymentDate,
+                        paymentMode);
 
                 Map<String, Object> paymentSpecificData = new HashMap<>();
                 if (StringUtils.hasText(transactionId)) {

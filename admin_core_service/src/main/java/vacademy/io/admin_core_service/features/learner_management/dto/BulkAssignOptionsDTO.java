@@ -40,6 +40,15 @@ public class BulkAssignOptionsDTO {
     @JsonFormat(shape = JsonFormat.Shape.STRING, timezone = "UTC")
     private Date paymentDate;
 
+    /**
+     * Optional admin-recorded payment amount. When provided (non-CPO), this overrides
+     * the auto-derived plan price on the PaymentLog. Null = fall back to plan price.
+     */
+    private Double paymentAmount;
+
+    /** Optional payment mode (PaymentMode enum name: CASH/UPI/CARD/...) for manual/offline payments. */
+    private String paymentMode;
+
     /** true = preview only, no database writes */
     @Builder.Default
     private boolean dryRun = false;

@@ -118,6 +118,11 @@ public class PaymentLogService {
 
     public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
             UserPlan userPlan, String orderId, Date paymentDate) {
+        return createPaymentLog(userId, paymentAmount, vendor, vendorId, currency, userPlan, orderId, paymentDate, null);
+    }
+
+    public String createPaymentLog(String userId, double paymentAmount, String vendor, String vendorId, String currency,
+            UserPlan userPlan, String orderId, Date paymentDate, String paymentMode) {
         log.info("Creating payment log for userId={}, amount={}, vendor={}, currency={}, providedOrderId={}", userId,
                 paymentAmount,
                 vendor, currency, orderId);
@@ -132,6 +137,10 @@ public class PaymentLogService {
         paymentLog.setDate(paymentDate != null ? paymentDate : new Date());
         paymentLog.setCurrency(currency);
         paymentLog.setUserPlan(userPlan);
+        // Validate against PaymentMode enum; ignore blank/invalid rather than failing enrollment.
+        vacademy.io.common.payment.enums.PaymentMode resolvedMode =
+                vacademy.io.common.payment.enums.PaymentMode.fromStringOrNull(paymentMode);
+        paymentLog.setPaymentMode(resolvedMode != null ? resolvedMode.name() : null);
 
         // If an orderId is provided (e.g. multi-package), store it in a minimal JSON
         // structure

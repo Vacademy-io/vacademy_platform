@@ -59,6 +59,8 @@ export interface AssignOptions {
     send_credentials?: boolean;
     transaction_id?: string;
     payment_date?: string;
+    payment_amount?: number;
+    payment_mode?: string;
     dry_run?: boolean;
 }
 
@@ -289,6 +291,10 @@ export interface BulkEnrollOptions {
     sendCredentials: boolean;
     transactionId: string;
     paymentDate: string;
+    /** Admin-recorded payment amount (string for input control; '' = not set) */
+    paymentAmount: string;
+    /** PaymentMode enum name: CASH/UPI/CARD/NET_BANKING/CHEQUE/BANK_TRANSFER/WALLET/OTHER; '' = not set */
+    paymentMode: string;
 }
 
 /** Full 4-step wizard state */

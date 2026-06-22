@@ -1,0 +1,260 @@
+package vacademy.io.admin_core_service.features.telephony.providers.airtel;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
+import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
+import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.AirtelCallImport;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.InstituteTelephonyConfig;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCounsellorEndpoint;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AirtelCallImportRepository;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.InstituteTelephonyConfigRepository;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCounsellorEndpointRepository;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Promotes one {@code airtel_call_import} (CCR/CDR S3) row into the CRM:
+ *   • CDR  → enrich OUR click2dial row (stamp the call id + status/duration) or,
+ *            if none, create a new telephony_call_log row.
+ *   • RECORDING → attach its media_service storage key to the matching call row
+ *            + fire a timeline event.
+ *
+ * Resolves the institute by Airtel account id and the counsellor by extension /
+ * provider user id (telephony_counsellor_endpoint). Rows it can't attribute are
+ * SKIPPED. {@code promoteRow} is @Transactional and is invoked cross-bean by the
+ * scheduler so the proxy applies.
+ */
+@Service
+@ConditionalOnProperty(prefix = "telephony.airtel.s3", name = "enabled", havingValue = "true")
+public class AirtelImportPromoter {
+
+    private static final Logger log = LoggerFactory.getLogger(AirtelImportPromoter.class);
+    /** Leave an unmatched recording RECEIVED (retry) until its row is this old. */
+    private static final long RECORDING_RETRY_MAX_AGE_SECONDS = 3600;
+    /** Match window when looking back for our click2dial row / the call to record. */
+    private static final long MATCH_LOOKBACK_SECONDS = 1800;
+
+    @Autowired private AirtelCallImportRepository importRepo;
+    @Autowired private TelephonyCallLogRepository callLogRepo;
+    @Autowired private InstituteTelephonyConfigRepository configRepo;
+    @Autowired private TelephonyCounsellorEndpointRepository endpointRepo;
+    @Autowired private TimelineEventService timelineEventService;
+    @Autowired private UserMobileResolver userMobileResolver;
+
+    @Transactional
+    public void promoteRow(String importId) {
+        AirtelCallImport imp = importRepo.findById(importId).orElse(null);
+        if (imp == null || !AirtelCallImport.STATUS_RECEIVED.equals(imp.getProcessingStatus())) return;
+        try {
+            String instituteId = resolveInstitute(imp);
+            if (instituteId == null) {
+                skip(imp, "no institute configured for Airtel account " + imp.getAccountId());
+                return;
+            }
+            imp.setInstituteId(instituteId);
+
+            String counsellor = resolveCounsellor(imp);
+            if (counsellor == null) {
+                skip(imp, "counsellor not mapped (ext=" + imp.getSourceExtension()
+                        + ", user=" + imp.getSourceUserId() + ")");
+                return;
+            }
+
+            if (AirtelCallImport.KIND_CDR.equals(imp.getKind())) {
+                promoteCdr(imp, instituteId, counsellor);
+            } else if (AirtelCallImport.KIND_RECORDING.equals(imp.getKind())) {
+                promoteRecording(imp, counsellor);
+            } else {
+                skip(imp, "unknown kind " + imp.getKind());
+            }
+        } catch (Exception e) {
+            log.error("Airtel promote failed for import {}: {}", importId, e.getMessage(), e);
+            imp.setProcessingStatus(AirtelCallImport.STATUS_FAILED);
+            imp.setProcessDetail(trunc(e.getMessage()));
+            importRepo.save(imp);
+        }
+    }
+
+    private String resolveInstitute(AirtelCallImport imp) {
+        if (imp.getInstituteId() != null) return imp.getInstituteId();
+        if (imp.getAccountId() == null) return null;
+        return configRepo.findAirtelConfigByAccountId(imp.getAccountId())
+                .map(InstituteTelephonyConfig::getInstituteId).orElse(null);
+    }
+
+    private String resolveCounsellor(AirtelCallImport imp) {
+        if (imp.getSourceExtension() != null && !imp.getSourceExtension().isBlank()) {
+            Optional<TelephonyCounsellorEndpoint> ep = endpointRepo
+                    .findByProviderTypeAndExtensionAndEnabledTrue(ProviderType.AIRTEL, imp.getSourceExtension());
+            if (ep.isPresent()) return ep.get().getCounsellorUserId();
+        }
+        if (imp.getSourceUserId() != null && !imp.getSourceUserId().isBlank()) {
+            Optional<TelephonyCounsellorEndpoint> ep = endpointRepo
+                    .findByProviderTypeAndProviderUserIdAndEnabledTrue(ProviderType.AIRTEL, imp.getSourceUserId());
+            if (ep.isPresent()) return ep.get().getCounsellorUserId();
+        }
+        return null;
+    }
+
+    private void promoteCdr(AirtelCallImport imp, String instituteId, String counsellor) {
+        boolean outbound = "OUTBOUND".equals(imp.getDirection());
+        Timestamp since = lookbackSince(imp.getDateStart(), imp.getReceivedAt(), MATCH_LOOKBACK_SECONDS);
+
+        TelephonyCallLog row = null;
+        // Enrich our own click2dial row (it was placed with no provider call id).
+        if (outbound && imp.getCounterpartyMsisdn10() != null) {
+            row = callLogRepo.findAirtelUnmatchedOutbound(counsellor, imp.getCounterpartyMsisdn10(), since).orElse(null);
+        }
+        if (row != null) {
+            row.setProviderCallId(imp.getCallId());
+            applyCdrFields(row, imp);
+            callLogRepo.save(row);
+        } else {
+            row = createCallLog(imp, instituteId, counsellor, outbound);
+            callLogRepo.save(row);
+        }
+        markPromoted(imp, row.getId());
+    }
+
+    private void promoteRecording(AirtelCallImport imp, String counsellor) {
+        if (imp.getCounterpartyMsisdn10() == null) {
+            skip(imp, "recording has no counterparty number to match on");
+            return;
+        }
+        Timestamp since = lookbackSince(imp.getDateStart(), imp.getReceivedAt(), MATCH_LOOKBACK_SECONDS * 8);
+        TelephonyCallLog row = callLogRepo
+                .findAirtelCallForRecording(counsellor, imp.getCounterpartyMsisdn10(), since).orElse(null);
+        if (row == null) {
+            // The matching CDR may not have been promoted yet — retry next cycle,
+            // unless this row has been waiting too long.
+            if (ageSeconds(imp.getReceivedAt()) > RECORDING_RETRY_MAX_AGE_SECONDS) {
+                skip(imp, "no matching call within the retry window");
+            }
+            return; // leave RECEIVED → retried
+        }
+        row.setRecordingStorageKey(imp.getRecordingStorageKey());
+        row.setRecordingLogged(true);
+        if (row.getDurationSeconds() == null && imp.getRecordingLengthSeconds() != null) {
+            row.setDurationSeconds(imp.getRecordingLengthSeconds());
+        }
+        callLogRepo.save(row);
+        writeTimeline(row, "Call recording available");
+        markPromoted(imp, row.getId());
+    }
+
+    private TelephonyCallLog createCallLog(AirtelCallImport imp, String instituteId,
+                                           String counsellor, boolean outbound) {
+        String counterparty = imp.getCounterpartyNumber();
+        TelephonyCallLog row = TelephonyCallLog.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .instituteId(instituteId)
+                .providerType(ProviderType.AIRTEL)
+                .providerCallId(imp.getCallId())
+                .responseId(null)
+                .userId("UNKNOWN")              // lead not resolved from a CDR alone
+                .counsellorUserId(counsellor)
+                .direction(outbound ? CallDirection.OUTBOUND.name() : CallDirection.INBOUND.name())
+                .fromNumber(outbound ? imp.getSourceExtension() : counterparty)
+                .toNumber(outbound ? counterparty : imp.getCallerIdNumber())
+                .callerId(imp.getCallerIdNumber())
+                .status(CallStatus.QUEUED.name())
+                .recordingFetchAttempts(0)
+                .recordingLogged(false)
+                .build();
+        row.markNew();
+        applyCdrFields(row, imp);
+        return row;
+    }
+
+    private void applyCdrFields(TelephonyCallLog row, AirtelCallImport imp) {
+        row.setStatus(statusFromDisposition(imp.getDisposition(), imp.getDurationSeconds()));
+        if (imp.getDurationSeconds() != null) row.setDurationSeconds(imp.getDurationSeconds());
+        if (imp.getDisposition() != null) row.setTerminationReason(trunc48(imp.getDisposition()));
+        if (imp.getDateStart() != null) row.setStartTime(Timestamp.from(imp.getDateStart().toInstant()));
+        if (imp.getDateEnd() != null) row.setEndTime(Timestamp.from(imp.getDateEnd().toInstant()));
+    }
+
+    private void writeTimeline(TelephonyCallLog row, String title) {
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("provider_call_id", row.getProviderCallId());
+            meta.put("recording_storage_key", row.getRecordingStorageKey());
+            meta.put("status", row.getStatus());
+            meta.put("duration_seconds", row.getDurationSeconds());
+            meta.put("call_log_id", row.getId());
+            meta.put("direction", row.getDirection());
+            String actorName = userMobileResolver.findDisplayName(row.getCounsellorUserId()).orElse("Vacademy");
+            timelineEventService.logJourneyEvent(
+                    "LEAD",
+                    row.getResponseId() != null ? row.getResponseId() : row.getUserId(),
+                    LeadJourneyActionType.REACHOUT,
+                    "SYSTEM", null, actorName,
+                    title,
+                    "Airtel call " + row.getStatus().toLowerCase(),
+                    meta, null);
+        } catch (Exception ignored) {
+            // never block promotion on a logging side-effect
+        }
+    }
+
+    private void markPromoted(AirtelCallImport imp, String callLogId) {
+        imp.setProcessingStatus(AirtelCallImport.STATUS_PROMOTED);
+        imp.setCallLogId(callLogId);
+        importRepo.save(imp);
+    }
+
+    private void skip(AirtelCallImport imp, String reason) {
+        imp.setProcessingStatus(AirtelCallImport.STATUS_SKIPPED);
+        imp.setProcessDetail(trunc(reason));
+        importRepo.save(imp);
+        log.info("Airtel import {} skipped: {}", imp.getId(), reason);
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private static String statusFromDisposition(String disposition, Integer duration) {
+        String d = disposition == null ? "" : disposition.toLowerCase();
+        if (d.contains("no answer") || d.contains("noanswer") || d.contains("unanswered") || d.contains("missed")) {
+            return CallStatus.NO_ANSWER.name();
+        }
+        if (d.contains("answer")) return CallStatus.COMPLETED.name();
+        if (d.contains("busy")) return CallStatus.BUSY.name();
+        if (d.contains("fail")) return CallStatus.FAILED.name();
+        if (d.contains("cancel") || d.contains("abandon") || d.contains("reject")) return CallStatus.CANCELLED.name();
+        return (duration != null && duration > 0) ? CallStatus.COMPLETED.name() : CallStatus.NO_ANSWER.name();
+    }
+
+    private static Timestamp lookbackSince(OffsetDateTime dateStart, Timestamp receivedAt, long seconds) {
+        Instant base = dateStart != null ? dateStart.toInstant()
+                : (receivedAt != null ? receivedAt.toInstant() : Instant.now());
+        return Timestamp.from(base.minusSeconds(seconds));
+    }
+
+    private static long ageSeconds(Timestamp receivedAt) {
+        return receivedAt == null ? 0 : (Instant.now().getEpochSecond() - receivedAt.toInstant().getEpochSecond());
+    }
+
+    private static String trunc(String s) {
+        return s == null ? null : s.substring(0, Math.min(s.length(), 800));
+    }
+
+    private static String trunc48(String s) {
+        return s == null ? null : s.substring(0, Math.min(s.length(), 48));
+    }
+}

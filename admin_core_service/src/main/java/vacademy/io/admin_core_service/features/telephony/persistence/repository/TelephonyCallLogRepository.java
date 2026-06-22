@@ -67,4 +67,45 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
     List<Object[]> findRecentOutboundAttributionByLeadPhone(
             @Param("instituteId") String instituteId,
             @Param("leadPhone") String leadPhone);
+
+    /**
+     * Airtel promoter — find OUR click2dial row to enrich with the CDR: an AIRTEL
+     * OUTBOUND row for this counsellor + lead (last-10 match) that hasn't been
+     * tied to a provider call id yet, placed at/after the CDR's start window.
+     */
+    @Query(value = """
+            SELECT * FROM telephony_call_log
+            WHERE provider_type = 'AIRTEL' AND direction = 'OUTBOUND'
+              AND counsellor_user_id = :counsellor
+              AND provider_call_id IS NULL
+              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10) = :msisdn10
+              AND created_at >= :since
+            ORDER BY created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelephonyCallLog> findAirtelUnmatchedOutbound(
+            @Param("counsellor") String counsellorUserId,
+            @Param("msisdn10") String msisdn10,
+            @Param("since") java.sql.Timestamp since);
+
+    /**
+     * Airtel promoter — a call row to attach a recording to: an AIRTEL row for
+     * this counsellor + counterparty (last-10 on either leg) with no recording
+     * yet, recent. Either direction (lead is to_number outbound / from_number inbound).
+     */
+    @Query(value = """
+            SELECT * FROM telephony_call_log
+            WHERE provider_type = 'AIRTEL'
+              AND counsellor_user_id = :counsellor
+              AND recording_logged = FALSE
+              AND ( RIGHT(regexp_replace(to_number,   '[^0-9]', '', 'g'), 10) = :msisdn10
+                 OR RIGHT(regexp_replace(from_number, '[^0-9]', '', 'g'), 10) = :msisdn10 )
+              AND created_at >= :since
+            ORDER BY created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelephonyCallLog> findAirtelCallForRecording(
+            @Param("counsellor") String counsellorUserId,
+            @Param("msisdn10") String msisdn10,
+            @Param("since") java.sql.Timestamp since);
 }

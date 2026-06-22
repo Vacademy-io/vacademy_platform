@@ -10,11 +10,11 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRes
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
-import vacademy.io.admin_core_service.features.telephony.spi.OutboundCallInitiator;
 import vacademy.io.admin_core_service.features.telephony.spi.ProviderNumberSelector;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.BridgeCallRequest;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.OutboundCallHandle;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderError;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderNumberView;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.SelectionContext;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -76,8 +76,10 @@ public class CallOrchestrator {
             log.error("provider initiate failed for call {}", p.callLogId(), e);
             // Surface common, actionable provider errors directly so the
             // counsellor sees "top up balance" instead of "try again later"
-            // and stops retrying a doomed call.
-            throw new VacademyException(translateProviderError(e));
+            // and stops retrying a doomed call. The adapter owns the mapping —
+            // the core stays provider-neutral.
+            ProviderError pe = registry.initiator(p.providerType()).translateError(e);
+            throw new VacademyException(pe.getUserMessage());
         }
         circuitBreaker.recordSuccess(p.providerType());
 
@@ -175,19 +177,6 @@ public class CallOrchestrator {
      * message — keeps unexpected errors loud in logs while avoiding
      * exposing raw provider stack traces to the counsellor's toast.
      */
-    private static String translateProviderError(Exception e) {
-        String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
-        if (msg.contains("insufficient balance") || msg.contains("recharge")) {
-            return "Your Exotel account is out of balance. Top up at my.exotel.com and try again.";
-        }
-        if (msg.contains("not verified") || msg.contains("verify your number")) {
-            return "Caller or recipient number is not verified on Exotel. Check the Verified Caller IDs list.";
-        }
-        if (msg.contains("invalid") && msg.contains("number")) {
-            return "Phone number format rejected by the provider. Check the From/To fields.";
-        }
-        return "Could not place call right now. Try again in a moment.";
-    }
 
     /** Intermediate value carried across the orchestrator's three phases. */
     public record Prepared(

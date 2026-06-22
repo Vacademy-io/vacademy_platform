@@ -128,6 +128,15 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
 export const TELEPHONY_CONFIG = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/config/${instituteId}`;
+// Backend-driven provider catalogue: every provider with a registered adapter,
+// with its capabilities + credential schema. Drives the provider dropdown +
+// the schema-rendered credential form (a new provider = no frontend change).
+export const TELEPHONY_PROVIDERS = `${BASE_URL}/admin-core-service/v1/telephony/providers`;
+// Per-counsellor extension/DID mapping for no-pool providers (Airtel).
+export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
+export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;

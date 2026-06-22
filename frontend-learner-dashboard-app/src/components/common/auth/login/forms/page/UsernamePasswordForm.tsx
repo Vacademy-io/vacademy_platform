@@ -321,6 +321,9 @@ export function UsernameLogin({
                           value={value}
                           onChange={onChange}
                           required
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           {...field}
                           className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
                                                         focus:border-gray-300 focus:ring-0 focus-visible:ring-0

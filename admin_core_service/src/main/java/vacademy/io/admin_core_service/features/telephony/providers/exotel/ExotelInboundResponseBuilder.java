@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.telephony.providers.exotel;
 
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.spi.InboundResponseRenderer;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundRouteDecision;
 
 import java.util.ArrayList;
@@ -31,7 +33,7 @@ import java.util.Map;
  * and keeps the unit-test surface trivial.
  */
 @Component
-public class ExotelInboundResponseBuilder {
+public class ExotelInboundResponseBuilder implements InboundResponseRenderer {
 
     /** Exotel's hard cap on a single bridged conversation, in seconds. */
     private static final int DEFAULT_MAX_CONVERSATION_SECONDS = 3600;
@@ -39,15 +41,22 @@ public class ExotelInboundResponseBuilder {
     /** Default dual-channel recording — agent on one channel, lead on the other. */
     private static final String RECORDING_CHANNELS = "dual";
 
+    @Override
+    public String providerType() {
+        return ProviderType.EXOTEL;
+    }
+
     /**
-     * Build the Connect-applet response payload for one decision.
+     * Build the Connect-applet response payload for one decision. Covariant
+     * return ({@code Map}) of {@link InboundResponseRenderer#render}.
      *
      * @param decision  routing decision from {@code InboundRoutingService}
      * @param exoPhone  the ExoPhone the lead dialled (becomes
      *                  {@code outgoing_phone_number} — the number the agent
      *                  sees on their phone, completing the recognition loop)
      */
-    public Map<String, Object> build(InboundRouteDecision decision, String exoPhone) {
+    @Override
+    public Map<String, Object> render(InboundRouteDecision decision, String exoPhone) {
         Map<String, Object> body = new LinkedHashMap<>();
 
         // false = Exotel should NOT re-fetch this URL between attempts. We

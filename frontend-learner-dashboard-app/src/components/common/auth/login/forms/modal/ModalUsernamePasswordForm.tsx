@@ -292,6 +292,9 @@ export function ModalUsernameLogin({
                                                 required
                                                 size="large"
                                                 label="Username or email"
+                                                autoCapitalize="none"
+                                                autoCorrect="off"
+                                                spellCheck={false}
                                                 {...field}
                                                 className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                             />

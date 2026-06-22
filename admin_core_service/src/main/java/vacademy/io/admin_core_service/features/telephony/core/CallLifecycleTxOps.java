@@ -13,16 +13,15 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
-import vacademy.io.admin_core_service.features.telephony.spi.ProviderNumberSelector;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.BridgeCallRequest;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.OriginationContext;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.OriginationPlan;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.OutboundCallHandle;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderNumberView;
-import vacademy.io.admin_core_service.features.telephony.spi.dto.SelectionContext;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -68,10 +67,6 @@ public class CallLifecycleTxOps {
         AudienceResponse lead = audienceResponseRepo.findById(req.getResponseId())
                 .orElseThrow(() -> new VacademyException("Lead not found"));
 
-        String counsellorPhone = userMobileResolver.findVerifiedMobile(actor.getUserId())
-                .orElseThrow(() -> new VacademyException(
-                        "Add a verified mobile number in your profile before placing calls"));
-
         String leadPhone = firstNonBlank(lead.getParentMobile(),
                 userMobileResolver.findMobile(lead.getUserId()).orElse(null));
         if (leadPhone == null) throw new VacademyException("Lead has no phone on file");
@@ -79,57 +74,38 @@ public class CallLifecycleTxOps {
             throw new VacademyException("Lead phone number format not supported");
         }
 
-        if (resolved.getEnabledNumbers().isEmpty()) {
-            throw new VacademyException("No calling number is configured for this institute");
-        }
-
+        String providerType = resolved.getConfig().getProviderType();
         List<ProviderNumberView> views = resolved.getEnabledNumbers().stream()
                 .map(CallLifecycleTxOps::toView).toList();
 
-        // Runtime override path: if the counsellor used the picker and chose a
-        // specific ExoPhone, honour that choice as long as the number is still
-        // enabled. Falls through to strategy selection if the id is blank or
-        // doesn't match any enabled number (defends against stale UI cache).
-        ProviderNumberView chosen = null;
-        String preferred = req.getPreferredNumberId();
-        if (preferred != null && !preferred.isBlank()) {
-            chosen = views.stream()
-                    .filter(n -> preferred.equals(n.getId()))
-                    .findFirst()
-                    .orElse(null);
-        }
-
-        if (chosen == null) {
-            String selectorKey = resolved.getConfig().getDefaultSelectorKey();
-            Optional<String> sticky = "STICKY_PER_LEAD".equals(selectorKey)
-                    ? callLogRepo.findMostRecentNumberIdForLead(lead.getUserId())
-                    : Optional.empty();
-
-            ProviderNumberSelector selector = registry.selector(selectorKey);
-            chosen = selector.select(SelectionContext.builder()
-                            .instituteId(instituteId)
-                            .leadUserId(lead.getUserId())
-                            .leadPhone(leadPhone)
-                            .available(views)
-                            .lastProviderNumberIdForLead(sticky.orElse(null))
-                            .build())
-                    .orElseThrow(() -> new VacademyException(
-                            "No eligible calling number found — check the selector strategy"));
-        }
+        // Provider-specific origination (Exotel: verified mobile + pooled ExoPhone
+        // via selector; Airtel/Vonage: the counsellor's extension + DID). The core
+        // no longer assumes either model — the registered resolver decides.
+        OriginationPlan plan = registry.originationResolver(providerType).resolve(
+                OriginationContext.builder()
+                        .instituteId(instituteId)
+                        .providerType(providerType)
+                        .counsellorUserId(actor.getUserId())
+                        .leadUserId(lead.getUserId())
+                        .leadPhone(leadPhone)
+                        .preferredNumberId(req.getPreferredNumberId())
+                        .selectorKey(resolved.getConfig().getDefaultSelectorKey())
+                        .available(views)
+                        .build());
 
         String callLogId = UUID.randomUUID().toString();
         TelephonyCallLog row = TelephonyCallLog.builder()
                 .id(callLogId)
                 .instituteId(instituteId)
-                .providerType(resolved.getConfig().getProviderType())
-                .providerNumberId(chosen.getId())
+                .providerType(providerType)
+                .providerNumberId(plan.getProviderNumberId())
                 .responseId(lead.getId())
                 .userId(lead.getUserId())
                 .counsellorUserId(actor.getUserId())
                 .direction(CallDirection.OUTBOUND.name())
-                .fromNumber(counsellorPhone)
+                .fromNumber(plan.getFrom())
                 .toNumber(leadPhone)
-                .callerId(chosen.getPhoneNumber())
+                .callerId(plan.getCallerId())
                 .status(CallStatus.INITIATED.name())
                 .recordingFetchAttempts(0)
                 .recordingLogged(false)
@@ -140,17 +116,17 @@ public class CallLifecycleTxOps {
         callLogRepo.save(row);
 
         BridgeCallRequest bridge = BridgeCallRequest.builder()
-                .from(counsellorPhone)
+                .from(plan.getFrom())
                 .to(leadPhone)
-                .callerId(chosen.getPhoneNumber())
+                .callerId(plan.getCallerId())
                 .record(Boolean.TRUE.equals(resolved.getConfig().getRecordCalls()))
                 .correlationId(callLogId)
-                .statusCallbackUrl(buildStatusCallbackUrl(resolved.getConfig().getProviderType(),
+                .statusCallbackUrl(buildStatusCallbackUrl(providerType,
                         resolved.getWebhookToken(), callLogId))
                 .build();
 
-        return new CallOrchestrator.Prepared(callLogId, resolved.getConfig().getProviderType(),
-                chosen.getPhoneNumber(), bridge, resolved);
+        return new CallOrchestrator.Prepared(callLogId, providerType,
+                plan.getCallerId(), bridge, resolved);
     }
 
     /**

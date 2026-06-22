@@ -66,14 +66,29 @@ pnpm run cap:add:vacademy-admin:android   # stamps io.vacademy.admin.app / "Vaca
 pnpm run cap:open:vacademy-admin:android  # opens Android Studio
 ```
 
-**iOS** (needs macOS + Xcode + CocoaPods — `sudo gem install cocoapods`):
+**iOS** (needs macOS + **full Xcode** from the App Store — `xcode-select -p` must point at `Xcode.app`, not CommandLineTools). This Capacitor 8 project is **Swift Package Manager** based (`ios/App/CapApp-SPM/Package.swift`), so **CocoaPods is NOT required** — Xcode resolves the packages on open. The `ios/` project is already generated and synced (bundle id `io.vacademy.admin.app`, display name "Vacademy Admin", self-hosted OTA, splash auto-hide). After installing Xcode:
 
 ```bash
-pnpm install
-pnpm run build:vacademy-admin
-pnpm run cap:add:vacademy-admin:ios       # runs pod install
-pnpm run cap:open:vacademy-admin:ios      # opens Xcode
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+sudo xcodebuild -license accept
+pnpm run build:vacademy-admin               # refresh dist with current JS (optional if unchanged)
+pnpm run cap:sync:vacademy-admin:fast       # or full cap:sync:vacademy-admin
+pnpm run cap:open:vacademy-admin:ios        # opens Xcode → let SPM resolve → Run
 ```
+
+Set the signing Team in Xcode (target → Signing & Capabilities) before running on a device.
+
+> ⚠️ **iOS REQUIRES a `GoogleService-Info.plist` or it crashes on launch.** The
+> bundled `@capacitor-firebase/messaging` plugin calls `FirebaseApp.configure()`
+> at startup; with no config the app dies immediately with
+> `*** Terminating app due to uncaught exception 'com.firebase.core'`. Fix:
+> create an **iOS app for `io.vacademy.admin.app`** in the Firebase console,
+> download its `GoogleService-Info.plist`, and in Xcode drag it into the **App**
+> target (check "Copy items if needed" + add to the App target so it's bundled).
+> (Verified the app otherwise launches + renders the login screen on the iPhone 17
+> simulator using a format-valid placeholder plist injected into the built
+> `.app` — push won't work on the simulator anyway: the
+> `no valid "aps-environment" entitlement` log is expected there.)
 
 After `cap add`, set the bundle id / display name if you ever edit them:
 - Android: `android/app/build.gradle` → `applicationId` + `android/app/src/main/res/values/strings.xml` → `app_name`.

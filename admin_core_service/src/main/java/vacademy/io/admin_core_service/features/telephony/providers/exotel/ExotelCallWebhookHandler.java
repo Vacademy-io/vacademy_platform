@@ -1,12 +1,12 @@
 package vacademy.io.admin_core_service.features.telephony.providers.exotel;
 
-import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.spi.CallWebhookHandler;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundEnvelope;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderSecrets;
 
@@ -15,8 +15,6 @@ import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Parses Exotel's StatusCallback. Exotel POSTs both form-urlencoded and JSON
@@ -37,7 +35,7 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
     }
 
     @Override
-    public boolean verify(HttpServletRequest req, String body, ProviderSecrets secrets) {
+    public boolean verify(InboundEnvelope env, ProviderSecrets secrets) {
         // "Open webhook" mode: the institute hasn't configured a shared
         // secret, so we accept all callbacks for their calls. The webhook
         // controller still matches by our own ?corr= UUID, so the worst-case
@@ -46,7 +44,7 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
         String stored = secrets == null ? null : secrets.getWebhookToken();
         if (stored == null || stored.isBlank()) return true;
 
-        String token = req.getParameter("token");
+        String token = env.param("token");
         if (token == null) return false;
         return MessageDigest.isEqual(
                 token.getBytes(StandardCharsets.UTF_8),
@@ -54,54 +52,54 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
     }
 
     @Override
-    public NormalizedCallEvent parse(HttpServletRequest req, String body) {
-        // Snapshot every param Exotel sent so we can see exactly which keys
-        // they're using. Helpful because Exotel's docs list slightly different
-        // field names per endpoint and per status, and we'd otherwise be
-        // guessing. Logged at INFO so it shows up in dev without enabling
-        // DEBUG on the whole package.
-        Map<String, String> raw = new LinkedHashMap<>();
-        req.getParameterMap().forEach((k, v) -> {
-            if (v != null && v.length > 0) raw.put(k, v[0]);
-        });
+    public NormalizedCallEvent parse(InboundEnvelope env) {
+        // Log every param Exotel sent so we can see exactly which keys they're
+        // using. Helpful because Exotel's docs list slightly different field
+        // names per endpoint and per status, and we'd otherwise be guessing.
+        // Logged at INFO so it shows up in dev without enabling DEBUG on the
+        // whole package.
         if (log.isInfoEnabled()) {
-            log.info("Exotel webhook params: {}", raw);
+            // Redact the shared-secret webhook token before logging (verify()
+            // compares ?token= against the institute's stored secret).
+            java.util.Map<String, String> safe = new java.util.LinkedHashMap<>(env.getParams());
+            safe.remove("token");
+            log.info("Exotel webhook params: {}", safe);
         }
 
-        String corr = req.getParameter("corr");
-        String sid = firstNonBlank(req.getParameter("CallSid"), req.getParameter("Sid"));
-        String exotelStatus = req.getParameter("Status");
-        String dialCallStatus = req.getParameter("DialCallStatus");
+        String corr = env.param("corr");
+        String sid = firstNonBlank(env.param("CallSid"), env.param("Sid"));
+        String exotelStatus = env.param("Status");
+        String dialCallStatus = env.param("DialCallStatus");
         // Passthru applets (used as the inbound flow's "after the conversation
         // ends" hook) emit a different field set than the Connect-applet's
         // native Status Callback. Specifically: no `Status`, but `CallType`
         // carries the high-level outcome ("completed", "missed", etc.). Read
         // CallType too so the inbound termination flow can fire even when
         // `Status` is absent. Connect-applet status callbacks ignore it.
-        String callType = req.getParameter("CallType");
+        String callType = env.param("CallType");
         // When we subscribe to "answered" events, Exotel adds an EventType
         // field on those callbacks. The Leg field (1 or 2) tells us which
         // side answered — for Connect Two Numbers: Leg 1 = counsellor (the
         // From), Leg 2 = lead (the To). Used by mapStatus below.
-        String eventType = req.getParameter("EventType");
-        String leg = firstNonBlank(req.getParameter("Leg"), req.getParameter("LegNumber"));
+        String eventType = env.param("EventType");
+        String leg = firstNonBlank(env.param("Leg"), env.param("LegNumber"));
 
         CallStatus status = mapStatus(exotelStatus, dialCallStatus, callType, eventType, leg);
 
         // Exotel uses different duration keys depending on endpoint and event.
         // Order matters — the most-specific to the bridged-call duration first.
-        Integer duration = firstParsedInt(req,
+        Integer duration = firstParsedInt(env,
                 "DialCallDuration",
                 "ConversationDuration",
                 "CallDuration",
                 "Duration",
                 "RecordingDuration");
 
-        Double price = parseDouble(req.getParameter("Price"));
+        Double price = parseDouble(env.param("Price"));
 
-        Timestamp start  = parseTs(req.getParameter("StartTime"));
-        Timestamp answer = parseTs(req.getParameter("AnswerTime"));
-        Timestamp end    = parseTs(req.getParameter("EndTime"));
+        Timestamp start  = parseTs(env.param("StartTime"));
+        Timestamp answer = parseTs(env.param("AnswerTime"));
+        Timestamp end    = parseTs(env.param("EndTime"));
 
         // Fallback: if Exotel didn't send a duration but did send start + end
         // (or answer + end), compute it ourselves. This rescues the "Connected"
@@ -116,7 +114,7 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
             }
         }
 
-        String recordingUrl = req.getParameter("RecordingUrl");
+        String recordingUrl = env.param("RecordingUrl");
 
         return NormalizedCallEvent.builder()
                 .correlationId(corr)
@@ -128,14 +126,14 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
                 .answerTime(answer)
                 .endTime(end)
                 .recordingUrl(recordingUrl)
-                .terminationReason(firstNonBlank(req.getParameter("Cause"), exotelStatus))
-                .rawPayload(body)
+                .terminationReason(firstNonBlank(env.param("Cause"), exotelStatus))
+                .rawPayload(env.getRawBody())
                 .build();
     }
 
-    private static Integer firstParsedInt(HttpServletRequest req, String... keys) {
+    private static Integer firstParsedInt(InboundEnvelope env, String... keys) {
         for (String k : keys) {
-            Integer v = parseInt(req.getParameter(k));
+            Integer v = parseInt(env.param(k));
             if (v != null && v > 0) return v;
         }
         return null;

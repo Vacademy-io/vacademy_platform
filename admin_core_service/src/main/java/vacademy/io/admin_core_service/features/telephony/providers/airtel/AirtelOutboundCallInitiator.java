@@ -63,12 +63,11 @@ public class AirtelOutboundCallInitiator implements OutboundCallInitiator {
      */
     static String toE164(String raw) {
         if (raw == null) return null;
-        boolean hadPlus = raw.trim().startsWith("+");
         String digits = raw.replaceAll("[^0-9]", "");
         if (digits.isEmpty()) return null;
         if (digits.length() == 10) return "+91" + digits;              // bare Indian mobile
         if (digits.length() == 11 && digits.startsWith("0")) return "+91" + digits.substring(1);
         if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
-        return hadPlus ? "+" + digits : "+" + digits;
+        return "+" + digits;                                            // already has a country code
     }
 }

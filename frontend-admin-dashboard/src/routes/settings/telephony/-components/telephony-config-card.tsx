@@ -60,12 +60,16 @@ export function TelephonyConfigCard() {
     const provider = providers.find((p) => p.providerType === providerType);
     const has = (cap: string) => !!provider?.capabilities?.includes(cap);
 
-    // Pick the active provider once both queries settle: the saved one, else the first.
+    // Pick the active provider: the institute's SAVED one wins. Wait for the
+    // config query to settle before falling back to the first provider —
+    // otherwise the (faster) providers list could select a different provider
+    // for a live institute, and a save would switch (and corrupt) its config.
     useEffect(() => {
         if (providerType) return;
+        if (instituteId && !configQuery.isSuccess) return;
         if (cfg?.providerType) setProviderType(cfg.providerType);
         else if (providers[0]) setProviderType(providers[0].providerType);
-    }, [cfg, providers, providerType]);
+    }, [cfg, providers, providerType, instituteId, configQuery.isSuccess]);
 
     // Hydrate non-secret fields + flags from the saved config. Secrets stay blank
     // (backend treats blank as "leave unchanged" — never echoed back).

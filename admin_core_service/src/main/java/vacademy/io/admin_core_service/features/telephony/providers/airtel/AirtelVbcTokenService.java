@@ -35,8 +35,7 @@ public class AirtelVbcTokenService {
 
     /** A valid bearer for these credentials, minting + caching as needed. */
     public String bearer(ProviderCredentials creds) {
-        String key = creds.secret("consumerKey");
-        if (key == null) throw new VacademyException("Airtel consumerKey is not configured");
+        String key = cacheKey(creds);
         CachedToken c = cache.get(key);
         if (c != null && c.expiresAt().isAfter(Instant.now())) {
             return c.bearer();
@@ -46,8 +45,21 @@ public class AirtelVbcTokenService {
 
     /** Drop the cached token (e.g. after a 401), forcing a fresh mint next call. */
     public void invalidate(ProviderCredentials creds) {
-        String key = creds.secret("consumerKey");
-        if (key != null) cache.remove(key);
+        cache.remove(cacheKey(creds));
+    }
+
+    /**
+     * The minted bearer is scoped to the VBC USER (password grant), not just the
+     * OAuth application — so the cache key must include the username (and token
+     * host). Otherwise two institutes sharing one consumerKey but different VBC
+     * users could be served each other's user-scoped token.
+     */
+    private static String cacheKey(ProviderCredentials creds) {
+        String consumerKey = creds.secret("consumerKey");
+        if (consumerKey == null) throw new VacademyException("Airtel consumerKey is not configured");
+        String username = creds.secret("vbcUsername");
+        String tokenUrl = firstNonBlank(creds.conf("tokenUrl"), DEFAULT_TOKEN_URL);
+        return consumerKey + "|" + (username == null ? "" : username) + "|" + tokenUrl;
     }
 
     @SuppressWarnings("unchecked")

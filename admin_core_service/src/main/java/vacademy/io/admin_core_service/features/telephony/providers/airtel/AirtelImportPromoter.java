@@ -23,7 +23,6 @@ import vacademy.io.admin_core_service.features.timeline.service.TimelineEventSer
 
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -47,8 +46,12 @@ public class AirtelImportPromoter {
     private static final Logger log = LoggerFactory.getLogger(AirtelImportPromoter.class);
     /** Leave an unmatched recording RECEIVED (retry) until its row is this old. */
     private static final long RECORDING_RETRY_MAX_AGE_SECONDS = 3600;
-    /** Match window when looking back for our click2dial row / the call to record. */
+    /** Look-back for our click2dial row (created just before the call started). */
     private static final long MATCH_LOOKBACK_SECONDS = 1800;
+    /** Forward slack for clock skew between our create and the provider start. */
+    private static final long OUTBOUND_FORWARD_SLACK_SECONDS = 300;
+    /** ± window (each side of the call start) when matching a recording to a call. */
+    private static final long RECORDING_MATCH_WINDOW_SECONDS = 3600;
 
     @Autowired private AirtelCallImportRepository importRepo;
     @Autowired private TelephonyCallLogRepository callLogRepo;
@@ -114,12 +117,18 @@ public class AirtelImportPromoter {
 
     private void promoteCdr(AirtelCallImport imp, String instituteId, String counsellor) {
         boolean outbound = "OUTBOUND".equals(imp.getDirection());
-        Timestamp since = lookbackSince(imp.getDateStart(), imp.getReceivedAt(), MATCH_LOOKBACK_SECONDS);
+        Instant anchor = anchorInstant(imp);
 
         TelephonyCallLog row = null;
-        // Enrich our own click2dial row (it was placed with no provider call id).
+        // Enrich our own click2dial row (placed with no provider id) — pick the one
+        // CLOSEST to the call's start within a bounded window, so a counsellor
+        // calling the same lead twice doesn't enrich the wrong attempt.
         if (outbound && imp.getCounterpartyMsisdn10() != null) {
-            row = callLogRepo.findAirtelUnmatchedOutbound(counsellor, imp.getCounterpartyMsisdn10(), since).orElse(null);
+            row = callLogRepo.findAirtelUnmatchedOutbound(
+                    counsellor, imp.getCounterpartyMsisdn10(),
+                    ts(anchor.minusSeconds(MATCH_LOOKBACK_SECONDS)),
+                    ts(anchor.plusSeconds(OUTBOUND_FORWARD_SLACK_SECONDS)),
+                    ts(anchor)).orElse(null);
         }
         if (row != null) {
             row.setProviderCallId(imp.getCallId());
@@ -137,9 +146,12 @@ public class AirtelImportPromoter {
             skip(imp, "recording has no counterparty number to match on");
             return;
         }
-        Timestamp since = lookbackSince(imp.getDateStart(), imp.getReceivedAt(), MATCH_LOOKBACK_SECONDS * 8);
-        TelephonyCallLog row = callLogRepo
-                .findAirtelCallForRecording(counsellor, imp.getCounterpartyMsisdn10(), since).orElse(null);
+        Instant anchor = anchorInstant(imp);
+        TelephonyCallLog row = callLogRepo.findAirtelCallForRecording(
+                counsellor, imp.getCounterpartyMsisdn10(),
+                ts(anchor.minusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
+                ts(anchor.plusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
+                ts(anchor)).orElse(null);
         if (row == null) {
             // The matching CDR may not have been promoted yet — retry next cycle,
             // unless this row has been waiting too long.
@@ -240,10 +252,15 @@ public class AirtelImportPromoter {
         return (duration != null && duration > 0) ? CallStatus.COMPLETED.name() : CallStatus.NO_ANSWER.name();
     }
 
-    private static Timestamp lookbackSince(OffsetDateTime dateStart, Timestamp receivedAt, long seconds) {
-        Instant base = dateStart != null ? dateStart.toInstant()
-                : (receivedAt != null ? receivedAt.toInstant() : Instant.now());
-        return Timestamp.from(base.minusSeconds(seconds));
+    /** The call's start instant — Airtel CDR/recording time, else when we received it. */
+    private static Instant anchorInstant(AirtelCallImport imp) {
+        if (imp.getDateStart() != null) return imp.getDateStart().toInstant();
+        if (imp.getReceivedAt() != null) return imp.getReceivedAt().toInstant();
+        return Instant.now();
+    }
+
+    private static Timestamp ts(Instant instant) {
+        return Timestamp.from(instant);
     }
 
     private static long ageSeconds(Timestamp receivedAt) {

@@ -79,14 +79,16 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
               AND counsellor_user_id = :counsellor
               AND provider_call_id IS NULL
               AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10) = :msisdn10
-              AND created_at >= :since
-            ORDER BY created_at DESC
+              AND created_at >= :since AND created_at <= :until
+            ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - :anchor)))
             LIMIT 1
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findAirtelUnmatchedOutbound(
             @Param("counsellor") String counsellorUserId,
             @Param("msisdn10") String msisdn10,
-            @Param("since") java.sql.Timestamp since);
+            @Param("since") java.sql.Timestamp since,
+            @Param("until") java.sql.Timestamp until,
+            @Param("anchor") java.sql.Timestamp anchor);
 
     /**
      * Airtel promoter — a call row to attach a recording to: an AIRTEL row for
@@ -100,12 +102,14 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
               AND recording_logged = FALSE
               AND ( RIGHT(regexp_replace(to_number,   '[^0-9]', '', 'g'), 10) = :msisdn10
                  OR RIGHT(regexp_replace(from_number, '[^0-9]', '', 'g'), 10) = :msisdn10 )
-              AND created_at >= :since
-            ORDER BY created_at DESC
+              AND created_at >= :since AND created_at <= :until
+            ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - :anchor)))
             LIMIT 1
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findAirtelCallForRecording(
             @Param("counsellor") String counsellorUserId,
             @Param("msisdn10") String msisdn10,
-            @Param("since") java.sql.Timestamp since);
+            @Param("since") java.sql.Timestamp since,
+            @Param("until") java.sql.Timestamp until,
+            @Param("anchor") java.sql.Timestamp anchor);
 }

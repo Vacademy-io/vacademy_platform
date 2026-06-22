@@ -45,12 +45,13 @@ export interface TelephonyConfigView {
     id?: string;
     instituteId: string;
     providerType: string;
-    apiAccountId: string;
+    /** Null for generic (Airtel) configs — account id lives in `config`. */
+    apiAccountId?: string | null;
     apiUsernameSet: boolean;
     apiPasswordSet: boolean;
     webhookTokenSet: boolean;
     recordCalls?: boolean | null;
-    defaultSelectorKey: string;
+    defaultSelectorKey?: string | null;
     enabled?: boolean | null;
     /** Fallback number dialled when an inbound lead call has no agent — null
      *  means no fallback (call drops to provider default). */

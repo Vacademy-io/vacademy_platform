@@ -29,8 +29,9 @@ public interface InstituteTelephonyConfigRepository
     @Query(value = """
             SELECT * FROM institute_telephony_config
             WHERE provider_type = 'AIRTEL'
-              AND provider_config IS NOT NULL
-              AND provider_config::jsonb ->> 'accountId' = :accountId
+              AND provider_config LIKE '{%'
+              AND (CASE WHEN provider_config LIKE '{%'
+                        THEN provider_config::jsonb ->> 'accountId' END) = :accountId
             LIMIT 1
             """, nativeQuery = true)
     Optional<InstituteTelephonyConfig> findAirtelConfigByAccountId(@Param("accountId") String accountId);

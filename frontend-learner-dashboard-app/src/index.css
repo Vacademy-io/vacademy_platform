@@ -21,6 +21,47 @@ html, body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Read-only rich-text (TipTap) content — tables, lists, blockquote.
+   The admin editor stores bare <table>/<td> HTML and styles it via its editor
+   class; the learner has no editor, so we mirror the same read-only rules here.
+   Scoped to .rich-text-content (descendant rules only), so only elements
+   carrying that class (e.g. quiz option/question HTML) are affected. */
+.rich-text-content table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.rich-text-content th,
+.rich-text-content td {
+  border: 1px solid #e5e7eb; /* neutral-200 */
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+.rich-text-content th {
+  background-color: #f9fafb; /* neutral-50 */
+  font-weight: 600;
+}
+.rich-text-content ul {
+  list-style: disc;
+  margin-left: 1.25rem;
+  padding-left: 1.25rem;
+}
+.rich-text-content ol {
+  list-style: decimal;
+  margin-left: 1.25rem;
+  padding-left: 1.25rem;
+}
+.rich-text-content li {
+  display: list-item;
+}
+.rich-text-content blockquote {
+  border-left: 4px solid #e5e7eb; /* neutral-200 */
+  padding-left: 0.875rem;
+  margin: 0.75rem 0;
+  color: #374151; /* neutral-700 */
+}
+
 /* Column layout: override the CSS custom property on mobile so the
    var(--catalogue-grid-cols) used in the inline style collapses to 1 column.
    CSS custom properties cascade normally, so a stylesheet rule overrides an

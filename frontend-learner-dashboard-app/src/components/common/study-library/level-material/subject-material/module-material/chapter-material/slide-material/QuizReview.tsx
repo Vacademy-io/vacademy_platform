@@ -708,7 +708,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           }[answerStatus];
 
           return (
-            <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
+            <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
               <div className="mb-2 text-xs text-gray-500 font-medium">Question {idx + 1}</div>
               {passage && (
                 <div className="mb-4 p-4 bg-gray-100 rounded border border-gray-200">

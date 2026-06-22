@@ -262,7 +262,10 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
                 </div>
             </div>
 
-            <div className="ml-11">
+            {/* rich-text-content applies table/list/blockquote styling to read-only
+                rich-text HTML (questions, options, explanation, passage) so tables
+                render with borders here just like in the editor. */}
+            <div className="ml-11 rich-text-content">
                 {/* Show comprehension passage, question, and explanation for comprehension question types */}
                 {question.questionType === 'CMCQS' ||
                 question.questionType === 'CMCQM' ||

@@ -153,7 +153,7 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
     await Storage.set({ key: 'server_start_end_time', value: JSON.stringify(start_assessment_response) });
     console.log('Stored server_start_end_time:', await Storage.get({ key: 'server_start_end_time' }));
     
-    console.log('preview_response.attemptId', preview_response, preview_response.attempt_id);
+    console.log('preview_response.attemptId', preview_response, preview_response?.attempt_id);
     // Await so any failure inside surfaces through this function's try/catch
     // (returning false) instead of becoming an unhandled promise rejection.
     await storeFormattedData(learner_assessment_attempt_data_dto, preview_response);
@@ -174,6 +174,10 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
 
 export const storeFormattedData = async (formattedData: any, preview_response : any) => {
     const state = useAssessmentStore.getState();
+    if (!preview_response) {
+      console.error("Missing preview_response on restart");
+      return;
+    }
     const attemptId = preview_response.attempt_id;
     console.log("formattedData",formattedData,"preview_response",preview_response, "attemptId", attemptId);
   console.log(attemptId);
@@ -194,7 +198,7 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
       console.error("Invalid preview_response: missing questions in first section");
       return;
     }
-    
+
     // The restart endpoint may omit `learner_assessment_attempt_data_dto`
     // (e.g. a fresh re-attempt with no prior saved progress). In that case
     // setAssessment(preview_response) above has already initialised the store as
@@ -203,6 +207,9 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
     // unhandled `can't access property "sections"` crash on the live-test page.
     const restoredSections: Section[] = formattedData?.sections ?? [];
     if (restoredSections.length === 0) {
+      console.warn(
+        "Missing learner_assessment_attempt_data_dto on restart; using default state from preview."
+      );
       await useAssessmentStore.getState().saveState();
       return;
     }

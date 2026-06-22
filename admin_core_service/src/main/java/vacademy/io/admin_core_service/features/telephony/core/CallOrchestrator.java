@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.CallOptionsRes
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallResponseDTO;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderCapability;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.ProviderNumberSelector;
@@ -117,6 +118,24 @@ public class CallOrchestrator {
                 .filter(r -> Boolean.TRUE.equals(r.getConfig().getEnabled()))
                 .orElseThrow(() -> new VacademyException("Calling is not configured for this institute"));
 
+        // No-pool providers (Airtel) dial from the counsellor's own extension —
+        // there is no caller-ID number to pick. Return an empty list + the flag so
+        // the picker just confirms the dial instead of surfacing a stale number
+        // pool (e.g. ExoPhones left over from a previous Exotel config).
+        String providerType = resolved.getConfig().getProviderType();
+        boolean usesNumberPool = registry.descriptor(providerType)
+                .map(d -> d.supports(ProviderCapability.NUMBER_POOL))
+                .orElse(true); // legacy/unknown providers keep pool semantics
+        if (!usesNumberPool) {
+            return CallOptionsResponseDTO.builder()
+                    .numbers(List.of())
+                    .recommendedNumberId(null)
+                    .strategyKey(null)
+                    .providerType(providerType)
+                    .usesNumberPool(false)
+                    .build();
+        }
+
         List<TelephonyProviderNumber> enabled = resolved.getEnabledNumbers();
         List<CallOptionsResponseDTO.NumberChoice> choices = enabled.stream()
                 .map(n -> CallOptionsResponseDTO.NumberChoice.builder()
@@ -163,6 +182,8 @@ public class CallOrchestrator {
                 .numbers(choices)
                 .recommendedNumberId(recommendedId)
                 .strategyKey(strategyKey)
+                .providerType(providerType)
+                .usesNumberPool(true)
                 .build();
     }
 

@@ -1,4 +1,5 @@
 import { TelephonyConfigCard } from '@/routes/settings/telephony/-components/telephony-config-card';
+import { TelephonyCounsellorMapCard } from '@/routes/settings/telephony/-components/telephony-counsellor-map-card';
 import { TelephonyNumbersCard } from '@/routes/settings/telephony/-components/telephony-numbers-card';
 import { InboundSetupGuideCard } from '@/routes/settings/telephony/-components/inbound-setup-guide-card';
 import { TelephonyCreditsCard } from '@/routes/settings/telephony/-components/telephony-credits-card';
@@ -21,6 +22,7 @@ export default function TelephonySettings() {
             </div>
             <TelephonyCreditsCard />
             <TelephonyConfigCard />
+            <TelephonyCounsellorMapCard />
             <InboundSetupGuideCard />
             <TelephonyNumbersCard />
         </div>

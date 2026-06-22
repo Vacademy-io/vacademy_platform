@@ -1040,6 +1040,32 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     color: #1f2937; /* design-lint-ignore: CSS-in-JS document theme */
                 }
 
+                /* Tables: the editor renders bordered cells, but the read-only HTML
+                   here has no table styling, so cells lost their grid. Restore borders
+                   so document tables read as a structured grid like the admin. */
+                .document-with-mermaid table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 1rem 0;
+                }
+                .document-with-mermaid th,
+                .document-with-mermaid td {
+                    border: 1px solid #e5e7eb; /* design-lint-ignore: CSS-in-JS document theme */
+                    padding: 0.5rem 0.75rem;
+                    text-align: left;
+                    vertical-align: top;
+                }
+                .document-with-mermaid th {
+                    background: #f9fafb; /* design-lint-ignore: CSS-in-JS document theme */
+                    font-weight: 600;
+                }
+                /* Cells in the document use the ul>li::before bullet pattern; make sure
+                   table cells don't inherit list padding/markers. */
+                .document-with-mermaid td > ul,
+                .document-with-mermaid td > ol {
+                    margin: 0.25rem 0;
+                }
+
                 /* Mobile responsiveness */
                 @media (min-width: 640px) {
                     .document-with-mermaid h1 { font-size: 2.25rem; padding-bottom: 1rem; }

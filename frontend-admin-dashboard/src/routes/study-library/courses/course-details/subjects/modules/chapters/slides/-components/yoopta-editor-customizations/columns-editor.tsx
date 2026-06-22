@@ -162,8 +162,11 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                     <div
                         key={index}
                         style={{
-                            border: isEditing ? '1px dashed #ccc' : '1px solid transparent',
-                            borderRadius: '4px',
+                            // Preview: distinct white card per column (matches the
+                            // serialized read view). Editing: dashed outline.
+                            border: isEditing ? '1px dashed #ccc' : '1px solid #e5e7eb',
+                            borderRadius: '8px',
+                            background: isEditing ? 'transparent' : '#ffffff',
                             minHeight: isEditing ? '80px' : '20px',
                             position: 'relative',
                         }}
@@ -204,7 +207,7 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                         ) : (
                             <div
                                 style={{
-                                    padding: '8px',
+                                    padding: '14px 16px',
                                     fontSize: '14px',
                                     lineHeight: 1.6,
                                     color: '#333',
@@ -290,7 +293,10 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
                             .replace(/</g, '&lt;')
                             .replace(/>/g, '&gt;')
                             .replace(/\n/g, '<br/>');
-                        return `<div style="padding: 8px; font-size: 14px; line-height: 1.6; color: #333;">${contentEsc}</div>`;
+                        // Render each column as a distinct white card on the grey
+                        // container so columns read as separate regions (otherwise
+                        // adjacent columns with a tight gap blend into one block).
+                        return `<div style="padding: 14px 16px; font-size: 14px; line-height: 1.6; color: #333; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">${contentEsc}</div>`;
                     })
                     .join('');
 

@@ -7,6 +7,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * Read-only rich-text (TipTap) content — paragraphs, lists, tables, blockquote.
+ * The editor stores bare HTML and styles it via .tiptap-content; read-only views
+ * render that HTML in plain divs where Tailwind's preflight resets margins to 0,
+ * so paragraphs/blank lines collapse and tables lose borders. We use a dedicated
+ * .rich-text-content class (descendant rules only — no container width, to avoid
+ * margin+width:100% overflow) applied to read-only wrappers (e.g. quiz
+ * QuestionDisplay / explanation). Globally loaded so it works even when the lazy
+ * editor chunk hasn't mounted.
+ * ------------------------------------------------------------------------- */
+.rich-text-content p {
+    margin: 0 0 0.6em; /* restore paragraph spacing the editor shows (preflight zeroes it) */
+}
+.rich-text-content p:last-child {
+    margin-bottom: 0; /* no trailing gap (keeps single-paragraph cells/options tight) */
+}
+.rich-text-content p:empty {
+    min-height: 0.9em; /* preserve intentional blank lines (empty <p></p> separators) */
+}
+.rich-text-content table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin: 0.5em 0;
+}
+.rich-text-content th,
+.rich-text-content td {
+    border: 1px solid #e5e7eb; /* neutral-200 */
+    padding: 6px 8px;
+    vertical-align: top;
+    text-align: left;
+}
+.rich-text-content th {
+    background-color: #f9fafb; /* neutral-50 */
+    font-weight: 600;
+}
+.rich-text-content ul {
+    list-style: disc;
+    margin: 0.5em 0;
+    padding-left: 1.5rem;
+}
+.rich-text-content ol {
+    list-style: decimal;
+    margin: 0.5em 0;
+    padding-left: 1.5rem;
+}
+.rich-text-content li {
+    display: list-item;
+    margin: 0.15em 0;
+}
+.rich-text-content blockquote {
+    border-left: 4px solid #e5e7eb; /* neutral-200 */
+    padding-left: 0.875rem;
+    margin: 0.75rem 0;
+    color: #374151; /* neutral-700 */
+}
+
 html {
     scroll-behavior: smooth;
 }

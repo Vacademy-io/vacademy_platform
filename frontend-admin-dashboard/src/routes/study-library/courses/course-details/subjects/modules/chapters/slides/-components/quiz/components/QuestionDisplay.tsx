@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TransformedQuestion } from '../types';
 import { CaretDown, CaretUp } from '@phosphor-icons/react';
+import { isRichTextEmpty } from '@/lib/utils';
 
 interface QuestionDisplayProps {
     question: TransformedQuestion;
@@ -130,7 +131,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
     };
 
     const renderExplanation = (explanation: string) => {
-        if (!explanation || explanation.trim() === '') return null;
+        if (isRichTextEmpty(explanation)) return null;
 
         return (
             <div className="mt-4 space-y-2">
@@ -261,7 +262,10 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
                 </div>
             </div>
 
-            <div className="ml-11">
+            {/* rich-text-content applies table/list/blockquote styling to read-only
+                rich-text HTML (questions, options, explanation, passage) so tables
+                render with borders here just like in the editor. */}
+            <div className="ml-11 rich-text-content">
                 {/* Show comprehension passage, question, and explanation for comprehension question types */}
                 {question.questionType === 'CMCQS' ||
                 question.questionType === 'CMCQM' ||

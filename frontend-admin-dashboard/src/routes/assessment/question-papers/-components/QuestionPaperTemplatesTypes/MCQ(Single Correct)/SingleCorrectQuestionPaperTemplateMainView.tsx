@@ -18,6 +18,7 @@ export const SingleCorrectQuestionPaperTemplateMainView = ({
     className,
     showQuestionNumber = true,
     examType,
+    enableOptionModalCompose = false,
 }: QuestionPaperTemplateFormProps) => {
     console.log('🎯 SingleCorrectQuestionPaperTemplateMainView rendered', {
         examType,
@@ -177,6 +178,7 @@ export const SingleCorrectQuestionPaperTemplateMainView = ({
                                                         onChange={field.onChange}
                                                         minHeight={40}
                                                         hideToolbar
+                                                        enableModalCompose={enableOptionModalCompose}
                                                         placeholder={`Option ${letter.toUpperCase()}`}
                                                     />
                                                 </FormControl>

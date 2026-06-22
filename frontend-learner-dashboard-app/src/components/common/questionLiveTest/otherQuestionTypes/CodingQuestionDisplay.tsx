@@ -357,6 +357,12 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                             scrollBeyondLastLine: false,
                             automaticLayout: true,
                             contextmenu: false,
+                            // Disabled: Monaco's sticky-scroll controller races its
+                            // async folding-model update against rapid edits and throws
+                            // "Illegal value for lineNumber" (unhandled rejection) when
+                            // lines are deleted mid-update. No value in a small embedded
+                            // exam editor anyway.
+                            stickyScroll: { enabled: false },
                         }}
                     />
                 </div>

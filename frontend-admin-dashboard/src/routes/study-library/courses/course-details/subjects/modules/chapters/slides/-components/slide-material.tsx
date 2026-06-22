@@ -512,7 +512,14 @@ export const SlideMaterial = ({
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
-                : activeItem?.document_slide?.data || null;
+                : // Fall back to published_data when a non-published slide has empty
+                  // data — e.g. a copied slide: copying a PUBLISHED doc carries over
+                  // its content in published_data while data is null (publish clears
+                  // data), and the copy is created as DRAFT, so it would otherwise
+                  // open blank. (Publish/Save already use this same fallback.)
+                  activeItem?.document_slide?.data ||
+                  activeItem?.document_slide?.published_data ||
+                  null;
 
         // Sanitize any public S3 URLs that may contain expired signatures
         let sanitizedDocData = stripAwsQueryParamsFromUrls(docData || '');

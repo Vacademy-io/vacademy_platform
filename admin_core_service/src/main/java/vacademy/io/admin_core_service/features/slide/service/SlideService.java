@@ -685,8 +685,16 @@ public class SlideService {
         if (documentSlide != null) {
             DocumentSlide newDocumentSlide = new DocumentSlide();
             newDocumentSlide.setId(UUID.randomUUID().toString());
-            newDocumentSlide.setData(documentSlide.getData());
-            newDocumentSlide.setTotalPages(documentSlide.getTotalPages());
+            // A PUBLISHED source slide keeps its content in published_data and has
+            // data cleared to null (see handlePublishedDocumentSlide). The copy is
+            // created as DRAFT, and the editor renders a DRAFT slide from `data`, so
+            // fall back to published_data here — otherwise the copy opens empty.
+            boolean hasDraftData = documentSlide.getData() != null
+                    && documentSlide.getData().trim().length() > 0;
+            newDocumentSlide.setData(hasDraftData ? documentSlide.getData() : documentSlide.getPublishedData());
+            newDocumentSlide.setTotalPages(documentSlide.getTotalPages() != null
+                    ? documentSlide.getTotalPages()
+                    : documentSlide.getPublishedDocumentTotalPages());
             newDocumentSlide.setType(documentSlide.getType());
             newDocumentSlide.setTitle(documentSlide.getTitle());
             newDocumentSlide.setPublishedData(documentSlide.getPublishedData());
@@ -707,9 +715,15 @@ public class SlideService {
             VideoSlide newVideoSlide = new VideoSlide();
             newVideoSlide.setId(UUID.randomUUID().toString());
             newVideoSlide.setTitle(videoSlide.getTitle());
-            newVideoSlide.setUrl(videoSlide.getUrl());
+            // Like documents, a PUBLISHED video keeps its content in published_url
+            // with url cleared to null (see handlePublishedVideoSlide). The copy is
+            // a DRAFT that renders from `url`, so fall back to published_url.
+            boolean hasDraftUrl = videoSlide.getUrl() != null && videoSlide.getUrl().trim().length() > 0;
+            newVideoSlide.setUrl(hasDraftUrl ? videoSlide.getUrl() : videoSlide.getPublishedUrl());
             newVideoSlide.setDescription(videoSlide.getDescription());
-            newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis());
+            newVideoSlide.setVideoLengthInMillis(videoSlide.getVideoLengthInMillis() != null
+                    ? videoSlide.getVideoLengthInMillis()
+                    : videoSlide.getPublishedVideoLengthInMillis());
             newVideoSlide.setPublishedUrl(videoSlide.getPublishedUrl());
             newVideoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
             newVideoSlide = videoSlideRepository.save(newVideoSlide);

@@ -89,6 +89,10 @@ export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessme
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
 export const ADD_UPDATE_AUDIO_ACTIVITY = `${BASE_URL}/admin-core-service/learner/activity/add-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
+// Per-learner interaction state for a document slide's interactive blocks
+// (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists
+// all blocks for the current learner; POST upserts one block.
+export const SLIDE_INTERACTION = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const GET_ASSIGNMENT_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;

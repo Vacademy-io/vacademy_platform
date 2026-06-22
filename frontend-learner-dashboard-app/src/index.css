@@ -21,6 +21,60 @@ html, body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Read-only rich-text (TipTap) content — paragraphs, lists, tables, blockquote.
+   The admin editor stores bare HTML and styles it via its editor class; the
+   learner has no editor, so we mirror the same read-only rules here. Read-only
+   views render the HTML where Tailwind preflight zeroes margins, so paragraphs
+   and blank lines collapse — restore that spacing. Scoped to .rich-text-content
+   (descendant rules only), so only elements carrying that class (e.g. quiz
+   option/question/explanation HTML) are affected. */
+.rich-text-content p {
+  margin: 0 0 0.6em; /* restore paragraph spacing the editor shows */
+}
+.rich-text-content p:last-child {
+  margin-bottom: 0; /* keep single-paragraph cells/options tight */
+}
+.rich-text-content p:empty {
+  min-height: 0.9em; /* preserve intentional blank lines (empty <p></p>) */
+}
+.rich-text-content table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin: 0.5em 0;
+}
+.rich-text-content th,
+.rich-text-content td {
+  border: 1px solid #e5e7eb; /* neutral-200 */
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+.rich-text-content th {
+  background-color: #f9fafb; /* neutral-50 */
+  font-weight: 600;
+}
+.rich-text-content ul {
+  list-style: disc;
+  margin: 0.5em 0;
+  padding-left: 1.5rem;
+}
+.rich-text-content ol {
+  list-style: decimal;
+  margin: 0.5em 0;
+  padding-left: 1.5rem;
+}
+.rich-text-content li {
+  display: list-item;
+  margin: 0.15em 0;
+}
+.rich-text-content blockquote {
+  border-left: 4px solid #e5e7eb; /* neutral-200 */
+  padding-left: 0.875rem;
+  margin: 0.75rem 0;
+  color: #374151; /* neutral-700 */
+}
+
 /* Column layout: override the CSS custom property on mobile so the
    var(--catalogue-grid-cols) used in the inline style collapses to 1 column.
    CSS custom properties cascade normally, so a stylesheet rule overrides an
@@ -1140,6 +1194,10 @@ html, body {
 .richtext-content h5,
 .richtext-content h6 { font-size: 1rem; font-weight: 600; color: #111827; margin: 0.75rem 0 0.5rem; }
 .richtext-content p { margin: 0.5rem 0; }
+/* Preserve intentional blank lines (empty <p></p> separators between sections)
+   that the editor shows but Tailwind's reset would otherwise collapse to nothing
+   — e.g. an assignment Task Description spaced into sections. */
+.richtext-content p:empty { min-height: 0.9em; }
 .richtext-content ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
 .richtext-content ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
 .richtext-content li { margin: 0.25rem 0; }

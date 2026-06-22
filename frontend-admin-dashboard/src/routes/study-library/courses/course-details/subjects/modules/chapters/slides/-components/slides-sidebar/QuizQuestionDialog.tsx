@@ -170,6 +170,8 @@ const QuizQuestionDialogAddPreview = ({
                                         setCurrentQuestionIndex,
                                         className:
                                             'dialog-height overflow-auto ml-6 flex w-full flex-col gap-6 pr-6 pt-4',
+                                        // Quiz options get the full rich-text editor on demand (expand-to-modal)
+                                        enableOptionModalCompose: true,
                                     }}
                                 />
                             </div>

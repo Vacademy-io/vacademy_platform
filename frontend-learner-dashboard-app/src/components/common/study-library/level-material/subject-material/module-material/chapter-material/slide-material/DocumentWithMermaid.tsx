@@ -1,15 +1,17 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { EnhancedCodeBlock } from './EnhancedCodeBlock';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import { useContentStore } from '@/stores/study-library/chapter-sidebar-store';
+import { getSlideInteractions, saveSlideInteraction } from '@/services/study-library/tracking-api/slide-interaction';
 
 // Pattern: {blank:answer}
 const BLANK_REGEX = /\{blank:([^}]+)\}/g;
 
 /** Interactive quiz component for learner side */
-function InlineQuiz({ quizJson }: { quizJson: string }) {
+function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; slideId?: string; elementIndex?: number }) {
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
     const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -22,6 +24,23 @@ function InlineQuiz({ quizJson }: { quizJson: string }) {
     } catch { /* use empty */ }
 
     if (!quizData.question) return null;
+
+    // Reveal the result and (when rendered for a learner slide) record the
+    // learner's choice so the admin activity log can show it.
+    const handleCheck = () => {
+        setShowResult(true);
+        if (slideId && elementIndex != null && selectedAnswer != null) {
+            const opt = quizData.options[selectedAnswer];
+            saveSlideInteraction(slideId, `mcq-${elementIndex}`, 'MCQ', {
+                question: quizData.question,
+                options: quizData.options.map((o) => o.text),
+                selected: selectedAnswer,
+                selectedText: opt?.text ?? null,
+                correct: !!opt?.isCorrect,
+                correctIndex: quizData.options.findIndex((o) => o.isCorrect),
+            });
+        }
+    };
 
     return (
         <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
@@ -52,7 +71,7 @@ function InlineQuiz({ quizJson }: { quizJson: string }) {
             })}
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                 {!showResult ? (
-                    <button onClick={() => setShowResult(true)} disabled={selectedAnswer === null}
+                    <button onClick={handleCheck} disabled={selectedAnswer === null}
                         style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: selectedAnswer !== null ? '#4338ca' : '#ccc', color: 'white', cursor: selectedAnswer !== null ? 'pointer' : 'default' }}> {/* design-lint-ignore: dynamic quiz button state — style prop */}
                         Check Answer
                     </button>
@@ -73,13 +92,36 @@ function InlineQuiz({ quizJson }: { quizJson: string }) {
 }
 
 /** Interactive flashcard component for learner side */
-function InteractiveFlashcard({ front, back }: { front: string; back: string }) {
+function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: string; back: string; slideId?: string; elementIndex?: number }) {
     const [isFlipped, setIsFlipped] = useState(false);
+    const flipCountRef = useRef(0);
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Flip and (on a learner slide) record engagement — that the learner flipped
+    // to reveal the back, and how many times. Debounced + best-effort.
+    const handleFlip = () => {
+        const next = !isFlipped;
+        setIsFlipped(next);
+        flipCountRef.current += 1;
+        if (slideId && elementIndex != null) {
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = setTimeout(
+                () =>
+                    saveSlideInteraction(slideId, `flashcard-${elementIndex}`, 'FLASHCARD', {
+                        front,
+                        back,
+                        viewed: true,
+                        flipCount: flipCountRef.current,
+                    }),
+                600
+            );
+        }
+    };
 
     return (
         <div
             style={{ perspective: '1000px', cursor: 'pointer', margin: '8px 0' }}
-            onClick={() => setIsFlipped(!isFlipped)}
+            onClick={handleFlip}
         >
             <div
                 style={{
@@ -143,7 +185,7 @@ function InteractiveFlashcard({ front, back }: { front: string; back: string }) 
 }
 
 /** Interactive fill-in-the-blanks component for learner side */
-function InteractiveFillBlanks({ sentence }: { sentence: string }) {
+function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: string; slideId?: string; elementIndex?: number }) {
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [showResults, setShowResults] = useState(false);
 
@@ -169,12 +211,30 @@ function InteractiveFillBlanks({ sentence }: { sentence: string }) {
 
     let blankIndex = 0;
 
+    // Reveal results and (when rendered for a learner slide) record the learner's
+    // per-blank answers + correctness so the admin activity log can show them.
+    const handleCheck = () => {
+        setShowResults(true);
+        if (slideId && elementIndex != null) {
+            saveSlideInteraction(slideId, `fill-${elementIndex}`, 'FILL_BLANKS', {
+                statement: sentence,
+                answers: blanks.map((b, i) => ({
+                    expected: b.value,
+                    value: answers[i] || '',
+                    correct: (answers[i] || '').trim().toLowerCase() === b.value.trim().toLowerCase(),
+                })),
+            });
+        }
+    };
+
     return (
         <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
             <div style={{ padding: '4px 8px', background: '#e8f4fd', border: '1px solid #90caf9', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#1565c0', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
                 FILL IN THE BLANKS
             </div>
-            <div style={{ fontSize: '16px', lineHeight: 2.2, color: '#333', padding: '8px' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
+            {/* whiteSpace: pre-wrap mirrors the admin editor (Slate's editable container is pre-wrap),
+                so newlines between statements stay as line breaks instead of collapsing into one paragraph. */}
+            <div style={{ fontSize: '16px', lineHeight: 2.2, color: '#333', padding: '8px', whiteSpace: 'pre-wrap' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
                 {parts.map((part, i) => {
                     if (part.type === 'text') return <span key={i}>{part.value}</span>;
                     const idx = blankIndex++;
@@ -208,7 +268,7 @@ function InteractiveFillBlanks({ sentence }: { sentence: string }) {
             </div>
             {blanks.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'center' }}>
-                    <button onClick={() => setShowResults(true)}
+                    <button onClick={handleCheck}
                         style={{ padding: '6px 16px', fontSize: '13px', border: 'none', borderRadius: '4px', backgroundColor: '#007acc', color: 'white', cursor: 'pointer' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
                         Check Answers
                     </button>
@@ -277,6 +337,10 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     className = '',
 }) => {
     const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs'; content: string; meta?: Record<string, string> }>>([]);
+    // Current slide id (for persisting the learner's checkbox/checklist ticks)
+    // and a ref over the rendered output so we can wire up todo-item clicks.
+    const slideId = useContentStore((s) => s.activeItem?.id);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!htmlContent) {
@@ -390,6 +454,37 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 }
             };
             continueOrderedNumbering(tempDiv);
+
+            // Yoopta serializes a checkbox/todo item as `<li>[ ] text</li>` (or
+            // `[x]` when checked) — a literal bracket marker, not a real checkbox.
+            // The admin editor re-parses that marker into an interactive checkbox,
+            // but rendered as raw HTML it shows as a bullet + literal "[ ]". Strip
+            // the marker and tag the <li> so the scoped CSS below renders a real
+            // checkbox (read-only, reflecting the saved checked state) like admin.
+            const convertTodoListsToCheckboxes = (root: Element) => {
+                const TODO_RE = /^\s*\[([ xX])\]\s?/;
+                let todoIndex = 0;
+                root.querySelectorAll('ul > li').forEach((li) => {
+                    const m = (li.textContent || '').match(TODO_RE);
+                    if (!m) return;
+                    const checked = m[1]!.toLowerCase() === 'x';
+                    // Strip the marker from the first non-empty text node so any
+                    // inline formatting inside the item is preserved.
+                    const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+                    let node = walker.nextNode();
+                    while (node && !(node.nodeValue || '').trim()) node = walker.nextNode();
+                    if (node && node.nodeValue) {
+                        node.nodeValue = node.nodeValue.replace(TODO_RE, '');
+                    }
+                    li.classList.add('todo-item');
+                    if (checked) li.classList.add('todo-item--checked');
+                    // Stable document-order index so the learner's saved tick state
+                    // (persisted per slide) can be mapped back onto each item.
+                    li.setAttribute('data-todo-index', String(todoIndex));
+                    todoIndex++;
+                });
+            };
+            convertTodoListsToCheckboxes(tempDiv);
 
             // First, check for div.mermaid elements (most common pattern for mermaid)
             const mermaidDivs = tempDiv.querySelectorAll('div.mermaid');
@@ -737,8 +832,74 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
         }
     }, [htmlContent]);
 
+    // Make checklist/todo items interactive: load the learner's saved ticks,
+    // apply them, and toggle + persist (debounced) on click. State is per
+    // (learner, slide) and survives reloads/devices. Best-effort — any network
+    // failure leaves the items as the author-rendered default, never blocks.
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container || !slideId) return;
+        const items = Array.from(
+            container.querySelectorAll<HTMLElement>('li.todo-item[data-todo-index]')
+        );
+        if (items.length === 0) return;
+
+        const indexOf = (li: HTMLElement) => Number(li.getAttribute('data-todo-index'));
+        items.forEach((li) => {
+            li.style.cursor = 'pointer';
+        });
+        // Item labels in index order — saved alongside the ticks so the admin
+        // activity view can show real text instead of bare indices.
+        const labels = items
+            .slice()
+            .sort((a, b) => indexOf(a) - indexOf(b))
+            .map((li) => (li.textContent || '').trim());
+
+        // Seed from the author-rendered defaults; overridden once saved state loads.
+        const checkedSet = new Set<number>(
+            items.filter((li) => li.classList.contains('todo-item--checked')).map(indexOf)
+        );
+        const persist = () =>
+            saveSlideInteraction(slideId, 'checklist', 'CHECKLIST', {
+                checked: Array.from(checkedSet).sort((a, b) => a - b),
+                items: labels,
+            });
+
+        let cancelled = false;
+        getSlideInteractions(slideId).then((map) => {
+            const saved = map.get('checklist')?.state as { checked?: number[] } | undefined;
+            if (cancelled || !saved || !Array.isArray(saved.checked)) return; // no saved state → keep defaults
+            checkedSet.clear();
+            saved.checked.forEach((i) => checkedSet.add(i));
+            items.forEach((li) => {
+                li.classList.toggle('todo-item--checked', checkedSet.has(indexOf(li)));
+            });
+        });
+
+        let saveTimer: ReturnType<typeof setTimeout> | null = null;
+        const onClick = (e: Event) => {
+            const target = e.target as HTMLElement;
+            const li = target.closest('li.todo-item[data-todo-index]') as HTMLElement | null;
+            if (!li || !container.contains(li)) return;
+            const idx = indexOf(li);
+            const nowChecked = !li.classList.contains('todo-item--checked');
+            li.classList.toggle('todo-item--checked', nowChecked);
+            if (nowChecked) checkedSet.add(idx);
+            else checkedSet.delete(idx);
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(persist, 500);
+        };
+        container.addEventListener('click', onClick);
+
+        return () => {
+            cancelled = true;
+            if (saveTimer) clearTimeout(saveTimer);
+            container.removeEventListener('click', onClick);
+        };
+    }, [sections, slideId]);
+
     return (
-        <div className={`document-with-mermaid ${className}`}>
+        <div ref={containerRef} className={`document-with-mermaid ${className}`}>
             <style>{`
                 .document-with-mermaid {
                     font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
@@ -804,6 +965,37 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     height: 0.5rem;
                     background-color: #4f46e5; /* design-lint-ignore: CSS-in-JS document theme */
                     border-radius: 50%;
+                }
+
+                /* Checkbox/todo items (see convertTodoListsToCheckboxes): render a
+                   square checkbox in place of the bullet dot, matching the admin. */
+                .document-with-mermaid ul > li.todo-item::before {
+                    left: 0.15rem;
+                    top: 0.4rem;
+                    width: 1.05rem;
+                    height: 1.05rem;
+                    background-color: transparent;
+                    border: 2px solid #94a3b8; /* design-lint-ignore: CSS-in-JS document theme */
+                    border-radius: 0.25rem;
+                }
+                .document-with-mermaid ul > li.todo-item--checked::before {
+                    background-color: #4f46e5; /* design-lint-ignore: CSS-in-JS document theme */
+                    border-color: #4f46e5; /* design-lint-ignore: CSS-in-JS document theme */
+                }
+                .document-with-mermaid ul > li.todo-item--checked::after {
+                    content: '';
+                    position: absolute;
+                    left: 0.57rem;
+                    top: 0.5rem;
+                    width: 0.3rem;
+                    height: 0.6rem;
+                    border: solid #fff; /* design-lint-ignore: CSS-in-JS document theme */
+                    border-width: 0 2px 2px 0;
+                    transform: rotate(45deg);
+                }
+                .document-with-mermaid ul > li.todo-item--checked {
+                    text-decoration: line-through;
+                    color: #6b7280; /* design-lint-ignore: CSS-in-JS document theme */
                 }
 
                 .document-with-mermaid ol {
@@ -890,6 +1082,8 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         <InlineQuiz
                             key={`quiz-${index}`}
                             quizJson={section.content}
+                            slideId={slideId}
+                            elementIndex={index}
                         />
                     );
                 } else if (section.type === 'flashcard') {
@@ -900,6 +1094,8 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                             key={`flashcard-${index}`}
                             front={data.front}
                             back={data.back}
+                            slideId={slideId}
+                            elementIndex={index}
                         />
                     );
                 } else if (section.type === 'fillBlanks') {
@@ -907,6 +1103,8 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         <InteractiveFillBlanks
                             key={`fillblanks-${index}`}
                             sentence={section.content}
+                            slideId={slideId}
+                            elementIndex={index}
                         />
                     );
                 } else if (section.type === 'tabs') {

@@ -714,6 +714,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                                     className:
                                         'dialog-height overflow-auto ml-6 flex w-full flex-col gap-6 pr-6 pt-4',
                                     showQuestionNumber: false,
+                                    // Quiz options get the full rich-text editor on demand (expand-to-modal)
+                                    enableOptionModalCompose: true,
                                 }}
                             />
                         </FormProvider>
@@ -756,6 +758,8 @@ const QuizPreview = ({ activeItem, routeParams }: QuizPreviewProps) => {
                                     className:
                                         'dialog-height overflow-auto ml-6 flex w-full flex-col gap-6 pr-6 pt-4',
                                     showQuestionNumber: false,
+                                    // Quiz options get the full rich-text editor on demand (expand-to-modal)
+                                    enableOptionModalCompose: true,
                                 }}
                             />
                         </FormProvider>

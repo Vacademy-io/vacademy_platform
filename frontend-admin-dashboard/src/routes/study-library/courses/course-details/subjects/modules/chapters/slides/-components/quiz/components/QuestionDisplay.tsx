@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TransformedQuestion } from '../types';
 import { CaretDown, CaretUp } from '@phosphor-icons/react';
+import { isRichTextEmpty } from '@/lib/utils';
 
 interface QuestionDisplayProps {
     question: TransformedQuestion;
@@ -130,7 +131,7 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
     };
 
     const renderExplanation = (explanation: string) => {
-        if (!explanation || explanation.trim() === '') return null;
+        if (isRichTextEmpty(explanation)) return null;
 
         return (
             <div className="mt-4 space-y-2">

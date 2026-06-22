@@ -66,6 +66,16 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
     @Value("${bbb.callback.base-url:${tool.executor.base-url:http://localhost}}")
     private String bbbCallbackBaseUrl;
 
+    /**
+     * Kill-switch for the self-hosted Picture-in-Picture HTML5 plugin (webcams +
+     * screen-share in a floating window). Default on; set bbb.plugins.pip.enabled=false
+     * to disable platform-wide without a redeploy. The bundle is hosted on each BBB
+     * server at https://<host>/plugins/picture-in-picture/manifest.json (see
+     * bigbluebutton-server repo: plugins/ + install-recording-hook.sh + sync).
+     */
+    @Value("${bbb.plugins.pip.enabled:true}")
+    private boolean pipPluginEnabled;
+
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
     @Override
@@ -277,6 +287,17 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
 
         // Retain event data so BBB can send analytics callback after meeting ends
         params.put("keepEvents", "true");
+
+        // HTML5 Picture-in-Picture plugin (webcams + screen-share in a floating window).
+        // The bundle is self-hosted on the routed BBB server, so derive the manifest URL
+        // from that server's apiUrl (strip "/bigbluebutton/api"). Relative entrypoints in
+        // the manifest keep it domain-agnostic across the pool. buildQueryString() URL-encodes
+        // the JSON value. Toggle off via bbb.plugins.pip.enabled=false.
+        if (pipPluginEnabled) {
+            String bbbBaseUrl = apiUrl.replaceAll("/bigbluebutton/api/?$", "");
+            String pipManifestUrl = bbbBaseUrl + "/plugins/picture-in-picture/manifest.json";
+            params.put("pluginManifests", "[{\"url\":\"" + pipManifestUrl + "\"}]");
+        }
 
         String queryString = buildQueryString(params);
         String checksum = sha256("create" + queryString + secret);

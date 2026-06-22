@@ -7,7 +7,7 @@ import { fetchInstituteDashboardUsers } from '@/routes/dashboard/-services/dashb
 import { useRefetchUsersStore } from '@/routes/dashboard/-global-states/refetch-store-users';
 import { getInstituteId } from '@/constants/helper';
 import { UserRolesDataEntry } from '@/types/dashboard/user-roles';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import InviteUsersComponent from '@/routes/dashboard/-components/InviteUsersComponent';
@@ -22,7 +22,13 @@ import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
 import { Funnel, X, Users } from '@phosphor-icons/react';
 import { CornerDownLeft } from 'lucide-react';
-import { getAllRoles, type CustomRole } from '@/routes/manage-custom-teams/-services/custom-team-services';
+import {
+  getAllRoles,
+  listUserSubOrgLinks,
+  listAccessibleSubOrgs,
+  type CustomRole,
+  type AccessibleSubOrg,
+} from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
@@ -32,6 +38,8 @@ import { OrgChartTab } from './-components/OrgChartTab';
 export interface RoleTypeSelectedFilter {
   roles: { id: string; name: string }[];
   status: { id: string; name: string }[];
+  // Sub-org filter (Teams page only). Optional so the shared fetch/RoleType types stay compatible.
+  subOrgs?: { id: string; name: string }[];
 }
 
 export interface TeamMemberRole {
@@ -88,6 +96,7 @@ function RouteComponent() {
   const [selectedFilter, setSelectedFilter] = useState<RoleTypeSelectedFilter>({
     roles: [],
     status: [],
+    subOrgs: [],
   });
 
   const [dashboardUsers, setDashboardUsers] = useState<{
@@ -97,6 +106,35 @@ function RouteComponent() {
     instituteUsers: null,
     invites: null,
   });
+
+  // Sub-org linkages (via FSPSSM) for the "Sub-Orgs" column + filter. One institute-wide
+  // fetch, cached — powers both the per-row chips and the client-side userId derivation that
+  // drives the sub-org filter. Scoped server-side to the caller's accessible sub-orgs.
+  const { data: userSubOrgLinks } = useQuery({
+    queryKey: ['SUB_ORG_USER_LINKS', instituteId],
+    queryFn: () => listUserSubOrgLinks(instituteId!),
+    enabled: !!instituteId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: accessibleSubOrgs } = useQuery({
+    queryKey: ['ACCESSIBLE_SUB_ORGS', instituteId],
+    queryFn: () => listAccessibleSubOrgs(instituteId!),
+    enabled: !!instituteId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // userId -> the sub-orgs that user is linked to (for the column).
+  const linksMap = useMemo(() => {
+    const m = new Map<string, AccessibleSubOrg[]>();
+    (userSubOrgLinks ?? []).forEach((link) => m.set(link.user_id, link.sub_orgs));
+    return m;
+  }, [userSubOrgLinks]);
+
+  // Filter dropdown options.
+  const subOrgFilterList = useMemo(
+    () => (accessibleSubOrgs ?? []).map((so) => ({ id: so.id, label: so.name })),
+    [accessibleSubOrgs]
+  );
 
   // Resolve the viewer's effective display settings (admin or teacher cache,
   // matching the layout-container pattern). Custom-role users fall through to
@@ -140,6 +178,32 @@ function RouteComponent() {
     return allRoles.map((r) => ({ id: r.id, name: r.name }));
   }, [allRoles]);
 
+  // The tab's default status set (Institute Users = ACTIVE/DISABLED, Invites = INVITED).
+  const statusDefaultForTab = (tab: TabKey) =>
+    tab === 'instituteUsers'
+      ? [
+        { id: '1', name: 'ACTIVE' },
+        { id: '2', name: 'DISABLED' },
+      ]
+      : [{ id: '1', name: 'INVITED' }];
+
+  // Resolve the filter we actually send: mirrors the existing role/status defaulting (no
+  // explicit roles/status → fall back to all-roles + tab-default status) and carries the
+  // sub-org selection through so the sub-org filter survives pagination / refetch. Empty
+  // status would otherwise leak INVITED users into the Institute Users tab, so we always
+  // default it when the user hasn't picked one.
+  const buildEffectiveFilter = (
+    filter: RoleTypeSelectedFilter,
+    tab: TabKey
+  ): RoleTypeSelectedFilter => {
+    const hasRoleOrStatus = filter.roles.length > 0 || filter.status.length > 0;
+    return {
+      roles: hasRoleOrStatus ? filter.roles : allRolesFilter,
+      status: hasRoleOrStatus ? filter.status : statusDefaultForTab(tab),
+      subOrgs: filter.subOrgs ?? [],
+    };
+  };
+
   // Transform RoleType data to show custom names while preserving backend values
   const roleTypeWithCustomNames = allRoles.map((role) => ({
     ...role,
@@ -165,7 +229,28 @@ function RouteComponent() {
       selectedFilter: RoleTypeSelectedFilter;
       pageNumber: number;
       name?: string;
-    }) => fetchInstituteDashboardUsers(instituteId, selectedFilter, pageNumber, pageSize, name || ''),
+    }) => {
+      // When a sub-org filter is active, resolve the matching user IDs from the cached
+      // institute-wide links map (covers all pages → server-side pagination stays correct)
+      // and pass them as user_ids. The backend ANDs user_ids with roles/status and returns an
+      // empty page for an empty list, so a zero-match selection needs no special handling here.
+      const selectedSubOrgIds = (selectedFilter.subOrgs ?? []).map((s) => s.id);
+      let userIds: string[] | undefined;
+      if (selectedSubOrgIds.length > 0) {
+        const selectedSet = new Set(selectedSubOrgIds);
+        userIds = (userSubOrgLinks ?? [])
+          .filter((link) => link.sub_orgs.some((so) => selectedSet.has(so.id)))
+          .map((link) => link.user_id);
+      }
+      return fetchInstituteDashboardUsers(
+        instituteId,
+        selectedFilter,
+        pageNumber,
+        pageSize,
+        name || '',
+        userIds
+      );
+    },
     onSuccess: (data) => {
       console.log('data', data);
       if (selectedTab === 'instituteUsers') {
@@ -183,7 +268,7 @@ function RouteComponent() {
     setPage(0); // Reset to first page when filters change
     getDashboardUsersData.mutate({
       instituteId,
-      selectedFilter,
+      selectedFilter: buildEffectiveFilter(selectedFilter, selectedTab),
       pageNumber: 0,
       name: searchFilter,
     });
@@ -194,6 +279,7 @@ function RouteComponent() {
     setSelectedFilter({
       roles: [],
       status: [],
+      subOrgs: [],
     });
     getDashboardUsersData.mutate({
       instituteId,
@@ -218,18 +304,7 @@ function RouteComponent() {
       setPage(0);
       getDashboardUsersData.mutate({
         instituteId,
-        selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
-          ? selectedFilter
-          : {
-            roles: allRolesFilter,
-            status:
-              selectedTab === 'instituteUsers'
-                ? [
-                  { id: '1', name: 'ACTIVE' },
-                  { id: '2', name: 'DISABLED' },
-                ]
-                : [{ id: '1', name: 'INVITED' }],
-          },
+        selectedFilter: buildEffectiveFilter(selectedFilter, selectedTab),
         pageNumber: 0,
         name: searchInput,
       });
@@ -270,18 +345,7 @@ function RouteComponent() {
     setPage(newPage);
     getDashboardUsersData.mutate({
       instituteId,
-      selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
-        ? selectedFilter
-        : {
-          roles: allRolesFilter,
-          status:
-            selectedTab === 'instituteUsers'
-              ? [
-                { id: '1', name: 'ACTIVE' },
-                { id: '2', name: 'DISABLED' },
-              ]
-              : [{ id: '1', name: 'INVITED' }],
-        },
+      selectedFilter: buildEffectiveFilter(selectedFilter, selectedTab),
       pageNumber: newPage,
       name: searchFilter,
     });
@@ -290,18 +354,7 @@ function RouteComponent() {
   const handleRefetchData = () => {
     getDashboardUsersData.mutate({
       instituteId,
-      selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
-        ? selectedFilter
-        : {
-          roles: allRolesFilter,
-          status:
-            selectedTab === 'instituteUsers'
-              ? [
-                { id: '1', name: 'ACTIVE' },
-                { id: '2', name: 'DISABLED' },
-              ]
-              : [{ id: '1', name: 'INVITED' }],
-        },
+      selectedFilter: buildEffectiveFilter(selectedFilter, selectedTab),
       pageNumber: page,
       name: searchFilter,
     });
@@ -439,6 +492,29 @@ function RouteComponent() {
       },
     },
     {
+      id: 'subOrgs',
+      header: 'Sub-Orgs',
+      size: 200,
+      cell: ({ row }) => {
+        const subOrgs = linksMap.get(row.original.id) ?? [];
+        if (subOrgs.length === 0) {
+          return <div className="text-sm text-neutral-400">-</div>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1">
+            {subOrgs.map((subOrg) => (
+              <span
+                key={subOrg.id}
+                className="rounded-full bg-info-50 px-2 py-0.5 text-xs text-info-600"
+              >
+                {subOrg.name}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
       id: 'actions',
       header: 'Actions',
       size: 80,
@@ -552,18 +628,7 @@ function RouteComponent() {
                     setPage(0);
                     getDashboardUsersData.mutate({
                       instituteId,
-                      selectedFilter: selectedFilter.roles.length > 0 || selectedFilter.status.length > 0
-                        ? selectedFilter
-                        : {
-                          roles: allRolesFilter,
-                          status:
-                            selectedTab === 'instituteUsers'
-                              ? [
-                                { id: '1', name: 'ACTIVE' },
-                                { id: '2', name: 'DISABLED' },
-                              ]
-                              : [{ id: '1', name: 'INVITED' }],
-                        },
+                      selectedFilter: buildEffectiveFilter(selectedFilter, selectedTab),
                       pageNumber: 0,
                       name: '',
                     });
@@ -635,8 +700,31 @@ function RouteComponent() {
                 handleClearFilters={() => setSelectedFilter(prev => ({ ...prev, status: [] }))}
               />
             )}
+            {selectedTab === 'instituteUsers' && subOrgFilterList.length > 0 && (
+              <FilterChips
+                label="Sub-Org"
+                filterList={subOrgFilterList}
+                selectedFilters={(selectedFilter.subOrgs ?? []).map(s => ({ id: s.id, label: s.name }))}
+                handleSelect={(option) => {
+                  const current = selectedFilter.subOrgs ?? [];
+                  const isSelected = current.some(s => s.id === option.id);
+                  if (isSelected) {
+                    setSelectedFilter(prev => ({
+                      ...prev,
+                      subOrgs: (prev.subOrgs ?? []).filter(s => s.id !== option.id),
+                    }));
+                  } else {
+                    setSelectedFilter(prev => ({
+                      ...prev,
+                      subOrgs: [...(prev.subOrgs ?? []), { id: option.id, name: option.label || '' }],
+                    }));
+                  }
+                }}
+                handleClearFilters={() => setSelectedFilter(prev => ({ ...prev, subOrgs: [] }))}
+              />
+            )}
             <div className="flex items-center gap-2">
-              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0) && (
+              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || (selectedFilter.subOrgs?.length ?? 0) > 0) && (
                 <MyButton
                   buttonType="primary"
                   scale="small"
@@ -648,7 +736,7 @@ function RouteComponent() {
                   </div>
                 </MyButton>
               )}
-              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || searchFilter) && (
+              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || (selectedFilter.subOrgs?.length ?? 0) > 0 || searchFilter) && (
                 <MyButton
                   buttonType="secondary"
                   scale="small"
@@ -709,7 +797,7 @@ function RouteComponent() {
               <p className="mb-6 max-w-sm text-sm text-neutral-500">
                 We couldn't find any team members matching your current search or filters. Try adjusting them or invite new users.
               </p>
-              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || searchFilter) && (
+              {(selectedFilter.roles.length > 0 || selectedFilter.status.length > 0 || (selectedFilter.subOrgs?.length ?? 0) > 0 || searchFilter) && (
                 <MyButton
                   buttonType="secondary"
                   scale="medium"

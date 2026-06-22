@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.telephony.core.LeadDirectoryResolver;
 import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
@@ -59,6 +60,7 @@ public class AirtelImportPromoter {
     @Autowired private TelephonyCounsellorEndpointRepository endpointRepo;
     @Autowired private TimelineEventService timelineEventService;
     @Autowired private UserMobileResolver userMobileResolver;
+    @Autowired private LeadDirectoryResolver leadDirectoryResolver;
 
     @Transactional
     public void promoteRow(String importId) {
@@ -72,17 +74,20 @@ public class AirtelImportPromoter {
             }
             imp.setInstituteId(instituteId);
 
-            String counsellor = resolveCounsellor(imp);
-            if (counsellor == null) {
-                skip(imp, "counsellor not mapped (ext=" + imp.getSourceExtension()
-                        + ", user=" + imp.getSourceUserId() + ")");
-                return;
-            }
-
             if (AirtelCallImport.KIND_CDR.equals(imp.getKind())) {
+                // A CDR creates/enriches the call row, so it needs the counsellor.
+                String counsellor = resolveCounsellor(imp);
+                if (counsellor == null) {
+                    skip(imp, "counsellor not mapped (ext=" + imp.getSourceExtension()
+                            + ", user=" + imp.getSourceUserId() + ")");
+                    return;
+                }
                 promoteCdr(imp, instituteId, counsellor);
             } else if (AirtelCallImport.KIND_RECORDING.equals(imp.getKind())) {
-                promoteRecording(imp, counsellor);
+                // A recording attaches to an existing call row by call id, so it does
+                // NOT need the counsellor up front — inbound recordings can't resolve
+                // one (the CSV's "called number" is the DID, not the extension).
+                promoteRecording(imp);
             } else {
                 skip(imp, "unknown kind " + imp.getKind());
             }
@@ -141,17 +146,32 @@ public class AirtelImportPromoter {
         markPromoted(imp, row.getId());
     }
 
-    private void promoteRecording(AirtelCallImport imp, String counsellor) {
-        if (imp.getCounterpartyMsisdn10() == null) {
-            skip(imp, "recording has no counterparty number to match on");
-            return;
+    private void promoteRecording(AirtelCallImport imp) {
+        TelephonyCallLog row = null;
+        // PRIMARY match — by call id. Airtel names Cdr/<uuid>.json and Rec/<uuid>.mp3
+        // with the SAME uuid = the CDR callId, which the CDR import stamps onto the
+        // call row's providerCallId. So once the CDR is promoted, the recording finds
+        // its row by id alone — no counsellor/number/time guesswork. This is what lets
+        // INBOUND recordings attach (their CSV "called number" is the DID, not an ext).
+        if (imp.getRecordingObjectId() != null) {
+            row = callLogRepo.findByProviderTypeAndProviderCallId(
+                    ProviderType.AIRTEL, imp.getRecordingObjectId()).orElse(null);
         }
-        Instant anchor = anchorInstant(imp);
-        TelephonyCallLog row = callLogRepo.findAirtelCallForRecording(
-                counsellor, imp.getCounterpartyMsisdn10(),
-                ts(anchor.minusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
-                ts(anchor.plusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
-                ts(anchor)).orElse(null);
+        // FALLBACK — counsellor + counterparty + time, for a recording that lands
+        // before its CDR AND whose counsellor is resolvable (outbound, where the CSV
+        // "calling number" is the counsellor extension). Inbound can't resolve a
+        // counsellor here, so it relies on the call-id match after the CDR promotes.
+        if (row == null && imp.getCounterpartyMsisdn10() != null) {
+            String counsellor = resolveCounsellor(imp);
+            if (counsellor != null) {
+                Instant anchor = anchorInstant(imp);
+                row = callLogRepo.findAirtelCallForRecording(
+                        counsellor, imp.getCounterpartyMsisdn10(),
+                        ts(anchor.minusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
+                        ts(anchor.plusSeconds(RECORDING_MATCH_WINDOW_SECONDS)),
+                        ts(anchor)).orElse(null);
+            }
+        }
         if (row == null) {
             // The matching CDR may not have been promoted yet — retry next cycle,
             // unless this row has been waiting too long.
@@ -173,13 +193,24 @@ public class AirtelImportPromoter {
     private TelephonyCallLog createCallLog(AirtelCallImport imp, String instituteId,
                                            String counsellor, boolean outbound) {
         String counterparty = imp.getCounterpartyNumber();
+        // Resolve the lead from the counterparty number (inbound caller / outbound
+        // callee) so all inbound calls AND softphone-originated outbound calls — the
+        // ones with no CRM click2dial row to enrich — land on the right lead +
+        // timeline instead of "UNKNOWN". No/ambiguous match keeps the sentinel.
+        Optional<LeadDirectoryResolver.LeadRef> lead = imp.getCounterpartyMsisdn10() == null
+                ? Optional.empty()
+                : leadDirectoryResolver.findByPhoneLast10(instituteId, imp.getCounterpartyMsisdn10());
+        String responseId = lead.map(LeadDirectoryResolver.LeadRef::responseId).orElse(null);
+        String userId = lead.map(LeadDirectoryResolver.LeadRef::userId)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse("UNKNOWN");
         TelephonyCallLog row = TelephonyCallLog.builder()
                 .id(java.util.UUID.randomUUID().toString())
                 .instituteId(instituteId)
                 .providerType(ProviderType.AIRTEL)
                 .providerCallId(imp.getCallId())
-                .responseId(null)
-                .userId("UNKNOWN")              // lead not resolved from a CDR alone
+                .responseId(responseId)
+                .userId(userId)
                 .counsellorUserId(counsellor)
                 .direction(outbound ? CallDirection.OUTBOUND.name() : CallDirection.INBOUND.name())
                 .fromNumber(outbound ? imp.getSourceExtension() : counterparty)

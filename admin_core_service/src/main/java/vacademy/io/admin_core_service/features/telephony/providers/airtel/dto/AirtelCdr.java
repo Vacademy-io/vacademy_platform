@@ -8,11 +8,13 @@ import lombok.Data;
  * Unknown fields are ignored — the full body is retained verbatim in
  * {@code airtel_call_import.raw_payload}.
  *
- * <p>Sample (outbound): {@code callDirection:2}, {@code ani}/{@code sourceExtensionNumber}
- * = the counsellor extension, {@code dnis}/{@code dialedNumber} = the lead.
- * Inbound ({@code callDirection:1}) is expected to flip ani/dnis — TBC against a
- * live inbound CDR. Dates ({@code dateStart}/{@code dateEnd}) are UTC
- * ("yyyy-MM-dd HH:mm:ss.SSS"); {@code dateEndInAccountTimezone} is IST.
+ * <p>Outbound ({@code callDirection:2}): {@code source*} = the counsellor
+ * ({@code sourceExtensionNumber}), {@code dnis}/{@code dialedNumber} = the lead.
+ * Inbound ({@code callDirection:1}, confirmed against a live CDR): {@code ani} =
+ * the lead, and the counsellor is the DESTINATION — {@code destExtensionNumber}/
+ * {@code destUserId} (the {@code source*} fields are absent inbound). Dates
+ * ({@code dateStart}/{@code dateEnd}) are UTC ("yyyy-MM-dd HH:mm:ss.SSS");
+ * {@code dateEndInAccountTimezone} is IST.
  */
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -28,6 +30,13 @@ public class AirtelCdr {
     private String sourceExtensionNumber;
     private String sourceUserId;
     private String sourceUserFullName;
+
+    // Destination (callee) identity. On INBOUND the counsellor is the destination
+    // (the source is the external lead), so THESE — not the source* fields — carry
+    // the counsellor's extension/user that maps to telephony_counsellor_endpoint.
+    private String destExtensionNumber;
+    private String destUserId;
+    private String destUserFullName;
 
     private String callerIdNumber;
     private String outboundCallerId;

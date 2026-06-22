@@ -17,6 +17,7 @@ import {
     SUB_ORG_TEAM_ADD,
     SUB_ORG_TEAM_REMOVE,
     SUB_ORG_TEAM_ACCESSIBLE,
+    SUB_ORG_TEAM_USER_LINKS,
     SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
     SUB_ORG_TEAM_PENDING_INSTALLMENTS,
     GET_SUB_ORG_FINANCE_DETAIL,
@@ -568,6 +569,25 @@ export const listAccessibleSubOrgs = async (
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: SUB_ORG_TEAM_ACCESSIBLE,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export interface UserSubOrgLink {
+    user_id: string;
+    sub_orgs: AccessibleSubOrg[];
+}
+
+/** For each user linked (via FSPSSM) to a sub-org the caller can see, the list of those
+ *  sub-orgs. Scoped server-side to the caller (real admin → all; sub-org admin → their own).
+ *  Drives the "Sub-Orgs" column + filter on the institute Teams list. */
+export const listUserSubOrgLinks = async (
+    instituteId: string
+): Promise<UserSubOrgLink[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_USER_LINKS,
         params: { instituteId },
     });
     return response.data;

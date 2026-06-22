@@ -88,15 +88,22 @@ public class AirtelCcrImportService {
             throw new PermanentImportException("CDR json parse failed: " + e.getMessage());
         }
         String direction = mapDirection(cdr.getCallDirection());
-        // Only derive the external party when direction is known — guessing would
-        // swap counsellor<->lead and corrupt the match key. Outbound: dnis = lead.
-        // Inbound: ani = lead (TBC against a live inbound CDR).
+        // Only derive the external party + counsellor when direction is known —
+        // guessing would swap counsellor<->lead and corrupt the match key.
+        //   Outbound: counsellor = source* (sourceExtensionNumber), lead = dnis.
+        //   Inbound : counsellor = dest*   (destExtensionNumber),   lead = ani.
+        // The counsellor-identifying fields below feed resolveCounsellor(), so they
+        // must hold the COUNSELLOR's ext/user regardless of direction.
+        boolean inbound = "INBOUND".equals(direction);
         String counterparty = null;
         if ("OUTBOUND".equals(direction)) {
             counterparty = firstNonBlank(cdr.getDnis(), cdr.getDialedNumber());
-        } else if ("INBOUND".equals(direction)) {
+        } else if (inbound) {
             counterparty = firstNonBlank(cdr.getAni(), cdr.getDnis());
         }
+        String counsellorExt = inbound ? cdr.getDestExtensionNumber() : cdr.getSourceExtensionNumber();
+        String counsellorUserId = inbound ? cdr.getDestUserId() : cdr.getSourceUserId();
+        String counsellorName = inbound ? cdr.getDestUserFullName() : cdr.getSourceUserFullName();
         OffsetDateTime start = parseUtc(cdr.getDateStart());
         OffsetDateTime end = parseUtc(cdr.getDateEnd());
 
@@ -108,9 +115,9 @@ public class AirtelCcrImportService {
                 .cdrId(cdr.getCdrId())
                 .direction(direction)
                 .disposition(cdr.getDisposition())
-                .sourceExtension(cdr.getSourceExtensionNumber())
-                .sourceUserId(cdr.getSourceUserId())
-                .sourceUserFullName(cdr.getSourceUserFullName())
+                .sourceExtension(counsellorExt)
+                .sourceUserId(counsellorUserId)
+                .sourceUserFullName(counsellorName)
                 .callerIdNumber(firstNonBlank(cdr.getCallerIdNumber(), cdr.getOutboundCallerId()))
                 .counterpartyNumber(counterparty)
                 .counterpartyMsisdn10(last10(counterparty))

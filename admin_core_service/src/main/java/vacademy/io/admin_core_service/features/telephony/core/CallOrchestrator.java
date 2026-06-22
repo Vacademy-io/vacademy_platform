@@ -92,11 +92,19 @@ public class CallOrchestrator {
                 .status(CallStatus.QUEUED)
                 .build());
 
+        // Post-call providers (Airtel) emit no live progress — the UI must not
+        // promise a streaming status it will never get. Default true so legacy /
+        // unknown providers keep the realtime flow.
+        boolean realtimeEvents = registry.descriptor(p.providerType())
+                .map(d -> d.supports(ProviderCapability.REALTIME_EVENTS))
+                .orElse(true);
+
         return ConnectCallResponseDTO.builder()
                 .callLogId(p.callLogId())
                 .status(CallStatus.QUEUED.name())
                 .callerId(p.callerId())
                 .eventsStreamUrl("/admin-core-service/v1/telephony/calls/" + p.callLogId() + "/events")
+                .realtimeEvents(realtimeEvents)
                 .build();
     }
 

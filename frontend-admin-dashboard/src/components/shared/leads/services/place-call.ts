@@ -17,6 +17,14 @@ export interface PlaceCallResponse {
     status: string;
     callerId?: string;
     eventsStreamUrl: string;
+    /**
+     * True when the provider streams live call-progress events (Exotel). False
+     * for post-call providers (Airtel) — there is no live feed, the outcome only
+     * lands when the provider's CDR is imported minutes after hang-up. The call
+     * hook uses this to show an honest "call placed, outcome later" flow instead
+     * of a spinner that never advances. Absent → treat as true (legacy).
+     */
+    realtimeEvents?: boolean;
 }
 
 /**

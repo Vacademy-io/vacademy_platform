@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import vacademy.io.admin_core_service.features.faculty.dto.UserSubOrgLinkRow;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
@@ -522,6 +523,60 @@ public class SubOrgTeamService {
             Map<String, Object> m = new java.util.HashMap<>();
             m.put("id", row.getSuborgId());
             m.put("name", row.getName());
+            result.add(m);
+        }
+        return result;
+    }
+
+    /**
+     * For every user linked (via active SUB_ORG FSPSSM rows) to a sub-org the caller can see,
+     * returns the list of those sub-orgs. Powers the "Sub-Orgs" column + filter on the institute
+     * Teams list. Reuses {@link #listAccessibleSubOrgs} so the caller scoping is identical:
+     * a real institute admin sees all sub-orgs, a sub-org admin sees only their own.
+     *
+     * Shape: [ { "user_id": String, "sub_orgs": [ { "id": String, "name": String } ] } ].
+     * The {@code id} is the child-institute id (= FSPSSM.suborg_id), matching the filter options.
+     */
+    public List<Map<String, Object>> listUserSubOrgLinks(CustomUserDetails caller, String instituteId) {
+        List<Map<String, Object>> accessible = listAccessibleSubOrgs(caller, instituteId);
+        if (accessible.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Map<String, String> idToName = new java.util.HashMap<>();
+        List<String> subOrgIds = new ArrayList<>();
+        for (Map<String, Object> so : accessible) {
+            String id = (String) so.get("id");
+            if (id == null) continue;
+            idToName.put(id, (String) so.get("name"));
+            subOrgIds.add(id);
+        }
+        if (subOrgIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<UserSubOrgLinkRow> rows =
+                facultyMappingRepository.findUserSubOrgLinks(subOrgIds, List.of("ACTIVE"));
+
+        // userId -> ordered, de-duplicated list of {id, name}
+        Map<String, List<Map<String, Object>>> byUser = new java.util.LinkedHashMap<>();
+        Map<String, Set<String>> seenPerUser = new java.util.HashMap<>();
+        for (UserSubOrgLinkRow row : rows) {
+            String userId = row.getUserId();
+            String subOrgId = row.getSubOrgId();
+            if (userId == null || subOrgId == null || !idToName.containsKey(subOrgId)) continue;
+            if (!seenPerUser.computeIfAbsent(userId, k -> new HashSet<>()).add(subOrgId)) continue;
+            Map<String, Object> entry = new java.util.HashMap<>();
+            entry.put("id", subOrgId);
+            entry.put("name", idToName.get(subOrgId));
+            byUser.computeIfAbsent(userId, k -> new ArrayList<>()).add(entry);
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map.Entry<String, List<Map<String, Object>>> e : byUser.entrySet()) {
+            Map<String, Object> m = new java.util.HashMap<>();
+            m.put("user_id", e.getKey());
+            m.put("sub_orgs", e.getValue());
             result.add(m);
         }
         return result;

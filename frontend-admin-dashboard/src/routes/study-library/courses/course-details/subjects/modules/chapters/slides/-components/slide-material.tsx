@@ -588,6 +588,31 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
 
+                // Accordion: serializes as <div>…<details><summary/>…</details>…</div>
+                // (the accordion-list wraps its items). Yoopta finds accordions by the
+                // bare <details> nodeName, so lift them out of that wrapper div —
+                // otherwise the buried accordion is dropped on reload and disappears.
+                // Snapshot the wrapper divs (children are ALL <details>, so we don't
+                // touch the outer content div) and unwrap each once.
+                const accordionWrappers = new Set<Element>();
+                doc.body.querySelectorAll('details').forEach((d) => {
+                    const p = d.parentElement;
+                    if (
+                        p &&
+                        p.tagName === 'DIV' &&
+                        !p.hasAttribute('data-yoopta-type') &&
+                        Array.from(p.children).every((c) => c.tagName === 'DETAILS')
+                    ) {
+                        accordionWrappers.add(p);
+                    }
+                });
+                accordionWrappers.forEach((wrapper) => {
+                    while (wrapper.firstChild) {
+                        wrapper.parentNode?.insertBefore(wrapper.firstChild, wrapper);
+                    }
+                    wrapper.remove();
+                });
+
                 // Convert in-text newlines to <br> so Yoopta's deserializer
                 // preserves line breaks in list items, paragraphs, etc.
                 // Background: Yoopta's ra() strips all whitespace chars
@@ -2775,13 +2800,19 @@ export const SlideMaterial = ({
                                         <MyButton
                                             layoutVariant="icon"
                                             onClick={async () => {
-                                                await SaveDraft(activeItem);
                                                 if (activeItem.status === 'PUBLISHED') {
+                                                    // Don't re-save a published slide on download —
+                                                    // SaveDraft would flip it to UNSYNC (un-publish it).
+                                                    // The published content is already persisted; just
+                                                    // export it as-is.
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.published_data ||
                                                             null
                                                     );
                                                 } else {
+                                                    // Draft/unsync: persist the latest edits first so the
+                                                    // exported PDF reflects them.
+                                                    await SaveDraft(activeItem);
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.data || null
                                                     );

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Viewer } from '@react-pdf-viewer/core';
+import { Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
 import { Worker } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import type { ToolbarProps, ToolbarSlot, TransformToolbarSlot } from '@react-pdf-viewer/toolbar';
@@ -90,6 +90,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
                 {isResolved ? (
                     <Viewer
                         fileUrl={pdfUrl}
+                        defaultScale={SpecialZoomLevel.PageWidth}
                         plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
                     />
                 ) : (

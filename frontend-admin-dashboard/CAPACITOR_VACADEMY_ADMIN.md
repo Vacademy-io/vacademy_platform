@@ -54,7 +54,10 @@ in [`flavor.config.ts`](./flavor.config.ts).
 `android/` and `ios/` are **not** committed yet. Generate them on a machine with
 the right toolchain (these were not present in this checkout).
 
-**Android** (needs Android Studio / Android SDK + JDK 17):
+**Android** (needs Android Studio / Android SDK + **JDK 21** — Capacitor 8's
+Android modules compile with `sourceCompatibility 21`; JDK 17 fails with
+`invalid source release: 21`. The backend services still use JDK 17 — keep them
+separate, e.g. point `JAVA_HOME` at `openjdk@21` only for the Android build):
 
 ```bash
 pnpm install

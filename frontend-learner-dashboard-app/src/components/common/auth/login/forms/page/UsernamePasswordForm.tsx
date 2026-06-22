@@ -310,14 +310,14 @@ export function UsernameLogin({
                   <FormControl>
                     <div className="flex flex-col gap-1">
                       <Label className="text-subtitle font-regular">
-                        Username
+                        Username or email
                         <span className="text-subtitle text-danger-600">*</span>
                       </Label>
 
                       <div className="relative">
                         <Input
                           type="text"
-                          placeholder="Enter your username"
+                          placeholder="Enter your username or email"
                           value={value}
                           onChange={onChange}
                           required

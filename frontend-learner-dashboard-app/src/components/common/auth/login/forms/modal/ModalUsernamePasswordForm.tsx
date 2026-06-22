@@ -282,7 +282,7 @@ export function ModalUsernameLogin({
                                         <div className="relative">
                                             <MyInput
                                                 inputType="text"
-                                                inputPlaceholder="Enter your username"
+                                                inputPlaceholder="Enter your username or email"
                                                 input={value}
                                                 onChangeFunction={onChange}
                                                 error={
@@ -291,7 +291,7 @@ export function ModalUsernameLogin({
                                                 }
                                                 required
                                                 size="large"
-                                                label="Username"
+                                                label="Username or email"
                                                 {...field}
                                                 className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                             />

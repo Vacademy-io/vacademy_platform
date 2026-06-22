@@ -182,11 +182,18 @@ const GenerateInviteLinkDialog = ({
     });
     const customFields = getValues('custom_fields');
 
-    // On mount (create mode only): fetch fresh custom field defaults from the
-    // API in case the cache was invalidated by a recent Settings save.
-    // Uses form.reset to ensure useFieldArray picks up the change.
+    // Each time the dialog OPENS in create mode: fetch fresh custom field
+    // defaults from the API and seed the form. This must re-run on every open
+    // (not just on mount) because on the course-details page this dialog is
+    // permanently mounted and reused — after a create (form.reset wipes
+    // custom_fields to []) or after viewing another invite (which loads that
+    // invite's smaller field set), a one-time seed would leave the next "Add"
+    // with stale/empty custom fields. Uses form.reset to ensure useFieldArray
+    // picks up the change. The `...currentValues` spread preserves every other
+    // field the create-mode effect may have already populated (course data,
+    // plans, etc.).
     useEffect(() => {
-        if (!isEditInviteLink) {
+        if (!isEditInviteLink && showSummaryDialog) {
             getInviteListCustomFieldsAsync().then((fields) => {
                 if (fields && fields.length > 0) {
                     const currentValues = form.getValues();
@@ -194,7 +201,8 @@ const GenerateInviteLinkDialog = ({
                 }
             });
         }
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showSummaryDialog, isEditInviteLink]);
 
     const { instituteDetails, getPackageSessionId } = useInstituteDetailsStore();
     const allTags = instituteDetails?.tags || [];

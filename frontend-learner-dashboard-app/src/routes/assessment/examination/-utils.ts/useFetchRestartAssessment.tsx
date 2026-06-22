@@ -153,8 +153,8 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
     await Storage.set({ key: 'server_start_end_time', value: JSON.stringify(start_assessment_response) });
     console.log('Stored server_start_end_time:', await Storage.get({ key: 'server_start_end_time' }));
     
-    console.log('preview_response.attemptId', preview_response, preview_response.attempt_id);
-    storeFormattedData(learner_assessment_attempt_data_dto, preview_response);
+    console.log('preview_response.attemptId', preview_response, preview_response?.attempt_id);
+    await storeFormattedData(learner_assessment_attempt_data_dto, preview_response);
 
     await Storage.set({ key: 'Announcements', value: JSON.stringify(update_status_response) });
     console.log('Stored Announcements:', await Storage.get({ key: 'Announcements' }));
@@ -172,6 +172,10 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
 
 export const storeFormattedData = async (formattedData: any, preview_response : any) => {
     const state = useAssessmentStore.getState();
+    if (!preview_response) {
+      console.error("Missing preview_response on restart");
+      return;
+    }
     const attemptId = preview_response.attempt_id;
     console.log("formattedData",formattedData,"preview_response",preview_response, "attemptId", attemptId);
   console.log(attemptId);
@@ -192,7 +196,20 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
       console.error("Invalid preview_response: missing questions in first section");
       return;
     }
-    
+
+    // The restart response may omit learner_assessment_attempt_data_dto (e.g. backend
+    // returned no prior-attempt data). setAssessment() above already populated a valid
+    // base state from preview_response, so bail out gracefully instead of dereferencing
+    // undefined .sections — otherwise this throws an unhandled rejection and the learner
+    // is dropped into LearnerLiveTest with a broken store.
+    if (!formattedData || !Array.isArray(formattedData.sections)) {
+      console.warn(
+        "Missing learner_assessment_attempt_data_dto on restart; using default state from preview."
+      );
+      await useAssessmentStore.getState().saveState();
+      return;
+    }
+
     useAssessmentStore.setState({
       assessment: preview_response,
       currentSection: 0, 

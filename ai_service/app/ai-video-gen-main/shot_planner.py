@@ -1046,6 +1046,7 @@ def plan_shots(
     visual_preferences: Optional[Dict[str, Any]] = None,
     reference_assets: Optional[List[Dict[str, Any]]] = None,
     brand_brief: Optional[Dict[str, Any]] = None,
+    brand_system_prompt: Optional[str] = None,
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
@@ -1150,6 +1151,19 @@ def plan_shots(
                 f"contain \"no vocals, no lyrics\". Match the music to the shots "
                 f"you actually planned (instrumentation + tempo + mood derive "
                 f"from the shot palette/energy, not a default warm-piano bed)."
+            )
+
+    # Brand direction (kit system_prompt or per-video override) goes LAST so it
+    # reads as the final, authoritative brand layer — the block itself
+    # subordinates to the JSON output contract so it can't break parsing.
+    if brand_system_prompt:
+        try:
+            from director_prompts import build_brand_direction_block  # type: ignore
+            system_content = system_content + build_brand_direction_block(brand_system_prompt)
+        except Exception:
+            system_content = system_content + (
+                "\n\n## BRAND DIRECTION (apply throughout; output format still wins)\n"
+                + str(brand_system_prompt).strip() + "\n"
             )
 
     messages = [

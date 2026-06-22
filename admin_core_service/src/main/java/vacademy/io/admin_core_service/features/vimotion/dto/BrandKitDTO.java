@@ -35,6 +35,10 @@ public class BrandKitDTO {
     private Map<String, Object> outro;
     private Map<String, Object> watermark;  // { enabled, position, opacity, html, max_width?, max_height?, margin? }
 
+    // Free-text director instructions auto-appended to the AI video generation
+    // prompts for every video made with this kit. Wire key: "system_prompt".
+    private String systemPrompt;
+
     private Long createdAt;
     private Long updatedAt;
 }

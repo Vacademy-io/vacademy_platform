@@ -426,6 +426,10 @@ async def generate_video_external(
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
+                        # Per-video overrides (palette/intro/outro/watermark/system_prompt)
+                        # that layer on top of the resolved kit. One-shot — not persisted
+                        # by the FE across videos.
+                        brand_overrides=getattr(p, "brand_overrides", None),
                         visual_preferences=getattr(p, "visual_preferences", None),
                         # AI video (Phase 3b): forward from request body. The
                         # service / pipeline gates tier eligibility internally.

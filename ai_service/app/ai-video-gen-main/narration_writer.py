@@ -321,6 +321,7 @@ def write_narration(
     target_audience: str = "General/Adult",
     language: str = "English",
     brand_voice: Optional[Dict[str, Any]] = None,
+    brand_system_prompt: Optional[str] = None,
     wpm_override: Optional[float] = None,
     regen_note: Optional[str] = None,
     temperature: float = 0.7,
@@ -385,8 +386,21 @@ def write_narration(
         wpm_override=wpm_override,
         regen_note=regen_note,
     )
+    narration_system = NARRATION_WRITER_SYSTEM_PROMPT
+    # Brand direction (kit system_prompt or per-video override) — shapes the
+    # narration voice/tone too, not just the visuals. Subordinated to the JSON
+    # output contract by the block wrapper.
+    if brand_system_prompt:
+        try:
+            from director_prompts import build_brand_direction_block  # type: ignore
+            narration_system = narration_system + build_brand_direction_block(brand_system_prompt)
+        except Exception:
+            narration_system = narration_system + (
+                "\n\n## BRAND DIRECTION (apply throughout; output format still wins)\n"
+                + str(brand_system_prompt).strip() + "\n"
+            )
     messages = [
-        {"role": "system", "content": NARRATION_WRITER_SYSTEM_PROMPT},
+        {"role": "system", "content": narration_system},
         {"role": "user", "content": user_prompt},
     ]
     text, usage = llm_chat(

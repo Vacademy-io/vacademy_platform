@@ -98,7 +98,8 @@ def resolve_brand_kit(
         SELECT id, institute_id, name, is_default,
                background_type, palette_json, heading_font, body_font,
                layout_theme, logo_file_id,
-               intro_json, outro_json, watermark_json
+               intro_json, outro_json, watermark_json,
+               system_prompt
         FROM brand_kit
         WHERE id = :brand_kit_id AND institute_id = :institute_id
         LIMIT 1

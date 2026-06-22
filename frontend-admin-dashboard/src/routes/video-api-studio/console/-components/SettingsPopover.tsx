@@ -83,6 +83,7 @@ import {
     ModelOverrides,
     UserOverridableStage,
     USER_OVERRIDABLE_STAGE_META,
+    BrandOverrides,
 } from '../../-services/video-generation';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import {
@@ -97,7 +98,11 @@ import {
 } from '../../-services/video-style-branding';
 import { VimBrandKitSelect } from '@/features/vimotion/composer/VimBrandKitSelect';
 import { VimSavedAvatarSelect } from '@/features/vimotion/composer/VimSavedAvatarSelect';
-import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
+import type {
+    StudioAvatar,
+    BrandKit,
+    BrandPalette,
+} from '@/features/vimotion/api/dashboardTypes';
 import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
 import { formatCredits, usdToCredits } from '../../-utils/credits';
 import type { AIModel } from '@/types/ai-models';
@@ -177,6 +182,14 @@ function hasActiveModelOverrides(
     return false;
 }
 
+function hasActiveBrandOverrides(ov: BrandOverrides | undefined): boolean {
+    if (!ov) return false;
+    if (ov.system_prompt && ov.system_prompt.trim()) return true;
+    if (ov.palette && Object.values(ov.palette).some((v) => !!v)) return true;
+    if (ov.intro || ov.outro || ov.watermark) return true;
+    return false;
+}
+
 /** Count options that diverge from defaults — surfaced as a badge on the trigger. */
 function computeNonDefaultCount(
     options: Omit<GenerateVideoRequest, 'prompt'>,
@@ -191,6 +204,7 @@ function computeNonDefaultCount(
     if (options.host) n++;
     if (hasActiveVisualPreferences(options.visual_preferences)) n++;
     if (hasActiveModelOverrides(options.model_overrides)) n++;
+    if (hasActiveBrandOverrides(options.brand_overrides)) n++;
     if (reviewModeEnabled) n++;
     return n;
 }
@@ -221,6 +235,10 @@ function SettingsBody({
 
     const [isSavingStyle, setIsSavingStyle] = useState(false);
     const [isSavingBranding, setIsSavingBranding] = useState(false);
+    // Snapshot of the picked brand kit so the per-video override panel can show
+    // the kit's current values as placeholders. Populated when the user (or the
+    // picker's auto-select) chooses a kit; undefined until then.
+    const [selectedKit, setSelectedKit] = useState<BrandKit | undefined>(undefined);
 
     const handleSaveStyle = async () => {
         const instituteId = getInstituteId();
@@ -681,14 +699,20 @@ function SettingsBody({
                         </Label>
                         <VimBrandKitSelect
                             value={options.brand_kit_id}
-                            onChange={(kitId) =>
-                                onOptionsChange({ ...options, brand_kit_id: kitId })
-                            }
+                            onChange={(kitId, kit) => {
+                                setSelectedKit(kit);
+                                onOptionsChange({ ...options, brand_kit_id: kitId });
+                            }}
                         />
                         <p className="text-[10px] text-muted-foreground">
                             Replaces palette, fonts, layout, intro / outro, and watermark for this
                             generation.
                         </p>
+                        <BrandKitOverridePanel
+                            value={options.brand_overrides}
+                            selectedKit={selectedKit}
+                            onChange={(next) => update('brand_overrides', next)}
+                        />
                     </div>
                 )}
 
@@ -2106,6 +2130,311 @@ function IntroOutroEditor({
                 </div>
             )}
         </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// BrandKitOverridePanel — per-video overrides layered on top of the selected
+// brand kit (or institute defaults). One-shot: not persisted across videos.
+//
+// system_prompt REPLACES the kit's director instructions for this run; colors
+// field-merge; intro / outro / watermark replace those sections. Each section
+// is opt-in via a toggle so an untouched section falls through to the kit.
+// Empty/cleared sections are pruned so the request omits brand_overrides when
+// nothing is overridden.
+// ─────────────────────────────────────────────────────────────────────────
+
+function pruneBrandOverrides(ov: BrandOverrides): BrandOverrides | undefined {
+    const out: BrandOverrides = {};
+    if (ov.palette) {
+        const p: BrandPalette = {};
+        (['primary', 'secondary', 'accent', 'background'] as const).forEach((k) => {
+            const v = ov.palette?.[k];
+            if (typeof v === 'string' && v.trim()) p[k] = v.trim();
+        });
+        if (Object.keys(p).length) out.palette = p;
+    }
+    if (ov.intro) out.intro = ov.intro;
+    if (ov.outro) out.outro = ov.outro;
+    if (ov.watermark) out.watermark = ov.watermark;
+    if (typeof ov.system_prompt === 'string' && ov.system_prompt.trim()) {
+        out.system_prompt = ov.system_prompt;
+    }
+    return Object.keys(out).length ? out : undefined;
+}
+
+function BrandKitOverridePanel({
+    value,
+    selectedKit,
+    onChange,
+}: {
+    value: BrandOverrides | undefined;
+    selectedKit: BrandKit | undefined;
+    onChange: (next: BrandOverrides | undefined) => void;
+}) {
+    const ov = value ?? {};
+    const active = hasActiveBrandOverrides(value);
+    const [open, setOpen] = useState(active);
+
+    // Merge a partial patch into the current overrides and prune empties.
+    const set = (patch: BrandOverrides) =>
+        onChange(pruneBrandOverrides({ ...ov, ...patch }));
+
+    const setPalette = (key: keyof BrandPalette, hex: string) =>
+        set({ palette: { ...ov.palette, [key]: hex } });
+
+    const colorsOn = !!ov.palette;
+    const introOn = !!ov.intro;
+    const outroOn = !!ov.outro;
+    const watermarkOn = !!ov.watermark;
+
+    const toggleColors = (on: boolean) =>
+        set({
+            palette: on
+                ? {
+                      primary: selectedKit?.palette?.primary ?? '#FF6B00',
+                      secondary: selectedKit?.palette?.secondary ?? '#0F172A',
+                      accent: selectedKit?.palette?.accent ?? '#22D3EE',
+                      background: selectedKit?.palette?.background ?? '#FFFFFF',
+                  }
+                : undefined,
+        });
+
+    const toggleIntro = (on: boolean) =>
+        set({
+            intro: on
+                ? {
+                      enabled: selectedKit?.intro?.enabled ?? true,
+                      duration_seconds: selectedKit?.intro?.duration_seconds ?? 3,
+                      html: selectedKit?.intro?.html ?? '',
+                  }
+                : undefined,
+        });
+
+    const toggleOutro = (on: boolean) =>
+        set({
+            outro: on
+                ? {
+                      enabled: selectedKit?.outro?.enabled ?? true,
+                      duration_seconds: selectedKit?.outro?.duration_seconds ?? 4,
+                      html: selectedKit?.outro?.html ?? '',
+                  }
+                : undefined,
+        });
+
+    const toggleWatermark = (on: boolean) =>
+        set({
+            watermark: on
+                ? {
+                      enabled: selectedKit?.watermark?.enabled ?? true,
+                      position: selectedKit?.watermark?.position ?? 'bottom-right',
+                      opacity: selectedKit?.watermark?.opacity ?? 0.5,
+                      html: selectedKit?.watermark?.html ?? '',
+                  }
+                : undefined,
+        });
+
+    return (
+        <details
+            open={open}
+            onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+            className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden"
+        >
+            <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
+                <span className="flex items-center gap-1.5">
+                    <SparklesIcon className="size-3.5 text-muted-foreground" />
+                    Override for this video
+                    {active && <span className="size-1.5 rounded-full bg-violet-500" />}
+                </span>
+                <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-3 border-t p-2.5">
+                <p className="text-[10px] leading-snug text-muted-foreground">
+                    One-shot tweaks for this generation only — they don&apos;t change the kit
+                    and reset after you generate.
+                </p>
+
+                {/* System prompt — replaces the kit's director instructions */}
+                <div className="space-y-1">
+                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Director instructions
+                    </Label>
+                    <Textarea
+                        rows={3}
+                        maxLength={4000}
+                        placeholder={
+                            selectedKit?.system_prompt
+                                ? 'Replace the kit instructions for this video…'
+                                : 'e.g. Make it punchier and lead with the offer.'
+                        }
+                        value={ov.system_prompt ?? ''}
+                        onChange={(e) => set({ system_prompt: e.target.value })}
+                        className="text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                        Replaces the kit&apos;s instructions for this video only.
+                    </p>
+                </div>
+
+                {/* Colors */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Colors</Label>
+                        <Switch checked={colorsOn} onCheckedChange={toggleColors} />
+                    </div>
+                    {colorsOn && (
+                        <div className="grid grid-cols-2 gap-2 pl-1">
+                            {(
+                                [
+                                    ['primary', 'Primary'],
+                                    ['secondary', 'Secondary'],
+                                    ['accent', 'Accent'],
+                                    ['background', 'Background'],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <div key={key} className="space-y-1">
+                                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        {label}
+                                    </Label>
+                                    <div className="flex items-center gap-1.5">
+                                        <ColorPicker
+                                            value={ov.palette?.[key] ?? '#000000'}
+                                            onChange={(color) => setPalette(key, color)}
+                                        />
+                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                            {ov.palette?.[key] ?? ''}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Intro */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Override intro</Label>
+                        <Switch checked={introOn} onCheckedChange={toggleIntro} />
+                    </div>
+                    {introOn && ov.intro && (
+                        <div className="space-y-1.5 pl-1">
+                            <IntroOutroEditor
+                                label="Intro"
+                                value={{
+                                    enabled: ov.intro.enabled ?? true,
+                                    duration_seconds: ov.intro.duration_seconds ?? 3,
+                                    html: ov.intro.html ?? '',
+                                }}
+                                onChange={(next) => set({ intro: next })}
+                            />
+                            <Textarea
+                                rows={2}
+                                placeholder='<div>…intro HTML…</div>'
+                                value={ov.intro.html ?? ''}
+                                onChange={(e) =>
+                                    set({ intro: { ...ov.intro, html: e.target.value } })
+                                }
+                                className="font-mono text-[11px]"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Outro */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Override outro</Label>
+                        <Switch checked={outroOn} onCheckedChange={toggleOutro} />
+                    </div>
+                    {outroOn && ov.outro && (
+                        <div className="space-y-1.5 pl-1">
+                            <IntroOutroEditor
+                                label="Outro"
+                                value={{
+                                    enabled: ov.outro.enabled ?? true,
+                                    duration_seconds: ov.outro.duration_seconds ?? 4,
+                                    html: ov.outro.html ?? '',
+                                }}
+                                onChange={(next) => set({ outro: next })}
+                            />
+                            <Textarea
+                                rows={2}
+                                placeholder='<div>…outro HTML…</div>'
+                                value={ov.outro.html ?? ''}
+                                onChange={(e) =>
+                                    set({ outro: { ...ov.outro, html: e.target.value } })
+                                }
+                                className="font-mono text-[11px]"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Watermark */}
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium">Override watermark</Label>
+                        <Switch checked={watermarkOn} onCheckedChange={toggleWatermark} />
+                    </div>
+                    {watermarkOn && ov.watermark && (
+                        <div className="space-y-1.5 pl-1">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-[10px] text-muted-foreground">Show</Label>
+                                <Switch
+                                    checked={ov.watermark.enabled ?? true}
+                                    onCheckedChange={(v) =>
+                                        set({ watermark: { ...ov.watermark, enabled: v } })
+                                    }
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                                {WATERMARK_POSITIONS.map((p) => (
+                                    <button
+                                        key={p.value}
+                                        type="button"
+                                        onClick={() =>
+                                            set({
+                                                watermark: {
+                                                    ...ov.watermark,
+                                                    position: p.value as WatermarkPosition,
+                                                },
+                                            })
+                                        }
+                                        className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                                            ov.watermark?.position === p.value
+                                                ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                : 'hover:bg-muted'
+                                        }`}
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <Textarea
+                                rows={2}
+                                placeholder='<img src="https://…" />'
+                                value={ov.watermark.html ?? ''}
+                                onChange={(e) =>
+                                    set({ watermark: { ...ov.watermark, html: e.target.value } })
+                                }
+                                className="font-mono text-[11px]"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {active && (
+                    <button
+                        type="button"
+                        onClick={() => onChange(undefined)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                        Clear all overrides
+                    </button>
+                )}
+            </div>
+        </details>
     );
 }
 

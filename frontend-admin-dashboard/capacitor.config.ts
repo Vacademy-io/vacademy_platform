@@ -52,8 +52,11 @@ const config: CapacitorConfig = {
     },
     plugins: {
         SplashScreen: {
-            launchShowDuration: 1500,
-            launchAutoHide: false,
+            launchShowDuration: flavor.key === 'vimotion' ? 1500 : 2000,
+            // Vimotion's /vim shell calls SplashScreen.hide() manually after first
+            // paint. Full-portal flavors (e.g. Vacademy Admin) have no such shell,
+            // so auto-hide MUST be on or the splash sticks forever.
+            launchAutoHide: flavor.key !== 'vimotion',
             backgroundColor: '#FAFAF7',
             androidScaleType: 'CENTER_CROP',
             showSpinner: false,

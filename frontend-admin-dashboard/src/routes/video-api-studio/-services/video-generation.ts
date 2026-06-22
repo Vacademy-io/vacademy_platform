@@ -1,4 +1,23 @@
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+import type {
+    BrandPalette,
+    IntroOutroConfig,
+    WatermarkConfig,
+} from '@/features/vimotion/api/dashboardTypes';
+
+/**
+ * Per-video brand overrides — a one-shot layer on top of the resolved brand kit
+ * (or institute defaults) for a single generation. Mirrors the backend
+ * `BrandOverrides` schema. palette is field-merged; intro/outro/watermark replace
+ * those branding sections; system_prompt REPLACES the kit's director instructions.
+ */
+export interface BrandOverrides {
+    palette?: BrandPalette;
+    intro?: IntroOutroConfig;
+    outro?: IntroOutroConfig;
+    watermark?: WatermarkConfig;
+    system_prompt?: string;
+}
 
 export type VideoStage = 'PENDING' | 'SCRIPT' | 'TTS' | 'WORDS' | 'HTML' | 'RENDER';
 export type VideoStatusType =
@@ -439,6 +458,14 @@ export interface GenerateVideoRequest {
      * scoped by institute_id; an unresolved id falls back to institute defaults.
      */
     brand_kit_id?: string;
+    /**
+     * Per-video overrides layered on top of the resolved brand kit (or institute
+     * defaults when no kit) for THIS generation only. palette is field-merged;
+     * intro/outro/watermark replace those branding sections; system_prompt REPLACES
+     * the kit's director instructions for this run. One-shot — NOT persisted across
+     * videos (excluded from the saved options blob + "Reuse settings").
+     */
+    brand_overrides?: BrandOverrides;
     /**
      * Soft per-family bias hints + on-screen text density. Set by the FE
      * Advanced Settings sliders. Free-text phrases in the prompt
@@ -1200,6 +1227,9 @@ const REUSE_BLOCKED_FIELDS = [
     'input_video_audio',
     'mute_tts_on_source_clips',
     'routing_overrides',
+    // Per-video brand overrides are a deliberate one-shot act — never carry them
+    // into the next video via "Reuse settings".
+    'brand_overrides',
 ] as const;
 
 /**

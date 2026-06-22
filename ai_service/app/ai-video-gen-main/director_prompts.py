@@ -993,6 +993,35 @@ _DIRECTOR_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
 }
 
 
+def build_brand_direction_block(text: Optional[str]) -> str:
+    """Build the brand-direction block appended to the planner / narration /
+    per-shot system prompts when the run's brand kit (or a per-video override)
+    carries free-text director instructions.
+
+    Returns "" when there is no brand direction, keeping prompts clean for the
+    vast majority of runs. When present, the instructions are wrapped in a
+    clearly labeled, authoritative section so the model treats them as brand
+    rules — while being explicitly SUBORDINATED to the non-negotiable output
+    contract (JSON envelope / HTML structure). That subordination is the guard
+    that stops a malformed or adversarial brand prompt from breaking parsing.
+
+    Shared by the v3 ShotPlanner, v2 Director, NarrationWriter, and per-shot
+    HTML system prompts so the brand voice reads identically across stages.
+    """
+    if not text or not str(text).strip():
+        return ""
+    body = str(text).strip()
+    return (
+        "\n\n## BRAND DIRECTION (institute brand kit — apply throughout)\n"
+        "The following are brand rules for THIS video. Honor them in tone, "
+        "visual style, vocabulary, pacing, and emphasis wherever they apply. "
+        "They do NOT override your required output format, JSON schema, or "
+        "structural rules — if a brand rule ever conflicts with the required "
+        "output format, the output format wins.\n\n"
+        f"{body}\n"
+    )
+
+
 def build_ai_video_director_block(
     *,
     enabled: bool,

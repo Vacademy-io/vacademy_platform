@@ -2859,6 +2859,10 @@ class VideoGenerationPipeline:
         voice_id: Optional[str] = None,
         branding_config: Optional[Dict[str, Any]] = None,
         style_config: Optional[Dict[str, Any]] = None,
+        # Free-text brand-kit director instructions (or the per-video override
+        # that replaces it). Appended to the ShotPlanner / Director /
+        # NarrationWriter / per-shot HTML system prompts. None = no brand direction.
+        brand_system_prompt: Optional[str] = None,
         content_type: str = "VIDEO",
         generate_avatar: bool = False,
         avatar_image_url: Optional[str] = None,
@@ -3447,6 +3451,14 @@ class VideoGenerationPipeline:
         self._current_branding = branding_config or self._get_default_branding()
         # Store style config for brand colors/fonts overrides
         self._current_style_config = style_config
+        # Free-text brand direction (kit system_prompt or per-video override).
+        # Normalized to a stripped string or None so the prompt-append sites can
+        # gate on a simple truthiness check. Read via getattr at each call site.
+        self._current_brand_system_prompt = (
+            brand_system_prompt.strip()
+            if isinstance(brand_system_prompt, str) and brand_system_prompt.strip()
+            else None
+        )
         
         stage_idx = self.STAGE_INDEX[start_from]
         # stop_at means "stop after this stage", so stop_idx is the next stage after stop_at
@@ -10958,6 +10970,7 @@ class VideoGenerationPipeline:
                 target_audience=target_audience,
                 language=language,
                 brand_voice=self._voice_with_register(brand_voice),
+                brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
                 wpm_override=target_wpm,
                 regen_note=regen_note,
             )
@@ -11212,6 +11225,7 @@ class VideoGenerationPipeline:
             visual_preferences=getattr(self, "_visual_preferences", None) or None,
             reference_assets=self._v3_collect_reference_assets() or None,
             brand_brief=brand_brief or None,
+            brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
             ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
             ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
             ai_video_cost_cap_usd=ai_video_cost_cap,
@@ -11370,6 +11384,7 @@ class VideoGenerationPipeline:
             brand_voice=self._voice_with_register(
                 brand_brief.get("voice") if isinstance(brand_brief, dict) else None
             ),
+            brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
             wpm_override=getattr(self, "_effective_wpm", None),
         )
         nw_usage = nw_result.get("usage") or {}
@@ -11460,6 +11475,7 @@ class VideoGenerationPipeline:
             build_director_user_prompt,
             build_act_planner_user_prompt,
             build_emphasis_map,
+            build_brand_direction_block,
         )
 
         plan_data = script_plan.get("plan", script_plan)
@@ -12280,6 +12296,14 @@ class VideoGenerationPipeline:
                 "- First shot may still be VIDEO_HERO / IMAGE_HERO (cinematic hook); for short-form keep "
                 "it ≤3s with an animated text overlay appearing by 0.3s, for long-form up to 5s is fine.\n"
             )
+
+        # Brand direction (kit system_prompt or per-video override) goes LAST so
+        # it's the final authoritative brand layer for the v2 Director fallback
+        # too — parity with the v3 ShotPlanner. Subordinated to the output
+        # contract by the block wrapper.
+        _brand_dir = getattr(self, "_current_brand_system_prompt", None)
+        if _brand_dir:
+            director_system = director_system + build_brand_direction_block(_brand_dir)
 
         print("🎬 Running Director stage (shot planning)...")
         # Attach any user-uploaded reference images to the Director's user message
@@ -15715,6 +15739,18 @@ class VideoGenerationPipeline:
                 except Exception:
                     pass
 
+            # Brand direction (kit system_prompt or per-video override) — also
+            # shapes per-shot HTML execution (visual rules, vocabulary, tone).
+            # The block subordinates to the required HTML/output structure so a
+            # malformed brand prompt can't break the shot's markup contract.
+            _brand_dir = getattr(self, "_current_brand_system_prompt", None)
+            if _brand_dir:
+                try:
+                    from director_prompts import build_brand_direction_block
+                    system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
+                except Exception:
+                    pass
+
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
             # and can optionally drop <skill> tags into its HTML. The composer
@@ -18155,6 +18191,17 @@ class VideoGenerationPipeline:
                         .replace("{aspect_label}", _aspect)
                     )
             
+            # Brand direction (kit system_prompt or per-video override) — applies
+            # to this legacy/segment HTML path too, for parity with the Director
+            # per-shot path. Subordinated to the output structure by the wrapper.
+            _brand_dir = getattr(self, "_current_brand_system_prompt", None)
+            if _brand_dir:
+                try:
+                    from director_prompts import build_brand_direction_block
+                    system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
+                except Exception:
+                    pass
+
             # Build topic-aware guidance based on subject domain
             subject_domain = getattr(self, '_current_subject_domain', 'general')
             topic_profile = TOPIC_SHOT_PROFILES.get(subject_domain, TOPIC_SHOT_PROFILES['general'])

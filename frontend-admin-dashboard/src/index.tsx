@@ -17,17 +17,25 @@ import { CourseSettingsProvider } from './providers/course-settings-provider';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import {
     resolveInstituteForCurrentHost,
+    resolveInstituteById,
     getPublicUrl,
     cacheInstituteBranding,
     getCachedInstituteBranding,
 } from '@/services/domain-routing';
+import { OtaUpdateBanner } from '@/components/ota-update/OtaUpdateBanner';
 import { resolveFontStack } from '@/utils/font';
 import { useTitleStore } from '@/stores/useTitleStore';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { installChunkErrorHandler } from '@/lib/chunk-reload';
-import { initNative, isNative, getPlatform } from '@/native';
+import {
+    initNative,
+    isNative,
+    getPlatform,
+    shouldForceVimShell,
+    getFlavorInstituteId,
+} from '@/native';
 
 // Recover stale tabs whose cached chunk URLs 404 after a new deploy.
 // Must run before React renders so failures during the first lazy import
@@ -41,13 +49,35 @@ void initNative();
 document.documentElement.classList.add(`platform-${getPlatform()}`);
 if (isNative()) {
     document.documentElement.classList.add('platform-native');
-    // On native, the app is product-scoped to Vimotion — force the launch URL
-    // into the /vim shell on cold start so a stale localStorage path can't
+
+    // Vimotion flavor is product-scoped to the video studio — force the launch
+    // URL into the /vim shell on cold start so a stale localStorage path can't
     // surface the admin login. Deep-link handlers (src/native/deepLinks.ts)
-    // override this after the router mounts.
-    const path = window.location.pathname;
-    if (!path.startsWith('/vim')) {
-        window.history.replaceState({}, '', '/vim');
+    // override this after the router mounts. The Vacademy Admin flavor is the
+    // FULL portal, so it does NOT force /vim.
+    if (shouldForceVimShell()) {
+        const path = window.location.pathname;
+        if (!path.startsWith('/vim')) {
+            window.history.replaceState({}, '', '/vim');
+        }
+    }
+
+    // Flavors anchored to a fixed institute (e.g. Vacademy Admin) seed the
+    // selected institute id before branding resolves, so getCurrentInstituteId()
+    // and the index.html pre-paint branding script both pick it up immediately.
+    //
+    // Only seed PRE-LOGIN (no valid access token). A logged-in admin may belong
+    // to a different institute and have selected it; overwriting selectedInstituteId
+    // on every relaunch would silently re-scope all their API calls to the base
+    // institute. Branding/theme below still always anchors on the flavor institute
+    // (consistent with how the web build brands by host regardless of session).
+    const flavorInstituteId = getFlavorInstituteId();
+    if (flavorInstituteId && !getTokenFromCookie(TokenKey.accessToken)) {
+        try {
+            localStorage.setItem('selectedInstituteId', flavorInstituteId);
+        } catch {
+            // storage unavailable — branding still resolves below.
+        }
     }
 }
 
@@ -239,7 +269,12 @@ if (!rootElement.innerHTML) {
                 }
             }
 
-            const data = await resolveInstituteForCurrentHost();
+            // Native flavors anchored to a fixed institute resolve branding by
+            // that institute id; the web build resolves by request host.
+            const flavorInstituteId = getFlavorInstituteId();
+            const data = flavorInstituteId
+                ? await resolveInstituteById(flavorInstituteId)
+                : await resolveInstituteForCurrentHost();
             if (!data) {
                 // If no data from API, ensure we have a fallback title
                 titleStore.setGlobalTitle('Admin Dashboard');
@@ -317,6 +352,7 @@ if (!rootElement.innerHTML) {
                 <CourseSettingsProvider>
                     <SidebarProvider>
                         <RouterProvider router={router} />
+                        <OtaUpdateBanner />
                         <Toaster />
                     </SidebarProvider>
                 </CourseSettingsProvider>

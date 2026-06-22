@@ -338,6 +338,12 @@ export const GET_PUBLIC_URL = `${BASE_URL}/media-service/get-public-url`;
 export const GET_PUBLIC_URL_PUBLIC = `${BASE_URL}/media-service/public/get-public-url`;
 // Domain routing - resolve institute by domain/subdomain (public)
 export const DOMAIN_ROUTING_RESOLVE = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`;
+// Domain routing - resolve branding/theme by a fixed institute id (public).
+// Used by native flavors (e.g. Vacademy Admin) that anchor on an institute id
+// instead of the request host. Falls back gracefully if not yet deployed.
+export const DOMAIN_ROUTING_RESOLVE_BY_INSTITUTE = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve-by-institute`;
+// OTA self-hosted update check (public). Mirrors the learner app.
+export const OTA_CHECK = `${BASE_URL}/admin-core-service/public/ota/v1/check`;
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const ACKNOWLEDGE_FOR_PUBLIC_URL = `${BASE_URL}/media-service/acknowledge-get-details`;
 

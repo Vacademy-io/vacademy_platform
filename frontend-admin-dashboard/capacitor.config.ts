@@ -1,36 +1,53 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import { getFlavorByKey } from './flavor.config';
 
-// Vimotion mobile app — wraps the /vim/* routes of the admin dashboard build.
-// The Capacitor app is product-scoped to Vimotion; admin routes are reachable
-// in the bundle but never linked from the native shell. Native entry is forced
-// to /vim via window.location handling inside the app shell.
+// Multi-flavor native config. The same web build ships as more than one app:
+//   - vacademy-admin (io.vacademy.admin.app, "Vacademy Admin") — the full admin
+//     portal, self-hosted OTA (our admin-core OTA backend, learner-app style).
+//   - vimotion (io.vimotion.app, "Vimotion") — the /vim video-studio shell,
+//     Capgo cloud OTA.
+//
+// Selected at build/sync time via VITE_CAP_FLAVOR (defaults to `vimotion` so an
+// env-less `cap sync` keeps producing the pre-existing Vimotion app). The npm
+// scripts (cap:*:vacademy-admin / cap:*:vimotion) set it for you.
+const flavor = getFlavorByKey(process.env.VITE_CAP_FLAVOR);
+
+// OTA plugin config differs by flavor. Both use @capgo/capacitor-updater, but:
+//   - self-hosted: autoUpdate OFF — we check our own backend and call
+//     CapacitorUpdater.download/set/notifyAppReady from src/services/ota-update.ts.
+//   - capgo: autoUpdate ON against the Capgo cloud endpoints.
+const otaPluginConfig =
+    flavor.ota === 'capgo'
+        ? {
+              autoUpdate: true,
+              updateUrl: 'https://api.capgo.app/updates',
+              statsUrl: 'https://api.capgo.app/stats',
+              channelUrl: 'https://api.capgo.app/channel_self',
+              directUpdate: true,
+          }
+        : {
+              // Self-hosted OTA: we drive the update lifecycle ourselves.
+              autoUpdate: false,
+          };
+
 const config: CapacitorConfig = {
-    appId: 'io.vimotion.app',
-    appName: 'Vimotion',
+    appId: flavor.appId,
+    appName: flavor.appName,
     webDir: 'dist',
     // Allow live reload against the local Vite dev server during native dev.
-    // Toggle by setting CAP_DEV_SERVER=<url> in the environment when running
-    // `pnpm cap:sync` (handled in scripts/cap-config.cjs). Keep this commented
-    // out for production builds — the bundled webDir must be used.
-    // server: {
-    //     url: 'http://localhost:5173',
-    //     cleartext: true,
-    // },
+    // Set CAP_DEV_SERVER=<url> before `cap sync` to enable.
+    ...(process.env.CAP_DEV_SERVER
+        ? { server: { url: process.env.CAP_DEV_SERVER, cleartext: true } }
+        : {}),
     ios: {
-        // Status bar text + background are set at runtime by `src/native/statusBar.ts`
-        // so they can react to in-app theme changes. This flag keeps the WKWebView
-        // from being pushed underneath the status bar when the in-app status bar
-        // plugin is not yet loaded (avoids first-paint flash on cold start).
+        // Keeps the WKWebView from being pushed underneath the status bar before
+        // the in-app status bar plugin loads (avoids first-paint flash on cold
+        // start). Status bar colour/style are set at runtime by statusBar.ts.
         contentInset: 'always',
-        // Allow the keyboard to overlap content so we can use `KeyboardWillShow`
-        // listeners and apply our own padding instead of the WebView resizing
-        // (which causes jank with the sticky composer in the Create tab).
+        // Let our keyboard listeners drive layout instead of the WebView resizing.
         scrollEnabled: false,
     },
     android: {
-        // Match iOS — let our keyboard listeners drive layout, not the WebView.
-        // adjustResize would re-layout under the IME and fight our sticky bars.
-        // Resolved to `nothing` via AndroidManifest.xml (windowSoftInputMode).
         allowMixedContent: false,
     },
     plugins: {
@@ -66,16 +83,7 @@ const config: CapacitorConfig = {
             imageName: 'Splash',
             preventScreenshots: false,
         },
-        CapacitorUpdater: {
-            // OTA updates via Capgo. autoUpdate runs at app start; bundles are
-            // signed + delta-downloaded. Configure CAPGO_APP_ID + CAPGO_API_KEY
-            // in CI and they get baked into the build by scripts/cap-config.cjs.
-            autoUpdate: true,
-            updateUrl: 'https://api.capgo.app/updates',
-            statsUrl: 'https://api.capgo.app/stats',
-            channelUrl: 'https://api.capgo.app/channel_self',
-            directUpdate: true,
-        },
+        CapacitorUpdater: otaPluginConfig,
     },
 };
 

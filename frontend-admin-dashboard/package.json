@@ -1,6 +1,6 @@
 {
     "name": "admin",
-    "version": "0.1.0",
+    "version": "1.0.1",
     "private": true,
     "type": "module",
     "engines": {
@@ -36,7 +36,18 @@
         "cap:run:ios": "pnpm run build && cap sync ios && cap run ios",
         "cap:run:android": "pnpm run build && cap sync android && cap run android",
         "cap:add:ios": "cap add ios",
-        "cap:add:android": "cap add android"
+        "cap:add:android": "cap add android",
+        "build:vacademy-admin": "cross-env VITE_CAP_FLAVOR=vacademy-admin pnpm run build",
+        "build:vimotion": "cross-env VITE_CAP_FLAVOR=vimotion pnpm run build",
+        "cap:add:vacademy-admin:ios": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap add ios",
+        "cap:add:vacademy-admin:android": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap add android",
+        "cap:sync:vacademy-admin": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync",
+        "cap:sync:vacademy-admin:fast": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync",
+        "cap:run:vacademy-admin:ios": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync ios && cross-env VITE_CAP_FLAVOR=vacademy-admin cap run ios",
+        "cap:run:vacademy-admin:android": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync android && cross-env VITE_CAP_FLAVOR=vacademy-admin cap run android",
+        "cap:open:vacademy-admin:ios": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap open ios",
+        "cap:open:vacademy-admin:android": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap open android",
+        "ota:publish:vacademy-admin": "cross-env VITE_CAP_FLAVOR=vacademy-admin bash scripts/publish-ota.sh"
     },
     "dependencies": {
         "@amplitude/analytics-browser": "^2.19.0",

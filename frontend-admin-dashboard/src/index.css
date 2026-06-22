@@ -73,6 +73,16 @@ html {
 .platform-native body {
     background: #FAFAF7;
     overscroll-behavior-y: none;
+    /* Safety net so app content clears the iOS home indicator and landscape
+     * notches. The status bar is non-overlapping (overlaysWebView:false) and on
+     * iOS the WebView already insets content (contentInset:'always'), so these
+     * resolve to 0 in the common portrait case and only engage edge-to-edge /
+     * landscape. The top inset is intentionally left to the native layer.
+     * Full-bleed surfaces that scroll their own content should compose the
+     * `pb-safe` / `px-safe` utilities instead of relying on this. */
+    padding-bottom: var(--safe-area-inset-bottom);
+    padding-left: var(--safe-area-inset-left);
+    padding-right: var(--safe-area-inset-right);
 }
 .platform-ios body {
     -webkit-tap-highlight-color: transparent;

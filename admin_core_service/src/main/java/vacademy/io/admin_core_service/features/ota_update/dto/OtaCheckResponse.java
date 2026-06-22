@@ -21,6 +21,9 @@ public class OtaCheckResponse {
     private Long bundleSizeBytes;
     private Boolean forceUpdate;
     private String releaseNotes;
+    // Comma-separated app ids this bundle targets (null/blank = untargeted).
+    // Exposed so strict clients can re-verify they are an intended recipient.
+    private String targetAppIds;
 
     public static OtaCheckResponse noUpdate() {
         return OtaCheckResponse.builder()

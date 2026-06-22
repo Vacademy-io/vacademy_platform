@@ -154,7 +154,9 @@ export async function restartAssessment(assessmentId: string, attemptId: string)
     console.log('Stored server_start_end_time:', await Storage.get({ key: 'server_start_end_time' }));
     
     console.log('preview_response.attemptId', preview_response, preview_response.attempt_id);
-    storeFormattedData(learner_assessment_attempt_data_dto, preview_response);
+    // Await so any failure inside surfaces through this function's try/catch
+    // (returning false) instead of becoming an unhandled promise rejection.
+    await storeFormattedData(learner_assessment_attempt_data_dto, preview_response);
 
     await Storage.set({ key: 'Announcements', value: JSON.stringify(update_status_response) });
     console.log('Stored Announcements:', await Storage.get({ key: 'Announcements' }));
@@ -193,16 +195,28 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
       return;
     }
     
+    // The restart endpoint may omit `learner_assessment_attempt_data_dto`
+    // (e.g. a fresh re-attempt with no prior saved progress). In that case
+    // setAssessment(preview_response) above has already initialised the store as
+    // a fresh attempt, so there is nothing to restore. Bail out instead of
+    // dereferencing the missing payload, which would otherwise throw an
+    // unhandled `can't access property "sections"` crash on the live-test page.
+    const restoredSections: Section[] = formattedData?.sections ?? [];
+    if (restoredSections.length === 0) {
+      await useAssessmentStore.getState().saveState();
+      return;
+    }
+
     useAssessmentStore.setState({
       assessment: preview_response,
-      currentSection: 0, 
-      currentQuestion: preview_response.section_dtos[0].question_preview_dto_list[0], 
+      currentSection: 0,
+      currentQuestion: preview_response.section_dtos[0].question_preview_dto_list[0],
       questionStates: Object.fromEntries(
-        formattedData.sections.flatMap((section: Section) =>
-          section.questions.map((question: Question) => [
+        restoredSections.flatMap((section: Section) =>
+          (section.questions ?? []).map((question: Question) => [
             question.questionId,
             {
-              isAnswered: question.responseData.optionIds.length > 0,
+              isAnswered: (question.responseData?.optionIds?.length ?? 0) > 0,
               isVisited: question.isVisited,
               isMarkedForReview: question.isMarkedForReview,
               isDisabled: false, // Assuming default value
@@ -211,37 +225,37 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
         )
       ),
       answers: Object.fromEntries(
-        formattedData.sections.flatMap((section: Section) =>
-          section.questions.map((question: Question) => [
+        restoredSections.flatMap((section: Section) =>
+          (section.questions ?? []).map((question: Question) => [
             question.questionId,
-            question.responseData.optionIds || [],
+            question.responseData?.optionIds || [],
           ])
         )
       ),
       sectionTimers: Object.fromEntries(
-        formattedData.sections.map((section: Section) => [
+        restoredSections.map((section: Section) => [
           section.sectionId,
           { timeLeft: section.sectionDurationLeftInSeconds },
         ])
       ),
       questionTimers: Object.fromEntries(
-        formattedData.sections.flatMap((section: Section) =>
-          section.questions.map((question: Question) => [
+        restoredSections.flatMap((section: Section) =>
+          (section.questions ?? []).map((question: Question) => [
             question.questionId,
             question.questionDurationLeftInSeconds,
           ])
         )
       ),
       questionTimeSpent: Object.fromEntries(
-        formattedData.sections.flatMap((section: Section) =>
-          section.questions.map((question: Question) => [
+        restoredSections.flatMap((section: Section) =>
+          (section.questions ?? []).map((question: Question) => [
             question.questionId,
             question.timeTakenInSeconds,
           ])
         )
       ),
-      entireTestTimer: formattedData.assessment.entireTestDurationLeftInSeconds,
-      tabSwitchCount: formattedData.assessment.tabSwitchCount,
+      entireTestTimer: formattedData?.assessment?.entireTestDurationLeftInSeconds,
+      tabSwitchCount: formattedData?.assessment?.tabSwitchCount,
       questionStartTime: {}, // Needs separate handling
     });
   

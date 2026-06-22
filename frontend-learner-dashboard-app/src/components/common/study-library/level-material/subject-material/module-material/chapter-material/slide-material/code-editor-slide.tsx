@@ -1049,6 +1049,10 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                     horizontalScrollbarSize: 8,
                   },
                   padding: { top: 16 },
+                  // Disabled: sticky-scroll's async folding update races rapid
+                  // edits and throws "Illegal value for lineNumber" (unhandled
+                  // rejection).
+                  stickyScroll: { enabled: false },
                 }}
               />
             </div>

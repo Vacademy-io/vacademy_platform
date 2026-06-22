@@ -39,6 +39,20 @@ export function parseHtmlToString(html: string) {
 }
 
 /**
+ * Returns true when a rich-text/HTML value has no visible content — e.g. "",
+ * "<p></p>", "<p><br></p>", "&nbsp;", or whitespace-only markup that a TipTap/
+ * rich-text editor emits for an empty field. Media-only content (img, video,
+ * iframe, audio, svg) counts as non-empty so we never hide a real explanation.
+ * Use this instead of a bare `!html` truthiness check before rendering an
+ * "Explanation" / rich-text box. (`\s` matches the &nbsp; codepoint too.)
+ */
+export function isRichTextEmpty(html?: string | null): boolean {
+  if (!html) return true;
+  if (/<(img|video|iframe|audio|svg)[\s/>]/i.test(html)) return false;
+  return /^\s*$/.test(parseHtmlToString(html));
+}
+
+/**
  * Decodes HTML entities repeatedly until stable.
  * Handles double-encoded content like &amp;lt;span&amp;gt; → <span>
  */

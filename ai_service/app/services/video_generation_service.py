@@ -527,6 +527,25 @@ class VideoGenerationService:
                         gen_metadata["visual_preferences"] = _vp_dump
                 except Exception:
                     pass
+            # Persist the brand kit + per-video overrides so resume / retry
+            # re-apply the SAME brand direction (kit system_prompt + palette +
+            # intro/outro/watermark, and any overrides) to the shots generated
+            # in the second half of a resumed run. Without this, a resumed video
+            # drifts off-brand: the later shots regenerate with no brand
+            # direction while the cached first-half shots keep theirs.
+            if brand_kit_id:
+                gen_metadata["brand_kit_id"] = brand_kit_id
+            if brand_overrides is not None:
+                try:
+                    _bo_dump = (
+                        brand_overrides.model_dump(exclude_none=True)
+                        if hasattr(brand_overrides, "model_dump")
+                        else dict(brand_overrides)
+                    )
+                    if _bo_dump:
+                        gen_metadata["brand_overrides"] = _bo_dump
+                except Exception:
+                    pass
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -949,11 +968,18 @@ class VideoGenerationService:
         # without a brand kit. One-shot — the FE does not persist these.
         effective_brand_system_prompt = brand_kit_system_prompt
         if brand_overrides is not None:
-            ov_palette = getattr(brand_overrides, "palette", None)
-            ov_intro = getattr(brand_overrides, "intro", None)
-            ov_outro = getattr(brand_overrides, "outro", None)
-            ov_watermark = getattr(brand_overrides, "watermark", None)
-            ov_system_prompt = getattr(brand_overrides, "system_prompt", None)
+            # brand_overrides may be a pydantic BrandOverrides (fresh request) or a
+            # plain dict (rehydrated from extra_metadata on resume / retry).
+            _bo = (
+                brand_overrides.model_dump()
+                if hasattr(brand_overrides, "model_dump")
+                else (brand_overrides if isinstance(brand_overrides, dict) else {})
+            )
+            ov_palette = _bo.get("palette")
+            ov_intro = _bo.get("intro")
+            ov_outro = _bo.get("outro")
+            ov_watermark = _bo.get("watermark")
+            ov_system_prompt = _bo.get("system_prompt")
 
             if isinstance(ov_palette, dict) and ov_palette:
                 if not isinstance(style_config, dict):

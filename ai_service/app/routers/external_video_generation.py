@@ -762,6 +762,12 @@ async def resume_video_external(
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                         visual_preferences=_meta.get("visual_preferences"),
+                        # Brand kit + per-video overrides: rehydrate so a resumed
+                        # run re-applies the SAME brand direction (kit system_prompt,
+                        # palette, intro/outro/watermark, and any overrides) to the
+                        # shots generated in the second half — no off-brand drift.
+                        brand_kit_id=_meta.get("brand_kit_id"),
+                        brand_overrides=_meta.get("brand_overrides"),
                         # AI video (Phase 3b): rehydrate from saved metadata
                         # on resume so the original intent of the run is
                         # preserved. Resumed runs default OFF when absent.
@@ -928,6 +934,10 @@ async def retry_video_external(
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     visual_preferences=_meta.get("visual_preferences"),
+                    # Brand kit + per-video overrides — retry rehydrates from saved
+                    # meta so regenerated shots keep the original brand direction.
+                    brand_kit_id=_meta.get("brand_kit_id"),
+                    brand_overrides=_meta.get("brand_overrides"),
                     # AI video (Phase 3b) — retry rehydrates from saved meta
                     ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                     ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),

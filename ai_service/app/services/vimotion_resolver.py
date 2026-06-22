@@ -93,33 +93,47 @@ def resolve_brand_kit(
     """
     if not brand_kit_id or not institute_id:
         return None
-    sql = text(
-        """
-        SELECT id, institute_id, name, is_default,
-               background_type, palette_json, heading_font, body_font,
-               layout_theme, logo_file_id,
-               intro_json, outro_json, watermark_json,
-               system_prompt
-        FROM brand_kit
-        WHERE id = :brand_kit_id AND institute_id = :institute_id
-        LIMIT 1
-        """
-    )
-    try:
-        with db_session() as session:
-            row = session.execute(
-                sql, {"brand_kit_id": brand_kit_id, "institute_id": institute_id}
-            ).mappings().first()
-    except Exception as e:
-        logger.warning(
-            f"[vimotion_resolver] brand_kit lookup failed "
-            f"(brand_kit_id={brand_kit_id!r}, institute_id={institute_id!r}): {e}"
-        )
-        return None
 
-    if row is None:
-        return None
-    return dict(row)
+    # Columns that have existed since V227. `system_prompt` ships in V338 — kept
+    # separate so a partial deploy (ai_service ahead of admin_core's Flyway) can
+    # fall back to the pre-V338 column set instead of dropping the ENTIRE kit
+    # (palette/branding included) when the new column doesn't exist yet.
+    base_cols = (
+        "id, institute_id, name, is_default, "
+        "background_type, palette_json, heading_font, body_font, "
+        "layout_theme, logo_file_id, "
+        "intro_json, outro_json, watermark_json"
+    )
+    where = (
+        "FROM brand_kit "
+        "WHERE id = :brand_kit_id AND institute_id = :institute_id LIMIT 1"
+    )
+    params = {"brand_kit_id": brand_kit_id, "institute_id": institute_id}
+
+    def _run(cols: str) -> Optional[Dict[str, Any]]:
+        with db_session() as session:
+            row = session.execute(text(f"SELECT {cols} {where}"), params).mappings().first()
+        return dict(row) if row is not None else None
+
+    try:
+        return _run(base_cols + ", system_prompt")
+    except Exception as e:
+        # Most likely cause in prod: brand_kit.system_prompt doesn't exist yet
+        # (V338 not run). Retry without it so the kit still resolves — palette /
+        # fonts / intro / outro / watermark intact, just no brand system_prompt.
+        logger.warning(
+            f"[vimotion_resolver] brand_kit lookup with system_prompt failed "
+            f"(brand_kit_id={brand_kit_id!r}, institute_id={institute_id!r}): {e}; "
+            f"retrying without system_prompt (pre-V338 fallback)"
+        )
+        try:
+            return _run(base_cols)
+        except Exception as e2:
+            logger.warning(
+                f"[vimotion_resolver] brand_kit lookup failed "
+                f"(brand_kit_id={brand_kit_id!r}, institute_id={institute_id!r}): {e2}"
+            )
+            return None
 
 
 __all__ = ["resolve_studio_avatar", "resolve_brand_kit"]

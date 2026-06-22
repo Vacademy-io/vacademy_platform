@@ -12300,10 +12300,18 @@ class VideoGenerationPipeline:
         # Brand direction (kit system_prompt or per-video override) goes LAST so
         # it's the final authoritative brand layer for the v2 Director fallback
         # too — parity with the v3 ShotPlanner. Subordinated to the output
-        # contract by the block wrapper.
+        # contract by the block wrapper. Wrapped defensively (like the per-shot
+        # sites) so a future refactor of the function-scoped import can't break
+        # the Director stage.
         _brand_dir = getattr(self, "_current_brand_system_prompt", None)
         if _brand_dir:
-            director_system = director_system + build_brand_direction_block(_brand_dir)
+            try:
+                director_system = director_system + build_brand_direction_block(_brand_dir)
+            except Exception:
+                director_system = director_system + (
+                    "\n\n## BRAND DIRECTION (apply throughout; output format still wins)\n"
+                    + str(_brand_dir).strip() + "\n"
+                )
 
         print("🎬 Running Director stage (shot planning)...")
         # Attach any user-uploaded reference images to the Director's user message

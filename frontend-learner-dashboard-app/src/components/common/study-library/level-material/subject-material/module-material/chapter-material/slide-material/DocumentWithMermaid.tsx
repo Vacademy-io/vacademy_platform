@@ -174,7 +174,9 @@ function InteractiveFillBlanks({ sentence }: { sentence: string }) {
             <div style={{ padding: '4px 8px', background: '#e8f4fd', border: '1px solid #90caf9', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#1565c0', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
                 FILL IN THE BLANKS
             </div>
-            <div style={{ fontSize: '16px', lineHeight: 2.2, color: '#333', padding: '8px' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
+            {/* whiteSpace: pre-wrap mirrors the admin editor (Slate's editable container is pre-wrap),
+                so newlines between statements stay as line breaks instead of collapsing into one paragraph. */}
+            <div style={{ fontSize: '16px', lineHeight: 2.2, color: '#333', padding: '8px', whiteSpace: 'pre-wrap' }}> {/* design-lint-ignore: dynamic fill-blanks UI state — style prop */}
                 {parts.map((part, i) => {
                     if (part.type === 'text') return <span key={i}>{part.value}</span>;
                     const idx = blankIndex++;

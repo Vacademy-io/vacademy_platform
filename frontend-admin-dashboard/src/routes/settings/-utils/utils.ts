@@ -29,6 +29,7 @@ import TelephonySettings from '../-components/TelephonySettings';
 import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
 import LmsSettings from '../-components/Lms/LmsSettings';
 import AiCallingSettings from '../-components/AiCallingSettings';
+import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -184,6 +185,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Lms,
             value: 'LMS Settings',
             component: LmsSettings,
+        },
+        {
+            tab: SettingsTabs.AssistantTools,
+            value: 'Vacademy Assistant',
+            component: AssistantToolsSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

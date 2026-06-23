@@ -47,6 +47,7 @@ export const audienceCampaignSchema = z
         start_date_local: z.string().min(1, 'Start date is required'),
         end_date_local: z.string().min(1, 'End date is required'),
         status: z.string().toUpperCase().default('Active'),
+        sub_org_id: z.string().optional(),
         json_web_metadata: z.string().optional(),
         institute_custom_fields: z.string().optional(),
         custom_fields: z.array(testInputFieldSchema).default([]),
@@ -93,6 +94,7 @@ export const defaultFormValues: AudienceCampaignForm = {
     start_date_local: todayDateOnly,
     end_date_local: oneWeekLaterDateOnly,
     status: 'ACTIVE',
+    sub_org_id: '',
     json_web_metadata: '',
     institute_custom_fields: '',
     // custom_fields are loaded dynamically from settings via getCampaignCustomFields()

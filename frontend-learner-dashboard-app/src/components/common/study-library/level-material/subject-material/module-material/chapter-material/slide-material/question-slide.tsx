@@ -1,14 +1,17 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MyInput } from "@/components/design-system/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 // import { MyButton } from "@/components/design-system/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { SUBMIT_QUESTION_SLIDE_ANSWERS } from "@/constants/urls";
+import {
+    SUBMIT_QUESTION_SLIDE_ANSWERS,
+    GET_QUESTION_SLIDE_ACTIVITY_LOGS,
+} from "@/constants/urls";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,8 +90,28 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     const [isSubmittingMap, setIsSubmittingMap] = useState<
         Record<string, boolean>
     >({});
+    // Per-slide flag: has the learner submitted this question yet? Gates the
+    // answer guidance so it can NEVER be read before an attempt is submitted.
+    const [submittedMap, setSubmittedMap] = useState<Record<string, boolean>>(
+        {}
+    );
+    // Per-slide flag controlling whether the (post-submit) answer guidance is
+    // currently expanded. Auto-opened on submit; toggleable thereafter.
+    const [showExplanationMap, setShowExplanationMap] = useState<
+        Record<string, boolean>
+    >({});
+    // Normalized signature of the last-submitted answer per slide. Lets us keep
+    // Submit disabled while the answer is unchanged (no duplicate submit) and
+    // re-enable it as "Resubmit" once the learner edits their answer (retry).
+    const [lastSubmittedSignatureMap, setLastSubmittedSignatureMap] = useState<
+        Record<string, string>
+    >({});
     const [isDecimal, setIsDecimal] = useState(false);
     const [maxDecimals, setMaxDecimals] = useState(0);
+    // Synchronous in-flight guard, keyed by slideId. Blocks the rapid
+    // double-click race where two clicks both fire before React re-renders and
+    // sees the (async) isSubmitting=true — which would POST the answer twice.
+    const submitInFlightRef = useRef<Record<string, boolean>>({});
     // const [questionResponses, setQuestionResponses] =
     useState<QuestionResponseMap>({});
 
@@ -105,6 +128,55 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     const selectedOptions = selectedMultiOptionsMap[slideId] || [];
     const inputValue = inputValuesMap[slideId] || "";
     const numericValue = numericValuesMap[slideId] || "";
+    const hasSubmitted = submittedMap[slideId] || false;
+    const showExplanation = showExplanationMap[slideId] || false;
+
+    // Build a normalized, comparable signature of the current answer so we can
+    // tell whether it changed since the last submission. Shared by the
+    // pre-fill (previous answer), the disabled state, and the button label.
+    const buildAnswerSignature = (selected: SelectedOption[]): string => {
+        switch (questionType) {
+            case "MCQS":
+            case "TRUE_FALSE":
+                return selected[0]?.id || "";
+            case "MCQM":
+                return selected
+                    .map((o) => o.id)
+                    .sort()
+                    .join(",");
+            case "ONE_WORD":
+            case "LONG_ANSWER":
+            case "NUMERIC":
+                return (selected[0]?.name ?? selected[0]?.id ?? "").trim();
+            default:
+                return "";
+        }
+    };
+    const currentAnswerSignature = (() => {
+        switch (questionType) {
+            case "MCQS":
+            case "TRUE_FALSE":
+                return selectedOption?.id || "";
+            case "MCQM":
+                return selectedOptions
+                    .map((o) => o.id)
+                    .sort()
+                    .join(",");
+            case "ONE_WORD":
+            case "LONG_ANSWER":
+                return inputValue.trim();
+            case "NUMERIC":
+                return numericValue.trim();
+            default:
+                return "";
+        }
+    })();
+    // True once submitted AND the answer is identical to what was submitted —
+    // i.e. there is nothing new to send (blocks duplicate submits; "Resubmit"
+    // re-enables the moment the learner edits their answer).
+    const unchangedSinceSubmit =
+        hasSubmitted &&
+        currentAnswerSignature === (lastSubmittedSignatureMap[slideId] ?? "");
 
     // Submit question mutation
     const submitQuestionMutation = useMutation({
@@ -280,6 +352,107 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         }
     }, [questionData, questionType]);
 
+    // Load the learner's previous answer for this slide (if any) so it is shown
+    // pre-filled with the guidance available. They can edit it and resubmit
+    // (retry). Best-effort: any failure just leaves the question blank.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            if (!slideId || slideId === "unknown") return;
+            try {
+                const userId = await getUserId();
+                if (!userId) return;
+                const res = await authenticatedAxiosInstance.get(
+                    GET_QUESTION_SLIDE_ACTIVITY_LOGS,
+                    { params: { userId, slideId, pageNo: 0, pageSize: 10 } }
+                );
+                const logs = res.data?.content || [];
+                const attempts = logs.flatMap(
+                    (l: { question_slides?: unknown[] }) =>
+                        (l.question_slides || []) as Array<{
+                            attempt_number?: number;
+                            response_json?: string;
+                        }>
+                );
+                if (!attempts.length) return;
+                // Pick the latest attempt.
+                const latest = attempts.reduce((a, b) =>
+                    (b.attempt_number ?? 0) >= (a.attempt_number ?? 0) ? b : a
+                );
+                const parsed = JSON.parse(latest.response_json || "{}");
+                const selected: SelectedOption[] = Array.isArray(
+                    parsed?.selectedOptions
+                )
+                    ? parsed.selectedOptions
+                    : [];
+                if (cancelled || !selected.length) return;
+
+                // Pre-fill the matching answer state for this question type.
+                // Each setter is guarded so it only fills an EMPTY field — if a
+                // slow fetch resolves after the learner already started a new
+                // answer, we must not clobber their in-progress input.
+                const textAnswer = selected[0]?.name ?? selected[0]?.id ?? "";
+                switch (questionType) {
+                    case "MCQS":
+                    case "TRUE_FALSE":
+                        setSelectedOptionsMap((prev) =>
+                            prev[slideId]
+                                ? prev
+                                : {
+                                      ...prev,
+                                      [slideId]: {
+                                          id: selected[0].id,
+                                          name: selected[0].name,
+                                      },
+                                  }
+                        );
+                        break;
+                    case "MCQM":
+                        setSelectedMultiOptionsMap((prev) =>
+                            prev[slideId]?.length
+                                ? prev
+                                : {
+                                      ...prev,
+                                      [slideId]: selected.map((s) => ({
+                                          id: s.id,
+                                          name: s.name,
+                                      })),
+                                  }
+                        );
+                        break;
+                    case "ONE_WORD":
+                    case "LONG_ANSWER":
+                        setInputValuesMap((prev) =>
+                            prev[slideId]
+                                ? prev
+                                : { ...prev, [slideId]: textAnswer }
+                        );
+                        break;
+                    case "NUMERIC":
+                        setNumericValuesMap((prev) =>
+                            prev[slideId]
+                                ? prev
+                                : { ...prev, [slideId]: textAnswer }
+                        );
+                        break;
+                }
+                // Mark as already submitted (guidance available) and record the
+                // baseline so Submit stays disabled until they edit it.
+                setSubmittedMap((prev) => ({ ...prev, [slideId]: true }));
+                setLastSubmittedSignatureMap((prev) => ({
+                    ...prev,
+                    [slideId]: buildAnswerSignature(selected),
+                }));
+            } catch {
+                /* no previous answer / fetch failed — leave blank */
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [slideId, questionData?.id]);
+
     const handleOptionSelect = (optionId: string, optionName: string) => {
         if (isSubmitting) return;
 
@@ -384,7 +557,17 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     };
 
     const handleSubmit = async () => {
-        if (isSubmitting) return;
+        // Block re-entry: already submitting, an unchanged answer (nothing new
+        // to send), or a click already in flight for this slide (synchronous
+        // ref catches the double-click race the async isSubmitting state misses).
+        // NOTE: we do NOT block on hasSubmitted — editing the answer and
+        // resubmitting (retry) is allowed.
+        if (
+            isSubmitting ||
+            unchangedSinceSubmit ||
+            submitInFlightRef.current[slideId]
+        )
+            return;
 
         // Check if we have a valid answer to submit
         if (
@@ -398,6 +581,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
             return;
         }
 
+        submitInFlightRef.current[slideId] = true;
         setIsSubmittingMap((prev) => ({
             ...prev,
             [slideId]: true,
@@ -448,34 +632,29 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 void refreshProgressAfterSubmit(queryClient, chapterId);
             }
 
-            // Reset inputs after submission
-            if (questionType === "MCQS" || questionType === "TRUE_FALSE") {
-                setSelectedOptionsMap((prev) => ({
-                    ...prev,
-                    [slideId]: null,
-                }));
-            } else if (questionType === "MCQM") {
-                setSelectedMultiOptionsMap((prev) => ({
-                    ...prev,
-                    [slideId]: [],
-                }));
-            } else if (
-                questionType === "ONE_WORD" ||
-                questionType === "LONG_ANSWER"
-            ) {
-                setInputValuesMap((prev) => ({
-                    ...prev,
-                    [slideId]: "",
-                }));
-            } else if (questionType === "NUMERIC") {
-                setNumericValuesMap((prev) => ({
-                    ...prev,
-                    [slideId]: "",
-                }));
-            }
+            // Keep the learner's answer on screen (do NOT clear it) and reveal
+            // the answer guidance so they can self-check. These are formative
+            // "Knowledge Check" questions — "look back, think again and retry",
+            // not graded — so clearing the answer just hid what they wrote.
+            // The guidance is gated on `submitted` so it can't be read before
+            // an attempt; auto-expand it now.
+            setSubmittedMap((prev) => ({ ...prev, [slideId]: true }));
+            setShowExplanationMap((prev) => ({
+                ...prev,
+                [slideId]: true,
+            }));
+            // Record what was just submitted so Submit disables ("Submitted")
+            // until the learner edits their answer, when it becomes "Resubmit".
+            setLastSubmittedSignatureMap((prev) => ({
+                ...prev,
+                [slideId]: currentAnswerSignature,
+            }));
         } catch (error) {
             console.error("Error in submission:", error);
         } finally {
+            // Release the in-flight guard so a FAILED submit can be retried.
+            // (A successful submit stays blocked via hasSubmitted.)
+            submitInFlightRef.current[slideId] = false;
             setIsSubmittingMap((prev) => ({
                 ...prev,
                 [slideId]: false,
@@ -629,7 +808,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
             case "LONG_ANSWER":
                 return (
-                    <div className="w-full max-w-2xl mx-auto mt-2 sm:mt-4">
+                    <div className="w-full mt-2 sm:mt-4">
                         <Textarea
                             value={inputValue}
                             onChange={handleInputChange}
@@ -730,6 +909,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     // Update the isSubmitDisabled logic
     const isSubmitDisabled =
         isSubmitting ||
+        unchangedSinceSubmit ||
         ((questionType === "MCQS" || questionType === "TRUE_FALSE") &&
             !selectedOption) ||
         (questionType === "MCQM" && selectedOptions.length === 0) ||
@@ -738,18 +918,25 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         (questionType === "NUMERIC" && !numericValue.trim());
 
     return (
-        <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6">
-            <h2
-                className="text-lg sm:text-xl font-medium text-gray-900 mb-3 sm:mb-4"
+        <div className="w-full bg-white rounded-lg shadow-sm p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-medium text-gray-900 mb-2 sm:mb-3">
+                Question:
+            </h2>
+            {/* Render the question's rich HTML on its own (NOT inside the <h2>):
+                it can contain block content like ordered/bulleted lists, which
+                are invalid in a heading and lose their markers/indentation
+                without the `rich-text-content` list styles (index.css). */}
+            <div
+                className="rich-text-content text-base text-gray-800 mb-3 sm:mb-4"
                 dangerouslySetInnerHTML={{
-                    __html: `Question: ${questionData?.text_data?.content}`,
+                    __html: questionData?.text_data?.content || "",
                 }}
             />
 
             {/* Parent rich text content if available */}
             {questionData?.parent_rich_text?.content && (
                 <div
-                    className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    className="rich-text-content mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200"
                     dangerouslySetInnerHTML={{
                         __html: questionData.parent_rich_text.content,
                     }}
@@ -785,9 +972,48 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                             : "bg-gray-900 text-white hover:bg-gray-800"
                     }`}
                 >
-                    {isSubmitting ? "Submitting..." : "Submit"}
+                    {isSubmitting
+                        ? "Submitting..."
+                        : unchangedSinceSubmit
+                          ? "Submitted"
+                          : hasSubmitted
+                            ? "Resubmit"
+                            : "Submit"}
                 </button>
             </div>
+
+            {/* Answer guidance (explanation_text_data). Locked until the learner
+                submits — it can NEVER be read before an attempt. After submit it
+                auto-expands and can be collapsed/re-opened for self-checking. */}
+            {hasSubmitted &&
+                questionData?.explanation_text_data?.content?.trim() && (
+                <div className="mt-6 w-full">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setShowExplanationMap((prev) => ({
+                                ...prev,
+                                [slideId]: !showExplanation,
+                            }))
+                        }
+                        className="text-sm font-medium text-primary-500 transition-colors hover:text-primary-400"
+                    >
+                        {showExplanation
+                            ? "Hide answer guidance"
+                            : "Show answer guidance"}
+                    </button>
+
+                    {showExplanation && (
+                        <div
+                            className="rich-text-content mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-neutral-700"
+                            dangerouslySetInnerHTML={{
+                                __html: questionData.explanation_text_data
+                                    .content,
+                            }}
+                        />
+                    )}
+                </div>
+            )}
         </div>
     );
 };

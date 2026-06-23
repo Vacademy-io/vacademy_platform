@@ -24,6 +24,8 @@ import { CampaignItem } from '../../-services/get-campaigns-list';
 import { AudienceCampaignCardMenuOptions } from './audience-campaign-card-menu-options';
 import CampaignLink from '../create-campaign-dialog/CampaignLink';
 import { useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { listAccessibleSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { toast } from 'sonner';
 import {
     Select,
@@ -76,6 +78,7 @@ export const AudienceInvite = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+    const [subOrgFilter, setSubOrgFilter] = useState<string>('ALL');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [campaignBeingEdited, setCampaignBeingEdited] = useState<CampaignItem | null>(null);
     const [apiDialogCampaign, setApiDialogCampaign] = useState<CampaignItem | null>(null);
@@ -94,6 +97,19 @@ export const AudienceInvite = () => {
         initialPageSize: PAGE_SIZE,
     });
 
+    // Sub-orgs for the Sub-Org filter + per-card chip. {id = child-institute id (= audience.sub_org_id), name}.
+    const { data: accessibleSubOrgs } = useQuery({
+        queryKey: ['ACCESSIBLE_SUB_ORGS', instituteDetails?.id],
+        queryFn: () => listAccessibleSubOrgs(instituteDetails?.id || ''),
+        enabled: !!instituteDetails?.id,
+        staleTime: 5 * 60 * 1000,
+    });
+    const subOrgNameById = useMemo(() => {
+        const m = new Map<string, string>();
+        (accessibleSubOrgs ?? []).forEach((so) => m.set(so.id, so.name));
+        return m;
+    }, [accessibleSubOrgs]);
+
     // Seed state from the URL on mount — refresh-safe deep linking.
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -105,6 +121,8 @@ export const AudienceInvite = () => {
             setAppliedSearch(q);
         }
         if (s && VALID_STATUS.includes(s)) setStatusFilter(s as StatusFilter);
+        const so = params.get('subOrg');
+        if (so) setSubOrgFilter(so);
         if (p) {
             const n = parseInt(p, 10);
             if (!Number.isNaN(n) && n > 0) handlePageChange(n);
@@ -131,22 +149,30 @@ export const AudienceInvite = () => {
         else params.delete('q');
         if (statusFilter !== 'ALL') params.set('status', statusFilter);
         else params.delete('status');
+        if (subOrgFilter !== 'ALL') params.set('subOrg', subOrgFilter);
+        else params.delete('subOrg');
         if (page > 0) params.set('page', String(page));
         else params.delete('page');
         const qs = params.toString();
         const newUrl = `${window.location.pathname}${qs ? '?' + qs : ''}`;
         window.history.replaceState(null, '', newUrl);
-    }, [appliedSearch, statusFilter, page]);
+    }, [appliedSearch, statusFilter, subOrgFilter, page]);
 
     const handleStatusChange = (value: StatusFilter) => {
         handlePageChange(0);
         setStatusFilter(value);
     };
 
+    const handleSubOrgChange = (value: string) => {
+        handlePageChange(0);
+        setSubOrgFilter(value);
+    };
+
     const handleClearFilters = () => {
         setSearchQuery('');
         setAppliedSearch('');
         setStatusFilter('ALL');
+        setSubOrgFilter('ALL');
         handlePageChange(0);
     };
 
@@ -157,10 +183,11 @@ export const AudienceInvite = () => {
             size: SERVER_FETCH_SIZE,
             campaign_name: appliedSearch || undefined,
             status: statusFilter !== 'ALL' ? statusFilter : undefined,
+            sub_org_id: subOrgFilter !== 'ALL' ? subOrgFilter : undefined,
             sort_by: 'created_at',
             sort_direction: 'DESC',
         }),
-        [instituteDetails?.id, appliedSearch, statusFilter]
+        [instituteDetails?.id, appliedSearch, statusFilter, subOrgFilter]
     );
 
     const { data: campaignsList, isLoading, isError } = useCampaignsList(campaignsPayload);
@@ -201,7 +228,7 @@ export const AudienceInvite = () => {
     }, [filteredCampaigns]);
 
     const hasResults = paginatedCampaigns.length > 0;
-    const hasActiveFilter = !!appliedSearch || statusFilter !== 'ALL';
+    const hasActiveFilter = !!appliedSearch || statusFilter !== 'ALL' || subOrgFilter !== 'ALL';
 
     const kpis: {
         label: string;
@@ -327,6 +354,21 @@ export const AudienceInvite = () => {
                         ))}
                     </SelectContent>
                 </Select>
+                {((accessibleSubOrgs?.length ?? 0) > 0 || subOrgFilter !== 'ALL') && (
+                    <Select value={subOrgFilter} onValueChange={handleSubOrgChange}>
+                        <SelectTrigger className="h-10 w-full sm:w-44">
+                            <SelectValue placeholder="Filter by Sub-Org" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">All Sub-Orgs</SelectItem>
+                            {(accessibleSubOrgs ?? []).map((so) => (
+                                <SelectItem key={so.id} value={so.id}>
+                                    {so.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
             </div>
 
             {/* Content */}
@@ -474,6 +516,12 @@ export const AudienceInvite = () => {
                                                 {campaign.campaign_type && (
                                                     <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-neutral-600">
                                                         {campaign.campaign_type}
+                                                    </span>
+                                                )}
+                                                {campaign.sub_org_id && (
+                                                    <span className="inline-flex items-center rounded-full bg-info-50 px-2.5 py-0.5 text-xs font-medium text-info-600">
+                                                        {subOrgNameById.get(campaign.sub_org_id) ||
+                                                            'Sub-Org'}
                                                     </span>
                                                 )}
                                             </div>

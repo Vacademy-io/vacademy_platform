@@ -20,6 +20,8 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import CampaignTypeDropdown from './CampaignTypeDropdown';
 import StatusDropdown from './StatusDropdown';
+import { useQuery } from '@tanstack/react-query';
+import { listAccessibleSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import createCampaignLink from '../../-utils/createCampaignLink';
 import CampaignLink from './CampaignLink';
 import { CampaignItem } from '../../-services/get-campaigns-list';
@@ -201,6 +203,7 @@ const buildInitialFormValues = (
             formatDateToDateInput(campaign.end_date_local, defaultFormValues.end_date_local) ||
             defaultFormValues.end_date_local,
         status: campaign.status?.toUpperCase?.() || defaultFormValues.status,
+        sub_org_id: campaign.sub_org_id || '',
         json_web_metadata: campaign.json_web_metadata || '',
         default_initial_score:
             typeof campaign.default_initial_score === 'number'
@@ -258,6 +261,22 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     } = form;
     const createCampaign = useCreateAudienceCampaign();
     const updateCampaign = useUpdateAudienceCampaign();
+
+    // Sub-org options for the optional Sub-Org picker. Reuses the same accessible-sub-orgs
+    // endpoint as the rest of the app ({id = child-institute id, name}).
+    const { data: accessibleSubOrgs } = useQuery({
+        queryKey: ['ACCESSIBLE_SUB_ORGS', instituteDetails?.id],
+        queryFn: () => listAccessibleSubOrgs(instituteDetails?.id || ''),
+        enabled: !!instituteDetails?.id,
+        staleTime: 5 * 60 * 1000,
+    });
+    const subOrgDropdownOptions = useMemo(
+        () => [
+            { value: '', label: 'None' },
+            ...(accessibleSubOrgs ?? []).map((so) => ({ value: so.id, label: so.name })),
+        ],
+        [accessibleSubOrgs]
+    );
     const existingCustomFields = useMemo(
         () => convertExistingCustomFields(campaignData?.institute_custom_fields),
         [campaignData?.institute_custom_fields]
@@ -871,6 +890,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             end_date_local: formatDateTimeForPayload(data.end_date_local, true),
             status: data.status?.toUpperCase?.() || data.status,
             default_initial_score: data.default_initial_score,
+            // Empty string (no sub-org selected) → undefined so the backend stores null / clears it.
+            sub_org_id: data.sub_org_id ? data.sub_org_id : undefined,
             institute_custom_fields:
                 allCustomFieldsPayload.length > 0 ? allCustomFieldsPayload : customFieldsToSend,
         };
@@ -1002,6 +1023,23 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     )} */}
                 </div>
             </div>
+
+            {/* Sub-Org (optional) — only shown when the institute has sub-orgs */}
+            {subOrgDropdownOptions.length > 1 && (
+                <div>
+                    <label className="block text-sm font-semibold text-neutral-700">Sub-Org</label>
+                    <div className="mt-2">
+                        <StatusDropdown
+                            value={watch('sub_org_id') || ''}
+                            initialOptions={subOrgDropdownOptions}
+                            placeholder="Select sub-org (optional)"
+                            onChange={(val) => {
+                                setValue('sub_org_id', val, { shouldDirty: true });
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* Emails & Share Analytics */}
             <div className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">

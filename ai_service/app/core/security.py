@@ -7,9 +7,41 @@ from jose import jwt, JWTError
 import httpx
 
 from ..config import get_settings, Settings
-from ..schemas.auth import CustomUserDetails, AuthError
+from ..schemas.auth import CustomUserDetails, AuthError, PinnedPrincipal
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_bearer(auth_header: Optional[str]) -> Optional[str]:
+    """Return the raw token from an 'Authorization: Bearer <token>' header."""
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    return auth_header[len("Bearer "):]
+
+
+def _decode_jwt_token(token: str, settings: Settings) -> Optional[dict]:
+    """
+    Verify the HS256 signature and return the JWT claims, or None if invalid.
+
+    Mirrors the Java side (common_service JwtService.getSignInKey): the secret
+    STRING is BASE64-decoded to bytes before use. We pad to a valid base64
+    length first. This does not mutate the cached settings object.
+    """
+    try:
+        secret = settings.jwt_secret_key
+        missing_padding = len(secret) % 4
+        if missing_padding:
+            secret = secret + "=" * (4 - missing_padding)
+        secret_bytes = base64.b64decode(secret)
+        return jwt.decode(
+            token,
+            secret_bytes,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False, "verify_iss": False},
+        )
+    except Exception as e:
+        logger.error(f"JWT Validation failed: {e}")
+        return None
 
 async def get_optional_user(
     request: Request,
@@ -73,36 +105,14 @@ async def _verify_and_fetch_user(auth_header: str, request: Request, settings: S
         return None # Do not raise immediately to allow optional auth to fail gracefully if header is just wrong
         
     token = auth_header.replace("Bearer ", "")
-    
-    # 1. Decode and Validate JWT locally first
-    try:
-        # Java: Decoders.BASE64.decode(secretKey)
-        # Note: The secret key string looks like Hex, but Java treats it as Base64.
-        # We must align with Java. 
-        # If decode fails, it might be due to padding, but standard library usually handles it or we add padding.
-        
-        # Ensure padding for Base64 (len % 4 == 0)
-        missing_padding = len(settings.jwt_secret_key) % 4
-        if missing_padding:
-            settings.jwt_secret_key += '=' * (4 - missing_padding)
-            
-        secret_bytes = base64.b64decode(settings.jwt_secret_key)
-        
-        payload = jwt.decode(
-            token, 
-            secret_bytes,  # Pass bytes!
-            algorithms=[settings.jwt_algorithm],
-            options={"verify_aud": False, "verify_iss": False} 
-        )
-        
-        username = payload.get("sub")
-        if not username:
-             logger.warning("JWT decoded but missing 'sub' claim")
-             return None
-             
-    except Exception as e:
-        logger.error(f"JWT Validation failed: {e}")
-        # Invalid token -> Return None (so optional auth sees None, enforced auth raises 401)
+
+    # 1. Decode and Validate JWT locally first (shared helper; does not mutate settings)
+    payload = _decode_jwt_token(token, settings)
+    if payload is None:
+        return None
+    username = payload.get("sub")
+    if not username:
+        logger.warning("JWT decoded but missing 'sub' claim")
         return None
         
     # 2. Call Auth Service (Internal API)
@@ -180,4 +190,92 @@ def _create_user_from_jwt_payload(payload: dict) -> CustomUserDetails:
         is_root_user=bool(is_root),
         roles=[],
         authorities=list(payload.get("authorities", {}).keys()) if isinstance(payload.get("authorities"), dict) else []
+    )
+
+
+async def get_pinned_principal(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    settings: Settings = Depends(get_settings),
+) -> PinnedPrincipal:
+    """
+    Trust boundary for the Vacademy Assistant.
+
+    Produces a PinnedPrincipal locked to exactly ONE institute — the one named
+    by the `clientId` header — and reads the caller's roles/permissions from the
+    JWT's per-institute authorities map UNDER THAT INSTITUTE KEY ONLY.
+
+    This is deliberately stricter than get_current_user, which flattens the
+    authorities map to a list of institute ids and so cannot tell which roles
+    belong to which institute. The backend does no per-institute RBAC and every
+    ai_service->Java internal call runs with full service trust, so this pin is
+    the authoritative scope for everything the Assistant is allowed to do.
+
+    Raises:
+        401 — missing/invalid token (via get_current_user).
+        403 — no `clientId` header, or the user is not a member of that institute.
+    """
+    # 1. Enforce authentication (and liveness/enabled checks when CLIENT_SECRET
+    #    is configured). Reuses the existing, audited verification path.
+    current_user = await get_current_user(request, authorization, settings)
+
+    # 2. Pin the institute from the clientId header. There is no implicit
+    #    institute — the caller must declare which one this session is for.
+    client_id = request.headers.get("clientId") or request.headers.get("client_id")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing 'clientId' header: the institute for this session is not specified.",
+        )
+
+    # 3. Decode the JWT to read the per-institute authorities map. The map shape
+    #    is {instituteId: {"roles": [...], "permissions": [...]}} — built by Java
+    #    common_service UserRoleService.createInstituteRoleMap.
+    token = _extract_bearer(authorization)
+    payload = _decode_jwt_token(token, settings) if token else None
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+
+    user_id = current_user.user_id or str(payload.get("user") or "")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token is missing a user id",
+        )
+
+    authorities = payload.get("authorities")
+    entry = authorities.get(client_id) if isinstance(authorities, dict) else None
+
+    if entry is None:
+        # Root/super-admin users may legitimately operate across institutes even
+        # without a per-institute role row. They pass the pin but carry NO
+        # per-institute roles/permissions, so deny-by-default tool gating still
+        # applies unless a tool is explicitly granted to them.
+        if current_user.is_root_user:
+            return PinnedPrincipal(
+                user_id=user_id,
+                institute_id=client_id,
+                username=current_user.username,
+                roles=[],
+                permissions=[],
+                is_root_user=True,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not a member of the requested institute.",
+        )
+
+    roles = entry.get("roles") if isinstance(entry, dict) else None
+    permissions = entry.get("permissions") if isinstance(entry, dict) else None
+
+    return PinnedPrincipal(
+        user_id=user_id,
+        institute_id=client_id,
+        username=current_user.username,
+        roles=list(roles or []),
+        permissions=list(permissions or []),
+        is_root_user=current_user.is_root_user,
     )

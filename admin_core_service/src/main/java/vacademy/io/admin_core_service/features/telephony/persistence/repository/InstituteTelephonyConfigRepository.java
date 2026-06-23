@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.InstituteTelephonyConfig;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -22,17 +23,13 @@ public interface InstituteTelephonyConfigRepository
             @Param("instituteId") String instituteId);
 
     /**
-     * Which institute owns a given Airtel VBC account. Airtel stores its account
-     * id in the generic provider_config JSON, so we match on the JSON key.
-     * Used by the CDR/recording promoter to attribute an S3 import to an institute.
+     * All configs for a provider type (e.g. AIRTEL) — a tiny set (one per
+     * institute that uses it). The CDR/recording promoter loads these and matches
+     * the S3 import's account id against each config's parsed provider_config JSON
+     * in Java. (We deliberately do NOT match the account id in SQL: the account id
+     * lives in the generic provider_config JSON, and a brace-guarded
+     * {@code ::jsonb} native query trips Hibernate's "{alias}" path parser —
+     * "Unmatched braces for alias path".)
      */
-    @Query(value = """
-            SELECT * FROM institute_telephony_config
-            WHERE provider_type = 'AIRTEL'
-              AND provider_config LIKE '{%'
-              AND (CASE WHEN provider_config LIKE '{%'
-                        THEN provider_config::jsonb ->> 'accountId' END) = :accountId
-            LIMIT 1
-            """, nativeQuery = true)
-    Optional<InstituteTelephonyConfig> findAirtelConfigByAccountId(@Param("accountId") String accountId);
+    List<InstituteTelephonyConfig> findByProviderType(String providerType);
 }

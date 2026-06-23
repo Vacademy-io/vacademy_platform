@@ -145,6 +145,16 @@ def get_chat_agent_service() -> AiChatAgentService:
     return AiChatAgentService(db_session_factory=db_session)
 
 
+def get_assistant_service():
+    """
+    Vacademy Assistant (admin) service — separate, JWT-gated agent. Like the chat
+    agent it manages its own short-lived DB sessions across LLM calls / SSE.
+    """
+    from .db import db_session
+    from .services.assistant_service import AssistantAgentService
+    return AssistantAgentService(db_session_factory=db_session)
+
+
 
 def get_institute_from_api_key(
     x_institute_key: str = Header(..., description="API Key for Institute Authentication"),
@@ -291,8 +301,8 @@ def require_credits(request_type: str, estimated_tokens: int = 1000):
 
 __all__ = [
     "get_course_outline_service", "get_image_service", "get_ai_chat_service",
-    "get_chat_agent_service", "get_institute_from_api_key", "get_embedding_service",
-    "require_credits", "require_internal_service_token",
+    "get_chat_agent_service", "get_assistant_service", "get_institute_from_api_key",
+    "get_embedding_service", "require_credits", "require_internal_service_token",
 ]
 
 

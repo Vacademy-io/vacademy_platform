@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
@@ -83,8 +85,20 @@ public class AiCallOutcomeProcessor {
             r.setCallLogId(callLogId);
             // Copy the recording into our storage (media_service pre-signed URL) so it
             // plays from the lead profile's Call History. Async — never blocks the webhook.
+            // Dispatch AFTER this transaction commits, so the async thread can see the
+            // just-inserted call-log row (avoids a read-before-commit race for new rows).
             if (r.getRecordingUrl() != null && !r.getRecordingUrl().isBlank()) {
-                aiCallRecordingService.persistAsync(callLogId);
+                final String cid = callLogId;
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            aiCallRecordingService.persistAsync(cid);
+                        }
+                    });
+                } else {
+                    aiCallRecordingService.persistAsync(cid);
+                }
             }
         }
 
@@ -198,6 +212,27 @@ public class AiCallOutcomeProcessor {
             log.warn("ai-call outcome: could not cancel retry loop for response {}: {}",
                     lead.responseId(), e.getMessage());
         }
+    }
+
+    /**
+     * Terminal handoff when the CALL_AI retry loop gives up (attempts hit maxRetries
+     * with no pickup). Mirrors the classifier's exhausted() branch: assign the lead
+     * to a human (when {@code assignExhaustedToHuman}) and stamp AI_NO_ANSWER — so an
+     * exhausted no-answer lead is never silently dropped. Called by the CALL_AI node.
+     */
+    @Transactional
+    public void giveUpAfterRetries(String responseId, String instituteId, String userId) {
+        if (responseId == null || responseId.isBlank() || instituteId == null || instituteId.isBlank()) return;
+        String audienceId = audienceResponseRepo.findById(responseId)
+                .map(AudienceResponse::getAudienceId).orElse(null);
+        Lead lead = new Lead(responseId, userId, audienceId, instituteId);
+        AiCallingSettingsPojo settings = settingsService.get(instituteId);
+        if (settings.isAssignExhaustedToHuman()) {
+            assignCounsellor(lead);
+        }
+        setStatus(lead, STATUS_NO_ANSWER);
+        log.info("ai-call: retries exhausted for lead {} -> AI_NO_ANSWER (assignToHuman={})",
+                userId, settings.isAssignExhaustedToHuman());
     }
 
     private void assignCounsellor(Lead lead) {

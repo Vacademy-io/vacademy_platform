@@ -42,7 +42,7 @@ public class AiCallRecordingService {
     private final TelephonyCallLogRepository callLogRepo;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Async("telephonyRecordingExecutor")
+    @Async("aiCallRecordingExecutor")
     public void persistAsync(String callLogId) {
         try {
             TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);

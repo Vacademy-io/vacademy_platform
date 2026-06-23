@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallNodeDispatcher;
+import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProcessor;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallRetryPlanner;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
@@ -45,6 +46,7 @@ public class CallAiNodeHandler implements NodeHandler {
 
     private final AiCallNodeDispatcher aiCallDispatcher;
     private final AiCallRetryPlanner retryPlanner;
+    private final AiCallOutcomeProcessor aiCallOutcomeProcessor;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -76,6 +78,11 @@ public class CallAiNodeHandler implements NodeHandler {
         switch (plan.action()) {
             case STOP -> {
                 log.info("CALL_AI node: stop ({}) for lead {} after {} attempt(s)", plan.reason(), userId, attempts);
+                // Gave up after maxRetries with no pickup → terminal handoff
+                // (assign-to-human per settings + stamp AI_NO_ANSWER).
+                if ("exhausted".equals(plan.reason())) {
+                    aiCallOutcomeProcessor.giveUpAfterRetries(responseId, instituteId, userId);
+                }
                 out.put("aiCallDone", true);
                 out.put("aiCallStopReason", plan.reason());
             }

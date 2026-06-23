@@ -74,4 +74,21 @@ public class TelephonyAsyncConfig {
         ex.initialize();
         return ex;
     }
+
+    /**
+     * Dedicated pool for AI-call recording copies (fetch + pre-signed PUT). Kept
+     * SEPARATE from telephonyRecordingExecutor because the Exotel recording path
+     * sleeps a worker thread for up to ~165s between CDN retries — sharing one pool
+     * would let those sleeping tasks starve the AI recording fetches.
+     */
+    @Bean(name = "aiCallRecordingExecutor")
+    public Executor aiCallRecordingExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(2);
+        ex.setMaxPoolSize(4);
+        ex.setQueueCapacity(100);
+        ex.setThreadNamePrefix("ai-call-rec-");
+        ex.initialize();
+        return ex;
+    }
 }

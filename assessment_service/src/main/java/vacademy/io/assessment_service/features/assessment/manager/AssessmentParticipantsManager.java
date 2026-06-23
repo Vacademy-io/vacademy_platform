@@ -20,6 +20,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.dto.*;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ProvideReattemptRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.ReleaseRequestDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.request.RespondentFilter;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.*;
@@ -415,6 +416,46 @@ public class AssessmentParticipantsManager {
         assessmentParticipantRegistration.setSourceId(adminUserId);
         assessmentParticipantRegistration.setRegistrationTime(new Date());
         return assessmentParticipantRegistration;
+    }
+
+    /**
+     * Grants extra attempt(s) to already-registered participants by bumping the
+     * {@code reattempt_count} on their AssessmentUserRegistration. This is the
+     * "Provide Reattempt" admin action — there is no separate attempt row to
+     * create; the learner is gated by reattempt_count vs attempts already taken.
+     */
+    @Transactional
+    public ResponseEntity<String> provideReattempt(CustomUserDetails user, String assessmentId, String instituteId,
+            ProvideReattemptRequestDto request) {
+        if (request == null || request.getRegistrationIds() == null || request.getRegistrationIds().isEmpty())
+            throw new VacademyException("No participants selected for reattempt");
+
+        int attemptsToGrant = (request.getReattemptCount() == null || request.getReattemptCount() < 1)
+                ? 1
+                : request.getReattemptCount();
+
+        List<AssessmentUserRegistration> registrations = assessmentUserRegistrationRepository
+                .findAllById(request.getRegistrationIds());
+
+        // Only touch registrations that actually belong to this assessment (and
+        // institute, when provided) so a stale/forged id can't bump a different
+        // assessment's count.
+        List<AssessmentUserRegistration> toUpdate = registrations.stream()
+                .filter(registration -> registration.getAssessment() != null
+                        && assessmentId.equals(registration.getAssessment().getId())
+                        && (instituteId == null || instituteId.equals(registration.getInstituteId())))
+                .collect(Collectors.toList());
+
+        if (toUpdate.isEmpty())
+            throw new VacademyException("No matching participants found for this assessment");
+
+        for (AssessmentUserRegistration registration : toUpdate) {
+            int current = (registration.getReattemptCount() == null) ? 0 : registration.getReattemptCount();
+            registration.setReattemptCount(current + attemptsToGrant);
+        }
+        assessmentUserRegistrationRepository.saveAll(toUpdate);
+
+        return ResponseEntity.ok("Reattempt granted to " + toUpdate.size() + " participant(s)");
     }
 
     public ResponseEntity<List<AssessmentUserRegistration>> assessmentAdminParticipants(CustomUserDetails user,

@@ -17,6 +17,7 @@ import {
   Plus,
   Minus,
   BookOpen,
+  X,
   Clock,
   ChartBarHorizontal,
 } from "@phosphor-icons/react";
@@ -46,6 +47,22 @@ const getPageNumbers = (current: number, total: number): (number | "...")[] => {
 // EnrollmentPaymentDialog import removed - not used in catalog
 
 type PriceRangeState = { min?: number; max?: number } | null;
+
+// Backend sometimes stores sentinel level names (e.g. "default") that must not
+// surface as a UI badge. Hide sentinels; title-case genuine values.
+const SENTINEL_LEVEL_NAMES = new Set([
+  "default",
+  "none",
+  "null",
+  "undefined",
+  "",
+]);
+const displayLevelName = (raw?: string | null): string => {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return "";
+  return toTitleCase(trimmed);
+};
 
 // CourseImage component that handles image resolution like study library
 interface CourseImageProps {
@@ -443,14 +460,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     getItemCount,
   } = useCartStore();
 
-  // Debug: Log cartButtonConfig to help diagnose issues
-  useEffect(() => {
-    console.log("[CourseCatalogComponent] cartButtonConfig:", cartButtonConfig);
-    console.log(
-      "[CourseCatalogComponent] render.cardFields:",
-      render?.cardFields,
-    );
-  }, [cartButtonConfig, render?.cardFields]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -472,9 +481,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   // Derive filter options from loaded courses (before shouldShow* checks)
   const levels = useMemo(
     () =>
-      [...new Set(courses.map((c) => c.level).filter(Boolean))].map(
-        (level) => ({ id: level, name: toTitleCase(level) }),
-      ),
+      [...new Set(courses.map((c) => c.level).filter(Boolean))]
+        .filter((level) => displayLevelName(level))
+        .map((level) => ({ id: level, name: displayLevelName(level) })),
     [courses],
   );
   const tags = useMemo(
@@ -699,6 +708,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               // pagination span every course. The API is server-paginated;
               // fetching a single 50-item page previously capped the UI at ~6
               // pages even when the institute had many more courses.
+              // TODO: move to true server-side pagination + facets.
               size: 1000,
               sort: "createdAt,desc",
             },
@@ -1103,19 +1113,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         Filters
                       </h2>
                       <div className="flex gap-1">
+                        {/* Filters apply live on desktop, so no "Apply" button is needed. */}
                         <Button
                           onClick={clearAllFilters}
                           disabled={!hasActiveFilters}
                           className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
                           Clear All
-                        </Button>
-                        <Button
-                          onClick={onApplyFilters}
-                          disabled={!hasActiveFilters}
-                          className="px-2 py-1 h-fit transition text-xs mt-px"
-                        >
-                          Apply
                         </Button>
                       </div>
                     </div>
@@ -1135,10 +1139,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         </Button>
                         <Button
                           onClick={onApplyFilters}
-                          disabled={!hasActiveFilters}
                           className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
-                          Apply
+                          Show results
                         </Button>
                       </div>
                     </div>
@@ -1207,7 +1210,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         </h3>
                         <div className="flex items-end gap-2 rounded-lg bg-catalogue-bg-subtle p-3">
                           <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-muted mb-1">
+                            <label className="block text-xs text-catalogue-text-secondary mb-1">
                               Min
                             </label>
                             <input
@@ -1222,7 +1225,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           </div>
                           <span className="pb-2 text-catalogue-text-muted">–</span>
                           <div className="flex-1">
-                            <label className="block text-xs text-catalogue-text-muted mb-1">
+                            <label className="block text-xs text-catalogue-text-secondary mb-1">
                               Max
                             </label>
                             <input
@@ -1262,11 +1265,22 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     />
                     <input
                       type="text"
-                      placeholder="Search courses..."
+                      placeholder={`Search ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}...`}
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+                      aria-label={`Search ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`}
+                      className="w-full pl-10 pr-9 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                     />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm("")}
+                        aria-label="Clear search"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted hover:text-catalogue-text-primary"
+                      >
+                        <X size={16} aria-hidden="true" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1309,6 +1323,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   course.level ||
                   "";
                 const categoryStyle = getCategoryStyle(category);
+                const courseTerm = getTerminology(
+                  ContentTerms.Course,
+                  SystemTerms.Course,
+                );
+                const levelLabel = displayLevelName(course.level);
 
                 // Determine whether the course has a real image to display
                 const hasRealImage =
@@ -1321,7 +1340,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                 return (
                   <div
-                    key={`${course.id}-${index}-${currentPage}`}
+                    key={
+                      course.enrollInviteId ??
+                      `${course.id}-${course.packageSessionId ?? ""}-${index}`
+                    }
                     className={cn(
                       "bg-white flex flex-col cursor-pointer border border-gray-100",
                       "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
@@ -1408,14 +1430,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         <div className="flex items-center gap-3 text-xs text-gray-500 min-w-0">
                           {course.duration && (
                             <span className="flex items-center gap-1 shrink-0">
-                              <Clock size={13} weight="bold" />
+                              <Clock size={13} weight="bold" aria-hidden="true" />
                               {course.duration}
                             </span>
                           )}
-                          {displayLevel && course.level && (
+                          {displayLevel && levelLabel && (
                             <span className="flex items-center gap-1 truncate">
-                              <ChartBarHorizontal size={13} weight="bold" />
-                              {course.level}
+                              <ChartBarHorizontal size={13} weight="bold" aria-hidden="true" />
+                              {levelLabel}
                             </span>
                           )}
                         </div>
@@ -1459,6 +1481,20 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           />
                         </div>
                       )}
+
+                      {/* Keyboard-focusable CTA — also the accessible action for
+                          the whole-card mouse click above. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCourseClick(course);
+                        }}
+                        className="catalogue-btn catalogue-btn-primary mt-2 w-full"
+                        aria-label={`View ${courseTerm}`}
+                      >
+                        View {courseTerm}
+                      </button>
                     </div>
                   </div>
                 );
@@ -1472,7 +1508,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   <MagnifyingGlass size={26} />
                 </div>
                 <p className="text-base font-semibold text-catalogue-text-primary">
-                  No courses found
+                  No {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} found
                 </p>
                 <p className="max-w-sm text-sm text-catalogue-text-secondary">
                   Try adjusting your search or filters to find what you're
@@ -1550,9 +1586,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   </button>
                 </nav>
 
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-catalogue-text-secondary">
                   Showing{" "}
-                  <span className="font-semibold text-gray-700">
+                  <span className="font-semibold text-catalogue-text-primary">
                     {(currentPage - 1) * itemsPerPage + 1}–
                     {Math.min(
                       currentPage * itemsPerPage,
@@ -1560,10 +1596,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     )}
                   </span>{" "}
                   of{" "}
-                  <span className="font-semibold text-gray-700">
+                  <span className="font-semibold text-catalogue-text-primary">
                     {filteredCourses.length}
                   </span>{" "}
-                  courses
+                  {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}
                 </p>
               </div>
             )}

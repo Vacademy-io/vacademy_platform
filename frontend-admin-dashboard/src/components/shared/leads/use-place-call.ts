@@ -114,6 +114,115 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
             resp: PlaceCallResponse,
             vars: { responseId: string; userId?: string; leadName?: string }
         ) => {
+            // Post-call providers (Airtel) emit no live progress feed — the call
+            // outcome only exists once the provider exports its CDR (minutes after
+            // hang-up) and our importer promotes the row. Don't fake a streaming
+            // status: show an honest "call placed" toast and poll call-history
+            // opportunistically so that IF the CDR lands while the counsellor is
+            // still on the page we surface the real outcome + disposition. We
+            // never show the scary "live updates lost" here.
+            if (resp.realtimeEvents === false) {
+                const toastId = toast.loading(
+                    'Call placed — your phone should ring now. The call outcome will appear in call history once the call ends.',
+                    { duration: Infinity }
+                );
+                let resolved = false;
+                let attempts = 0;
+                let timer: number | null = null;
+                const POLL_INTERVAL_MS = 20_000;
+                const POLL_FIRST_DELAY_MS = 25_000;
+                const POLL_MAX_ATTEMPTS = 18; // ~6 min
+                const clearTimer = () => {
+                    if (timer !== null) {
+                        window.clearTimeout(timer);
+                        timer = null;
+                    }
+                };
+                const invalidateAll = () => {
+                    queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+                    queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+                    queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
+                    queryClient.invalidateQueries({ queryKey: ['telephony-call-history'] });
+                    for (const key of invalidateKeys) {
+                        queryClient.invalidateQueries({ queryKey: key });
+                    }
+                };
+                let dispositionFired = false;
+                const maybeCaptureDisposition = (
+                    status: CallStatus,
+                    durationSeconds?: number | null
+                ) => {
+                    if (dispositionFired || !DISPOSITION_STATUSES.has(status)) return;
+                    dispositionFired = true;
+                    void import('./post-call-disposition-sheet')
+                        .then((m) =>
+                            m.openPostCallDisposition({
+                                callLogId: resp.callLogId,
+                                status: status as 'COMPLETED' | 'NO_ANSWER' | 'BUSY' | 'FAILED',
+                                durationSeconds: durationSeconds ?? null,
+                                leadUserId: vars.userId,
+                                leadName: vars.leadName,
+                                responseId: vars.responseId,
+                                queryClient,
+                            })
+                        )
+                        .catch(() => {
+                            /* best-effort — never block the next call */
+                        });
+                };
+                const pollOnce = async () => {
+                    if (resolved) return;
+                    attempts += 1;
+                    const userId = vars.userId;
+                    if (userId) {
+                        try {
+                            const history = await fetchCallHistory(userId, instituteId, 0, 5);
+                            const row = history?.content?.find((c) => c.id === resp.callLogId);
+                            if (row && row.status === 'COMPLETED') {
+                                resolved = true;
+                                clearTimer();
+                                toast.success(labelFor('COMPLETED', row.durationSeconds), {
+                                    id: toastId,
+                                    duration: 4000,
+                                });
+                                invalidateAll();
+                                maybeCaptureDisposition('COMPLETED', row.durationSeconds);
+                                return;
+                            }
+                            if (row && TERMINAL.has(row.status as CallStatus)) {
+                                resolved = true;
+                                clearTimer();
+                                toast.error(labelFor(row.status as CallStatus, row.durationSeconds), {
+                                    id: toastId,
+                                    duration: 4000,
+                                });
+                                invalidateAll();
+                                maybeCaptureDisposition(row.status as CallStatus, row.durationSeconds);
+                                return;
+                            }
+                        } catch {
+                            /* non-fatal — try again next tick */
+                        }
+                    }
+                    if (attempts >= POLL_MAX_ATTEMPTS) {
+                        // Call almost certainly still in progress, or the CDR hasn't
+                        // imported yet. Resolve softly — the row will update in call
+                        // history when the import lands.
+                        resolved = true;
+                        clearTimer();
+                        toast.message('Call placed · the outcome will appear in call history shortly.', {
+                            id: toastId,
+                            duration: 6000,
+                        });
+                        invalidateAll();
+                        return;
+                    }
+                    timer = window.setTimeout(pollOnce, POLL_INTERVAL_MS);
+                };
+                timer = window.setTimeout(pollOnce, POLL_FIRST_DELAY_MS);
+                return;
+            }
+
             // One toast id, updated in place so the sales person sees one
             // continuously-evolving status row instead of stacked toasts.
             // Initial text matches the QUEUED label so the first SSE event

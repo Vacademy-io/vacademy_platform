@@ -181,6 +181,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             List<String> destinationPackageSessionIds,
             List<String> levelIds,
             List<String> subOrgUserTypes,
+            List<String> subOrgIds,
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
@@ -219,6 +220,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
         addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
         addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
+        addListFilter(whereClause, parameters, "subOrgIds", "ssigm.sub_org_id", subOrgIds);
 
         // Date range filter
         if (startDate != null && endDate != null) {
@@ -297,6 +299,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             List<String> destinationPackageSessionIds,
             List<String> levelIds,
             List<String> subOrgUserTypes,
+            List<String> subOrgIds,
             Map<String, List<String>> customFieldFilters,
             LocalDate startDate,
             LocalDate endDate,
@@ -319,6 +322,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
         addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
         addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
+        addListFilter(whereClause, parameters, "subOrgIds", "ssigm.sub_org_id", subOrgIds);
 
         // Date range filter
         if (startDate != null && endDate != null) {

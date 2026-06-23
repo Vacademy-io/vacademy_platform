@@ -72,6 +72,7 @@ const brandKitSchema = z.object({
     watermarkPosition: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right']),
     watermarkOpacity: z.number().min(0).max(1),
     watermarkHtml: z.string(),
+    systemPrompt: z.string().max(4000, 'Keep instructions under 4000 characters'),
 });
 
 type FormValues = z.infer<typeof brandKitSchema>;
@@ -98,6 +99,7 @@ const DEFAULT_VALUES: FormValues = {
     watermarkPosition: 'top-right',
     watermarkOpacity: 0.5,
     watermarkHtml: '',
+    systemPrompt: '',
 };
 
 // Maps a scraped draft (BrandKitWritePayload shape from the backend) onto the
@@ -131,6 +133,7 @@ function mapDraftToFormValues(draft: BrandKitWritePayload): FormValues {
         watermarkPosition: (draft.watermark?.position as WatermarkPosition) ?? 'top-right',
         watermarkOpacity: draft.watermark?.opacity ?? DEFAULT_VALUES.watermarkOpacity,
         watermarkHtml: draft.watermark?.html ?? '',
+        systemPrompt: draft.system_prompt ?? DEFAULT_VALUES.systemPrompt,
     };
 }
 
@@ -204,6 +207,7 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                 watermarkPosition: (kit.watermark?.position as WatermarkPosition) ?? 'top-right',
                 watermarkOpacity: kit.watermark?.opacity ?? 0.5,
                 watermarkHtml: kit.watermark?.html ?? '',
+                systemPrompt: kit.system_prompt ?? '',
             });
         } else {
             form.reset(DEFAULT_VALUES);
@@ -300,6 +304,8 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                     opacity: values.watermarkOpacity,
                     html: values.watermarkHtml,
                 },
+                // Send "" to clear; the backend drops an empty/blank value.
+                system_prompt: values.systemPrompt?.trim() ? values.systemPrompt.trim() : '',
             };
             return isEdit
                 ? updateBrandKit(kit!.id, instituteId, payload)
@@ -648,6 +654,32 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                                     </FormItem>
                                 )}
                             />
+
+                            {/* Director instructions — free-text brand system prompt */}
+                            <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+                                <FormField
+                                    control={form.control}
+                                    name="systemPrompt"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Director instructions (optional)</FormLabel>
+                                            <p className="text-xs text-neutral-500">
+                                                Free-text guidance auto-applied whenever this kit is used — it
+                                                shapes the AI director, narration voice, and on-screen style for
+                                                every video. e.g. tone, vocabulary, and do / don&apos;t rules.
+                                            </p>
+                                            <FormControl>
+                                                <Textarea
+                                                    rows={5}
+                                                    placeholder="e.g. Always speak in a warm, energetic tone. Emphasize benefits over features. Never use red — lean on the brand teal. Keep on-screen text short."
+                                                    {...field}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
 
                             {/* Intro */}
                             <IntroOutroBlock

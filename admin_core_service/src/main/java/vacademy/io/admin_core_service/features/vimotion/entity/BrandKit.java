@@ -73,6 +73,12 @@ public class BrandKit {
     @Column(name = "watermark_json", columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> watermark;
 
+    // Free-text director instructions appended to the AI video generation prompts
+    // (ShotPlanner / Director / NarrationWriter / per-shot HTML) for every video
+    // made with this kit. Nullable — kits without it behave exactly as before.
+    @Column(name = "system_prompt", columnDefinition = "text")
+    private String systemPrompt;
+
     @Column(name = "created_by")
     private String createdBy;
 

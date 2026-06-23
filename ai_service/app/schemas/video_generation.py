@@ -350,6 +350,48 @@ ContentTypeEnum = Literal[
 ]
 
 
+class BrandOverrides(BaseModel):
+    """Per-video overrides that layer ON TOP of the resolved brand kit (or the
+    institute defaults when no kit is selected) for a single generation.
+
+    Set by the FE "Override for this video" panel next to the brand-kit picker.
+    These are one-shot — the FE does not persist them across videos.
+
+    Merge semantics (applied in video_generation_service._run_pipeline_stages):
+      * palette — shallow field-level merge over the kit's palette (only the
+        provided color keys win; the rest fall through to the kit / institute).
+      * intro / outro / watermark — when provided, the whole section replaces
+        that section of the resolved branding for this run.
+      * system_prompt — when provided (non-empty), REPLACES the kit's
+        system_prompt entirely for this run (per the product decision).
+    """
+    palette: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Color overrides { primary?, secondary?, accent?, background? }. Field-level merge over the kit palette.",
+    )
+    intro: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Intro override { enabled, duration_seconds, html }. Replaces the kit/institute intro for this run.",
+    )
+    outro: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Outro override { enabled, duration_seconds, html }. Replaces the kit/institute outro for this run.",
+    )
+    watermark: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Watermark override { enabled, position, opacity, html, ... }. Replaces the kit/institute watermark for this run.",
+    )
+    system_prompt: Optional[str] = Field(
+        default=None,
+        max_length=4000,
+        description=(
+            "Free-text director instructions for THIS video. When set, REPLACES "
+            "the brand kit's system_prompt for this run. Works with or without a "
+            "brand kit selected."
+        ),
+    )
+
+
 class VideoGenerationRequest(BaseModel):
     """Request for generating AI video or interactive content."""
     
@@ -407,8 +449,20 @@ class VideoGenerationRequest(BaseModel):
         description=(
             "Vimotion brand_kit.id — when set, the kit's palette/fonts/layout/intro/outro/watermark "
             "REPLACE the institute-wide VIDEO_STYLE + VIDEO_BRANDING for this run (no merge). Server "
-            "resolves the row scoped by institute_id; an unresolved id falls back to institute defaults."
+            "resolves the row scoped by institute_id; an unresolved id falls back to institute defaults. "
+            "The kit's system_prompt (free-text director instructions) is also resolved here and injected "
+            "into the planner/narration/per-shot prompts."
         )
+    )
+    brand_overrides: Optional["BrandOverrides"] = Field(
+        default=None,
+        description=(
+            "Per-video overrides layered on top of the resolved brand kit (or the "
+            "institute defaults when no kit). palette is field-merged; "
+            "intro/outro/watermark replace those branding sections for this run; "
+            "system_prompt REPLACES the kit's director instructions for this run. "
+            "One-shot — the FE does not persist these across videos."
+        ),
     )
     voice_gender: str = Field(
         default="female",

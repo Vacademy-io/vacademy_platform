@@ -81,15 +81,12 @@ export const StudentTestRecord = ({
 
     const [selectedFilter] = useState<StudentReportFilterInterface>({
         name: '',
-        status: isStudentList
-            ? (selectedTab ?? '').split(',')
-            : [
-                  selectedTab === 'Attempted'
-                      ? 'ENDED'
-                      : selectedTab === 'Pending'
-                        ? 'PENDING'
-                        : 'LIVE',
-              ],
+        // The side-view / overlay drives status via the chip bar, which defaults
+        // to "All". So fetch every status up front — otherwise the initial query
+        // would be scoped to a single status (e.g. LIVE when no tab is passed) and
+        // "All" could never show Pending + Completed. The students-list "Tests" tab
+        // keeps its own comma-separated status selection.
+        status: isStudentList ? (selectedTab ?? '').split(',') : ['ENDED', 'PENDING', 'LIVE'],
         sort_columns: {},
     });
     const { selectedStudent } = useStudentSidebar();

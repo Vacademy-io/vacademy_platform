@@ -13,6 +13,12 @@ export interface CallOptionsResponse {
     numbers: NumberChoice[];
     recommendedNumberId?: string | null;
     strategyKey?: string | null;
+    /** The active provider type (e.g. EXOTEL / AIRTEL). */
+    providerType?: string | null;
+    /** False for no-pool providers (Airtel): there is no caller-ID number to
+     *  pick — the call dials from the counsellor's own extension. `numbers` is
+     *  empty and the picker just confirms the dial. Defaults to true (Exotel). */
+    usesNumberPool?: boolean;
 }
 
 /**

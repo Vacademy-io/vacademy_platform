@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { ScoreCard } from "./quiz-viewer";
 import type { QuizAttemptLog, QuizSideEntry } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
 import { getPublicUrl } from "@/services/upload_file";
+import { isRichTextEmpty } from "@/lib/utils";
 
 interface Option {
   id: string;
@@ -707,7 +708,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           }[answerStatus];
 
           return (
-            <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
+            <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm rich-text-content">
               <div className="mb-2 text-xs text-gray-500 font-medium">Question {idx + 1}</div>
               {passage && (
                 <div className="mb-4 p-4 bg-gray-100 rounded border border-gray-200">
@@ -777,7 +778,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                   </div>
                 )}
               </div>
-              {showCorrectAnswers && explanation && (
+              {showCorrectAnswers && !isRichTextEmpty(explanation) && (
                 <div className="mt-2 p-4 bg-gray-100 border border-gray-300 rounded-lg">
                   <div className="mb-1 text-xs font-semibold text-gray-700">Explanation</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />

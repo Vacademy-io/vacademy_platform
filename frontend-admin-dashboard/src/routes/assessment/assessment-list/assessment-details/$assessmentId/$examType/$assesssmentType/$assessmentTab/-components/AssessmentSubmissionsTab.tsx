@@ -33,7 +33,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import AssessmentSubmissionsFilterButtons from './AssessmentSubmissionsFilterButtons';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { StudentSidebarContext } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import { ControlledStudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/controlled-student-sidebar-provider';
 import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
@@ -825,7 +825,11 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     if (isParticipantsLoading) return <DashboardLoader />;
 
     return (
-        <StudentSidebarContext.Provider value={{ selectedStudent, setSelectedStudent }}>
+        <ControlledStudentSidebarProvider
+            selectedStudent={selectedStudent}
+            setSelectedStudent={setSelectedStudent}
+            isSubmissionTab={true}
+        >
             <Tabs
                 value={selectedTab}
                 onValueChange={handleAttemptedTab}
@@ -1125,7 +1129,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     </div>
                 </div>
             </Tabs>
-        </StudentSidebarContext.Provider>
+        </ControlledStudentSidebarProvider>
     );
 };
 

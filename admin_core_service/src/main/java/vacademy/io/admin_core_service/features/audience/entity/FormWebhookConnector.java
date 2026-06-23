@@ -134,10 +134,21 @@ public class FormWebhookConnector {
     @Column(name = "field_mapping_json", columnDefinition = "TEXT")
     private String fieldMappingJson;
 
-    /** Connection lifecycle status: ACTIVE, REVOKED, TOKEN_EXPIRED */
+    /** Connection lifecycle status: ACTIVE, ACTION_REQUIRED, REVOKED, TOKEN_EXPIRED */
     @Column(name = "connection_status", length = 30)
     @Builder.Default
     private String connectionStatus = "ACTIVE";
+
+    /** Human-readable reason/remediation when connection_status is not ACTIVE.
+     *  E.g. "Couldn't link this Page — the account you connected with needs
+     *  Full control of the Facebook Page." Populated when the page-subscribe
+     *  call fails or a health check finds a broken link. */
+    @Column(name = "status_detail", columnDefinition = "TEXT")
+    private String statusDetail;
+
+    /** When the connector health check last ran. */
+    @Column(name = "last_checked_at")
+    private LocalDateTime lastCheckedAt;
 
     /** Source type tag for leads from this connector: FACEBOOK_ADS, INSTAGRAM_ADS, GOOGLE_ADS */
     @Column(name = "produces_source_type", length = 50)

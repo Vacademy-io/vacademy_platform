@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { TelephonyConfigCard } from './telephony-config-card';
+import { TelephonyCounsellorMapCard } from './telephony-counsellor-map-card';
 import { TelephonyNumbersCard } from './telephony-numbers-card';
 
 /**
@@ -25,6 +26,7 @@ export function TelephonySettingsPage() {
                 </p>
             </div>
             <TelephonyConfigCard />
+            <TelephonyCounsellorMapCard />
             <TelephonyNumbersCard />
         </div>
     );

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.faculty.dto.FacultyBatchSubjectFlatRow;
+import vacademy.io.admin_core_service.features.faculty.dto.UserSubOrgLinkRow;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.slide.entity.Option;
 
@@ -351,4 +352,19 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND f.status = 'ACTIVE'
       """)
   long countActiveSubOrgLinkagesByUser(@Param("userId") String userId);
+
+  /**
+   * Distinct (user, sub-org) pairs for the given set of sub-orgs, derived from SUB_ORG-linked
+   * FSPSSM rows. Powers the "Sub-Orgs" column + filter on the institute Teams list.
+   */
+  @Query("""
+          SELECT DISTINCT f.userId AS userId, f.suborgId AS subOrgId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.suborgId IN :subOrgIds
+            AND f.linkageType = 'SUB_ORG'
+            AND f.status IN :statuses
+      """)
+  List<UserSubOrgLinkRow> findUserSubOrgLinks(
+      @Param("subOrgIds") List<String> subOrgIds,
+      @Param("statuses") List<String> statuses);
 }

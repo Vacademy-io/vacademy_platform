@@ -18,6 +18,7 @@ import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { MyButton } from "@/components/design-system/button";
 import { DocViewer } from "./doc-viewer";
 import PresentationViewer from "./presentation-viewer";
+import DeckPlayer from "./deck-player";
 import { CodeEditorSlide } from "./code-editor-slide";
 import { JupyterNotebookSlide } from "./jupyter-notebook-slide";
 import { ScratchProjectSlide } from "./scratch-project-slide";
@@ -825,6 +826,24 @@ export const SlideMaterial = ({
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
                   <PresentationViewer slide={activeItem} />
+                </div>
+              </div>
+            );
+          } else if (activeItem.document_slide?.type === "PPT_ANIM") {
+            // .pptx converted to build-step snapshots; data/published_data holds
+            // the deck base URL (manifest.json lives at <base>/manifest.json).
+            const deckBase =
+              activeItem.document_slide.published_data ||
+              activeItem.document_slide.data ||
+              "";
+            if (!deckBase) throw new Error("Failed to retrieve presentation URL");
+            // aspect-video gives the player an intrinsic 16:9 height so it never
+            // depends on the parent resolving a height (a pure h-full child
+            // collapses to 0 here, unlike PDF/pdf.js which self-sizes).
+            setContent(
+              <div className="flex h-full w-full items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="aspect-video w-full overflow-hidden rounded-lg border border-neutral-200">
+                  <DeckPlayer baseUrl={deckBase} />
                 </div>
               </div>
             );

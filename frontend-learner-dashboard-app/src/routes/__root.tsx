@@ -37,6 +37,7 @@ import {
   resolveDomainRouting,
   getCurrentDomainInfo,
 } from "@/services/domain-routing";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { ChatbotPanel } from "@/components/chatbot/ChatbotPanel";
 import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 import { getChatbotSettings } from "@/services/chatbot-settings";
@@ -73,6 +74,26 @@ const PUBLIC_ROUTES = [
   "/admission/payment", // Public admission payment links shared by institutes
   "/pay/invoice", // Shareable invoice payment links
 ];
+
+// Marketplace / external-payment route prefixes that are hidden when the app
+// is in App-Store "reader mode" (native iOS always, or a reader-mode
+// institute). Apple Guideline 3.1.1 — no external-gateway purchases in-app.
+// These overlap with PUBLIC_ROUTES, so the reader-mode guard in beforeLoad
+// must run BEFORE the public-route bypass. The dynamic catalogue routes
+// (/{tagName}, /{tagName}/{courseId}) are guarded at the component level
+// instead to avoid path-matching false positives.
+const READER_BLOCKED_PATH_PREFIXES = [
+  "/courses",
+  "/product-pages",
+  "/admission/payment",
+  "/pay",
+  "/payment-result",
+];
+
+const isReaderBlockedPath = (pathname: string): boolean =>
+  READER_BLOCKED_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 
 const isAuthenticated = async () => {
   const token = await getTokenFromStorage(TokenKey.accessToken);
@@ -723,6 +744,21 @@ export const Route = createRootRouteWithContext<{
         if (error instanceof Response) throw error;
         console.error("[__root] Auto-login via URL failed:", error);
       }
+    }
+
+    // Reader-mode guard: on native iOS (always) or a reader-mode institute,
+    // marketplace + external-payment routes must never render (Apple 3.1.1).
+    // Runs before the public-route bypass because those routes are "public".
+    if (
+      isReaderBlockedPath(location.pathname) &&
+      shouldHidePaidPurchaseUI()
+    ) {
+      console.log(
+        "[__root] Reader mode active — blocking marketplace/payment route:",
+        location.pathname,
+      );
+      const authed = await isAuthenticated();
+      throw redirect({ to: authed ? "/dashboard" : "/login" });
     }
 
     // Skip all logic for public routes - they should work without any redirects

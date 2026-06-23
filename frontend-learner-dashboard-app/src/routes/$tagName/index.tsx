@@ -1,11 +1,26 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { CourseCataloguePage } from "./-components/CourseCataloguePage";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import RootNotFoundComponent from "@/components/core/default-not-found";
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+
+// Code-split the catalogue render tree (JsonRenderer + all section components +
+// lead/intro modals) so it loads only when a catalogue route is visited.
+const CourseCataloguePage = lazy(() =>
+  import("./-components/CourseCataloguePage").then((m) => ({
+    default: m.CourseCataloguePage,
+  })),
+);
 
 export const Route = createFileRoute("/$tagName/")({
+  // Reader mode (iOS always / reader-mode institutes): the public course
+  // catalogue is a marketplace surface — block it (Apple 3.1.1).
+  beforeLoad: () => {
+    if (shouldHidePaidPurchaseUI()) {
+      throw redirect({ to: "/dashboard" });
+    }
+  },
   component: RouteComponent,
 });
 
@@ -100,10 +115,12 @@ function RouteComponent() {
   // });
 
   return (
-    <CourseCataloguePage
-      tagName={resolvedTagName}
-      instituteId={domainRouting.instituteId}
-      instituteThemeCode={domainRouting.instituteThemeCode}
-    />
+    <Suspense fallback={<DashboardLoader />}>
+      <CourseCataloguePage
+        tagName={resolvedTagName}
+        instituteId={domainRouting.instituteId}
+        instituteThemeCode={domainRouting.instituteThemeCode}
+      />
+    </Suspense>
   );
 }

@@ -38,6 +38,12 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
     java.util.List<FormWebhookConnector> findByInstituteIdAndIsActiveTrue(String instituteId);
 
     /**
+     * Find all active connectors for a given vendor (across institutes).
+     * Used by the scheduled health monitor to sweep every Meta connector.
+     */
+    java.util.List<FormWebhookConnector> findByVendorAndIsActiveTrue(String vendor);
+
+    /**
      * Find existing connector by vendor + vendorId (unique constraint).
      * Used by the save-connector endpoint to upsert instead of always inserting.
      */

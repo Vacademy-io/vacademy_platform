@@ -20,4 +20,19 @@ public interface InstituteTelephonyConfigRepository
             """)
     Optional<InstituteTelephonyConfig> findEnabledByInstituteId(
             @Param("instituteId") String instituteId);
+
+    /**
+     * Which institute owns a given Airtel VBC account. Airtel stores its account
+     * id in the generic provider_config JSON, so we match on the JSON key.
+     * Used by the CDR/recording promoter to attribute an S3 import to an institute.
+     */
+    @Query(value = """
+            SELECT * FROM institute_telephony_config
+            WHERE provider_type = 'AIRTEL'
+              AND provider_config LIKE '{%'
+              AND (CASE WHEN provider_config LIKE '{%'
+                        THEN provider_config::jsonb ->> 'accountId' END) = :accountId
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<InstituteTelephonyConfig> findAirtelConfigByAccountId(@Param("accountId") String accountId);
 }

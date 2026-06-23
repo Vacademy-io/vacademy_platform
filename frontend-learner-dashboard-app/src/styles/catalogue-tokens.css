@@ -400,6 +400,19 @@
     box-shadow: var(--catalogue-elevation-1);
   }
 
+  /* Floating action button (back-to-top) — ink pill that inverts in dark mode. */
+  .catalogue-fab {
+    background-color: hsl(var(--catalogue-text-primary));
+    color: hsl(var(--catalogue-bg));
+    box-shadow: var(--catalogue-elevation-3);
+    transition: background-color var(--catalogue-transition-fast),
+                transform var(--catalogue-transition-fast);
+  }
+
+  .catalogue-fab:hover {
+    background-color: hsl(var(--catalogue-text-secondary));
+  }
+
   /* Shimmer skeleton — richer loading state than the plain pulse. */
   .catalogue-skeleton-shimmer {
     position: relative;

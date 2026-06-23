@@ -12,10 +12,12 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models.ai_token_usage import RequestType
 from . import ai_billing, llm_json
 from .ai_prompts import presentation as prompts
 from .model_selection import resolve_models
+from .render_service import RenderService
 
 logger = logging.getLogger(__name__)
 
@@ -79,3 +81,32 @@ async def regenerate_slide(
         db, prompt=prompt, preferred_model=preferred_model,
         institute_id=institute_id, user_id=user_id, label="presentation_regenerate",
     )
+
+
+# ---------------------------------------------------------------------------
+# PPTX -> animated-HTML conversion. Thin proxy to the render worker's
+# /pptx-anim-jobs: no DB row here — the worker tracks job state (with its own
+# TTL sweeper) and the admin client polls through get_pptx_anim_status. Heavy
+# work (LibreOffice render) runs on the worker, off this process entirely.
+# ---------------------------------------------------------------------------
+
+def _render_service() -> RenderService:
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise RuntimeError("render server not configured (RENDER_SERVER_URL unset)")
+    return RenderService(settings.render_server_url, settings.render_server_key)
+
+
+async def submit_pptx_anim(
+    *, pptx_url: str, dpi: int = 110, deck_id: Optional[str] = None
+) -> str:
+    """Submit a .pptx (public URL) to the render worker. Returns the job_id."""
+    rs = _render_service()
+    return await asyncio.to_thread(rs.submit_pptx_anim, pptx_url, dpi, deck_id)
+
+
+async def get_pptx_anim_status(job_id: str) -> dict:
+    """Poll the render worker for a pptx-anim job. Returns the worker's status
+    dict: {job_id, status, progress, result:{deck_base, slide_count, ...}, error}."""
+    rs = _render_service()
+    return await asyncio.to_thread(rs.check_pptx_anim_status, job_id)

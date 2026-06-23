@@ -31,6 +31,9 @@ public class StudentListFilter {
     private List<String> destinationPackageSessionIds;
     private List<String> levelIds;
     private List<String> subOrgUserTypes;
+    // Sub-org filter (from request body) — restricts to learners enrolled under these sub-orgs
+    // (matched on ssigm.sub_org_id).
+    private List<String> subOrgIds;
     private Map<String, List<String>> customFieldFilters;
     private LocalDate startDate;
     private LocalDate endDate;

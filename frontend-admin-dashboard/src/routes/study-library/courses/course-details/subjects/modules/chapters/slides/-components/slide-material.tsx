@@ -21,6 +21,7 @@ import { SlidesMenuOption } from './slides-menu-options/slides-menu-option';
 import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { useRouter } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
+import DeckPlayer from './deck-player';
 import { PublishDialog } from './publish-slide-dialog';
 import { UnpublishDialog } from './unpublish-slide-dialog';
 import {
@@ -511,7 +512,14 @@ export const SlideMaterial = ({
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
-                : activeItem?.document_slide?.data || null;
+                : // Fall back to published_data when a non-published slide has empty
+                  // data — e.g. a copied slide: copying a PUBLISHED doc carries over
+                  // its content in published_data while data is null (publish clears
+                  // data), and the copy is created as DRAFT, so it would otherwise
+                  // open blank. (Publish/Save already use this same fallback.)
+                  activeItem?.document_slide?.data ||
+                  activeItem?.document_slide?.published_data ||
+                  null;
 
         // Sanitize any public S3 URLs that may contain expired signatures
         let sanitizedDocData = stripAwsQueryParamsFromUrls(docData || '');
@@ -579,6 +587,31 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
+
+                // Accordion: serializes as <div>…<details><summary/>…</details>…</div>
+                // (the accordion-list wraps its items). Yoopta finds accordions by the
+                // bare <details> nodeName, so lift them out of that wrapper div —
+                // otherwise the buried accordion is dropped on reload and disappears.
+                // Snapshot the wrapper divs (children are ALL <details>, so we don't
+                // touch the outer content div) and unwrap each once.
+                const accordionWrappers = new Set<Element>();
+                doc.body.querySelectorAll('details').forEach((d) => {
+                    const p = d.parentElement;
+                    if (
+                        p &&
+                        p.tagName === 'DIV' &&
+                        !p.hasAttribute('data-yoopta-type') &&
+                        Array.from(p.children).every((c) => c.tagName === 'DETAILS')
+                    ) {
+                        accordionWrappers.add(p);
+                    }
+                });
+                accordionWrappers.forEach((wrapper) => {
+                    while (wrapper.firstChild) {
+                        wrapper.parentNode?.insertBefore(wrapper.firstChild, wrapper);
+                    }
+                    wrapper.remove();
+                });
 
                 // Convert in-text newlines to <br> so Yoopta's deserializer
                 // preserves line breaks in list items, paragraphs, etc.
@@ -1486,6 +1519,22 @@ export const SlideMaterial = ({
                                 }}
                             />
                         </Suspense>
+                    </div>
+                );
+                return;
+            }
+
+            if (documentType === 'PPT_ANIM') {
+                // .pptx converted to build-step snapshots; data/published_data holds
+                // the deck base URL (manifest.json lives at <base>/manifest.json).
+                const deckBase = isLearnerView
+                    ? activeItem.document_slide?.published_data || ''
+                    : activeItem.status === 'PUBLISHED'
+                      ? activeItem.document_slide?.published_data || ''
+                      : activeItem.document_slide?.data || '';
+                setContent(
+                    <div className="size-full">
+                        <DeckPlayer baseUrl={deckBase} />
                     </div>
                 );
                 return;
@@ -2751,13 +2800,19 @@ export const SlideMaterial = ({
                                         <MyButton
                                             layoutVariant="icon"
                                             onClick={async () => {
-                                                await SaveDraft(activeItem);
                                                 if (activeItem.status === 'PUBLISHED') {
+                                                    // Don't re-save a published slide on download —
+                                                    // SaveDraft would flip it to UNSYNC (un-publish it).
+                                                    // The published content is already persisted; just
+                                                    // export it as-is.
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.published_data ||
                                                             null
                                                     );
                                                 } else {
+                                                    // Draft/unsync: persist the latest edits first so the
+                                                    // exported PDF reflects them.
+                                                    await SaveDraft(activeItem);
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.data || null
                                                     );
@@ -2981,7 +3036,10 @@ export const SlideMaterial = ({
 
             <div
                 className={`mx-auto mt-14 ${
-                    activeItem?.document_slide?.type === 'PDF' ? 'h-[calc(100vh-200px)]' : 'h-full'
+                    activeItem?.document_slide?.type === 'PDF' ||
+                    activeItem?.document_slide?.type === 'PPT_ANIM'
+                        ? 'h-[calc(100vh-200px)]'
+                        : 'h-full'
                 } relative z-20 w-full ${
                     activeItem?.document_slide?.type === 'DOC'
                         ? 'overflow-visible'

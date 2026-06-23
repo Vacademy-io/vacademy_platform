@@ -63,6 +63,7 @@ public class BrandKitService {
                 .intro(dto.getIntro() == null ? new HashMap<>() : dto.getIntro())
                 .outro(dto.getOutro() == null ? new HashMap<>() : dto.getOutro())
                 .watermark(dto.getWatermark() == null ? new HashMap<>() : dto.getWatermark())
+                .systemPrompt(dto.getSystemPrompt())
                 .createdBy(userId)
                 .build();
 
@@ -84,6 +85,8 @@ public class BrandKitService {
         if (dto.getIntro() != null) kit.setIntro(dto.getIntro());
         if (dto.getOutro() != null) kit.setOutro(dto.getOutro());
         if (dto.getWatermark() != null) kit.setWatermark(dto.getWatermark());
+        // Send "" to clear, omit to leave unchanged (matches the font/layout fields).
+        if (dto.getSystemPrompt() != null) kit.setSystemPrompt(dto.getSystemPrompt());
 
         // Honor is_default toggle when explicitly set (null = leave unchanged).
         // Promotion clears the previous default first to respect the partial unique
@@ -145,6 +148,7 @@ public class BrandKitService {
                 .intro(k.getIntro())
                 .outro(k.getOutro())
                 .watermark(k.getWatermark())
+                .systemPrompt(k.getSystemPrompt())
                 .createdAt(k.getCreatedAt() == null ? null : k.getCreatedAt().getTime())
                 .updatedAt(k.getUpdatedAt() == null ? null : k.getUpdatedAt().getTime())
                 .build();

@@ -8,7 +8,8 @@ import { JsonRenderer } from "./JsonRenderer";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { classNames } from "@react-pdf-viewer/core";
+import { Helmet } from "react-helmet";
+import { CaretUp } from "@phosphor-icons/react";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -24,12 +25,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   instituteThemeCode,
   pageSlug,
 }) => {
-  console.log("[CourseCataloguePage] Component mounted with props:", {
-    tagName,
-    instituteId,
-    instituteThemeCode
-  });
-
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const isAndroid = Capacitor.getPlatform() === 'android';
@@ -38,6 +33,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
+  // Non-mandatory lead collection is "armed" rather than shown immediately, then
+  // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
+  const [leadArmed, setLeadArmed] = useState(false);
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
 
@@ -87,9 +85,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
           // Mark intro as completed since user has already seen it
           setIntroCompleted(true);
         } else if (data.globalSettings.leadCollection.enabled && !hasSubmittedLeadCollection) {
-          // Only show lead collection if no intro page or intro already seen, and form hasn't been submitted
-          console.log("Setting showLeadCollection to true (no intro page or intro already seen)" + data.globalSettings.leadCollection.enabled);
-          setShowLeadCollection(true);
+          // Mandatory gates immediately; non-mandatory is armed for a deferred
+          // scroll/dwell trigger so we don't interrupt at zero intent.
+          if (data.globalSettings.leadCollection.mandatory) {
+            setShowLeadCollection(true);
+          } else {
+            setLeadArmed(true);
+          }
         }
       } catch (err) {
         console.error("[CourseCataloguePage] Error fetching catalogue data:", err);
@@ -259,7 +261,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   };
 
   const handleLeadCollectionSubmit = () => {
-    console.log("[CourseCataloguePage] Lead collection form submitted");
+    // Persist so the modal doesn't re-arm on subsequent visits/reloads.
+    try {
+      localStorage.setItem(
+        `leadCollectionSubmitted_${instituteId}_${tagName}`,
+        "true",
+      );
+    } catch {
+      // ignore storage errors (private mode etc.)
+    }
+    setLeadArmed(false);
     setShowLeadCollection(false);
   };
 
@@ -288,9 +299,34 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     const hasSubmittedLeadCollection = localStorage.getItem(leadCollectionSubmittedKey) === 'true';
 
     if (catalogueData?.globalSettings.leadCollection.enabled && !showLeadCollection && !hasSubmittedLeadCollection) {
-      setShowLeadCollection(true);
+      if (catalogueData.globalSettings.leadCollection.mandatory) {
+        setShowLeadCollection(true);
+      } else {
+        setLeadArmed(true);
+      }
     }
   };
+
+  // Deferred trigger for non-mandatory lead collection: surface the modal once
+  // the visitor shows intent (scrolled ~600px) or after a dwell fallback.
+  useEffect(() => {
+    if (!leadArmed || showLeadCollection || isPreviewMode) return;
+    // One-shot: disarm the instant we show it so dismiss/submit can't re-arm
+    // the trigger (the effect re-runs when showLeadCollection flips back).
+    const fire = () => {
+      setLeadArmed(false);
+      setShowLeadCollection(true);
+    };
+    const onScroll = () => {
+      if (window.scrollY > 600) fire();
+    };
+    const timer = setTimeout(fire, 15000);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [leadArmed, showLeadCollection, isPreviewMode]);
 
   const handleIntroClose = () => {
     setShowIntroPage(false);
@@ -327,15 +363,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     );
   }
 
-  // Debug logging
-  console.log("CourseCataloguePage render state:", {
-    isLoading,
-    error,
-    showIntroPage,
-    introCompleted,
-    showLeadCollection,
-    catalogueData: !!catalogueData
-  });
+  // Keep the tenant's branded tab title (set by TabBranding/use-domain-routing);
+  // only fall back to a sensible default if none was applied. og:* uses the
+  // richer institute name for link previews without overriding the tab title.
+  const brandedTitle =
+    (typeof document !== "undefined" && document.title) || "";
+  const seoTitle = brandedTitle || domainRouting.instituteName || "Course Catalogue";
+  const ogTitle = domainRouting.instituteName || "Course Catalogue";
+  const seoDescription = `Explore the catalogue and enroll online${
+    domainRouting.instituteName ? ` at ${domainRouting.instituteName}` : ""
+  }.`;
 
   return (
     <div
@@ -345,6 +382,13 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-radius={themeRadius}
       data-heading-scale={catalogueData?.globalSettings?.theme?.headingScale || 'default'}
     >
+      <Helmet>
+        <title>{seoTitle}</title>
+        <meta name="description" content={seoDescription} />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={seoDescription} />
+        <meta property="og:type" content="website" />
+      </Helmet>
       {/* Intro Page - Show first if enabled and not completed (hidden in preview mode) */}
       {showIntroPage && !isPreviewMode && catalogueData?.introPage && (
         <IntroPageComponent
@@ -454,13 +498,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             {/* Get Started Button */}
             {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
               onClick={() => {
-                console.log("[CourseCataloguePage] Mobile Get Started button clicked");
                 setShowLeadCollection(true);
               }}
-              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
-              style={{
-                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-              }}
+              className="catalogue-btn catalogue-btn-primary w-full"
             >
               Get Started
             </button>}
@@ -477,13 +517,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   e.currentTarget.style.opacity = '1';
                 }}
               >
-                <span className="text-catalogue-text-secondary">Already have an account?</span>
-                <span
-                  className="underline"
-                  style={{
-                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                  }}
-                >
+                <span className="text-catalogue-text-secondary">Already have an account?</span>{" "}
+                <span className="underline text-primary-500">
                   Login
                 </span>
               </span>
@@ -516,12 +551,10 @@ const BackToTopButton = () => {
   return (
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      className="fixed bottom-6 right-6 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-gray-800/80 text-white shadow-lg backdrop-blur transition-all hover:bg-gray-800 active:scale-95 md:bottom-8 md:right-8"
+      className="catalogue-fab fixed bottom-6 right-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:right-8"
       aria-label="Back to top"
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m18 15-6-6-6 6" />
-      </svg>
+      <CaretUp size={20} weight="bold" aria-hidden="true" />
     </button>
   );
 };

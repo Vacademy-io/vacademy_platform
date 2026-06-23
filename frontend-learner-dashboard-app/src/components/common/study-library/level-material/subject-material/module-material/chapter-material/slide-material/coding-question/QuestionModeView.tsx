@@ -689,6 +689,9 @@ export function QuestionModeView({ question, slideId }: Props) {
               lineNumbers: "on",
               padding: { top: 12 },
               readOnly: sessionExpired,
+              // Disabled: sticky-scroll's async folding update races rapid edits
+              // and throws "Illegal value for lineNumber" (unhandled rejection).
+              stickyScroll: { enabled: false },
             }}
           />
         </div>

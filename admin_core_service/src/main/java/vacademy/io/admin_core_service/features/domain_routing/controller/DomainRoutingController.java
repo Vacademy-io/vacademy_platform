@@ -31,6 +31,17 @@ public class DomainRoutingController {
         Optional<DomainRoutingResolveResponse> response = domainRoutingService.resolve(domain, subdomain);
         return response.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+    // Resolve branding/theme by a fixed institute id (not by host). Used by
+    // native flavors such as the Vacademy Admin app, which are anchored to a
+    // single institute and have no meaningful WebView hostname.
+    @GetMapping("/resolve-by-institute")
+    @ClientCacheable(maxAgeSeconds = 7200, scope = CacheScope.PRIVATE)
+    public ResponseEntity<DomainRoutingResolveResponse> resolveByInstitute(
+            @RequestParam("instituteId") String instituteId) {
+        Optional<DomainRoutingResolveResponse> response = domainRoutingService.resolveByInstituteId(instituteId);
+        return response.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }
 
 

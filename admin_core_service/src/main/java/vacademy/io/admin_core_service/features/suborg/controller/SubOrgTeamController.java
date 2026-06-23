@@ -42,6 +42,17 @@ public class SubOrgTeamController {
         return ResponseEntity.ok(subOrgTeamService.listAccessibleSubOrgs(user, instituteId));
     }
 
+    /**
+     * For each user linked to a sub-org the caller can see, the list of those sub-orgs.
+     * Powers the "Sub-Orgs" column + filter on the institute Teams list.
+     */
+    @GetMapping("/user-sub-org-links")
+    public ResponseEntity<List<Map<String, Object>>> userSubOrgLinks(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        return ResponseEntity.ok(subOrgTeamService.listUserSubOrgLinks(user, instituteId));
+    }
+
     /** Grants (PS IDs + invites) the caller can extend from the Add Member form. */
     @GetMapping("/accessible-grants")
     public ResponseEntity<Map<String, Object>> listAccessibleGrants(

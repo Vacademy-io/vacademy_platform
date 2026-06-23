@@ -18,6 +18,7 @@ export const MultipleCorrectQuestionPaperTemplateMainView = ({
     className,
     showQuestionNumber = true,
     examType,
+    enableOptionModalCompose = false,
 }: QuestionPaperTemplateFormProps) => {
     const { control, getValues, setValue } = form;
     const answersType = getValues('answersType') || 'Answer:';
@@ -151,6 +152,7 @@ export const MultipleCorrectQuestionPaperTemplateMainView = ({
                                                         onChange={field.onChange}
                                                         minHeight={40}
                                                         hideToolbar
+                                                        enableModalCompose={enableOptionModalCompose}
                                                     />
                                                 </FormControl>
                                                 <FormMessage />

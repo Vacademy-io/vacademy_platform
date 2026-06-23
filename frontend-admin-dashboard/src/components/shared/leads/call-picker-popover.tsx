@@ -56,6 +56,14 @@ export function CallPickerPopover({
 
     const numbers: NumberChoice[] = optionsQuery.data?.numbers ?? [];
     const recommendedId = optionsQuery.data?.recommendedNumberId ?? null;
+    // No-pool providers (Airtel) dial from the counsellor's own extension —
+    // there is no caller-ID number to pick, so the picker just confirms the
+    // dial. Defaults to true until data arrives (legacy Exotel shape).
+    const usesNumberPool = optionsQuery.data?.usesNumberPool ?? true;
+    const providerType = optionsQuery.data?.providerType ?? '';
+    const providerLabel = providerType
+        ? providerType.charAt(0) + providerType.slice(1).toLowerCase()
+        : '';
 
     // Pre-select the strategy's recommendation the first time data arrives
     // for this open session. Counsellor's default action is then to click
@@ -73,8 +81,10 @@ export function CallPickerPopover({
     }, [open]);
 
     const handleConfirm = () => {
-        if (!selectedId) return;
-        onConfirm(selectedId);
+        // Pooled providers require a picked number; no-pool providers dial from
+        // the counsellor's extension, so an empty preferredNumberId is correct.
+        if (usesNumberPool && !selectedId) return;
+        onConfirm(usesNumberPool ? selectedId ?? '' : '');
         setOpen(false);
     };
 
@@ -123,13 +133,30 @@ export function CallPickerPopover({
                             Could not load calling numbers. Try again.
                         </p>
                     )}
-                    {!optionsQuery.isLoading && !optionsQuery.isError && numbers.length === 0 && (
-                        <p className="px-3 py-2 text-xs text-neutral-500">
-                            No calling numbers configured. Ask an admin to set one up under
-                            Settings → Calling.
-                        </p>
+                    {!optionsQuery.isLoading && !optionsQuery.isError && !usesNumberPool && (
+                        <div className="px-3 py-2.5">
+                            <p className="text-sm font-medium text-neutral-900">
+                                Calling from your extension
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-500">
+                                {providerLabel
+                                    ? `This call dials through ${providerLabel} from the extension mapped to you.`
+                                    : 'This call dials from the extension mapped to you.'}{' '}
+                                The lead sees your configured caller ID.
+                            </p>
+                        </div>
                     )}
-                    {numbers.map((n) => {
+                    {usesNumberPool &&
+                        !optionsQuery.isLoading &&
+                        !optionsQuery.isError &&
+                        numbers.length === 0 && (
+                            <p className="px-3 py-2 text-xs text-neutral-500">
+                                No calling numbers configured. Ask an admin to set one up under
+                                Settings → Calling.
+                            </p>
+                        )}
+                    {usesNumberPool &&
+                        numbers.map((n) => {
                         const isRecommended = n.id === recommendedId;
                         const isSelected = n.id === selectedId;
                         return (
@@ -185,7 +212,11 @@ export function CallPickerPopover({
                     <Button
                         size="sm"
                         onClick={handleConfirm}
-                        disabled={!selectedId || numbers.length === 0}
+                        disabled={
+                            optionsQuery.isLoading ||
+                            optionsQuery.isError ||
+                            (usesNumberPool && (!selectedId || numbers.length === 0))
+                        }
                         className="h-8"
                     >
                         <Phone weight="fill" className="mr-1 size-3.5" />

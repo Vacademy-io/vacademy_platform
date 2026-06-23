@@ -10,7 +10,6 @@ import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
 import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
-import ZoomNativeLauncher from "./-components/ZoomNativeLauncher";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
@@ -287,25 +286,10 @@ function EmbedComponent() {
       );
     }
 
-    // Handle integration-created Zoom meetings — embedded inside the portal on
-    // desktop web via the Meeting SDK (loaded from Zoom's CDN, NOT the npm
-    // package — see ZoomMeetingSdkPlayer for why). On Capacitor we deep-link
-    // into the Zoom app with a web-client fallback because the Web SDK doesn't
-    // run inside mobile WebViews. A pasted Zoom link (no providerMeetingId) or
-    // a recording falls through to the iframe player below.
-    if (
-      (linkType === LinkType.ZOOM || linkType === "zoom") &&
-      sessionDetails?.providerMeetingId &&
-      sessionId
-    ) {
-      if (!Capacitor.isNativePlatform()) {
-        return <ZoomMeetingSdkPlayer
-          scheduleId={sessionId}
-          leaveUrl={`${window.location.origin}/study-library/live-class`}
-        />;
-      }
-      return <ZoomNativeLauncher scheduleId={sessionId} />;
-    }
+    // NOTE: integration-created Zoom meetings (link_type ZOOM + providerMeetingId)
+    // are handled earlier by the full-screen `isZoomFullscreen` branch (which renders
+    // ZoomMeetingSdkPlayer on both web and native), so they never reach here. A pasted
+    // Zoom link (no providerMeetingId) or a recording falls through to the players below.
 
     if (!sessionDetails?.defaultMeetLink) return null;
 
@@ -556,11 +540,12 @@ function EmbedComponent() {
   // frontend-admin-dashboard/.../live-session/host/$scheduleId.tsx.
   const learnerLinkType =
     sessionDetails?.linkType || (videoUrl ? LinkType.YOUTUBE : undefined);
+  // Full-screen on BOTH web and native (Capacitor WebView) — the Client View
+  // embeds in the app now rather than launching an external browser.
   const isZoomFullscreen =
     (learnerLinkType === LinkType.ZOOM || learnerLinkType === "zoom") &&
     sessionDetails?.providerMeetingId &&
-    sessionId &&
-    !Capacitor.isNativePlatform();
+    sessionId;
 
   if (isZoomFullscreen) {
     return (
@@ -586,6 +571,7 @@ function EmbedComponent() {
           <ZoomMeetingSdkPlayer
           scheduleId={sessionId}
           leaveUrl={`${window.location.origin}/study-library/live-class`}
+          nativeFallbackUrl={sessionDetails.defaultMeetLink}
         />
         </div>
       </div>

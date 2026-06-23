@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.telephony.core.TelephonyProviderR
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.CallWebhookHandler;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundEnvelope;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderSecrets;
 
@@ -67,21 +68,34 @@ public class TelephonyWebhookController {
         TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
         if (resolved == null) return ResponseEntity.status(HttpStatus.GONE).build();
 
+        // The authoritative provider is the institute's STORED config, not the
+        // attacker-controllable ?provider= param. Reject a mismatch and resolve
+        // the handler from config (also makes provider-type case-insensitive).
+        String configProvider = resolved.getConfig().getProviderType();
+        if (configProvider != null && providerType != null
+                && !configProvider.equalsIgnoreCase(providerType.trim())) {
+            log.warn("telephony webhook: ?provider={} != configured {} for corr={}",
+                    providerType, configProvider, correlationId);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
         CallWebhookHandler handler;
         try {
-            handler = registry.handler(providerType);
+            handler = registry.handler(configProvider);
         } catch (Exception e) {
-            log.warn("telephony webhook: unknown provider {}", providerType);
+            log.warn("telephony webhook: no handler for configured provider {}", configProvider);
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
 
-        if (!handler.verify(req, body,
-                ProviderSecrets.builder().webhookToken(resolved.getWebhookToken()).build())) {
+        InboundEnvelope env = InboundEnvelope.from(req, body);
+        if (!handler.verify(env, ProviderSecrets.builder()
+                .webhookToken(resolved.getWebhookToken())
+                .secrets(resolved.getCredentials().getSecrets())
+                .build())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         try {
-            NormalizedCallEvent ev = handler.parse(req, body);
+            NormalizedCallEvent ev = handler.parse(env);
             log.info("telephony webhook: corr={} status={} terminal={} hasRecording={} provider={}",
                     row.getId(),
                     ev.getStatus(),

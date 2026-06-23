@@ -6,10 +6,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyProviderNumberRepository;
-import vacademy.io.admin_core_service.features.telephony.providers.exotel.ExotelHttpClient;
+import vacademy.io.admin_core_service.features.telephony.spi.InboundFlowBinder;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -42,7 +41,7 @@ public class InboundFlowAttacher {
 
     @Autowired private TelephonyConfigCache configCache;
     @Autowired private TelephonyProviderNumberRepository numberRepo;
-    @Autowired private ExotelHttpClient exotelHttp;
+    @Autowired private TelephonyProviderRegistry registry;
     @Autowired private AttachTxOps tx;
 
     /**
@@ -75,15 +74,18 @@ public class InboundFlowAttacher {
         }
 
         String providerType = row.getProviderType();
-        if (!ProviderType.EXOTEL.equals(providerType)) {
+        InboundFlowBinder binder = registry.flowBinder(providerType).orElse(null);
+        if (binder == null) {
+            // No binder registered = this provider routes inbound natively (no
+            // per-number flow attach). Not an error — surface it as PENDING so
+            // the UI is honest about there being nothing to attach.
             tx.markPending(row.getId(),
-                    "Auto-attach not implemented for " + providerType);
+                    "Auto-attach not supported for " + providerType);
             return;
         }
 
         try {
-            exotelHttp.attachExoPhoneToFlow(
-                    row.getProviderResourceId(), flowSid, resolved.get().getCredentials());
+            binder.attach(row.getProviderResourceId(), flowSid, resolved.get().getCredentials());
             tx.markAttached(row.getId());
             log.info("inbound flow attached: institute={} phone={} flow={}",
                     row.getInstituteId(), row.getPhoneNumber(), flowSid);

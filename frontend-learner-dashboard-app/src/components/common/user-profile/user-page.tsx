@@ -23,6 +23,7 @@ import { formatDate } from "@/lib/format-date";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { FileText } from "@phosphor-icons/react";
 import { playIllustrations } from "@/assets/play-illustrations";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -469,13 +470,17 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Session Expiry */}
-              <div className="bg-card rounded-xl border shadow p-6">
-                <h3 className="text-sm font-semibold text-foreground mb-4">
-                  Membership Status
-                </h3>
-                {studentData && SessionExpiry({ studentData })}
-              </div>
+              {/* Session Expiry / Membership Status — hidden in reader mode
+                  (iOS / reader-mode institutes): "Access Days" + expiry reads
+                  as a paid subscription to App Review (Apple 3.1.1). */}
+              {!shouldHidePaidPurchaseUI() && (
+                <div className="bg-card rounded-xl border shadow p-6">
+                  <h3 className="text-sm font-semibold text-foreground mb-4">
+                    Membership Status
+                  </h3>
+                  {studentData && SessionExpiry({ studentData })}
+                </div>
+              )}
               {studentData && <ProgressStats userId={studentData.user_id} />}
             </div>
 

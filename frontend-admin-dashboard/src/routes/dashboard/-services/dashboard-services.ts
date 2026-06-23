@@ -155,7 +155,8 @@ export const fetchInstituteDashboardUsers = async (
     selectedFilter: RoleTypeSelectedFilter,
     pageNumber: number = 0,
     pageSize: number = 10,
-    name: string = ''
+    name: string = '',
+    userIds?: string[]
 ) => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
@@ -169,6 +170,8 @@ export const fetchInstituteDashboardUsers = async (
             roles: selectedFilter.roles.map((role) => role.name),
             status: selectedFilter.status.map((status) => status.name),
             name,
+            // Only sent when filtering by sub-org; auth-service ANDs it with roles/status.
+            ...(userIds !== undefined ? { user_ids: userIds } : {}),
         },
     });
     return response.data;

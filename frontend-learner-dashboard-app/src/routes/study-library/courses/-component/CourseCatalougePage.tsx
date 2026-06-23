@@ -24,6 +24,7 @@ import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
 import { useDripConditionStore } from "@/stores/study-library/drip-conditions-store";
 import { parseDripConditions } from "@/services/getIsDrippingEnable";
 import { getChatbotSettings } from "@/services/chatbot-settings.ts";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 /** Merge unique instructors from course list into existing list (by id). Ensures instructors attached to courses appear in the filter. */
 function mergeInstructorsFromCourses(
@@ -67,14 +68,21 @@ const CourseCatalougePage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState("PROGRESS");
   const [visibleTabs, setVisibleTabs] = useState<
     { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]
-  >([
-    { value: "PROGRESS", label: "In Progress" },
-    { value: "COMPLETED", label: "Completed" },
-    {
-      value: "ALL",
-      label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
-    },
-  ]);
+  >(() => {
+    const base: { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[] = [
+      { value: "PROGRESS", label: "In Progress" },
+      { value: "COMPLETED", label: "Completed" },
+      {
+        value: "ALL",
+        label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
+      },
+    ];
+    // Reader mode: drop the "All Courses" (browse/marketplace) tab — only the
+    // learner's own In-Progress / Completed courses remain (Apple 3.1.1).
+    return shouldHidePaidPurchaseUI()
+      ? base.filter((t) => t.value !== "ALL")
+      : base;
+  });
   const [allCourses, setAllCourses] = useState<CoursePackageResponse>({
     content: [],
     empty: false,
@@ -441,16 +449,22 @@ const CourseCatalougePage: React.FC = () => {
 
     getStudentDisplaySettings(false).then((settings) => {
       const tabs = settings?.allCourses?.tabs || [];
-      const ordered = tabs
+      const orderedRaw = tabs
         .filter((t) => t.visible !== false)
         .sort((a, b) => (a.order || 0) - (b.order || 0))
         .map((t) => ({
           value: mapSettingIdToValue(t.id),
           label: t.label,
         }));
+      // Reader mode: never surface the "All Courses" (browse) tab, regardless
+      // of admin display settings (Apple 3.1.1).
+      const ordered = shouldHidePaidPurchaseUI()
+        ? orderedRaw.filter((t) => t.value !== "ALL")
+        : orderedRaw;
       if (ordered.length) setVisibleTabs(ordered);
 
-      // Determine default tab from settings; ensure it's visible
+      // Determine default tab from settings; ensure it's visible (and never ALL
+      // in reader mode, which is excluded from `ordered` above).
       const defaultVal = mapSettingIdToValue(
         settings?.allCourses?.defaultTab || "InProgress"
       );

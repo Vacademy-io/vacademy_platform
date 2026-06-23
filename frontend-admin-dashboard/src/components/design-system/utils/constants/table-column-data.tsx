@@ -416,6 +416,15 @@ export const myColumns: ColumnDef<StudentTable>[] = [
         enableHiding: true,
     },
     {
+        accessorKey: 'sub_org_name',
+        size: 180,
+        minSize: 120,
+        maxSize: 280,
+        header: 'Sub-Org',
+        cell: ({ row }) => <CreateClickableCell row={row} columnId="sub_org_name" />,
+        enableHiding: true,
+    },
+    {
         accessorKey: 'linked_institute_name',
         size: 200,
         minSize: 150,

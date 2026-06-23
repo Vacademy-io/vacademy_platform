@@ -310,17 +310,20 @@ export function UsernameLogin({
                   <FormControl>
                     <div className="flex flex-col gap-1">
                       <Label className="text-subtitle font-regular">
-                        Username
+                        Username or email
                         <span className="text-subtitle text-danger-600">*</span>
                       </Label>
 
                       <div className="relative">
                         <Input
                           type="text"
-                          placeholder="Enter your username"
+                          placeholder="Enter your username or email"
                           value={value}
                           onChange={onChange}
                           required
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           {...field}
                           className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
                                                         focus:border-gray-300 focus:ring-0 focus-visible:ring-0

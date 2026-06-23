@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.ota_update.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -23,12 +24,32 @@ public class OtaUpdateService {
 
     private final OtaBundleVersionRepository repository;
 
+    // Apps that require STRICT explicit targeting: an untargeted bundle (blank
+    // target_app_ids) is NOT served to them. This protects apps that share the
+    // OTA backend with the learner app — whose bundles are intentionally
+    // untargeted ("all apps") — from receiving another app's JS. Without this,
+    // a learner bundle (higher global version) would be delivered to e.g. the
+    // Vacademy Admin shell. Comma-separated, ops-overridable.
+    @Value("${ota.strict-target-app-ids:io.vacademy.admin.app}")
+    private String strictTargetAppIdsRaw;
+
+    private Set<String> strictTargetAppIds() {
+        if (strictTargetAppIdsRaw == null || strictTargetAppIdsRaw.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(strictTargetAppIdsRaw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+    }
+
     public OtaCheckResponse checkForUpdate(String platform, String currentBundleVersion,
                                            String nativeVersion, String appId) {
         List<OtaBundleVersion> activeVersions = repository.findActiveVersionsForPlatform(platform.toUpperCase());
+        Set<String> strictAppIds = strictTargetAppIds();
 
         for (OtaBundleVersion version : activeVersions) {
-            // Check institute targeting
+            // App targeting.
             if (version.getTargetAppIds() != null && !version.getTargetAppIds().isBlank()) {
                 Set<String> targetIds = Arrays.stream(version.getTargetAppIds().split(","))
                         .map(String::trim)
@@ -36,6 +57,10 @@ public class OtaUpdateService {
                 if (appId == null || !targetIds.contains(appId)) {
                     continue;
                 }
+            } else if (appId != null && strictAppIds.contains(appId)) {
+                // Untargeted bundle ("all apps") — skip for strict apps so a
+                // foreign app's bundle can never land in their WebView.
+                continue;
             }
 
             // Check minimum native version compatibility
@@ -55,6 +80,7 @@ public class OtaUpdateService {
                         .bundleSizeBytes(version.getBundleSizeBytes())
                         .forceUpdate(version.getForceUpdate())
                         .releaseNotes(version.getReleaseNotes())
+                        .targetAppIds(version.getTargetAppIds())
                         .build();
             }
         }

@@ -1438,6 +1438,172 @@ async def get_transcribe_job_status(job_id: str, x_render_key: str = Header(""))
 # Startup
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# PPTX -> animated-HTML jobs (LibreOffice build-step snapshots + manifest)
+# ---------------------------------------------------------------------------
+
+pptx_anim_jobs: Dict[str, dict] = {}
+
+PPTX_ANIM_JOB_TTL_SECONDS = int(os.environ.get("PPTX_ANIM_JOB_TTL_SECONDS", str(24 * 3600)))
+
+
+class PptxAnimJobRequest(BaseModel):
+    pptx_url: str
+    deck_id: Optional[str] = None
+    dpi: int = 110
+    job_id: Optional[str] = None
+    callback_url: Optional[str] = None
+
+
+class PptxAnimJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str
+
+
+class PptxAnimJobStatus(BaseModel):
+    job_id: str
+    pptx_url: str
+    status: str  # queued, running, completed, failed
+    progress: Optional[float] = None
+    result: Optional[dict] = None  # {deck_base, manifest_url, slide_count, step_count, manifest}
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+async def _run_pptx_anim_job(job_id: str, request: PptxAnimJobRequest):
+    pptx_anim_jobs[job_id]["status"] = "running"
+    pptx_anim_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def progress_cb(pct: float):
+        pptx_anim_jobs[job_id]["progress"] = pct
+        pptx_anim_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        from pptx_anim import convert_deck_to_s3
+
+        deck_id = request.deck_id or job_id
+        # LibreOffice render is blocking/CPU-bound — keep it off the event loop.
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            convert_deck_to_s3,
+            request.pptx_url,
+            deck_id,
+            request.dpi,
+            progress_cb,
+        )
+
+        pptx_anim_jobs[job_id]["status"] = "completed"
+        pptx_anim_jobs[job_id]["progress"] = 100
+        pptx_anim_jobs[job_id]["result"] = result
+        pptx_anim_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info(
+            f"PPTX-anim job {job_id} completed: {result['slide_count']} slides, "
+            f"{result['step_count']} steps"
+        )
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "completed",
+                "result": result,
+            })
+
+    except Exception as e:
+        error_msg = str(e)
+        pptx_anim_jobs[job_id]["status"] = "failed"
+        pptx_anim_jobs[job_id]["error"] = error_msg
+        pptx_anim_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.exception(f"PPTX-anim job {job_id} failed")
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "failed",
+                "error": error_msg,
+            })
+
+
+@app.post("/pptx-anim-jobs", response_model=PptxAnimJobResponse)
+async def submit_pptx_anim_job(
+    request: PptxAnimJobRequest,
+    x_render_key: str = Header(""),
+):
+    _verify_key(x_render_key)
+
+    active = sum(
+        1
+        for d in (jobs, index_jobs, pdf_ocr_jobs, pptx_anim_jobs)
+        for j in d.values()
+        if j["status"] in ("queued", "running")
+    )
+    if active >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Server busy ({active}/{MAX_CONCURRENT_JOBS} jobs running)",
+        )
+
+    job_id = request.job_id or str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    pptx_anim_jobs[job_id] = {
+        "job_id": job_id,
+        "pptx_url": request.pptx_url,
+        "status": "queued",
+        "progress": 0,
+        "result": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    asyncio.create_task(_run_pptx_anim_job(job_id, request))
+
+    return PptxAnimJobResponse(job_id=job_id, status="queued", message="PPTX anim job submitted")
+
+
+@app.get("/pptx-anim-jobs/{job_id}", response_model=PptxAnimJobStatus)
+async def get_pptx_anim_job_status(job_id: str, x_render_key: str = Header("")):
+    _verify_key(x_render_key)
+    if job_id not in pptx_anim_jobs:
+        raise HTTPException(status_code=404, detail="PPTX anim job not found")
+    return PptxAnimJobStatus(**pptx_anim_jobs[job_id])
+
+
+async def _pptx_anim_jobs_sweeper():
+    # result blobs are tiny (lists of filenames) but the dict still grows
+    # unbounded across uptime; drop terminal entries past their TTL.
+    while True:
+        try:
+            await asyncio.sleep(600)  # every 10 minutes
+            now = datetime.now(timezone.utc)
+            stale = []
+            for jid, j in pptx_anim_jobs.items():
+                if j["status"] not in ("completed", "failed"):
+                    continue
+                try:
+                    updated = datetime.fromisoformat(j["updated_at"])
+                except Exception:
+                    continue
+                if (now - updated).total_seconds() > PPTX_ANIM_JOB_TTL_SECONDS:
+                    stale.append(jid)
+            for jid in stale:
+                pptx_anim_jobs.pop(jid, None)
+            if stale:
+                logger.info(f"Swept {len(stale)} stale PPTX-anim jobs")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("PPTX-anim sweeper error")
+
+
+@app.on_event("startup")
+async def _start_pptx_anim_sweeper():
+    asyncio.create_task(_pptx_anim_jobs_sweeper())
+
+
 @app.on_event("startup")
 async def startup():
     logger.info(f"Render Worker started (max {MAX_CONCURRENT_JOBS} concurrent jobs)")

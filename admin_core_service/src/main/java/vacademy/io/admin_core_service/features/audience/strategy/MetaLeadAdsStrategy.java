@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
+import vacademy.io.admin_core_service.features.audience.dto.WebhookSubscriptionResult;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -50,9 +51,21 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     private static final String META_TOKEN_URL = "https://graph.facebook.com/v21.0/oauth/access_token";
     private static final String HMAC_SHA256 = "HmacSHA256";
 
-    // Permissions needed for Lead Ads
+    // Permissions needed for Lead Ads. business_management + pages_manage_ads are
+    // requested so the connecting account can be recognised as a full Page admin
+    // (and so the app can register as a leadgen CRM); the actual blocker if missing
+    // is the MANAGE page task, surfaced separately at page-selection time.
     private static final String OAUTH_SCOPE =
-            "pages_show_list,pages_read_engagement,leads_retrieval,pages_manage_metadata";
+            "pages_show_list,pages_read_engagement,leads_retrieval,pages_manage_metadata,pages_manage_ads,business_management";
+
+    /** Page task Meta requires to subscribe a Page to lead webhooks (Full control). */
+    private static final String MANAGE_TASK = "MANAGE";
+
+    /** Shown when a Page can be selected but its connected account can't receive leads. */
+    private static final String NEEDS_FULL_CONTROL_MSG =
+            "This account has Leads access to this Page but not Full control, which Facebook "
+            + "requires to auto-sync leads. Ask a Page admin to grant your account Full control "
+            + "(Business Settings → Pages → People → Full control), then reconnect.";
 
     @Value("${meta.app.id:}")
     private String appId;
@@ -281,8 +294,13 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
 
     @Override
     public List<Map<String, String>> listConnectableAccounts(String accessToken) {
+        // tasks tells us whether the connecting user is a full Page admin. The MANAGE
+        // task is required to POST /{page}/subscribed_apps; an account with only
+        // MANAGE_LEADS/ADVERTISE can read leads but the subscribe fails with #200,
+        // so the connector would silently never receive leads. We surface this to
+        // the UI (has_manage / tasks) so it can warn before the admin connects.
         String url = GRAPH_API_BASE + "/me/accounts?access_token=" + accessToken
-                + "&fields=id,name,access_token";
+                + "&fields=id,name,access_token,tasks&limit=200";
 
         JsonNode response = webClientBuilder.build()
                 .get().uri(url)
@@ -298,6 +316,12 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
             p.put("id", page.path("id").asText());
             p.put("name", page.path("name").asText());
             p.put("access_token", page.path("access_token").asText());
+
+            List<String> tasks = new ArrayList<>();
+            for (JsonNode t : page.path("tasks")) tasks.add(t.asText());
+            p.put("tasks", String.join(",", tasks));
+            p.put("has_manage", String.valueOf(tasks.contains(MANAGE_TASK)));
+
             pages.add(p);
         }
         return pages;
@@ -386,24 +410,113 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     }
 
     @Override
-    public void subscribePageToWebhooks(FormWebhookConnector connector, String decryptedToken) {
-        // Subscribe the page to leadgen webhook events
+    public WebhookSubscriptionResult subscribePageToWebhooks(FormWebhookConnector connector,
+            String decryptedToken) {
+        // Subscribe the page to leadgen webhook events.
+        // NOTE: Graph returns the {"error":{...}} body with a 4xx for the common
+        // failure (#200 — connecting account lacks the MANAGE/Full-control task),
+        // so we use exchangeToMono to read the body on ANY status instead of
+        // letting retrieve() throw and lose the reason.
         String pageId = connector.getPlatformPageId();
         String url = GRAPH_API_BASE + "/" + pageId + "/subscribed_apps"
                 + "?subscribed_fields=leadgen"
                 + "&access_token=" + decryptedToken;
 
-        JsonNode response = webClientBuilder.build()
-                .post().uri(url)
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .block();
-
-        if (response == null || !response.path("success").asBoolean()) {
-            log.warn("Page subscription may have failed for page {}: {}", pageId, response);
-        } else {
-            log.info("Successfully subscribed Meta page {} to leadgen webhooks", pageId);
+        JsonNode response;
+        try {
+            response = webClientBuilder.build()
+                    .post().uri(url)
+                    .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
+                    .block();
+        } catch (Exception e) {
+            log.error("Page subscription call failed for page {}: {}", pageId, e.getMessage());
+            return WebhookSubscriptionResult.failure(null, e.getMessage(),
+                    "Couldn't reach Facebook to link this Page. Try again, or reconnect.");
         }
+
+        if (response != null && response.path("success").asBoolean(false)) {
+            log.info("Successfully subscribed Meta page {} to leadgen webhooks", pageId);
+            return WebhookSubscriptionResult.ok();
+        }
+
+        JsonNode err = response != null ? response.path("error") : null;
+        String code = err != null ? err.path("code").asText(null) : null;
+        String msg = err != null ? err.path("message").asText("Unknown error") : "No response from Facebook";
+        String remediation = "200".equals(code)
+                ? NEEDS_FULL_CONTROL_MSG
+                : "Couldn't link this Page to Vacademy for lead delivery: " + msg;
+        log.warn("Page subscription FAILED for page {} (code={}): {}", pageId, code, msg);
+        return WebhookSubscriptionResult.failure(code, msg, remediation);
+    }
+
+    // ── Health probes (used by the connection health check) ───────────────────
+
+    /** App ID this integration runs as — used to check the page's subscribed_apps. */
+    public String getAppId() {
+        return appId;
+    }
+
+    /**
+     * Returns empty if this app IS subscribed to the page for leadgen, otherwise
+     * a human message explaining the gap (the usual cause = the account that
+     * connected lacks Full control, so the subscribe never took).
+     */
+    public Optional<String> findSubscriptionIssue(String pageId, String pageToken) {
+        String url = GRAPH_API_BASE + "/" + pageId + "/subscribed_apps?access_token=" + pageToken;
+        JsonNode response;
+        try {
+            response = webClientBuilder.build()
+                    .get().uri(url)
+                    .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
+                    .block();
+        } catch (Exception e) {
+            return Optional.of("Couldn't read this Page's app subscriptions from Facebook: " + e.getMessage());
+        }
+        if (response == null) {
+            return Optional.of("No response from Facebook when reading Page subscriptions.");
+        }
+        if (response.has("error")) {
+            return Optional.of("Facebook rejected the subscription check: "
+                    + response.path("error").path("message").asText("unknown error"));
+        }
+        for (JsonNode app : response.path("data")) {
+            if (appId != null && appId.equals(app.path("id").asText())) {
+                for (JsonNode f : app.path("subscribed_fields")) {
+                    if ("leadgen".equals(f.asText())) return Optional.empty();
+                }
+                return Optional.of("This Page is linked to Vacademy but not for the 'leadgen' "
+                        + "field. Click Re-subscribe.");
+            }
+        }
+        return Optional.of("This Page isn't linked to Vacademy for lead delivery. "
+                + NEEDS_FULL_CONTROL_MSG);
+    }
+
+    /**
+     * Returns empty if leads can be READ for this form, otherwise a human message.
+     * Meta error #100/#10/#200 here usually means Lead Access wasn't granted.
+     */
+    public Optional<String> findLeadReadIssue(String formId, String pageToken) {
+        String url = GRAPH_API_BASE + "/" + formId + "/leads?limit=1&access_token=" + pageToken;
+        JsonNode response;
+        try {
+            response = webClientBuilder.build()
+                    .get().uri(url)
+                    .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
+                    .block();
+        } catch (Exception e) {
+            return Optional.of("Couldn't read leads from Facebook: " + e.getMessage());
+        }
+        if (response == null) {
+            return Optional.of("No response from Facebook when reading leads.");
+        }
+        if (response.has("error")) {
+            String msg = response.path("error").path("message").asText("unknown error");
+            return Optional.of("Facebook won't return leads for this form (Lead Access may not be "
+                    + "granted): " + msg);
+        }
+        // 200 with data (even empty) means read access works.
+        return Optional.empty();
     }
 
     @Override

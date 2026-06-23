@@ -74,11 +74,8 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
       // Check if condition matches
       if (normalizedCurrentValue !== normalizedExpectedValue) {
-        console.log(`[JsonRenderer] Component ${id} HIDDEN - condition not met`);
         return null;
       }
-
-      console.log(`[JsonRenderer] Component ${id} SHOWN - condition met`);
     }
 
     switch (type) {
@@ -143,13 +140,6 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <HeroSectionComponent key={id} {...props} courseData={courseData} />;
       case "mediaShowcase":
       case "MediaShowcaseComponent":
-        console.log(`[JsonRenderer] Rendering MediaShowcaseComponent ${id}:`, {
-          layout: props?.layout,
-          slidesLength: props?.slides?.length,
-          autoplay: props?.autoplay,
-          autoplayInterval: props?.autoplayInterval,
-          hasSlides: !!props?.slides
-        });
         return <MediaShowcaseComponent key={id} {...props} />;
       case "statsHighlights":
         return <StatsHighlightsComponent key={id} {...props} />;

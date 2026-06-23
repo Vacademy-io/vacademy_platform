@@ -30,6 +30,9 @@ export const HOLISTIC_INSTITUTE_ID =
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+// Native iOS "Sign in with Apple" — the app POSTs the Apple identityToken here
+// (the native sheet returns it directly, so there is no browser-redirect round-trip).
+export const LOGIN_URL_APPLE_NATIVE = `${BASE_URL}/auth-service/learner/v1/oauth/apple/native`;
 export const LOGIN_USING_USERNAME = `${BASE_URL}/auth-service/open/user-details/by-username`;
 export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-ten-days`;
 
@@ -86,6 +89,10 @@ export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessme
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
 export const ADD_UPDATE_AUDIO_ACTIVITY = `${BASE_URL}/admin-core-service/learner/activity/add-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
+// Per-learner interaction state for a document slide's interactive blocks
+// (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists
+// all blocks for the current learner; POST upserts one block.
+export const SLIDE_INTERACTION = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const GET_ASSIGNMENT_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
@@ -121,9 +128,6 @@ export const ZOHO_PARTICIPANT_JOIN_LINK = `${BASE_URL}/admin-core-service/live-s
 
 // Live session — Zoom Meeting SDK signature (embedded join)
 export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/zoom-sdk-signature`;
-
-// Live session — Zoom native join payload (deep link + web fallback for Capacitor)
-export const ZOOM_JOIN_PAYLOAD_ENDPOINT = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/zoom-join-payload`;
 
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;

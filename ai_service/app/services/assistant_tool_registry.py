@@ -44,6 +44,12 @@ ASSISTANT_TOOLS_SETTING_KEY = "ASSISTANT_TOOLS_SETTING"
 #: so admin Assistant sessions are never confused with learner tutor sessions.
 ASSISTANT_CONTEXT_TYPE = "admin_assistant"
 
+#: The Phase-1 how-to corpus is PRODUCT-WIDE (the steps to create a course are the
+#: same for every institute), so it is ingested ONCE under this sentinel institute
+#: id and the help tool always reads it here instead of the caller's institute.
+#: (Per-institute custom help can be unioned in later.)
+HELP_KNOWLEDGE_INSTITUTE_ID = "__global_help__"
+
 
 class _StaticKeyResolver:
     """Returns pre-resolved API keys without touching the DB (for embeddings)."""
@@ -127,7 +133,7 @@ async def _execute_search_help_knowledge(args: Dict[str, Any], ctx: ToolContext)
         rag = RAGService(ctx.db, embedding_service)
         rows = await rag.search(
             query=query,
-            institute_id=ctx.principal.institute_id,
+            institute_id=HELP_KNOWLEDGE_INSTITUTE_ID,
             top_k=5,
             similarity_threshold=0.3,
             source_type="help_knowledge",

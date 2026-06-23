@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.telephony.core.LeadDirectoryResolver;
 import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
@@ -62,41 +63,60 @@ public class AirtelImportPromoter {
     @Autowired private UserMobileResolver userMobileResolver;
     @Autowired private LeadDirectoryResolver leadDirectoryResolver;
 
+    /**
+     * Promote one staging row, in its OWN transaction. On any failure it lets the
+     * exception PROPAGATE so Spring rolls this tx back cleanly — catching here and
+     * saving FAILED in the same (now rollback-only) tx is what produced "Transaction
+     * silently rolled back because it has been marked as rollback-only" on commit,
+     * which aborted the whole poll. The scheduler isolates per-row failures and
+     * records them via {@link #markFailed} in a SEPARATE transaction.
+     */
     @Transactional
     public void promoteRow(String importId) {
         AirtelCallImport imp = importRepo.findById(importId).orElse(null);
         if (imp == null || !AirtelCallImport.STATUS_RECEIVED.equals(imp.getProcessingStatus())) return;
-        try {
-            String instituteId = resolveInstitute(imp);
-            if (instituteId == null) {
-                skip(imp, "no institute configured for Airtel account " + imp.getAccountId());
+
+        String instituteId = resolveInstitute(imp);
+        if (instituteId == null) {
+            skip(imp, "no institute configured for Airtel account " + imp.getAccountId());
+            return;
+        }
+        imp.setInstituteId(instituteId);
+
+        if (AirtelCallImport.KIND_CDR.equals(imp.getKind())) {
+            // A CDR creates/enriches the call row, so it needs the counsellor.
+            String counsellor = resolveCounsellor(imp);
+            if (counsellor == null) {
+                skip(imp, "counsellor not mapped (ext=" + imp.getSourceExtension()
+                        + ", user=" + imp.getSourceUserId() + ")");
                 return;
             }
-            imp.setInstituteId(instituteId);
-
-            if (AirtelCallImport.KIND_CDR.equals(imp.getKind())) {
-                // A CDR creates/enriches the call row, so it needs the counsellor.
-                String counsellor = resolveCounsellor(imp);
-                if (counsellor == null) {
-                    skip(imp, "counsellor not mapped (ext=" + imp.getSourceExtension()
-                            + ", user=" + imp.getSourceUserId() + ")");
-                    return;
-                }
-                promoteCdr(imp, instituteId, counsellor);
-            } else if (AirtelCallImport.KIND_RECORDING.equals(imp.getKind())) {
-                // A recording attaches to an existing call row by call id, so it does
-                // NOT need the counsellor up front — inbound recordings can't resolve
-                // one (the CSV's "called number" is the DID, not the extension).
-                promoteRecording(imp);
-            } else {
-                skip(imp, "unknown kind " + imp.getKind());
-            }
-        } catch (Exception e) {
-            log.error("Airtel promote failed for import {}: {}", importId, e.getMessage(), e);
-            imp.setProcessingStatus(AirtelCallImport.STATUS_FAILED);
-            imp.setProcessDetail(trunc(e.getMessage()));
-            importRepo.save(imp);
+            promoteCdr(imp, instituteId, counsellor);
+        } else if (AirtelCallImport.KIND_RECORDING.equals(imp.getKind())) {
+            // A recording attaches to an existing call row by call id, so it does
+            // NOT need the counsellor up front — inbound recordings can't resolve
+            // one (the CSV's "called number" is the DID, not the extension).
+            promoteRecording(imp);
+        } else {
+            skip(imp, "unknown kind " + imp.getKind());
         }
+    }
+
+    /**
+     * Record a promotion failure in a SEPARATE transaction, so it persists even
+     * though the row's own promote tx rolled back. Only touches still-RECEIVED rows
+     * (a row another worker already promoted/skipped is left alone). The reason
+     * lands in {@code process_detail} — queryable, so failures self-diagnose.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markFailed(String importId, String reason) {
+        importRepo.findById(importId).ifPresent(imp -> {
+            if (AirtelCallImport.STATUS_RECEIVED.equals(imp.getProcessingStatus())) {
+                imp.setProcessingStatus(AirtelCallImport.STATUS_FAILED);
+                imp.setProcessDetail(trunc(reason));
+                importRepo.save(imp);
+            }
+        });
     }
 
     private String resolveInstitute(AirtelCallImport imp) {

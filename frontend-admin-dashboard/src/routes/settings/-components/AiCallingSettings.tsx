@@ -34,7 +34,9 @@ export interface AiCallingSettingsData {
      * `enabled`: turning this off only hides the icon — AI workflows keep running.
      */
     showInLeadList: boolean;
-    /** Aavtaar campaign id (AI script/persona) used for outbound AI calls. */
+    /** AI-voice provider code (e.g. "AAVTAAR"). Selects which backend adapter places calls. */
+    provider: string;
+    /** Provider campaign id (AI script/persona) used for outbound AI calls. */
     defaultCampaignId: string;
     /** A call shorter than this (seconds) counts as "didn't really connect" → retry. */
     connectThresholdSec: number;
@@ -74,6 +76,7 @@ const ASSIGNMENT_MODES: { value: AssignmentMode; label: string }[] = [
 const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     enabled: false,
     showInLeadList: false,
+    provider: 'AAVTAAR',
     defaultCampaignId: '',
     connectThresholdSec: 20,
     maxRetries: 3,
@@ -89,6 +92,60 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
 const SETTING_KEY = 'AI_CALLING_SETTING';
 const GET_URL = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
 const SAVE_URL = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
+
+// ─── Provider metadata ─────────────────────────────────────────────────────────
+// Per-provider UI copy. The list of selectable providers comes from the backend
+// (what's actually wired). Adding an entry here gives a provider nicer labels; any
+// provider the backend reports that isn't listed falls back to generic labels — so
+// a new AI agent works out-of-the-box with no UI change required.
+interface ProviderMeta {
+    label: string;
+    companyCodeLabel: string;
+    companyCodePlaceholder: string;
+    tokenLabel: string;
+    tokenPlaceholder: string;
+    campaignPlaceholder: string;
+    campaignHelp: string;
+}
+const PROVIDER_META: Record<string, ProviderMeta> = {
+    AAVTAAR: {
+        label: 'Aavtaar',
+        companyCodeLabel: 'Company Code',
+        companyCodePlaceholder: 'Your provider company code',
+        tokenLabel: 'Bearer Token',
+        tokenPlaceholder: 'Paste the API token',
+        campaignPlaceholder: 'Campaign ID from your provider',
+        campaignHelp:
+            'The campaign that defines the AI script/persona for outbound calls. Provided by your AI-calling provider.',
+    },
+};
+const titleCase = (code: string) =>
+    code ? code.charAt(0).toUpperCase() + code.slice(1).toLowerCase() : 'Provider';
+const metaFor = (code: string): ProviderMeta =>
+    PROVIDER_META[code] ?? {
+        label: titleCase(code),
+        companyCodeLabel: 'Account / Company Code',
+        companyCodePlaceholder: 'Your provider account code',
+        tokenLabel: 'API Token',
+        tokenPlaceholder: 'Paste the API token',
+        campaignPlaceholder: 'Campaign / agent ID',
+        campaignHelp: 'The campaign or agent that defines the AI script for outbound calls.',
+    };
+const webhookPathFor = (code: string) =>
+    code === 'AAVTAAR'
+        ? '…/telephony/webhook/aavtaar'
+        : `…/telephony/webhook/ai-voice/${(code || '').toLowerCase()}`;
+
+const PROVIDERS_URL = `${BASE_URL}/admin-core-service/v1/telephony/ai-config/meta/providers`;
+/** Providers the backend has wired. Falls back to Aavtaar if the endpoint isn't up yet. */
+const fetchProviders = async (): Promise<string[]> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get<string[]>(PROVIDERS_URL);
+        return Array.isArray(data) && data.length ? data : ['AAVTAAR'];
+    } catch {
+        return ['AAVTAAR'];
+    }
+};
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
@@ -186,6 +243,13 @@ export default function AiCallingSettings() {
         queryFn: fetchAiConfig,
         staleTime: 5 * 60 * 1000,
     });
+
+    // Providers the backend actually has wired (drives the picker — never hardcoded).
+    const { data: providerCodes = ['AAVTAAR'] } = useQuery({
+        queryKey: ['ai-voice-providers'],
+        queryFn: fetchProviders,
+        staleTime: 30 * 60 * 1000,
+    });
     const [companyCode, setCompanyCode] = useState('');
     const [apiToken, setApiToken] = useState('');
     const [webhookSecret, setWebhookSecret] = useState('');
@@ -196,7 +260,7 @@ export default function AiCallingSettings() {
     const { mutate: saveCreds, isPending: savingCreds } = useMutation({
         mutationFn: saveAiConfig,
         onSuccess: () => {
-            toast.success('Aavtaar credentials saved');
+            toast.success('Credentials saved');
             setApiToken('');
             setWebhookSecret('');
             queryClient.invalidateQueries({ queryKey: ['ai-calling-config'] });
@@ -208,12 +272,13 @@ export default function AiCallingSettings() {
     });
 
     const handleSaveCreds = () => {
+        const m = metaFor(settings.provider);
         if (!companyCode.trim()) {
-            toast.error('Company Code is required.');
+            toast.error(`${m.companyCodeLabel} is required.`);
             return;
         }
         if (!cfg?.hasToken && !apiToken.trim()) {
-            toast.error('Bearer Token is required.');
+            toast.error(`${m.tokenLabel} is required.`);
             return;
         }
         saveCreds({
@@ -278,6 +343,9 @@ export default function AiCallingSettings() {
         save(settings);
     };
 
+    const meta = metaFor(settings.provider);
+    const webhookPath = webhookPathFor(settings.provider);
+
     return (
         <div className="space-y-6 p-6">
             {/* ── Enable + Campaign ── */}
@@ -319,19 +387,38 @@ export default function AiCallingSettings() {
                         run regardless of this toggle.
                     </p>
 
+                    <Separator />
+
+                    <div className="grid gap-2">
+                        <Label>AI voice provider</Label>
+                        <div className="flex flex-wrap gap-2">
+                            {providerCodes.map((code) => (
+                                <MyButton
+                                    key={code}
+                                    buttonType={settings.provider === code ? 'primary' : 'secondary'}
+                                    scale="medium"
+                                    onClick={() => update({ provider: code })}
+                                >
+                                    {metaFor(code).label}
+                                </MyButton>
+                            ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            The AI calling agent used for this institute. The credentials and campaign
+                            below are for the selected provider.
+                        </p>
+                    </div>
+
                     {settings.enabled && (
                         <div className="grid max-w-md gap-2">
                             <Label htmlFor="ai-campaign-id">Default Campaign ID</Label>
                             <Input
                                 id="ai-campaign-id"
                                 value={settings.defaultCampaignId}
-                                placeholder="e.g. 6a34fb1fefa73bfc9e140dfd"
+                                placeholder={meta.campaignPlaceholder}
                                 onChange={(e) => update({ defaultCampaignId: e.target.value })}
                             />
-                            <p className="text-xs text-muted-foreground">
-                                The Aavtaar campaign that defines the AI script/persona for outbound
-                                calls. Provided by the Aavtaar team.
-                            </p>
+                            <p className="text-xs text-muted-foreground">{meta.campaignHelp}</p>
                         </div>
                     )}
                 </CardContent>
@@ -342,22 +429,22 @@ export default function AiCallingSettings() {
                 <CardHeader>
                     <CardTitle>Credentials</CardTitle>
                     <CardDescription>
-                        Aavtaar API credentials for this institute. The Bearer Token and webhook secret
+                        {meta.label} API credentials for this institute. The token and webhook secret
                         are stored encrypted and never shown again.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="aavtaar-company-code">Company Code</Label>
+                        <Label htmlFor="aavtaar-company-code">{meta.companyCodeLabel}</Label>
                         <Input
                             id="aavtaar-company-code"
                             value={companyCode}
-                            placeholder="e.g. shikshanation"
+                            placeholder={meta.companyCodePlaceholder}
                             onChange={(e) => setCompanyCode(e.target.value)}
                         />
                     </div>
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="aavtaar-token">Bearer Token</Label>
+                        <Label htmlFor="aavtaar-token">{meta.tokenLabel}</Label>
                         <Input
                             id="aavtaar-token"
                             type="password"
@@ -365,7 +452,7 @@ export default function AiCallingSettings() {
                             placeholder={
                                 cfg?.hasToken
                                     ? '•••••••• (saved — leave blank to keep)'
-                                    : 'Paste the Aavtaar API token'
+                                    : meta.tokenPlaceholder
                             }
                             onChange={(e) => setApiToken(e.target.value)}
                         />
@@ -384,8 +471,8 @@ export default function AiCallingSettings() {
                             onChange={(e) => setWebhookSecret(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Authenticates Aavtaar&apos;s end-of-call webhook. Hand Aavtaar the URL
-                            …/telephony/webhook/aavtaar?instituteId=…&amp;token=&lt;this secret&gt;.
+                            Authenticates {meta.label}&apos;s end-of-call webhook. Hand {meta.label} the
+                            URL {webhookPath}?instituteId=…&amp;token=&lt;this secret&gt;.
                         </p>
                     </div>
                     <div className="flex justify-end">

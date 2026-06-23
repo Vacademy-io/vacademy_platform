@@ -291,6 +291,14 @@ export const SlideMaterial = ({
     // re-run we must NOT re-deserialize, or we'd overwrite the editor's live
     // bold/colour edits and revert the formatting right after the user saves.
     const lastLoadContentSlideIdRef = useRef<string | null>(null);
+    // True when the last DOC content-apply had to fall back to manually
+    // reconstructing editor.plugins/blocks because the real <YooptaEditor>
+    // hadn't mounted yet. That manual reconstruction is incomplete (no
+    // formats/blockEditorsMap), so html.deserialize can silently drop blocks
+    // → blank on first open. When the real editor mounts (onMount below) we
+    // re-deserialize once with the proper maps. Reset to false on the warm
+    // path so the re-apply is a no-op there.
+    const usedManualPluginInitRef = useRef(false);
 
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
@@ -397,6 +405,21 @@ export const SlideMaterial = ({
             }
         };
 
+        // Fires once the real <YooptaEditor> has mounted (and thus built the
+        // proper plugin/block/format maps on the shared editor instance). If
+        // the initial content-apply had to fall back to the incomplete manual
+        // reconstruction (cold path — first DOC opened since mount), the
+        // deserialize may have silently dropped blocks → blank. Re-deserialize
+        // once now with the correct maps so the content actually renders.
+        const handleEditorMount = () => {
+            if (!usedManualPluginInitRef.current) return;
+            usedManualPluginInitRef.current = false;
+            applyDocContentToEditor();
+            setShowPlaceholder(checkIsEmptyFromEditor());
+            // Re-baseline the unsaved-change snapshot against the corrected content.
+            captureInitialDocSnapshot();
+        };
+
         return (
             <div className="relative w-full">
                 {showPlaceholder && (
@@ -423,6 +446,7 @@ export const SlideMaterial = ({
                         selectionBoxRoot={selectionRef}
                         autoFocus={true}
                         readOnly={isLearnerView}
+                        onMount={handleEditorMount}
                         onChange={() => {
                             // Check emptiness from JSON structure (instant, no serialization)
                             setShowPlaceholder(checkIsEmptyFromEditor());
@@ -448,12 +472,22 @@ export const SlideMaterial = ({
         );
     };
 
-    const setEditorContent = () => {
+    // Deserialize the active DOC slide's HTML into the shared Yoopta editor and
+    // push it via setEditorValue. Returns whether the content is empty (for the
+    // placeholder). Does NOT mount the editor component — setEditorContent()
+    // does that. Split out so it can be re-run after the real <YooptaEditor>
+    // mounts (see usedManualPluginInitRef / EditorWithPlaceholder onMount),
+    // which fixes "DOC blank on first open".
+    const applyDocContentToEditor = (): boolean => {
         // Ensure plugins and blocks are registered on the editor BEFORE
         // calling html.deserialize.  On a fresh page load the YooptaEditor
         // component hasn't mounted yet so editor.plugins / editor.blocks are
         // still empty — the deserializer would silently drop every block.
         if (!editor.plugins || Object.keys(editor.plugins).length === 0) {
+            // Cold path: real editor maps not built yet. The manual
+            // reconstruction below is incomplete, so flag a re-apply once the
+            // real editor mounts.
+            usedManualPluginInitRef.current = true;
             const pluginDefs = plugins.map((p: any) =>
                 typeof p.getPlugin === 'object' ? p.getPlugin : p
             );
@@ -507,6 +541,10 @@ export const SlideMaterial = ({
                 };
             });
             (editor as any).blocks = blocksMap;
+        } else {
+            // Warm path: real editor already mounted with proper maps, so this
+            // deserialize is reliable — no post-mount re-apply needed.
+            usedManualPluginInitRef.current = false;
         }
 
         const docData =
@@ -901,7 +939,28 @@ export const SlideMaterial = ({
         }
 
         // Check if content is empty - use shared utility
-        const isEmpty = checkIsHtmlEmpty(sanitizedDocData);
+        return checkIsHtmlEmpty(sanitizedDocData);
+    };
+
+    // Capture initial HTML for DOC slides to detect unsaved changes later.
+    // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
+    // html.deserialize → html.serialize is NOT a lossless round-trip.
+    // If we compare raw stored HTML against Yoopta's serialized output, they
+    // will always differ even with zero user edits → false positive dialog.
+    const captureInitialDocSnapshot = () => {
+        if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
+            prevDocSlideRef.current = activeItem;
+            // Use a short delay so Yoopta finishes rendering before we snapshot
+            setTimeout(() => {
+                const editorHtml = getCurrentEditorHTMLContent();
+                initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
+                currentDocHtmlRef.current = editorHtml;
+            }, 300);
+        }
+    };
+
+    const setEditorContent = () => {
+        const isEmpty = applyDocContentToEditor();
 
         setContent(<EditorWithPlaceholder initialIsEmpty={isEmpty} />);
         // Delay focus until after React re-renders the DOM with the new editor state.
@@ -919,20 +978,7 @@ export const SlideMaterial = ({
             });
         }, 300);
 
-        // Capture initial HTML for DOC slides to detect unsaved changes later.
-        // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
-        // html.deserialize → html.serialize is NOT a lossless round-trip.
-        // If we compare raw stored HTML against Yoopta's serialized output, they
-        // will always differ even with zero user edits → false positive dialog.
-        if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
-            prevDocSlideRef.current = activeItem;
-            // Use a short delay so Yoopta finishes rendering before we snapshot
-            setTimeout(() => {
-                const editorHtml = getCurrentEditorHTMLContent();
-                initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
-                currentDocHtmlRef.current = editorHtml;
-            }, 300);
-        }
+        captureInitialDocSnapshot();
     };
 
     const getCurrentEditorHTMLContent: () => string = () => {

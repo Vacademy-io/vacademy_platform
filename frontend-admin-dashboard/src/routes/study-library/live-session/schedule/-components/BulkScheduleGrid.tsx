@@ -101,7 +101,6 @@ import { MyButton } from '@/components/design-system/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LockKey, BellRinging, UsersThree as UsersThreeIcon } from '@phosphor-icons/react';
 import { AccessType, InputType } from '../../-constants/enums';
-import SelectField from '@/components/design-system/select-field';
 import { z } from 'zod';
 
 const TimeOptions = [
@@ -1932,17 +1931,29 @@ export function BulkScheduleGrid() {
                                             key={bf.id}
                                             className="flex items-center gap-2"
                                         >
-                                            <SelectField
-                                                label=""
-                                                name={`notifySettings.beforeLiveTime.${index}.time`}
-                                                labelStyle="font-thin"
-                                                options={TimeOptions.map((opt, i) => ({
-                                                    value: opt.value,
-                                                    label: opt.label,
-                                                    _id: i,
-                                                }))}
+                                            <Controller
                                                 control={form.control}
-                                                className="w-56 font-thin"
+                                                name={`notifySettings.beforeLiveTime.${index}.time`}
+                                                render={({ field }) => (
+                                                    <Select
+                                                        value={field.value}
+                                                        onValueChange={field.onChange}
+                                                    >
+                                                        <SelectTrigger className="h-9 w-56">
+                                                            <SelectValue placeholder="Select reminder time" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {TimeOptions.map((opt) => (
+                                                                <SelectItem
+                                                                    key={opt.value}
+                                                                    value={opt.value}
+                                                                >
+                                                                    {opt.label}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
                                             />
                                             <Button
                                                 type="button"

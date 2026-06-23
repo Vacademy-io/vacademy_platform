@@ -20,6 +20,7 @@ import {
     resolveEffectivePostLoginRoute,
 } from '@/services/display-settings';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { VacademyAssistant } from '@/components/vacademy-assistant/VacademyAssistant';
 
 const TanStackRouterDevtools =
     process.env.NODE_ENV === 'production'
@@ -183,6 +184,7 @@ export const Route = createRootRouteWithContext<{
         return (
             <>
                 <Outlet />
+                <VacademyAssistant />
                 <Suspense>
                     <TanStackRouterDevtools />
                 </Suspense>

@@ -17,6 +17,17 @@ export const BASE_URL_LEARNER_DASHBOARD =
 export const AI_SERVICE_BASE_URL =
     import.meta.env.VITE_AI_SERVICE_BASE_URL || `${BACKEND_BASE_URL}/ai-service`;
 
+// Vacademy Assistant (admin AI agent). All require Authorization + clientId
+// headers; the stream is SSE and must be read with fetch (EventSource cannot
+// send headers). See ai_service app/routers/assistant.py.
+export const ASSISTANT_SESSION_INIT = `${AI_SERVICE_BASE_URL}/assistant/session/init`;
+export const ASSISTANT_SESSION_MESSAGE = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/message`;
+export const ASSISTANT_SESSION_STREAM = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/stream`;
+export const ASSISTANT_SESSION_CLOSE = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/close`;
+
 // PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
 // {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.
 export const ANIMATE_PPTX_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/animate-pptx`;

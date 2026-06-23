@@ -14,6 +14,7 @@ from .routers.api_keys import router as api_keys_router
 from .routers.token_usage import router as token_usage_router
 from .routers.chat_bot import router as chat_bot_router
 from .routers.chat_agent import router as chat_agent_router
+from .routers.assistant import router as assistant_router
 from .routers.validation import router as validation_router
 from .routers.institute_settings import router as institute_settings_router
 from .routers.utils import router as utils_router
@@ -175,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(token_usage_router, prefix=settings.api_base_path)
     app.include_router(chat_bot_router, prefix=settings.api_base_path)
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
+    app.include_router(assistant_router, prefix=settings.api_base_path)
     app.include_router(validation_router, prefix=settings.api_base_path)
     app.include_router(institute_settings_router, prefix=settings.api_base_path)
     app.include_router(utils_router, prefix=settings.api_base_path)

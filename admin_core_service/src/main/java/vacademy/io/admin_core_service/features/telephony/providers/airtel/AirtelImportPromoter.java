@@ -166,6 +166,14 @@ public class AirtelImportPromoter {
                     ts(anchor.plusSeconds(OUTBOUND_FORWARD_SLACK_SECONDS)),
                     ts(anchor)).orElse(null);
         }
+        if (row == null && imp.getCallId() != null) {
+            // Idempotency: a prior pass (or a concurrent poll) may already have
+            // created — or enriched a click2dial row into — the call log for this
+            // call id. Reuse it instead of inserting a duplicate, which the unique
+            // index uk_tcl_provider_call rejects (the call is already logged).
+            row = callLogRepo.findByProviderTypeAndProviderCallId(
+                    ProviderType.AIRTEL, imp.getCallId()).orElse(null);
+        }
         if (row != null) {
             row.setProviderCallId(imp.getCallId());
             applyCdrFields(row, imp);

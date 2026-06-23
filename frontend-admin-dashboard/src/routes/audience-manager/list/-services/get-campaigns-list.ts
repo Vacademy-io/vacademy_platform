@@ -6,6 +6,7 @@ export interface CampaignListRequest {
     campaign_name?: string;
     status?: string;
     campaign_type?: string;
+    sub_org_id?: string;
     to_notify?: string,
     send_respondent_email?: boolean,
     start_date_from_local?: string;
@@ -63,6 +64,7 @@ export interface CampaignItem {
     send_respondent_email?: boolean;
     institute_custom_fields?: any[];
     default_initial_score?: number;
+    sub_org_id?: string;
 }
 
 const fetchCampaignsList = async (payload: CampaignListRequest): Promise<CampaignListResponse> => {
@@ -84,6 +86,7 @@ export const handleFetchCampaignsList = (payload: CampaignListRequest) => {
             payload.campaign_name,
             payload.status,
             payload.campaign_type,
+            payload.sub_org_id,
         ],
         queryFn: async () => {
             const data = await fetchCampaignsList(payload);

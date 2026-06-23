@@ -23,6 +23,7 @@ public class AudienceFilterDTO {
     private String campaignName;
     private String status; // ACTIVE, PAUSED, COMPLETED, ARCHIVED
     private String campaignType; // WEBSITE, GOOGLE_ADS, etc.
+    private String subOrgId; // Filter to campaigns linked to this sub-org (child-institute id)
     private Timestamp startDateFromLocal;
     private Timestamp startDateToLocal;
     

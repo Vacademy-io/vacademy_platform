@@ -28,6 +28,7 @@ export interface AudienceCampaignPayload {
     status: string;
     institute_custom_fields: AudienceCampaignCustomFieldPayload[];
     default_initial_score?: number;
+    sub_org_id?: string;
 }
 
 export const createAudienceCampaign = async (payload: AudienceCampaignPayload) => {

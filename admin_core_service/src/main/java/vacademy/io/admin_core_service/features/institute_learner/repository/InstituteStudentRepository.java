@@ -638,6 +638,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:subOrgIds IS NULL OR ssigm.sub_org_id IN (:subOrgIds))
       GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
                s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
                s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -656,6 +657,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:subOrgIds IS NULL OR ssigm.sub_org_id IN (:subOrgIds))
       """, nativeQuery = true)
   Page<Object[]> findAllStudentsWithFiltersAndCustomFields(
       @Param("statuses") List<String> statuses,
@@ -663,6 +665,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("instituteIds") List<String> instituteIds,
       @Param("groupIds") List<String> groupIds,
       @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("subOrgIds") List<String> subOrgIds,
       @Param("customFieldIds") List<String> customFieldIds,
       Pageable pageable);
 
@@ -694,6 +697,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:subOrgIds IS NULL OR ssigm.sub_org_id IN (:subOrgIds))
       GROUP BY s.id, s.username, s.user_id, s.email, s.full_name,
                s.address_line, s.region, s.city, s.pin_code, s.mobile_number,
                s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
@@ -712,6 +716,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:groupIds IS NULL OR ssigm.group_id IN (:groupIds))
         AND (:packageSessionIds IS NULL OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:subOrgIds IS NULL OR ssigm.sub_org_id IN (:subOrgIds))
         AND (to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
             OR (s.full_name ILIKE :name || '%')
              OR (s.username ILIKE :name || '%')
@@ -726,6 +731,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("instituteIds") List<String> instituteIds,
       @Param("groupIds") List<String> groupIds,
       @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("subOrgIds") List<String> subOrgIds,
       @Param("customFieldIds") List<String> customFieldIds,
       Pageable pageable);
 

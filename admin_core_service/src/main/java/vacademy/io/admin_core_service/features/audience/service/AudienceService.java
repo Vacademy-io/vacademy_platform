@@ -310,6 +310,9 @@ public class AudienceService {
         // Allow explicit null to clear the floor; only update when the field is present
         // in the request
         audience.setDefaultInitialScore(audienceDTO.getDefaultInitialScore());
+        // Sub-org link: set unconditionally so the edit form can set, change, or clear it
+        // (this PUT is only called from the full campaign edit form, which sends the whole DTO).
+        audience.setSubOrgId(audienceDTO.getSubOrgId());
 
         Audience updated = audienceRepository.save(audience);
 
@@ -351,6 +354,7 @@ public class AudienceService {
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
                 .defaultInitialScore(audience.getDefaultInitialScore())
+                .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -395,6 +399,7 @@ public class AudienceService {
                 filterDTO.getStatus(),
                 filterDTO.getCampaignType(),
                 filterDTO.getCampaignName(),
+                filterDTO.getSubOrgId(),
                 filterDTO.getStartDateFromLocal(),
                 filterDTO.getStartDateFromLocal() != null,
                 filterDTO.getStartDateToLocal(),
@@ -419,6 +424,7 @@ public class AudienceService {
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
                 .defaultInitialScore(audience.getDefaultInitialScore())
+                .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }

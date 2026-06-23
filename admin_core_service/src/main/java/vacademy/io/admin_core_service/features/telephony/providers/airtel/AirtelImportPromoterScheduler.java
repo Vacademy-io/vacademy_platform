@@ -34,19 +34,37 @@ public class AirtelImportPromoterScheduler {
             fixedDelayString = "${telephony.airtel.promote.poll-ms:120000}",
             initialDelayString = "${telephony.airtel.promote.initial-delay-ms:90000}")
     public void poll() {
+        List<AirtelCallImport> batch;
         try {
-            List<AirtelCallImport> batch = importRepo.findByProcessingStatusOrderByReceivedAtAsc(
+            batch = importRepo.findByProcessingStatusOrderByReceivedAtAsc(
                     AirtelCallImport.STATUS_RECEIVED, Limit.of(maxPerRun));
-            int processed = 0;
-            for (AirtelCallImport imp : batch) {
-                promoter.promoteRow(imp.getId());   // cross-bean call → @Transactional applies
-                processed++;
-            }
-            if (processed > 0) {
-                log.info("Airtel promoter: processed {} staging row(s)", processed);
-            }
         } catch (Exception e) {
-            log.error("Airtel promoter poll failed: {}", e.getMessage(), e);
+            log.error("Airtel promoter: failed to load batch: {}", e.getMessage(), e);
+            return;
+        }
+        int processed = 0, failed = 0;
+        for (AirtelCallImport imp : batch) {
+            // Per-row isolation: each promoteRow is its OWN tx (cross-bean proxy).
+            // A single bad row must not abort the whole batch — on failure we record
+            // it via markFailed (a SEPARATE tx) so it goes FAILED with the reason in
+            // process_detail, instead of rolling back to RECEIVED and re-failing
+            // forever (the bug that left every row stuck at RECEIVED).
+            try {
+                promoter.promoteRow(imp.getId());
+                processed++;
+            } catch (Exception e) {
+                failed++;
+                log.error("Airtel promote failed for import {}: {}", imp.getId(), e.getMessage());
+                try {
+                    promoter.markFailed(imp.getId(), e.getMessage());
+                } catch (Exception ignored) {
+                    // best-effort — never let recording the failure break the loop
+                }
+            }
+        }
+        if (processed > 0 || failed > 0) {
+            log.info("Airtel promoter: {} processed, {} failed (of {} RECEIVED in batch)",
+                    processed, failed, batch.size());
         }
     }
 }

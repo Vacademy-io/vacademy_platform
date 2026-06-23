@@ -1,14 +1,11 @@
 import { useEffect } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { TelephonyConfigCard } from './telephony-config-card';
-import { TelephonyCounsellorMapCard } from './telephony-counsellor-map-card';
-import { TelephonyNumbersCard } from './telephony-numbers-card';
+import { TelephonyProviderCards } from './telephony-provider-cards';
 
 /**
- * Single-page admin surface for telephony — provider creds at the top, number
- * fleet underneath. The two pieces are intentionally independent so an admin
- * can update credentials without scrolling past a long number list, and vice
- * versa.
+ * Single-page admin surface for telephony. The cards shown adapt to the active
+ * provider's capabilities (Exotel: wallet + inbound guide + number fleet;
+ * Airtel: per-counsellor extension map) — see TelephonyProviderCards.
  */
 export function TelephonySettingsPage() {
     const { setNavHeading } = useNavHeadingStore();
@@ -25,9 +22,7 @@ export function TelephonySettingsPage() {
                     leads are routed across them.
                 </p>
             </div>
-            <TelephonyConfigCard />
-            <TelephonyCounsellorMapCard />
-            <TelephonyNumbersCard />
+            <TelephonyProviderCards />
         </div>
     );
 }

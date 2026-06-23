@@ -268,13 +268,13 @@ public class StudentListManager {
         if (StringUtils.hasText(studentListFilter.getName())) {
             studentPage = studentFilterService.getAllStudentWithSearch(studentListFilter.getName(),studentListFilter.getStatuses(),
                     studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getSubOrgIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         if (Objects.isNull(studentPage) && !studentListFilter.getInstituteIds().isEmpty()) {
             studentPage = studentFilterService.getAllStudentWithFilterAndCustomFields(studentListFilter.getStatuses(),
                     studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getSubOrgIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         return ResponseEntity.ok(createAllStudentResponseFromPaginatedData(studentPage));

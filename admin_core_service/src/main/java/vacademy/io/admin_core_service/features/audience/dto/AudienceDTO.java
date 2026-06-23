@@ -40,6 +40,9 @@ public class AudienceDTO {
     /** Floor score for new leads in this campaign. Overrides institute-level default. Null = no floor. Range 0-100. */
     private Integer defaultInitialScore;
 
+    /** Sub-org this campaign belongs to (child-institute id). Nullable. */
+    private String subOrgId;
+
     // Custom fields for the form
     private List<InstituteCustomFieldDTO> instituteCustomFields;
 }

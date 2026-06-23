@@ -1458,6 +1458,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
             AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (:#{#subOrgIds == null || #subOrgIds.isEmpty()} = true OR ssigm.sub_org_id IN (:subOrgIds))
             AND (
               CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
               OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
@@ -1543,6 +1544,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
             AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (:#{#subOrgIds == null || #subOrgIds.isEmpty()} = true OR ssigm.sub_org_id IN (:subOrgIds))
             AND (
               CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
               OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
@@ -1620,6 +1622,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("typeIds") List<String> typeIds,
       @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
       @Param("levelIds") List<String> levelIds,
+      @Param("subOrgIds") List<String> subOrgIds,
       @Param("subOrgUserTypes") List<String> subOrgUserTypes,
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate,

@@ -627,6 +627,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const enrollInviteIds = enrollInviteFilter?.value.map((opt) => opt.id) || [];
         const audienceFilter = columnFilters.find((filter) => filter.id === 'audience_ids');
         const audienceIds = audienceFilter?.value.map((opt) => opt.id) || [];
+        const subOrgFilter = columnFilters.find((filter) => filter.id === 'sub_org_ids');
+        const subOrgIds = subOrgFilter?.value.map((opt) => opt.id) || [];
 
         const newFilters: StudentFilterRequest = {
             name: searchFilter,
@@ -643,6 +645,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             type: learnerType,
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
+            ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
             ...customFieldParams,
         };
 

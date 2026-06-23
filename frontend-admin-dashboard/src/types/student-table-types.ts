@@ -17,6 +17,7 @@ export interface StudentFilterRequest {
     level_ids?: string[];
     enroll_invite_ids?: string[];
     audience_ids?: string[];
+    sub_org_ids?: string[];
     [key: string]: any; // Allow dynamic custom field properties like customFieldId0, customFieldValues0
 }
 

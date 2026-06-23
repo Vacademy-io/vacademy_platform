@@ -8,7 +8,8 @@ import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/u
 export const GetFilterData = (
     instituteDetails: InstituteDetailsType,
     _currentSession: string,
-    campaigns?: { id?: string; campaign_name: string }[]
+    campaigns?: { id?: string; campaign_name: string }[],
+    subOrgs?: { id: string; name: string }[]
 ) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
@@ -102,6 +103,16 @@ export const GetFilterData = (
             id: 'sub_org_user_types',
             title: 'Role',
             filterList: roles,
+        });
+    }
+
+    // Add sub-org filter — restricts to learners enrolled under the selected sub-org(s)
+    // (matched server-side on ssigm.sub_org_id). Option id is the child-institute id.
+    if (subOrgs && subOrgs.length > 0) {
+        filterData.push({
+            id: 'sub_org_ids',
+            title: 'Sub-Org',
+            filterList: subOrgs.map((so) => ({ id: so.id, label: so.name })),
         });
     }
 

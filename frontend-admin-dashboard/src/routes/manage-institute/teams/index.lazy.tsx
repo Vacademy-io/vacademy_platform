@@ -283,16 +283,7 @@ function RouteComponent() {
     });
     getDashboardUsersData.mutate({
       instituteId,
-      selectedFilter: {
-        roles: allRolesFilter,
-        status:
-          selectedTab === 'instituteUsers'
-            ? [
-              { id: '1', name: 'ACTIVE' },
-              { id: '2', name: 'DISABLED' },
-            ]
-            : [{ id: '1', name: 'INVITED' }],
-      },
+      selectedFilter: buildEffectiveFilter({ roles: [], status: [], subOrgs: [] }, selectedTab),
       pageNumber: 0,
       name: searchFilter,
     });
@@ -323,6 +314,11 @@ function RouteComponent() {
     if (value === 'instituteUsers' || value === 'invites') {
       setSelectedTab(value as TabKey);
       setPage(0);
+      // The sub-org filter is Institute-Users-only and the tab-change fetch below intentionally
+      // ignores it (default filter). Clear the selection too so the chips/buttons and the
+      // fetched list stay in sync — otherwise a hidden sub-org selection would linger and
+      // diverge from the displayed list.
+      setSelectedFilter((prev) => ({ ...prev, subOrgs: [] }));
       getDashboardUsersData.mutate({
         instituteId,
         selectedFilter: {
@@ -700,7 +696,7 @@ function RouteComponent() {
                 handleClearFilters={() => setSelectedFilter(prev => ({ ...prev, status: [] }))}
               />
             )}
-            {selectedTab === 'instituteUsers' && subOrgFilterList.length > 0 && (
+            {selectedTab === 'instituteUsers' && subOrgFilterList.length > 0 && userSubOrgLinks !== undefined && (
               <FilterChips
                 label="Sub-Org"
                 filterList={subOrgFilterList}

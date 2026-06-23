@@ -8,6 +8,7 @@ import { Worker } from "@react-pdf-viewer/core";
 
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
+import { fullScreenPlugin } from "@react-pdf-viewer/full-screen";
 import type {
   ToolbarProps,
   ToolbarSlot,
@@ -18,6 +19,7 @@ import { Capacitor } from '@capacitor/core'; // Import Capacitor
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
+import "@react-pdf-viewer/full-screen/lib/styles/index.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
 import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
@@ -54,6 +56,17 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
 
+  // Fit the page to width on entering/exiting fullscreen so it fills the
+  // (much wider) fullscreen viewport instead of keeping its load-time scale
+  // and leaving large empty side margins. defaultLayoutPlugin doesn't expose
+  // its internal full-screen plugin, so we run our own (with the zoom
+  // callback) and route the toolbar's fullscreen button to it (transform below).
+  const fullScreenPluginInstance = fullScreenPlugin({
+    onEnterFullScreen: (zoom) => zoom(SpecialZoomLevel.PageWidth),
+    onExitFullScreen: (zoom) => zoom(SpecialZoomLevel.PageWidth),
+  });
+  const { EnterFullScreenButton } = fullScreenPluginInstance;
+
   useImperativeHandle(ref, () => ({
     jumpToPage: (pageIndex: number) => {
       jumpToPage(pageIndex);
@@ -64,6 +77,9 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
     ...slot,
     Open: () => <></>,
     SwitchSelectionModeMenuItem: () => <></>,
+    // Use our fullscreen button (configured to fit page width on enter/exit)
+    // instead of the default-layout's internal one, which we can't configure.
+    EnterFullScreen: () => <EnterFullScreenButton />,
     // Download / Print are shown only when the institute allows this role to
     // download / print PDFs; otherwise those toolbar entries are hidden.
     ...(allowDownload
@@ -158,7 +174,11 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
             fileUrl={pdfUrl}
             onDocumentLoad={handleDocumentLoad}
             onPageChange={handlePageChange}
-            plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
+            plugins={[
+              defaultLayoutPluginInstance,
+              pageNavigationPluginInstance,
+              fullScreenPluginInstance,
+            ]}
             defaultScale={SpecialZoomLevel.PageWidth}
             initialPage={initialPage}
           />

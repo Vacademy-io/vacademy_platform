@@ -405,6 +405,9 @@
     "pnpm": {
         "overrides": {
             "rollup": "4.21.2"
+        },
+        "patchedDependencies": {
+            "@radix-ui/react-select@2.2.5": "patches/@radix-ui__react-select@2.2.5.patch"
         }
     },
     "eslintConfig": {

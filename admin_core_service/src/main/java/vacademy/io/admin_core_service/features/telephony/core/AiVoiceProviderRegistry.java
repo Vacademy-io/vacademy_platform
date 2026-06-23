@@ -8,6 +8,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Spring-driven registry for AI-voice providers — the AI analogue of
@@ -37,5 +39,13 @@ public class AiVoiceProviderRegistry {
         AiCallReportParser p = parsers.get(providerType);
         if (p == null) throw new VacademyException("No AI-voice report parser registered for " + providerType);
         return p;
+    }
+
+    /**
+     * Provider codes that can place outbound AI calls (have a registered caller).
+     * Drives the AI-calling settings provider picker — never hardcoded in the UI.
+     */
+    public Set<String> outboundProviderTypes() {
+        return new TreeSet<>(callers.keySet());
     }
 }

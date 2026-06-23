@@ -1,0 +1,95 @@
+package vacademy.io.admin_core_service.features.telephony.providers.aavtaar;
+
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import vacademy.io.admin_core_service.features.telephony.core.AiCallingConfigService;
+import vacademy.io.common.exceptions.VacademyException;
+
+import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Thin HTTP client for Aavtaar's outbound trigger.
+ *
+ *   POST {base}/{companyCode}/click-to-call
+ *   Headers: Authorization: Bearer <token>, CampaignId: <campaignId>, Content-Type: application/json
+ *   Body:    { phoneNumber, customerName?, customerEmail?, campaignId, metadata{} }
+ *
+ * Credentials are resolved per-institute from institute_telephony_config (the
+ * Settings → AI Calling → Credentials card), falling back to the global
+ * {@code aavtaar.api.*} properties when an institute hasn't configured them.
+ */
+@Component
+@RequiredArgsConstructor
+public class AavtaarHttpClient {
+
+    private static final Logger log = LoggerFactory.getLogger(AavtaarHttpClient.class);
+
+    private final AiCallingConfigService configService;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${aavtaar.base-url:https://webapi.aavtaar.ai/api/v1/partner}")
+    private String baseUrl;
+
+    @Value("${aavtaar.api.token:}")
+    private String fallbackToken;
+
+    @Value("${aavtaar.api.company-code:}")
+    private String fallbackCompanyCode;
+
+    public record Result(boolean success, String message, String data) {}
+
+    public Result clickToCall(String instituteId, String phoneNumber, String campaignId,
+                              String customerName, String customerEmail, Map<String, Object> metadata) {
+        AiCallingConfigService.DecryptedCreds creds = configService.getDecrypted(instituteId).orElse(null);
+        String token = notBlank(creds == null ? null : creds.token()) ? creds.token() : fallbackToken;
+        String companyCode = notBlank(creds == null ? null : creds.companyCode())
+                ? creds.companyCode() : fallbackCompanyCode;
+
+        if (!notBlank(token) || !notBlank(companyCode)) {
+            throw new VacademyException("Aavtaar is not configured — add the Company Code + Bearer Token "
+                    + "in Settings → AI Calling → Credentials (or set the aavtaar.api.* properties).");
+        }
+        if (!notBlank(campaignId)) {
+            throw new VacademyException("campaignId is required for an Aavtaar AI call.");
+        }
+
+        String url = baseUrl + "/" + companyCode + "/click-to-call";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+        headers.set("CampaignId", campaignId);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("phoneNumber", phoneNumber);
+        if (customerName != null) body.put("customerName", customerName);
+        if (customerEmail != null) body.put("customerEmail", customerEmail);
+        body.put("campaignId", campaignId);
+        body.put("metadata", metadata == null ? Map.of() : metadata);
+
+        ResponseEntity<Map> resp = restTemplate.exchange(
+                URI.create(url), HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
+
+        Map<?, ?> respBody = resp.getBody();
+        boolean ok = respBody != null && Boolean.TRUE.equals(respBody.get("isSuccess"));
+        String message = respBody == null ? null : asString(respBody.get("message"));
+        String data = respBody == null ? null : asString(respBody.get("data"));
+        log.info("aavtaar click-to-call: phone={} campaign={} ok={} msg={}", phoneNumber, campaignId, ok, message);
+        return new Result(ok, message, data);
+    }
+
+    private boolean notBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    private String asString(Object o) {
+        return o == null ? null : String.valueOf(o);
+    }
+}

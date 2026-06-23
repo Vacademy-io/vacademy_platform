@@ -18,5 +18,6 @@ public enum NodeType {
     MERGE,
     SCHEDULE_TASK,
     UPDATE_RECORD,
-    SEND_PUSH_NOTIFICATION
+    SEND_PUSH_NOTIFICATION,
+    CALL_AI
 }

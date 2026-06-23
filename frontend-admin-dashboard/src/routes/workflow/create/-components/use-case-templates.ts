@@ -100,6 +100,48 @@ function makeEdge(source: string, target: string, label = ''): Edge {
 
 export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
 
+    // ─── 0. AI-call new leads ───
+    // When a lead is submitted, place an AI voice-agent call first. The AI
+    // outcome (via the end-of-call webhook → AiCallOutcomeProcessor) decides
+    // whether a counsellor is assigned — configured in Settings → AI Calling.
+    {
+        id: 'ai_call_new_lead',
+        name: 'AI-call new leads',
+        description:
+            'When a lead comes in, the AI voice agent calls them first. Based on the result, a counsellor is auto-assigned or the lead is retried — per Settings → AI Calling.',
+        icon: '📞',
+        triggerEvents: ['AUDIENCE_LEAD_SUBMISSION'],
+        workflowType: 'EVENT_DRIVEN',
+        questions: [
+            {
+                id: 'campaignId',
+                label: 'AI Campaign ID (optional)',
+                helpText:
+                    'Aavtaar campaign that defines the bot script. Leave blank to use the default from Settings → AI Calling.',
+                type: 'text',
+                required: false,
+            },
+        ],
+        generateWorkflow: (answers) => {
+            const campaignId = ((answers.campaignId as string) || '').trim();
+            const callNode = makeNode(
+                'CALL_AI',
+                'AI Call',
+                campaignId ? { campaignId } : {},
+                250,
+                100,
+                true
+            );
+            return {
+                nodes: [callNode],
+                edges: [],
+                workflowName: 'AI-call new leads',
+                workflowDescription:
+                    'Place an AI call when a lead is submitted; counsellor assignment is settings-gated.',
+            };
+        },
+    },
+
     // ─── 1. Send email to batch students on event ───
     // VERIFIED: fetch_students_by_batch returns {students: [{email, fullName, ...}]}
     //   on="#ctx['students']" → List<Map> ✓, each has email ✓

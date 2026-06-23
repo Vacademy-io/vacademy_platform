@@ -39,27 +39,28 @@ public class QuartzConfig {
                 .build();
     }
 
-    // TODO: Re-enable when persistent delay feature is needed
-    // /**
-    //  * Define the workflow resume job.
-    //  * Resumes paused workflows (e.g., after long DELAY nodes) when their resume_at time arrives.
-    //  */
-    // @Bean
-    // public JobDetail workflowResumeJobDetail() {
-    //     return JobBuilder.newJob(WorkflowResumeJob.class)
-    //             .withIdentity("workflowResumeJob", "workflowGroup")
-    //             .withDescription("Job to resume paused workflows")
-    //             .storeDurably()
-    //             .build();
-    // }
-    //
-    // @Bean
-    // public Trigger workflowResumeTrigger() {
-    //     return TriggerBuilder.newTrigger()
-    //             .forJob(workflowResumeJobDetail())
-    //             .withIdentity("workflowResumeTrigger", "workflowGroup")
-    //             .withDescription("Trigger for workflow resume job")
-    //             .withSchedule(CronScheduleBuilder.cronSchedule("0 0/2 * * * ?"))
-    //             .build();
-    // }
+    /**
+     * Workflow resume job — resumes paused workflows when their {@code resume_at}
+     * arrives. Powers both long DELAY nodes and the CALL_AI pause/resume retry
+     * loop (re-dials no-answer leads within their caps + shifts). Runs every 2 min;
+     * {@link WorkflowResumeJob} claims each due row atomically (multi-pod safe).
+     */
+    @Bean
+    public JobDetail workflowResumeJobDetail() {
+        return JobBuilder.newJob(WorkflowResumeJob.class)
+                .withIdentity("workflowResumeJob", "workflowGroup")
+                .withDescription("Job to resume paused workflows")
+                .storeDurably()
+                .build();
+    }
+
+    @Bean
+    public Trigger workflowResumeTrigger() {
+        return TriggerBuilder.newTrigger()
+                .forJob(workflowResumeJobDetail())
+                .withIdentity("workflowResumeTrigger", "workflowGroup")
+                .withDescription("Trigger for workflow resume job")
+                .withSchedule(CronScheduleBuilder.cronSchedule("0 0/2 * * * ?")) // every 2 minutes
+                .build();
+    }
 }

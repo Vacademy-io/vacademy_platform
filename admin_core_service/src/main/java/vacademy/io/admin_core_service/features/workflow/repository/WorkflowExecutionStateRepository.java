@@ -50,4 +50,20 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
     int claimForResume(@Param("id") String id, @Param("now") Instant now);
 
     List<WorkflowExecutionState> findByExecutionId(String executionId);
+
+    /**
+     * Cancel a lead's paused <b>AI-call retry</b> states (the CALL_AI pause/resume
+     * loop) when its outcome is terminal. Deliberately scoped to the AI-call
+     * {@code pause_reason}s so it never touches other workflows paused for the same
+     * lead (DELAY / APPROVAL / external waits — e.g. a delayed confirmation email).
+     * Native because it reads a JSON field of {@code serialized_context}.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE workflow_execution_state SET status = 'CANCELLED', updated_at = now() " +
+            "WHERE status = 'WAITING' " +
+            "AND pause_reason IN ('AI_CALL_RETRY', 'AI_CALL_RECHECK') " +
+            "AND serialized_context ->> 'responseId' = :responseId",
+            nativeQuery = true)
+    int cancelAiCallRetriesByResponseId(@Param("responseId") String responseId);
 }

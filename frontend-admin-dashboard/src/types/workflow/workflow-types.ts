@@ -153,6 +153,7 @@ export const WORKFLOW_NODE_TYPES = [
     { type: 'UPDATE_RECORD', label: 'Update Record', icon: '📝', color: 'lime', category: 'Data' },
     { type: 'SEND_PUSH_NOTIFICATION', label: 'Push Notification', icon: '🔔', color: 'fuchsia', category: 'Notifications' },
     { type: 'ROUTER', label: 'Router', icon: '🔀', color: 'yellow', category: 'Logic' },
+    { type: 'CALL_AI', label: 'AI Call', icon: '📞', color: 'emerald', category: 'Actions' },
 ] as const;
 
 export const TRIGGER_EVENTS = [

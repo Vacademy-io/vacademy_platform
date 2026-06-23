@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallNodeDispatcher;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProcessor;
@@ -46,10 +48,19 @@ public class CallAiNodeHandler implements NodeHandler {
 
     private final AiCallNodeDispatcher aiCallDispatcher;
     private final AiCallRetryPlanner retryPlanner;
-    private final AiCallOutcomeProcessor aiCallOutcomeProcessor;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * Field-injected with {@code @Lazy} to break an init-time bean cycle:
+     * CALL_AI → AiCallOutcomeProcessor → LeadStatusService → WorkflowTriggerService →
+     * WorkflowEngineService → NodeHandlerRegistry → CALL_AI. It's only used at runtime
+     * on the exhausted-retry handoff, so a lazily-resolved proxy is correct.
+     */
+    @Autowired
+    @Lazy
+    private AiCallOutcomeProcessor aiCallOutcomeProcessor;
 
     @Override
     public boolean supports(String nodeType) {

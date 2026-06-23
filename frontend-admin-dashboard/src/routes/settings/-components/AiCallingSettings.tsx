@@ -429,24 +429,24 @@ export default function AiCallingSettings() {
                 <CardHeader>
                     <CardTitle>Credentials</CardTitle>
                     <CardDescription>
-                        {meta.label} API credentials for this institute. The token and webhook secret
-                        are stored encrypted and never shown again.
+                        API credentials for this institute&apos;s AI calling provider. The token and
+                        webhook secret are stored encrypted and never shown again.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="aavtaar-company-code">{meta.companyCodeLabel}</Label>
+                        <Label htmlFor="ai-company-code">{meta.companyCodeLabel}</Label>
                         <Input
-                            id="aavtaar-company-code"
+                            id="ai-company-code"
                             value={companyCode}
                             placeholder={meta.companyCodePlaceholder}
                             onChange={(e) => setCompanyCode(e.target.value)}
                         />
                     </div>
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="aavtaar-token">{meta.tokenLabel}</Label>
+                        <Label htmlFor="ai-token">{meta.tokenLabel}</Label>
                         <Input
-                            id="aavtaar-token"
+                            id="ai-token"
                             type="password"
                             value={apiToken}
                             placeholder={
@@ -458,9 +458,9 @@ export default function AiCallingSettings() {
                         />
                     </div>
                     <div className="grid max-w-md gap-2">
-                        <Label htmlFor="aavtaar-webhook-secret">Webhook Secret</Label>
+                        <Label htmlFor="ai-webhook-secret">Webhook Secret</Label>
                         <Input
-                            id="aavtaar-webhook-secret"
+                            id="ai-webhook-secret"
                             type="password"
                             value={webhookSecret}
                             placeholder={
@@ -471,8 +471,8 @@ export default function AiCallingSettings() {
                             onChange={(e) => setWebhookSecret(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Authenticates {meta.label}&apos;s end-of-call webhook. Hand {meta.label} the
-                            URL {webhookPath}?instituteId=…&amp;token=&lt;this secret&gt;.
+                            Authenticates the provider&apos;s end-of-call webhook. Hand your AI provider
+                            the URL {webhookPath}?instituteId=…&amp;token=&lt;this secret&gt;.
                         </p>
                     </div>
                     <div className="flex justify-end">

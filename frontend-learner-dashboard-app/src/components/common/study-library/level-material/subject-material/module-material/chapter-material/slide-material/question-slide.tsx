@@ -808,7 +808,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
 
             case "LONG_ANSWER":
                 return (
-                    <div className="w-full max-w-2xl mx-auto mt-2 sm:mt-4">
+                    <div className="w-full mt-2 sm:mt-4">
                         <Textarea
                             value={inputValue}
                             onChange={handleInputChange}
@@ -918,7 +918,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         (questionType === "NUMERIC" && !numericValue.trim());
 
     return (
-        <div className="w-full max-w-2xl mx-auto bg-white rounded-lg shadow-sm p-4 sm:p-6">
+        <div className="w-full bg-white rounded-lg shadow-sm p-4 sm:p-6">
             <h2 className="text-lg sm:text-xl font-medium text-gray-900 mb-2 sm:mb-3">
                 Question:
             </h2>
@@ -987,7 +987,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 auto-expands and can be collapsed/re-opened for self-checking. */}
             {hasSubmitted &&
                 questionData?.explanation_text_data?.content?.trim() && (
-                <div className="mx-auto mt-6 w-full max-w-2xl">
+                <div className="mt-6 w-full">
                     <button
                         type="button"
                         onClick={() =>

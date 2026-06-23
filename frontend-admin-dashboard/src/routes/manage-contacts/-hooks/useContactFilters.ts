@@ -220,7 +220,7 @@ export const useContactFilters = () => {
     };
 
     const getActiveFiltersState = useCallback(() => {
-        const hasName = Boolean(appliedFilters.user_filter?.name_search?.trim());
+        const hasName = Boolean(String(appliedFilters.user_filter?.name_search ?? '').trim());
         const hasColumnFilter = columnFilters.some(f => f.value && f.value.length > 0);
         return hasName || hasColumnFilter;
     }, [columnFilters, appliedFilters]);

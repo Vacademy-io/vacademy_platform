@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import YooptaEditor from '@yoopta/editor';
 import type { YooEditor } from '@yoopta/editor';
 
@@ -13,6 +14,10 @@ interface YooptaEditorWrapperProps {
     className?: string;
     style?: React.CSSProperties;
     readOnly?: boolean;
+    // Called once after <YooptaEditor> has mounted. By this point YooptaEditor
+    // has built the proper plugin/block/format maps on the shared editor
+    // instance, so callers can safely (re-)deserialize content into it.
+    onMount?: () => void;
 }
 
 export function YooptaEditorWrapper({
@@ -27,7 +32,17 @@ export function YooptaEditorWrapper({
     className,
     style,
     readOnly,
+    onMount,
 }: YooptaEditorWrapperProps) {
+    // YooptaEditor populates editor.plugins/blocks/formats in its render-phase
+    // init, which completes before this child effect runs — so the maps are
+    // guaranteed ready when onMount fires.
+    useEffect(() => {
+        onMount?.();
+        // Run once on mount only.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return (
         <YooptaEditor
             editor={editor}

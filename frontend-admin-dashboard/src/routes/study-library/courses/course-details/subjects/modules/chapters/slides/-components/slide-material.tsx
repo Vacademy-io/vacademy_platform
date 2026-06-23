@@ -2756,6 +2756,18 @@ export const SlideMaterial = ({
         }
     }, [items, slideId]);
 
+    // For read-only file-backed document slides (PDF / PPT_ANIM) the rendered
+    // content is derived purely from the file URL in data/published_data — there's
+    // no live editor to disrupt. Track it so the view re-renders when the URL fills
+    // in (e.g. right after an upload, once the slides refetch lands). Scoped to
+    // these two types so we never rebuild the DOC/CODE/JUPYTER/Excalidraw editors
+    // on their autosave-triggered refetches (the reason `items` was kept out of deps).
+    const docContentSignature =
+        activeItem?.source_type === 'DOCUMENT' &&
+        ['PDF', 'PPT_ANIM'].includes(activeItem?.document_slide?.type ?? '')
+            ? `${activeItem?.document_slide?.data ?? ''}|${activeItem?.document_slide?.published_data ?? ''}`
+            : null;
+
     useEffect(() => {
         setHeading(activeItem?.title || '');
         // Only reload content if the slide identity or shape changes.
@@ -2769,6 +2781,8 @@ export const SlideMaterial = ({
         activeItem?.source_type,
         activeItem?.document_slide?.type,
         activeItem?.status,
+        // File-backed doc slides: re-render when the URL fills in (post-upload).
+        docContentSignature,
         // Re-render the video preview when an external link is edited in place.
         activeItem?.video_slide?.url,
         activeItem?.video_slide?.published_url,

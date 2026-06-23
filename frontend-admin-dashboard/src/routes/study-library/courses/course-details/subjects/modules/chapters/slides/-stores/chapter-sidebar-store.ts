@@ -23,7 +23,15 @@ export const useContentStore = create<ContentStore>((set, get) => ({
     assessmentCreateMode: false,
 
     setItems: (items) => {
-        set({ items });
+        set((state) => {
+            if (!state.activeItem) return { items };
+            // Keep the selected slide pointing at the freshly-fetched data. Without
+            // this, a slide selected before its content finished loading (e.g. right
+            // after a PPT upload) stays rendered from the stale snapshot until a
+            // manual refresh — activeItem is a separate reference from items.
+            const fresh = items.find((s) => s.id === state.activeItem!.id);
+            return fresh ? { items, activeItem: fresh } : { items };
+        });
     },
 
     setActiveItem: (item) => {

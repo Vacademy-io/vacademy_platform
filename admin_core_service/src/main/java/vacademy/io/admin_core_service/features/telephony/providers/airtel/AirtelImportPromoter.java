@@ -177,12 +177,27 @@ public class AirtelImportPromoter {
         if (row != null) {
             row.setProviderCallId(imp.getCallId());
             applyCdrFields(row, imp);
+            // If the reused/enriched row is still UNKNOWN-lead (created before the
+            // lead resolver could match it), try to attribute it now — makes a
+            // reset+reprocess of UNKNOWN rows self-healing.
+            resolveLeadIfUnknown(row, instituteId, imp);
             callLogRepo.save(row);
         } else {
             row = createCallLog(imp, instituteId, counsellor, outbound);
             callLogRepo.save(row);
         }
         markPromoted(imp, row.getId());
+    }
+
+    /** Re-attribute a row whose lead is still UNKNOWN, via the counterparty number. */
+    private void resolveLeadIfUnknown(TelephonyCallLog row, String instituteId, AirtelCallImport imp) {
+        if (row.getUserId() != null && !"UNKNOWN".equals(row.getUserId())) return; // already attributed
+        if (imp.getCounterpartyMsisdn10() == null) return;
+        leadDirectoryResolver.findByPhoneLast10(instituteId, imp.getCounterpartyMsisdn10())
+                .ifPresent(lead -> {
+                    if (lead.userId() != null && !lead.userId().isBlank()) row.setUserId(lead.userId());
+                    if (lead.responseId() != null) row.setResponseId(lead.responseId());
+                });
     }
 
     private void promoteRecording(AirtelCallImport imp) {

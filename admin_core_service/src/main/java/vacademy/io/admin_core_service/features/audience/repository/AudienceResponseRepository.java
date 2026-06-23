@@ -51,6 +51,26 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("last10") String last10);
 
         /**
+         * The most recent {@code audience_response.id} for a given user in this
+         * institute — i.e. confirms the user IS a lead here and returns the lead's
+         * response id. Used by the telephony resolver after it finds the user by
+         * mobile in auth_service: the call attaches to {@code user_id}, scoped to
+         * the call's institute so it never crosses tenants.
+         */
+        @Query(value = """
+                SELECT ar.id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id = :userId
+                ORDER BY ar.created_at DESC
+                LIMIT 1
+                """, nativeQuery = true)
+        List<String> findResponseIdByInstituteAndUser(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * Find all leads for a campaign with pagination
          */
         Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);

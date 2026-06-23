@@ -165,6 +165,20 @@ export const handleUnpublishSlide = async (
             newSlide: false,
         });
 
+        // converDataToVideoFormat is shaped for publish: it clears
+        // video_slide.url and moves the file id into published_url. On
+        // unpublish the slide returns to a draft state, where the preview reads
+        // video_slide.url (video-slide-preview.tsx) — so a cleared url would
+        // leave the video blank. Restore the file id into url from the
+        // published copy the transform just computed. The shared transform is
+        // left untouched, so publish / save-draft behavior is unchanged.
+        if (convertedData?.video_slide) {
+            convertedData.video_slide.url =
+                convertedData.video_slide.published_url ||
+                activeItem.video_slide.url ||
+                '';
+        }
+
         try {
             await addUpdateVideoSlide(convertedData);
             toast.success(`Slide unpublished successfully!`);

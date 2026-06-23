@@ -547,15 +547,20 @@ export const SlideMaterial = ({
             usedManualPluginInitRef.current = false;
         }
 
+        // Fall back to published_data when a non-published slide's draft `data`
+        // is missing OR blank. `data` can be a non-null but empty editor wrapper
+        // (e.g. an auto-save race that clobbered it, or a copied PUBLISHED doc
+        // whose content lives only in published_data). A plain `data || ...`
+        // would NOT fall back, because the empty wrapper is a truthy string — so
+        // the slide opens blank even though the content survives in
+        // published_data. checkIsHtmlEmpty detects the blank wrapper.
+        const draftDocData = activeItem?.document_slide?.data;
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
-                : // Fall back to published_data when a non-published slide has empty
-                  // data — e.g. a copied slide: copying a PUBLISHED doc carries over
-                  // its content in published_data while data is null (publish clears
-                  // data), and the copy is created as DRAFT, so it would otherwise
-                  // open blank. (Publish/Save already use this same fallback.)
-                  activeItem?.document_slide?.data ||
+                : (draftDocData && !checkIsHtmlEmpty(draftDocData)
+                      ? draftDocData
+                      : null) ||
                   activeItem?.document_slide?.published_data ||
                   null;
 
@@ -988,8 +993,13 @@ export const SlideMaterial = ({
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
-            // at path" Slate bug) have something to fall back to.
-            currentDocHtmlRef.current = formatted;
+            // at path" Slate bug) have something to fall back to. Only cache a
+            // NON-empty result: a transient empty/degenerate serialize (e.g.
+            // mid slide-switch) must not poison the fallback, or the catch
+            // block below would itself recover empty content and lose work.
+            if (!checkIsHtmlEmpty(formatted)) {
+                currentDocHtmlRef.current = formatted;
+            }
             return formatted;
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
@@ -1243,6 +1253,19 @@ export const SlideMaterial = ({
                 ? itemsNow.find((s) => s.id === slide.id)?.status === 'DELETED'
                 : false;
             if (!stillExists || deletedInStore || slide.status === 'DELETED') {
+                return;
+            }
+
+            // Never let an empty/blank editor serialization clobber a slide that
+            // has content. Mirrors SaveDraft's empty-guard. Without this, a
+            // slide-switch race (the editor is momentarily empty before its
+            // content finishes loading) auto-saves the empty wrapper into `data`
+            // and flips a PUBLISHED slide to UNSYNC — the slide then opens blank
+            // even though the real content still lives in published_data.
+            if (checkIsHtmlEmpty(htmlString)) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor content is empty; refusing to overwrite existing slide data.'
+                );
                 return;
             }
 
@@ -2181,6 +2204,10 @@ export const SlideMaterial = ({
                     console.error('Payload that failed:', videoSlidePayload);
                     toast.error(`Error saving split screen slide: ${error}`);
                 }
+                // Split-screen VIDEO is fully handled here. Return so it does
+                // not fall through to the DOC path below and get overwritten as
+                // a type:'DOC' document (the split embedded_data would be lost).
+                return;
             } else if (activeItem?.source_type == 'VIDEO') {
                 // Handle regular video slides (non-split screen)
                 const convertedData = converDataToVideoFormat({
@@ -2195,6 +2222,21 @@ export const SlideMaterial = ({
                 } catch {
                     toast.error(`Error in saving the slide`);
                 }
+                // VIDEO is fully handled here. Without this return the slide
+                // would continue into the DOC path below and risk being
+                // overwritten as a type:'DOC' document (it only survives today
+                // because the editor happens to be empty and the empty-guard
+                // catches it — too fragile to rely on).
+                return;
+            }
+
+            // HTML_VIDEO (AI Video / AI Slides / AI Storybook) is AI-generated,
+            // rendered read-only via VideoSlidePreview, and has no editor content
+            // or draft-save action (handlePublishSlide has no HTML_VIDEO branch
+            // either). Return here so it never falls through to the DOC path and
+            // gets overwritten as a type:'DOC' slide.
+            if (activeItem?.source_type === 'HTML_VIDEO') {
+                return;
             }
 
             if (activeItem?.source_type === 'QUESTION') {
@@ -2276,8 +2318,13 @@ export const SlideMaterial = ({
                         id: activeItem.id,
                         title: activeItem.title,
                         description: activeItem.description || null,
+                        // Mirror the publish/unpublish SCORM payload so a draft
+                        // save doesn't drop the thumbnail — the backend may
+                        // treat an absent image_file_id as "clear".
+                        image_file_id: activeItem.image_file_id || '',
                         status: status as 'DRAFT' | 'PUBLISHED',
                         slide_order: activeItem.slide_order,
+                        notify: false,
                         new_slide: false,
                         scorm_slide: {
                             id: activeItem.scorm_slide.id,
@@ -2456,6 +2503,57 @@ export const SlideMaterial = ({
                     toast.error(
                         `Error saving ${activeItem.document_slide.type.toLowerCase()} slide`
                     );
+                }
+                return;
+            }
+
+            // PDF and PPT_ANIM slides have no editor content — they reference an
+            // uploaded file by id in document_slide.data (PDF = file id rendered
+            // by the PDF viewer; PPT_ANIM = deck base rendered by DeckPlayer).
+            // Without this branch, Save Draft falls through to the DOC path
+            // below, serializes the (empty) document editor, and overwrites the
+            // slide as type:'DOC' — wiping the file and leaving only the title.
+            // Re-save in place, preserving the type / file id / page count /
+            // published snapshot.
+            if (
+                slide?.source_type === 'DOCUMENT' &&
+                (slide?.document_slide?.type === 'PDF' ||
+                    slide?.document_slide?.type === 'PPT_ANIM')
+            ) {
+                try {
+                    await addUpdateDocumentSlide({
+                        id: slide?.id || '',
+                        title: slide?.title || '',
+                        image_file_id: slide?.image_file_id || '',
+                        description: slide?.description || '',
+                        slide_order: null,
+                        document_slide: {
+                            id: slide?.document_slide?.id || '',
+                            type: slide?.document_slide?.type || 'PDF',
+                            // Fall back to the published snapshot so we never
+                            // write data:null for a deck/PDF that only has a
+                            // published copy (the UNSYNC admin preview reads
+                            // data, and a null would show a blank deck).
+                            data:
+                                slide?.document_slide?.data ||
+                                slide?.document_slide?.published_data ||
+                                null,
+                            title: slide?.document_slide?.title || '',
+                            cover_file_id: slide?.document_slide?.cover_file_id || '',
+                            total_pages: slide?.document_slide?.total_pages || 1,
+                            published_data:
+                                slide?.document_slide?.published_data || null,
+                            published_document_total_pages:
+                                slide?.document_slide
+                                    ?.published_document_total_pages || 1,
+                        },
+                        status: status,
+                        new_slide: false,
+                        notify: false,
+                    });
+                    toast.success(`slide saved in draft successfully!`);
+                } catch {
+                    toast.error(`Error in saving the slide`);
                 }
                 return;
             }

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.telephony.core.LeadDirectoryResolver;
+import vacademy.io.admin_core_service.features.telephony.core.TelephonyJson;
 import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
@@ -122,8 +123,18 @@ public class AirtelImportPromoter {
     private String resolveInstitute(AirtelCallImport imp) {
         if (imp.getInstituteId() != null) return imp.getInstituteId();
         if (imp.getAccountId() == null) return null;
-        return configRepo.findAirtelConfigByAccountId(imp.getAccountId())
-                .map(InstituteTelephonyConfig::getInstituteId).orElse(null);
+        // Match the import's Airtel account id against each AIRTEL config's parsed
+        // provider_config JSON in Java. The AIRTEL config set is tiny (one per
+        // institute), and this avoids the brace-guarded ::jsonb native query that
+        // tripped Hibernate's "{alias}" path parser ("Unmatched braces for alias
+        // path") — the bug that failed every promote.
+        for (InstituteTelephonyConfig cfg : configRepo.findByProviderType(ProviderType.AIRTEL)) {
+            if (imp.getAccountId().equals(
+                    TelephonyJson.read(cfg.getProviderConfig()).get("accountId"))) {
+                return cfg.getInstituteId();
+            }
+        }
+        return null;
     }
 
     private String resolveCounsellor(AirtelCallImport imp) {

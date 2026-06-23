@@ -86,6 +86,14 @@ async def _lifespan(app: FastAPI):
         start_reels_reaper()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("reels reaper startup skipped: %s", exc)
+    # Vacademy Assistant help corpus: keep the deployed pgvector corpus in sync
+    # with app/data/help_knowledge.jsonl. Change-detected, so an unchanged corpus
+    # is a no-op. Lazy import + background task so it can't block app boot.
+    try:
+        from .services.help_corpus_sync import start_help_corpus_sync
+        start_help_corpus_sync()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("help corpus sync startup skipped: %s", exc)
     yield
 
 

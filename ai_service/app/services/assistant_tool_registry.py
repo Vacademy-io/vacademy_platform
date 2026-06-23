@@ -131,14 +131,26 @@ async def _execute_search_help_knowledge(args: Dict[str, Any], ctx: ToolContext)
     try:
         embedding_service = EmbeddingService(_StaticKeyResolver(ctx.keys))
         rag = RAGService(ctx.db, embedding_service)
-        rows = await rag.search(
-            query=query,
-            institute_id=HELP_KNOWLEDGE_INSTITUTE_ID,
-            top_k=5,
-            similarity_threshold=0.3,
-            source_type="help_knowledge",
-            roles=ctx.principal.roles or None,
-        )
+        # Search BOTH the product-wide global corpus and any institute-specific
+        # help, then merge. This makes retrieval robust to which institute the
+        # corpus was ingested under (global sentinel vs the caller's institute).
+        institute_ids = [HELP_KNOWLEDGE_INSTITUTE_ID]
+        if ctx.principal.institute_id and ctx.principal.institute_id != HELP_KNOWLEDGE_INSTITUTE_ID:
+            institute_ids.append(ctx.principal.institute_id)
+        merged: Dict[Any, Dict[str, Any]] = {}
+        for iid in institute_ids:
+            for r in await rag.search(
+                query=query,
+                institute_id=iid,
+                top_k=5,
+                similarity_threshold=0.3,
+                source_type="help_knowledge",
+                roles=ctx.principal.roles or None,
+            ):
+                k = r.get("source_id") or r.get("content_text")
+                if k not in merged or (r.get("similarity_score") or 0) > (merged[k].get("similarity_score") or 0):
+                    merged[k] = r
+        rows = sorted(merged.values(), key=lambda r: r.get("similarity_score") or 0, reverse=True)[:5]
     except Exception as e:  # never leak internals to the model
         logger.warning("search_help_knowledge failed: %s", e)
         return json.dumps({"results": [], "note": "Help search is temporarily unavailable."})

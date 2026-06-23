@@ -17,6 +17,9 @@ import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useVacademyAssistant } from './useVacademyAssistant';
 import type { AssistantMessage } from './types';
+import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
+import type { ReactNode } from 'react';
 
 // Routes where no authenticated shell exists — the widget must stay hidden even
 // if a stale token lingers. Mirrors the public routes in routes/__root.tsx.
@@ -203,21 +206,52 @@ export function VacademyAssistant() {
     );
 }
 
+// Token-styled markdown renderer for assistant replies (mirrors the AI-usage
+// dialog's map, so it stays design-system-conformant — no `prose` plugin).
+type MdProps = { children?: ReactNode; href?: string };
+const mdComponents: Components = {
+    p: ({ children }: MdProps) => <p className="mb-2 last:mb-0">{children}</p>,
+    ul: ({ children }: MdProps) => <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>,
+    ol: ({ children }: MdProps) => <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>,
+    li: ({ children }: MdProps) => <li className="mb-1">{children}</li>,
+    strong: ({ children }: MdProps) => <strong className="font-semibold">{children}</strong>,
+    em: ({ children }: MdProps) => <em className="italic">{children}</em>,
+    a: ({ children, href }: MdProps) => (
+        <a href={href} target="_blank" rel="noreferrer" className="text-primary-600 underline">
+            {children}
+        </a>
+    ),
+    code: ({ children }: MdProps) => (
+        <code className="rounded-sm bg-neutral-100 px-1 py-0.5 text-caption">{children}</code>
+    ),
+    pre: ({ children }: MdProps) => (
+        <pre className="mb-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-caption last:mb-0">
+            {children}
+        </pre>
+    ),
+    h1: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+    h2: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+    h3: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+};
+
 function MessageBubble({ message }: { message: AssistantMessage }) {
     const isUser = message.role === 'user';
     return (
-        <div className={cn('flex', isUser ? 'justify-end pl-8' : 'justify-start pr-8')}>
+        <div className={cn('flex', isUser ? 'justify-end pl-8' : 'justify-start pr-6')}>
             <div
                 className={cn(
-                    'w-fit whitespace-pre-wrap rounded-lg px-3 py-2 text-body',
+                    'rounded-lg px-3 py-2 text-body',
                     isUser
-                        ? 'bg-primary-500 text-white'
+                        ? 'w-fit whitespace-pre-wrap bg-primary-500 text-white'
                         : 'border border-neutral-200 bg-neutral-50 text-neutral-800'
                 )}
             >
-                {message.content}
-                {message.streaming && !message.content && (
-                    <span className="text-neutral-400">…</span>
+                {isUser ? (
+                    message.content
+                ) : message.content ? (
+                    <ReactMarkdown components={mdComponents}>{message.content}</ReactMarkdown>
+                ) : (
+                    message.streaming && <span className="text-neutral-400">…</span>
                 )}
             </div>
         </div>

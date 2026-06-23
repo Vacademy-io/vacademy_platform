@@ -336,7 +336,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     htmlContent,
     className = '',
 }) => {
-    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs'; content: string; meta?: Record<string, string> }>>([]);
+    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer'; content: string; meta?: Record<string, string> }>>([]);
     // Current slide id (for persisting the learner's checkbox/checklist ticks)
     // and a ref over the rendered output so we can wire up todo-item clicks.
     const slideId = useContentStore((s) => s.activeItem?.id);

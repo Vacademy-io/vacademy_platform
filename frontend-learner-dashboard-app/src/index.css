@@ -74,6 +74,48 @@ html, body {
   margin: 0.75rem 0;
   color: #374151; /* neutral-700 */
 }
+/* Headings / rules / emphasis — Tailwind preflight strips these, so restore
+   the read-only rendering the editor shows (e.g. explanation answer-guidance
+   HTML uses <h3>, <hr>, <strong>). */
+.rich-text-content h1 {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.6em 0 0.4em;
+}
+.rich-text-content h2 {
+  font-size: 1.3em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.6em 0 0.4em;
+}
+.rich-text-content h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0.6em 0 0.3em;
+}
+.rich-text-content h4,
+.rich-text-content h5,
+.rich-text-content h6 {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em;
+}
+.rich-text-content h1:first-child,
+.rich-text-content h2:first-child,
+.rich-text-content h3:first-child {
+  margin-top: 0;
+}
+.rich-text-content hr {
+  border: 0;
+  border-top: 1px solid #e5e7eb; /* neutral-200 */
+  margin: 0.9em 0;
+}
+.rich-text-content strong,
+.rich-text-content b {
+  font-weight: 600;
+}
 
 /* Column layout: override the CSS custom property on mobile so the
    var(--catalogue-grid-cols) used in the inline style collapses to 1 column.

@@ -2079,11 +2079,20 @@ public class AudienceService {
         // auth_service for matching user IDs first, then OR'ing them into the
         // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
         // CSV → predicate behaves exactly as before for non-search queries.
+        //
+        // We intentionally pass instituteId = null here. searchUserIdsByQuery scopes
+        // matches to users that hold a user_role for the institute, but lead/enquiry
+        // users are bare contacts with no role — passing the instituteId excluded
+        // every such user, so name/email/phone search returned 0 rows for leads whose
+        // identity lives only on the auth User. Broadening the auth lookup is safe:
+        // the returned IDs are intersected with ar.user_id, and audience_response is
+        // already institute-scoped (JOIN audience a ON a.institute_id = :instituteId),
+        // so no cross-institute lead can leak in.
         String searchUserIdsCsv = null;
         String rawSearch = filterDTO.getSearchQuery();
         if (rawSearch != null && !rawSearch.isBlank()) {
             try {
-                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, null);
                 if (ids != null && !ids.isEmpty()) {
                     searchUserIdsCsv = String.join(",", ids);
                 }

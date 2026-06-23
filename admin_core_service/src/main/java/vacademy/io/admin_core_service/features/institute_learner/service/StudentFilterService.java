@@ -22,6 +22,7 @@ public class StudentFilterService {
                                                     List<String> instituteIds,
                                                     List<String> groupIds,
                                                     List<String> packageSessionIds,
+                                                    List<String> subOrgIds,
                                                     List<String> customFieldIds,
                                                     Pageable pageable) {
 
@@ -31,11 +32,12 @@ public class StudentFilterService {
         List<String> safeInstituteIds = (instituteIds == null || instituteIds.isEmpty()) ? new ArrayList<>() : instituteIds;
         List<String> safeGroupIds = (groupIds == null || groupIds.isEmpty()) ? new ArrayList<>() : groupIds;
         List<String> safePackageSessionIds = (packageSessionIds == null || packageSessionIds.isEmpty()) ? new ArrayList<>() : packageSessionIds;
+        List<String> safeSubOrgIds = (subOrgIds == null || subOrgIds.isEmpty()) ? new ArrayList<>() : subOrgIds;
         List<String> safeCustomFieldIds = (customFieldIds == null || customFieldIds.isEmpty()) ? new ArrayList<>() : customFieldIds;
 
         Page<Object[]> result = instituteStudentRepository.findAllStudentsWithFilterAndSearchAndCustomFields(name,
                 safeStatuses, safeGender, safeInstituteIds,
-                safeGroupIds, safePackageSessionIds, safeCustomFieldIds,
+                safeGroupIds, safePackageSessionIds, safeSubOrgIds, safeCustomFieldIds,
                 pageable
         );
 
@@ -107,6 +109,7 @@ public class StudentFilterService {
             List<String> instituteIds,
             List<String> groupIds,
             List<String> packageSessionIds,
+            List<String> subOrgIds,
             List<String> customFieldIds,
             Pageable pageable) {
 
@@ -116,11 +119,12 @@ public class StudentFilterService {
         List<String> safeInstituteIds = (instituteIds == null || instituteIds.isEmpty()) ? new ArrayList<>() : instituteIds;
         List<String> safeGroupIds = (groupIds == null || groupIds.isEmpty()) ? new ArrayList<>() : groupIds;
         List<String> safePackageSessionIds = (packageSessionIds == null || packageSessionIds.isEmpty()) ? new ArrayList<>() : packageSessionIds;
+        List<String> safeSubOrgIds = (subOrgIds == null || subOrgIds.isEmpty()) ? new ArrayList<>() : subOrgIds;
         List<String> safeCustomFieldIds = (customFieldIds == null || customFieldIds.isEmpty()) ? new ArrayList<>() : customFieldIds;
 
         Page<Object[]> result = instituteStudentRepository.findAllStudentsWithFiltersAndCustomFields(
                 safeStatuses, safeGender, safeInstituteIds,
-                safeGroupIds, safePackageSessionIds, safeCustomFieldIds,
+                safeGroupIds, safePackageSessionIds, safeSubOrgIds, safeCustomFieldIds,
                 pageable
         );
 

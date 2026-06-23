@@ -52,4 +52,26 @@ public class TelephonyAsyncConfig {
         ex.initialize();
         return ex;
     }
+
+    /**
+     * Serial, paced worker that actually places AI calls enqueued by the CALL_AI
+     * workflow node ({@code AiCallNodeDispatcher}). Decouples dialing from workflow
+     * execution: a bulk sheet upload fires many CALL_AI nodes, but each only
+     * ENQUEUES here and returns — so the request thread / workflow engine aren't
+     * blocked on the Aavtaar HTTP hop, and calls go out one-at-a-time (paced)
+     * instead of in a burst. Single thread = strict serial rate. CallerRuns
+     * backpressure (never drops) throttles the producer if the queue ever fills.
+     */
+    @Bean(name = "aiCallQueueExecutor")
+    public Executor aiCallQueueExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(1);
+        ex.setMaxPoolSize(1);
+        ex.setQueueCapacity(1000);
+        ex.setThreadNamePrefix("ai-call-queue-");
+        ex.setRejectedExecutionHandler(
+                new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        ex.initialize();
+        return ex;
+    }
 }

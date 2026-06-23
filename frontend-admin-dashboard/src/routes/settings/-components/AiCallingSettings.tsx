@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { MyButton } from '@/components/design-system/button';
+import { Plus, Trash } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { LOCAL_ADMIN_CORE_BASE } from '@/constants/urls';
+import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -19,9 +20,20 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 type AssignmentMode = 'ROUND_ROBIN' | 'TIME_BASED' | 'MANUAL';
 
+/** One calling window. `start`/`end` are "HH:mm" (24h, institute timezone). */
+export interface Shift {
+    start: string;
+    end: string;
+}
+
 export interface AiCallingSettingsData {
     /** Master switch — when off, no AI calls are placed for this institute. */
     enabled: boolean;
+    /**
+     * Show the manual "AI call" robot button in lead lists. Independent of
+     * `enabled`: turning this off only hides the icon — AI workflows keep running.
+     */
+    showInLeadList: boolean;
     /** Aavtaar campaign id (AI script/persona) used for outbound AI calls. */
     defaultCampaignId: string;
     /** A call shorter than this (seconds) counts as "didn't really connect" → retry. */
@@ -30,8 +42,8 @@ export interface AiCallingSettingsData {
     // Retry policy
     maxRetries: number;
     maxCallsPerDayPerLead: number;
-    windowStart: string; // "09:00"
-    windowEnd: string; // "21:00"
+    /** Time windows the bot may (re)dial in — supports multiple shifts. */
+    callingShifts: Shift[];
     timezone: string; // e.g. "Asia/Kolkata"
 
     // Outcome → action. Dispositions in neither list are retried until max, then
@@ -61,12 +73,12 @@ const ASSIGNMENT_MODES: { value: AssignmentMode; label: string }[] = [
 
 const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     enabled: false,
+    showInLeadList: false,
     defaultCampaignId: '',
     connectThresholdSec: 20,
     maxRetries: 3,
     maxCallsPerDayPerLead: 3,
-    windowStart: '09:00',
-    windowEnd: '21:00',
+    callingShifts: [{ start: '09:00', end: '21:00' }],
     timezone: 'Asia/Kolkata',
     assignOnDispositions: ['Interested', 'Likely_Interested'],
     stopOnDispositions: ['Not_Interested'],
@@ -75,11 +87,8 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
 };
 
 const SETTING_KEY = 'AI_CALLING_SETTING';
-// LOCAL DEV: settings save/get pointed at localhost:8072 so the AI campaign saved
-// here is read by the same local backend that places the call. Revert to
-// GET_INSITITUTE_SETTINGS (BASE_URL) before commit.
-const GET_URL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/setting/v1/get`;
-const SAVE_URL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/setting/v1/save-setting`;
+const GET_URL = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
+const SAVE_URL = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 
@@ -91,9 +100,17 @@ const fetchAiCallingSettings = async (): Promise<AiCallingSettingsData> => {
         params: { instituteId, settingKey: SETTING_KEY },
     });
     const saved = response.data?.data?.[SETTING_KEY]?.data as
-        | Partial<AiCallingSettingsData>
+        | (Partial<AiCallingSettingsData> & { windowStart?: string; windowEnd?: string })
         | undefined;
-    return saved ? { ...DEFAULT_AI_CALLING_SETTINGS, ...saved } : DEFAULT_AI_CALLING_SETTINGS;
+    if (!saved) return DEFAULT_AI_CALLING_SETTINGS;
+    const merged = { ...DEFAULT_AI_CALLING_SETTINGS, ...saved };
+    // Migrate the legacy single window → one shift when shifts weren't saved yet.
+    if ((!saved.callingShifts || saved.callingShifts.length === 0) && (saved.windowStart || saved.windowEnd)) {
+        merged.callingShifts = [
+            { start: saved.windowStart ?? '09:00', end: saved.windowEnd ?? '21:00' },
+        ];
+    }
+    return merged;
 };
 
 const saveAiCallingSettings = async (data: AiCallingSettingsData): Promise<void> => {
@@ -117,9 +134,8 @@ interface AiConfigSave {
     apiToken?: string;
     webhookSecret?: string;
 }
-// LOCAL DEV: pointed at localhost:8072 to match the local backend. Revert to BASE_URL before commit.
 const AI_CONFIG_URL = (instituteId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/ai-config/${instituteId}`;
+    `${BASE_URL}/admin-core-service/v1/telephony/ai-config/${instituteId}`;
 
 const fetchAiConfig = async (): Promise<AiConfigView> => {
     const instituteId = getCurrentInstituteId() ?? '';
@@ -230,6 +246,30 @@ export default function AiCallingSettings() {
         setHasChanges(true);
     };
 
+    const addShift = () => {
+        setSettings((prev) => ({
+            ...prev,
+            callingShifts: [...prev.callingShifts, { start: '09:00', end: '13:00' }],
+        }));
+        setHasChanges(true);
+    };
+
+    const removeShift = (index: number) => {
+        setSettings((prev) => ({
+            ...prev,
+            callingShifts: prev.callingShifts.filter((_, i) => i !== index),
+        }));
+        setHasChanges(true);
+    };
+
+    const updateShift = (index: number, patch: Partial<Shift>) => {
+        setSettings((prev) => ({
+            ...prev,
+            callingShifts: prev.callingShifts.map((s, i) => (i === index ? { ...s, ...patch } : s)),
+        }));
+        setHasChanges(true);
+    };
+
     const handleSave = () => {
         if (settings.enabled && !settings.defaultCampaignId.trim()) {
             toast.error('A default Campaign ID is required to enable AI calling.');
@@ -261,6 +301,23 @@ export default function AiCallingSettings() {
                             {settings.enabled ? 'Enabled' : 'Disabled'}
                         </Label>
                     </div>
+
+                    <Separator />
+
+                    <div className="flex items-center gap-3">
+                        <Switch
+                            id="ai-show-in-lead-list"
+                            checked={settings.showInLeadList}
+                            onCheckedChange={(v) => update({ showInLeadList: v })}
+                        />
+                        <Label htmlFor="ai-show-in-lead-list" className="cursor-pointer">
+                            Show the AI-call button on lead rows
+                        </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        Controls only the manual robot button in lead lists. Automated AI workflows
+                        run regardless of this toggle.
+                    </p>
 
                     {settings.enabled && (
                         <div className="grid max-w-md gap-2">
@@ -349,10 +406,10 @@ export default function AiCallingSettings() {
                     {/* ── Retry & Calling Window ── */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Retries &amp; Calling Window</CardTitle>
+                            <CardTitle>Retries &amp; Calling Shifts</CardTitle>
                             <CardDescription>
                                 If a lead doesn&apos;t answer, the AI retries within these limits before
-                                giving up. Calls are only placed inside the window.
+                                giving up. Retries are only placed inside the shifts below.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -386,25 +443,49 @@ export default function AiCallingSettings() {
                                     className="w-28"
                                 />
                             </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="window-start">Window start</Label>
-                                <Input
-                                    id="window-start"
-                                    type="time"
-                                    value={settings.windowStart}
-                                    onChange={(e) => update({ windowStart: e.target.value })}
-                                    className="w-36"
-                                />
-                            </div>
-                            <div className="grid gap-2">
-                                <Label htmlFor="window-end">Window end</Label>
-                                <Input
-                                    id="window-end"
-                                    type="time"
-                                    value={settings.windowEnd}
-                                    onChange={(e) => update({ windowEnd: e.target.value })}
-                                    className="w-36"
-                                />
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label>Calling shifts</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Time windows the bot may (re)dial in. Add multiple shifts (e.g.
+                                    morning + evening). Applies to the timed retry re-dialer; immediate
+                                    new-lead, manual and bulk calls fire right away.
+                                </p>
+                                <div className="space-y-2">
+                                    {settings.callingShifts.map((shift, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <Input
+                                                type="time"
+                                                value={shift.start}
+                                                onChange={(e) =>
+                                                    updateShift(i, { start: e.target.value })
+                                                }
+                                                className="w-36"
+                                            />
+                                            <span className="text-sm text-muted-foreground">to</span>
+                                            <Input
+                                                type="time"
+                                                value={shift.end}
+                                                onChange={(e) =>
+                                                    updateShift(i, { end: e.target.value })
+                                                }
+                                                className="w-36"
+                                            />
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="medium"
+                                                onClick={() => removeShift(i)}
+                                                disable={settings.callingShifts.length <= 1}
+                                            >
+                                                <Trash className="size-4" />
+                                            </MyButton>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div>
+                                    <MyButton buttonType="secondary" scale="medium" onClick={addShift}>
+                                        <Plus className="size-4" /> Add shift
+                                    </MyButton>
+                                </div>
                             </div>
                             <div className="grid gap-2">
                                 <Label htmlFor="timezone">Timezone</Label>

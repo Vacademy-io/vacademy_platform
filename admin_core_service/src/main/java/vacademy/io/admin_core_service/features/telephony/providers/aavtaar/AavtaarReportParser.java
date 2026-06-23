@@ -58,7 +58,7 @@ public class AavtaarReportParser implements AiCallReportParser {
                 .status(dto.getStatus())
                 .durationSeconds(dto.getDuration() == null ? null : (int) Math.round(dto.getDuration()))
                 .callStart(parseIstLocal(dto.getCallStart()))
-                .disposition(dto.getDisposition())
+                .disposition(firstNonBlank(dto.getDisposition(), dto.getLeadResponse()))
                 .leadResponse(dto.getLeadResponse())
                 .leadRating(dto.getLeadRating())
                 .callRating(dto.getCallRating())
@@ -131,10 +131,13 @@ public class AavtaarReportParser implements AiCallReportParser {
         }
     }
 
-    /** "19-06-2026 11:56 AM" — no tz in the payload, assumed IST. */
+    /** Call start/dial time. Handles ISO-8601 ("2026-06-23T04:38:00.688Z") and the
+     *  legacy "19-06-2026 11:56 AM" (no tz, assumed IST). */
     private Instant parseIstLocal(String s) {
         s = trimToNull(s);
         if (s == null) return null;
+        try { return Instant.parse(s); } catch (Exception ignore) { /* not ISO-Z */ }
+        try { return OffsetDateTime.parse(s).toInstant(); } catch (Exception ignore) { /* not ISO-offset */ }
         try {
             DateTimeFormatter f = DateTimeFormatter.ofPattern("dd-MM-yyyy hh:mm a", Locale.ENGLISH);
             return LocalDateTime.parse(s, f).atZone(IST).toInstant();
@@ -142,6 +145,11 @@ public class AavtaarReportParser implements AiCallReportParser {
             log.warn("aavtaar parse: bad call start '{}'", s);
             return null;
         }
+    }
+
+    private String firstNonBlank(String a, String b) {
+        String ta = trimToNull(a);
+        return ta != null ? ta : trimToNull(b);
     }
 
     private String trimToNull(String s) {

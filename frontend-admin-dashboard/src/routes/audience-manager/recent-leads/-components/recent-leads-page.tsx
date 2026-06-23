@@ -53,6 +53,7 @@ import {
     useUpdateLeadTier,
     usePlaceCall,
     usePlaceAiCall,
+    useAiCallButtonEnabled,
     recentLeadToVM,
     type LeadActionHandlers,
 } from '@/components/shared/leads';
@@ -428,6 +429,9 @@ const RecentLeadsContent = () => {
     const updateTier = useUpdateLeadTier({ invalidateKeys });
     const placeCall = usePlaceCall({ invalidateKeys });
     const placeAiCall = usePlaceAiCall({ invalidateKeys });
+    // The robot "AI call" button only shows when an admin has turned it on in
+    // Settings → AI Calling. Automated AI workflows are unaffected by this.
+    const showAiButton = useAiCallButtonEnabled();
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -456,16 +460,18 @@ const RecentLeadsContent = () => {
                     return { allowed: false, reason: 'Another call is starting…' };
                 return { allowed: true };
             },
-            onAiCallLead: (vm) => {
-                if (!vm.responseId) return;
-                placeAiCall.mutate({
-                    responseId: vm.responseId,
-                    userId: vm.userId ?? undefined,
-                    leadName: vm.name,
-                });
-            },
+            onAiCallLead: showAiButton
+                ? (vm) => {
+                      if (!vm.responseId) return;
+                      placeAiCall.mutate({
+                          responseId: vm.responseId,
+                          userId: vm.userId ?? undefined,
+                          leadName: vm.name,
+                      });
+                  }
+                : undefined,
         }),
-        [setSelectedStudent, updateTier, placeCall, placeAiCall]
+        [setSelectedStudent, updateTier, placeCall, placeAiCall, showAiButton]
     );
 
     // The backend mirrors a per-response status change onto the user's profile

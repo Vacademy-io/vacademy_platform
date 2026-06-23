@@ -5,9 +5,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallResponseDTO;
+import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
@@ -45,12 +48,17 @@ public class AiCallService {
     private final AudienceResponseRepository audienceResponseRepository;
     private final AiCallingSettingsService settingsService;
     private final UserMobileResolver userMobileResolver;
+    private final UserLeadProfileRepository userLeadProfileRepository;
 
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
         if (req == null || isBlank(req.getInstituteId())) {
             throw new VacademyException("instituteId is required.");
         }
-        String provider = isBlank(req.getProvider()) ? ProviderType.AAVTAAR : req.getProvider();
+        // Provider + campaign default to the institute's AI_CALLING_SETTING, so swapping
+        // the AI agent is a settings change, not a code change.
+        AiCallingSettingsPojo settings = settingsService.get(req.getInstituteId());
+        String provider = isBlank(req.getProvider()) ? settings.getProvider() : req.getProvider();
+        if (isBlank(provider)) provider = ProviderType.AAVTAAR;
 
         String userId = req.getUserId();
         String phone = req.getPhoneNumber();
@@ -69,13 +77,24 @@ public class AiCallService {
             phone = userMobileResolver.findMobile(userId).orElse(null);
         }
 
-        String campaignId = req.getCampaignId();
-        if (isBlank(campaignId)) campaignId = settingsService.get(req.getInstituteId()).getDefaultCampaignId();
+        String campaignId = isBlank(req.getCampaignId()) ? settings.getDefaultCampaignId() : req.getCampaignId();
 
         if (isBlank(userId)) throw new VacademyException("Could not resolve the lead's user id for the call.");
         if (isBlank(phone)) throw new VacademyException("This lead has no phone number on file.");
         if (isBlank(campaignId)) {
             throw new VacademyException("No campaign configured — set a default Campaign ID in Settings → AI Calling.");
+        }
+
+        // Don't re-call a lead that's already been handed to a counsellor (AI handoff
+        // or manual assignment). The bot's job ends once a human owns the lead — this
+        // single guard covers the manual button, bulk campaigns and the workflow node.
+        if (leadAlreadyAssigned(userId, req.getInstituteId())) {
+            log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
+            return AiCallResponseDTO.builder()
+                    .status("SKIPPED_ASSIGNED")
+                    .dispatched(false)
+                    .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
+                    .build();
         }
 
         String callLogId = UUID.randomUUID().toString();
@@ -127,6 +146,15 @@ public class AiCallService {
             log.error("AI call failed for lead {} (callLog {})", userId, callLogId, e);
             throw new VacademyException("AI call failed: " + e.getMessage());
         }
+    }
+
+    /** True if the lead's user already has a counsellor on their lead profile. */
+    private boolean leadAlreadyAssigned(String userId, String instituteId) {
+        if (isBlank(userId) || isBlank(instituteId)) return false;
+        return userLeadProfileRepository.findByUserIdAndInstituteId(userId, instituteId)
+                .map(UserLeadProfile::getAssignedCounselorId)
+                .filter(id -> id != null && !id.isBlank())
+                .isPresent();
     }
 
     private boolean isBlank(String s) {

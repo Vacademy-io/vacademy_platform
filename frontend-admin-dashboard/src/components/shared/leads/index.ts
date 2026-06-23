@@ -30,6 +30,7 @@ export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';
 export { usePlaceCall } from './use-place-call';
 export { usePlaceAiCall } from './use-place-ai-call';
+export { useAiCallButtonEnabled } from './use-ai-calling-settings';
 export {
     openPostCallDisposition,
     isPostCallAutoOpenDisabled,

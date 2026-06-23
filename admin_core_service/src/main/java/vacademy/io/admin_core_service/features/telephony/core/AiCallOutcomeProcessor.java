@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
@@ -62,6 +63,8 @@ public class AiCallOutcomeProcessor {
     private final AiCallingSettingsService settingsService;
     private final AiCallOutcomeClassifier classifier;
     private final CallLogService callLogService;
+    private final WorkflowExecutionStateRepository executionStateRepository;
+    private final AiCallRecordingService aiCallRecordingService;
 
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
@@ -78,8 +81,11 @@ public class AiCallOutcomeProcessor {
         String callLogId = upsertCallLog(r, lead, existing);
         if (callLogId != null) {
             r.setCallLogId(callLogId);
-            // TODO(follow-up): copy r.recordingUrl to our S3 (Aavtaar RecordingFetcher)
-            // so the recording plays from the lead profile via the existing UI.
+            // Copy the recording into our storage (media_service pre-signed URL) so it
+            // plays from the lead profile's Call History. Async — never blocks the webhook.
+            if (r.getRecordingUrl() != null && !r.getRecordingUrl().isBlank()) {
+                aiCallRecordingService.persistAsync(callLogId);
+            }
         }
 
         String instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
@@ -163,10 +169,34 @@ public class AiCallOutcomeProcessor {
             case ASSIGN -> {
                 assignCounsellor(lead);
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
+                stopRetryLoop(lead); // a human owns the lead → stop the pause/resume retries
             }
-            case STOP -> setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_NOT_INTERESTED);
+            case STOP -> {
+                setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_NOT_INTERESTED);
+                stopRetryLoop(lead); // terminal disposition (e.g. Not_Interested) → stop retrying
+            }
+            // RETRY: leave the paused CALL_AI workflow alone — it resumes itself and re-dials.
             case RETRY -> setStatus(lead, STATUS_RETRY_PENDING);
             case NONE -> { /* AI calling disabled — record only */ }
+        }
+    }
+
+    /**
+     * Cancel the lead's paused AI-call workflow (the CALL_AI pause/resume retry loop)
+     * so it stops re-dialing once the outcome is terminal (assigned / not-interested).
+     * Best-effort — a miss just means the loop runs one more cycle and self-stops on
+     * its own assigned / max-retries gate.
+     */
+    private void stopRetryLoop(Lead lead) {
+        if (lead.responseId() == null) return;
+        try {
+            int cancelled = executionStateRepository.cancelAiCallRetriesByResponseId(lead.responseId());
+            if (cancelled > 0) {
+                log.info("ai-call outcome: stopped {} paused retry loop(s) for lead {}", cancelled, lead.userId());
+            }
+        } catch (Exception e) {
+            log.warn("ai-call outcome: could not cancel retry loop for response {}: {}",
+                    lead.responseId(), e.getMessage());
         }
     }
 

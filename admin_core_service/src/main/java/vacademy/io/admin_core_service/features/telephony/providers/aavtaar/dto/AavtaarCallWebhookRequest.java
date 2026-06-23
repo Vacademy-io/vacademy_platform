@@ -33,7 +33,7 @@ public class AavtaarCallWebhookRequest {
     @JsonAlias({"dialCode", "Dial Code", "dial_code"})
     private String dialCode;
 
-    @JsonAlias({"callRetry", "Call Retry", "call_retry"})
+    @JsonAlias({"callRetry", "Call Retry", "call_retry", "callRetries", "call_retries"})
     private Integer callRetry;
 
     @JsonAlias({"customerName", "Customer Name", "customer_name"})
@@ -48,7 +48,7 @@ public class AavtaarCallWebhookRequest {
     @JsonAlias({"campaignId", "Campaign Id", "campaign_id", "CampaignId"})
     private String campaignId;
 
-    @JsonAlias({"callStart", "Call Start", "call_start"})
+    @JsonAlias({"callStart", "Call Start", "call_start", "callDialTime", "Call Dial Time", "call_dial_time"})
     private String callStart;
 
     @JsonAlias({"duration", "Duration", "durationSeconds", "duration_seconds"})
@@ -63,7 +63,7 @@ public class AavtaarCallWebhookRequest {
     @JsonAlias({"leadResponse", "Lead Response", "lead_response"})
     private String leadResponse;
 
-    @JsonAlias({"leadRating", "Lead Rating", "lead_rating"})
+    @JsonAlias({"leadRating", "Lead Rating", "lead_rating", "leadResponseRating", "lead_response_rating"})
     private Integer leadRating;
 
     @JsonAlias({"callRating", "Call Rating", "call_rating"})
@@ -72,7 +72,8 @@ public class AavtaarCallWebhookRequest {
     @JsonAlias({"interestLevel", "Customer Interest Level", "interest_level"})
     private String interestLevel;
 
-    @JsonAlias({"callSummary", "Call Summary", "summary", "leadSummary", "Lead Summary", "aiSummary"})
+    @JsonAlias({"callSummary", "Call Summary", "summary", "leadSummary", "Lead Summary", "aiSummary",
+            "leadResponseSummary", "lead_response_summary"})
     private String aiSummary;
 
     /** "Yes" / "No" (or a boolean). */
@@ -106,7 +107,7 @@ public class AavtaarCallWebhookRequest {
     @JsonAlias({"hangupSource", "hangup_source"})
     private String hangupSource;
 
-    @JsonAlias({"recordingUrl", "Recording URL", "recording_url"})
+    @JsonAlias({"recordingUrl", "Recording URL", "recording_url", "callRecordingUrl", "call_recording_url"})
     private String recordingUrl;
 
     @JsonAlias({"transcript", "Call Transcript", "call_transcript"})

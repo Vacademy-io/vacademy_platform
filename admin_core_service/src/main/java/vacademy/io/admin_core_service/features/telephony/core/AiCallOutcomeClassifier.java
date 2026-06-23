@@ -51,7 +51,10 @@ public class AiCallOutcomeClassifier {
 
     private boolean isConnected(String status, Integer durationSec, int thresholdSec) {
         if (status == null || !status.trim().equalsIgnoreCase("completed")) return false;
-        return durationSec != null && durationSec >= thresholdSec;
+        // Some providers (e.g. Aavtaar) don't report a call duration. When it's
+        // absent, trust the "completed" status — a report only arrives after a real
+        // conversation — instead of failing the connect check on a missing field.
+        return durationSec == null || durationSec >= thresholdSec;
     }
 
     private boolean containsIgnoreCase(List<String> list, String value) {

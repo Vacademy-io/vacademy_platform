@@ -115,10 +115,9 @@ export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/le
 // host. For local testing against a different port, swap to LOCAL_ADMIN_CORE_BASE
 // temporarily, but don't commit that — production needs BASE_URL.
 export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telephony/calls/connect`;
-// AI voice-agent call (Aavtaar). Fire-and-forget — the outcome arrives later via
-// the end-of-call webhook, so (unlike the bridge call) there's no live SSE stream.
-// LOCAL DEV: pointed at localhost:8072 for testing — revert to BASE_URL before commit.
-export const TELEPHONY_AI_CALL_CONNECT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/ai-call/connect`;
+// AI voice-agent call (provider-agnostic). Fire-and-forget — the outcome arrives
+// later via the end-of-call webhook, so (unlike the bridge call) there's no live SSE.
+export const TELEPHONY_AI_CALL_CONNECT = `${BASE_URL}/admin-core-service/v1/telephony/ai-call/connect`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>

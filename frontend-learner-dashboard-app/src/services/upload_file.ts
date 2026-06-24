@@ -53,6 +53,14 @@ export const UploadFileInS3 = async (
                 method: "PUT",
                 url: signedURLData.url,
                 data: file,
+                headers: {
+                    // S3 stores whatever Content-Type the PUT sends. Without
+                    // this, axios defaults to application/x-www-form-urlencoded,
+                    // so files are stored with the wrong type (breaks PDF/image
+                    // rendering and social link previews). Use the file's real
+                    // MIME type (same value passed to getSignedURL above).
+                    "Content-Type": file.type || "application/octet-stream",
+                },
             });
 
             if (uploadResponse.status === StatusCode.success) {

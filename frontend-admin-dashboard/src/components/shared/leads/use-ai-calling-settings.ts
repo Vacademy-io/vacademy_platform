@@ -22,7 +22,8 @@ export function useAiCallButtonEnabled(): boolean {
                 url: GET_URL,
                 params: { instituteId, settingKey: SETTING_KEY },
             });
-            return Boolean(res.data?.data?.[SETTING_KEY]?.data?.showInLeadList);
+            // `/get` returns a SettingDto shape: { key, name, data }.
+            return Boolean(res.data?.data?.showInLeadList);
         },
         staleTime: 5 * 60 * 1000,
     });

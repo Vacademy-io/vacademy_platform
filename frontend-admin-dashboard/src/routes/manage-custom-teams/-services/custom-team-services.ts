@@ -227,6 +227,10 @@ export interface CreateSubOrgSubscriptionRequest {
     allowed_team_roles?: string[];
     /** Required when payment_type === 'CPO'. */
     complex_payment_option_id?: string;
+    /** Existing institute-level PaymentOption the sub-org admin pays via. Required for the
+     *  non-CPO gateway/free types (ONE_TIME, SUBSCRIPTION, FREE) — the backend reuses this
+     *  option + its plan instead of minting a fresh one from manually-typed prices. */
+    payment_option_id?: string;
     /** Permissions stamped on the sub-org admin's FSPSSM rows when they're enrolled
      *  (e.g. ["FULL"], ["CREATE_COURSE"]). Persisted on settingJson.ADMIN_PERMISSIONS.
      *  Empty / undefined → defaults to "FULL" (legacy behaviour). */
@@ -300,6 +304,12 @@ export interface SubOrgConfigurationUpdate {
      * so duplicates are surfaced as such in the FE toast.
      */
     add_package_session_ids?: string[];
+    /**
+     * Swap the institute-level PaymentOption that backs the sub-org admin's payment
+     * collection. Rewrites the org-level invite's PSLIPO rows. Affects FUTURE admin
+     * enrollments only — an admin who already accepted the invite keeps their plan.
+     */
+    payment_option_id?: string;
 }
 
 /**

@@ -10,6 +10,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Lock as LockIcon, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,6 +31,8 @@ import {
     updateSubOrgConfiguration,
     type SubOrgConfigurationUpdate,
 } from '../../-services/custom-team-services';
+import { getPaymentOptions } from '@/services/payment-options';
+import type { PaymentOptionApi } from '@/types/payment';
 
 // Local sub-org helpers mirroring create-sub-org-modal.tsx — kept inline so this
 // modal's lookups don't accidentally pick up the rest of the dashboard's
@@ -62,6 +71,7 @@ interface ScopedInviteRow {
     member_count_setting?: number;
     package_sessions?: { id: string; package_name?: string; level_name?: string; session_name?: string }[];
     payment_type?: string;
+    payment_option_id?: string;
     setting_json?: string;
 }
 
@@ -91,6 +101,24 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         queryFn: getAllRoles,
         staleTime: 1000 * 60 * 5,
         enabled: open,
+    });
+
+    // Institute payment options the admin's payment collection can be switched to. Same
+    // source as the create modal (Payment Settings). CPO swaps aren't offered here.
+    const { data: institutePaymentOptions = [], isLoading: isLoadingPaymentOptions } = useQuery<
+        PaymentOptionApi[]
+    >({
+        queryKey: ['sub-org-institute-payment-options', instituteId],
+        queryFn: () =>
+            getPaymentOptions({
+                types: ['ONE_TIME', 'SUBSCRIPTION', 'FREE'],
+                source: 'INSTITUTE',
+                source_id: instituteId || '',
+                require_approval: true,
+                not_require_approval: true,
+            }),
+        enabled: open && !!instituteId,
+        staleTime: 30000,
     });
 
     // Institute-wide PS catalog — same fetch flow as create-sub-org-modal. Only
@@ -144,6 +172,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
     const [adminPermissions, setAdminPermissions] = useState<string[]>([]);
     const [memberCount, setMemberCount] = useState<string>('');
     const [validityInDays, setValidityInDays] = useState<string>('');
+    const [paymentOptionId, setPaymentOptionId] = useState<string>('');
     // PS ids the admin has ticked in this session that aren't already linked. Existing
     // PSes can't be unticked (add-only). Reset when the modal opens.
     const [pendingAddPsIds, setPendingAddPsIds] = useState<string[]>([]);
@@ -155,6 +184,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         adminPermissions: string[];
         memberCount: string;
         validityInDays: string;
+        paymentOptionId: string;
     } | null>(null);
 
     useEffect(() => {
@@ -169,11 +199,13 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         const initValidity = orgInvite.learner_access_days_top != null
             ? String(orgInvite.learner_access_days_top)
             : (orgInvite.learner_access_days != null ? String(orgInvite.learner_access_days) : '');
+        const initOption = orgInvite.payment_option_id ?? '';
         setAuthRoles(initAuth);
         setAllowedTeamRoles(initAllowed);
         setAdminPermissions(initPerms);
         setMemberCount(initSeat);
         setValidityInDays(initValidity);
+        setPaymentOptionId(initOption);
         setPendingAddPsIds([]);
         setBaseline({
             authRoles: initAuth,
@@ -181,6 +213,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
             adminPermissions: initPerms,
             memberCount: initSeat,
             validityInDays: initValidity,
+            paymentOptionId: initOption,
         });
     }, [open, orgInvite]);
 
@@ -245,6 +278,9 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         if (pendingAddPsIds.length > 0) {
             update.add_package_session_ids = pendingAddPsIds;
         }
+        if (paymentOptionId && paymentOptionId !== baseline.paymentOptionId) {
+            update.payment_option_id = paymentOptionId;
+        }
         if (Object.keys(update).length === 0) {
             toast.info('No changes to save');
             return;
@@ -283,8 +319,9 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                 <DialogHeader className="shrink-0">
                     <DialogTitle>Edit Sub-Org: {subOrgName}</DialogTitle>
                     <DialogDescription>
-                        Update auth roles, allowed team roles, admin permissions, seat cap, and validity.
-                        Linked courses and the payment plan/CPO can&apos;t be edited here yet.
+                        Update auth roles, allowed team roles, admin permissions, the admin payment
+                        option, seat cap, and validity. CPO swaps and removing linked courses
+                        aren&apos;t supported here.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -454,6 +491,57 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                                         </label>
                                     ))}
                                 </div>
+                            </section>
+
+                            <section className="space-y-2">
+                                <Label className="text-sm font-semibold">
+                                    Admin payment option
+                                </Label>
+                                {orgInvite?.payment_type === 'CPO' ? (
+                                    <p className="text-caption text-neutral-500">
+                                        This sub-org is backed by a CPO fee structure. Switching
+                                        the admin payment option isn&apos;t supported here.
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="text-caption text-neutral-500">
+                                            Which institute payment option the sub-org admin pays
+                                            via. Changing it affects future admin enrollments only —
+                                            an admin who already paid keeps their plan.
+                                        </p>
+                                        <Select
+                                            value={paymentOptionId}
+                                            onValueChange={setPaymentOptionId}
+                                            disabled={isLoadingPaymentOptions}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue
+                                                    placeholder={
+                                                        isLoadingPaymentOptions
+                                                            ? 'Loading payment options...'
+                                                            : institutePaymentOptions.length === 0
+                                                              ? 'No active option found'
+                                                              : 'Select a payment option'
+                                                    }
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {institutePaymentOptions.map((o) => {
+                                                    const plan = o.payment_plans?.[0];
+                                                    const priceLabel =
+                                                        o.type === 'FREE' || !plan
+                                                            ? ''
+                                                            : ` — ${plan.actual_price} ${plan.currency || ''}`;
+                                                    return (
+                                                        <SelectItem key={o.id} value={o.id}>
+                                                            {o.name} ({o.type}){priceLabel}
+                                                        </SelectItem>
+                                                    );
+                                                })}
+                                            </SelectContent>
+                                        </Select>
+                                    </>
+                                )}
                             </section>
 
                             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">

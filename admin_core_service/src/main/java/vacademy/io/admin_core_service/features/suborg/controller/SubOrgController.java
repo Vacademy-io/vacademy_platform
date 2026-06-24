@@ -207,6 +207,7 @@ public class SubOrgController {
             List<Map<String, Object>> psRows = new ArrayList<>();
             String paymentType = null;
             String complexPaymentOptionId = null;
+            String paymentOptionId = null;
             for (PackageSessionLearnerInvitationToPaymentOption link : links) {
                 PackageSession ps = link.getPackageSession();
                 if (ps == null) continue;
@@ -227,11 +228,13 @@ public class SubOrgController {
                 if (opt != null && paymentType == null) {
                     paymentType = opt.getType();
                     complexPaymentOptionId = opt.getComplexPaymentOptionId();
+                    paymentOptionId = opt.getId();
                 }
             }
             row.put("package_sessions", psRows);
             row.put("payment_type", paymentType);
             row.put("complex_payment_option_id", complexPaymentOptionId);
+            row.put("payment_option_id", paymentOptionId);
             out.add(row);
         }
         return ResponseEntity.ok(out);

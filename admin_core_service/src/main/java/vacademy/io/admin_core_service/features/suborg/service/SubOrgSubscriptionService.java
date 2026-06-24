@@ -111,12 +111,38 @@ public class SubOrgSubscriptionService {
             }
         }
 
+        // Non-CPO reuse: the admin pays via an EXISTING institute-level PaymentOption
+        // (configured in Payment Settings, source=INSTITUTE) instead of a freshly-minted
+        // one. Validate it here so a bad id fails fast before the sub-org/invite rows are
+        // created. Null → legacy fresh-option path below.
+        PaymentOption pickedOption = null;
+        if (cpo == null && StringUtils.hasText(request.getPaymentOptionId())) {
+            pickedOption = paymentOptionRepository.findById(request.getPaymentOptionId())
+                    .orElseThrow(() -> new VacademyException(
+                            "Payment option not found: " + request.getPaymentOptionId()));
+            if (StatusEnum.DELETED.name().equalsIgnoreCase(pickedOption.getStatus())) {
+                throw new VacademyException("Selected payment option is not active");
+            }
+            if (StringUtils.hasText(pickedOption.getSourceId())
+                    && !parentInstituteId.equals(pickedOption.getSourceId())) {
+                throw new VacademyException(
+                        "Selected payment option does not belong to this institute");
+            }
+            // Carry the reused plan's currency onto the invite when the caller didn't send one.
+            if (!StringUtils.hasText(invite.getCurrency())) {
+                String planCurrency = firstActivePlanCurrency(pickedOption);
+                if (StringUtils.hasText(planCurrency)) invite.setCurrency(planCurrency);
+            }
+        }
+
         // Build settingJson — authRoles for invite-time role override, memberCount for
-        // CPO sub-orgs (since the shared synthetic plan can't carry it), and the
-        // allow-list of custom roles the sub-org admin can assign when adding their
-        // own team members (consumed by /manage-suborg-teams).
+        // sub-orgs that REUSE a shared PaymentOption (CPO mirror or a picked institute
+        // option — neither's plan can carry a per-sub-org seat cap), and the allow-list
+        // of custom roles the sub-org admin can assign when adding their own team members
+        // (consumed by /manage-suborg-teams).
         boolean hasAuthRoles = !CollectionUtils.isEmpty(request.getAuthRoles());
-        boolean carryMemberCount = cpo != null && request.getMemberCount() != null;
+        boolean reusingSharedOption = cpo != null || pickedOption != null;
+        boolean carryMemberCount = reusingSharedOption && request.getMemberCount() != null;
         boolean hasAllowedTeamRoles = !CollectionUtils.isEmpty(request.getAllowedTeamRoles());
         boolean hasAdminPermissions = !CollectionUtils.isEmpty(request.getAdminPermissions());
         log.info("[ADMIN_PERMS] createSubOrg: adminPermissions received from request = {} (hasAdminPermissions={})",
@@ -150,6 +176,13 @@ public class SubOrgSubscriptionService {
             option = paymentOptionService.findOrCreateMirrorForCpo(cpo);
             log.info("Reusing CPO mirror PaymentOption id={} for cpoId={}",
                     option.getId(), cpo.getId());
+        } else if (pickedOption != null) {
+            // Reuse the institute-level option the admin selected. Its PaymentPlan holds
+            // the real price; the per-sub-org seat cap rides on settingJson.MEMBER_COUNT
+            // (see createScopedFreeInvites fallback). No fresh option/plan minted.
+            option = pickedOption;
+            log.info("Reusing institute PaymentOption id={} type={} for sub-org admin payment",
+                    option.getId(), option.getType());
         } else {
             option = new PaymentOption();
             option.setName("Sub-Org Plan: " + request.getSubOrgDetails().getInstituteName());
@@ -828,6 +861,42 @@ public class SubOrgSubscriptionService {
             }
         }
 
+        // Swap the PaymentOption backing the sub-org admin's payment collection. Rewrites
+        // the org-level invite's PSLIPO rows to point at the newly chosen institute option.
+        // Affects FUTURE admin enrollments only — an admin who already accepted the invite
+        // keeps the PaymentOption snapshotted on their UserPlan.
+        if (body.containsKey("payment_option_id")) {
+            String newOptionId = body.get("payment_option_id") != null
+                    ? String.valueOf(body.get("payment_option_id")) : null;
+            if (StringUtils.hasText(newOptionId)) {
+                PaymentOption newOption = paymentOptionRepository.findById(newOptionId)
+                        .orElseThrow(() -> new VacademyException(
+                                "Payment option not found: " + newOptionId));
+                if (StatusEnum.DELETED.name().equalsIgnoreCase(newOption.getStatus())) {
+                    throw new VacademyException("Selected payment option is not active");
+                }
+                // CPO mirrors carry the institute id on the underlying CPO, not on sourceId;
+                // only enforce the institute check for plain institute options.
+                if (StringUtils.hasText(newOption.getSourceId())
+                        && !parentInstituteId.equals(newOption.getSourceId())
+                        && newOption.getComplexPaymentOptionId() == null) {
+                    throw new VacademyException(
+                            "Selected payment option does not belong to this institute");
+                }
+                List<PackageSessionLearnerInvitationToPaymentOption> orgLinks =
+                        packageSessionEnrollInviteToPaymentOptionService.findByInvite(invite);
+                for (PackageSessionLearnerInvitationToPaymentOption link : orgLinks) {
+                    link.setPaymentOption(newOption);
+                    pslipoRepository.save(link);
+                }
+                String planCurrency = firstActivePlanCurrency(newOption);
+                if (StringUtils.hasText(planCurrency)) invite.setCurrency(planCurrency);
+                applied.put("payment_option_id", newOptionId);
+                log.info("Swapped sub-org {} admin payment option to {} across {} PSLIPO row(s)",
+                        subOrgId, newOptionId, orgLinks.size());
+            }
+        }
+
         if (body.containsKey("auth_roles")) {
             List<String> roles = stringList(body.get("auth_roles"));
             subSetting.setAuthRoles(roles);
@@ -849,22 +918,23 @@ public class SubOrgSubscriptionService {
         Integer newValidity = body.containsKey("validity_in_days")
                 ? toInt(body.get("validity_in_days")) : null;
 
-        // Both seat cap and validity also live on the PaymentPlan for non-CPO sub-orgs.
-        // For CPO sub-orgs the PaymentPlan is the shared synthetic plan we MUST NOT touch
-        // (it's reused by every sub-org pointing at the same CPO); rely on settingJson
-        // and let createScopedFreeInvites read MEMBER_COUNT from there.
-        boolean isCpoBacked = false;
+        // Both seat cap and validity also live on the PaymentPlan for sub-orgs that own a
+        // DEDICATED (freshly-minted) PaymentPlan. We MUST NOT touch the plan of a SHARED
+        // option — a CPO synthetic plan (reused by every sub-org on that CPO) or an
+        // institute-level option (source=INSTITUTE, reused by the institute's own learners).
+        // For those, rely on settingJson and let createScopedFreeInvites read MEMBER_COUNT.
         PaymentOption orgOption = null;
         for (PackageSessionLearnerInvitationToPaymentOption link
                 : packageSessionEnrollInviteToPaymentOptionService.findByInvite(invite)) {
             if (link.getPaymentOption() != null) {
                 orgOption = link.getPaymentOption();
-                if (PaymentOptionType.CPO.name().equalsIgnoreCase(orgOption.getType())) {
-                    isCpoBacked = true;
-                }
                 break;
             }
         }
+        boolean sharedOption = orgOption != null
+                && (PaymentOptionType.CPO.name().equalsIgnoreCase(orgOption.getType())
+                    || orgOption.getComplexPaymentOptionId() != null
+                    || "INSTITUTE".equalsIgnoreCase(orgOption.getSource()));
 
         if (newMemberCount != null) {
             // Always write to settingJson so scoped FREE invites pick it up.
@@ -885,9 +955,10 @@ public class SubOrgSubscriptionService {
         }
         enrollInviteRepository.save(invite);
 
-        // Update the non-CPO PaymentPlan when present so the existing seat-cap reads
-        // (which still query PaymentPlan.memberCount) reflect the new value.
-        if (!isCpoBacked && orgOption != null && orgOption.getPaymentPlans() != null) {
+        // Update the DEDICATED PaymentPlan when present so the existing seat-cap reads
+        // (which still query PaymentPlan.memberCount) reflect the new value. Skipped for
+        // shared options — their plan is owned by the institute / a CPO, not this sub-org.
+        if (!sharedOption && orgOption != null && orgOption.getPaymentPlans() != null) {
             for (PaymentPlan plan : orgOption.getPaymentPlans()) {
                 if (!StatusEnum.ACTIVE.name().equals(plan.getStatus())) continue;
                 boolean planChanged = false;
@@ -927,6 +998,17 @@ public class SubOrgSubscriptionService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** Currency of the option's first ACTIVE PaymentPlan, or null when none carries one. */
+    private String firstActivePlanCurrency(PaymentOption option) {
+        if (option == null || option.getPaymentPlans() == null) return null;
+        for (PaymentPlan plan : option.getPaymentPlans()) {
+            if (plan == null) continue;
+            if (!StatusEnum.ACTIVE.name().equalsIgnoreCase(plan.getStatus())) continue;
+            if (StringUtils.hasText(plan.getCurrency())) return plan.getCurrency();
+        }
+        return null;
     }
 
     private Integer readSubOrgMemberCountFromSettings(EnrollInvite invite) {

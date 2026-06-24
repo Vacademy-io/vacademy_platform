@@ -94,13 +94,18 @@ public class AiCallOutcomeProcessor {
         // recent dial. Fall back to most-recent when the report carries no dial time.
         // Without this the result can't bind → call_log_id stays empty and the
         // recording/disposition/status never attach to the lead.
-        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null) {
+        // Provider-scoped: only ever bind to a call placed by THIS provider, so an
+        // Aavtaar report can never attach to (and overwrite) an Exotel/Airtel call log
+        // that happens to share the lead's phone number.
+        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null
+                && r.getProvider() != null) {
             var anchor = r.getCallStart();
             existing = (anchor != null)
                     ? callLogRepo.findOutboundByPhoneNearest(
-                            r.getInstituteId(), r.getPhoneNumber(), java.sql.Timestamp.from(anchor)).orElse(null)
+                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber(),
+                            java.sql.Timestamp.from(anchor)).orElse(null)
                     : callLogRepo.findMostRecentOutboundByPhone(
-                            r.getInstituteId(), r.getPhoneNumber()).orElse(null);
+                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber()).orElse(null);
         }
 
         Lead lead = resolveLead(r, existing);

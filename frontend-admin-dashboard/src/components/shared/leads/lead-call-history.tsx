@@ -55,6 +55,23 @@ const STATUS_TONE: Record<string, string> = {
     CANCELLED: 'bg-neutral-100 text-neutral-600',
 };
 
+/** Tone for the AI-call disposition badge, keyed by lower-cased raw value. */
+const DISPOSITION_TONE: Record<string, string> = {
+    interested: 'bg-success-50 text-success-700',
+    not_interested: 'bg-danger-50 text-danger-700',
+    wrong_number: 'bg-danger-50 text-danger-700',
+    callback: 'bg-warning-50 text-warning-700',
+    follow_up: 'bg-warning-50 text-warning-700',
+};
+
+/** "No_Response" → "No Response"; falls back gracefully on empty input. */
+const prettifyDisposition = (raw: string): string =>
+    raw
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (m) => m.toUpperCase());
+
 /** Small status chip shared by every call surface (history rows, counsellor
  *  Calls tab, activity feed). Falls back to the raw status + neutral tone. */
 export function CallStatusPill({ status, className }: { status: string; className?: string }) {
@@ -216,6 +233,17 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
                         {isInbound ? 'Lead called back' : 'Outbound'}
                     </span>
                     <span className={cn('rounded-full px-2 py-0.5 text-xs', tone)}>{label}</span>
+                    {item.aiDisposition && (
+                        <span
+                            className={cn(
+                                'rounded-full px-2 py-0.5 text-xs',
+                                DISPOSITION_TONE[item.aiDisposition.toLowerCase()] ??
+                                    'bg-neutral-100 text-neutral-600'
+                            )}
+                        >
+                            {prettifyDisposition(item.aiDisposition)}
+                        </span>
+                    )}
                     <span className="text-xs text-neutral-500">
                         · {formatDuration(item.durationSeconds)}
                     </span>

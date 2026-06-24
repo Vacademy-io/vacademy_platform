@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.telephony.core;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -84,10 +85,18 @@ public class TelephonyAsyncConfig {
     @Bean(name = "aiCallRecordingExecutor")
     public Executor aiCallRecordingExecutor() {
         ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
-        ex.setCorePoolSize(2);
-        ex.setMaxPoolSize(4);
-        ex.setQueueCapacity(100);
+        // Tasks now sleep through retry backoff (the recording is often not uploaded to
+        // the provider's object store yet when the webhook fires), so give more threads
+        // and a deep queue. A logging reject handler makes saturation VISIBLE instead of
+        // silently dropping a recording (the old default AbortPolicy threw into the
+        // afterCommit callback with no trace).
+        ex.setCorePoolSize(4);
+        ex.setMaxPoolSize(8);
+        ex.setQueueCapacity(500);
         ex.setThreadNamePrefix("ai-call-rec-");
+        ex.setRejectedExecutionHandler((task, exec) ->
+                LoggerFactory.getLogger(TelephonyAsyncConfig.class)
+                        .warn("aiCallRecordingExecutor saturated (queue=500, pool=8) — recording copy dropped"));
         ex.initialize();
         return ex;
     }

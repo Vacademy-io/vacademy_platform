@@ -31,6 +31,8 @@ public class CallLogDTO {
     private String counsellorUserId;
     private String responseId;
     private String userId;
+    /** AI-call disposition, joined in at read time from ai_call_result; null for non-AI/Exotel calls. */
+    private String aiDisposition;
 
     public static CallLogDTO from(TelephonyCallLog r) {
         return CallLogDTO.builder()

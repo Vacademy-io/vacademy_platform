@@ -221,7 +221,14 @@ public class CallAiNodeHandler implements NodeHandler {
         Instant recheck = now.plus(Math.max(1, s.getRecheckMinutes()), ChronoUnit.MINUTES);
 
         if (!withinAnyShift(now, s.getCallingShifts(), tz)) {
-            return new Plan(Action.DEFER, recheck, "outside_shift");
+            // Outside the calling shift: don't poll every recheckMinutes all night.
+            // Sleep until the NEXT shift-open instant (today if still ahead, else
+            // the first shift tomorrow) so the lead only wakes when dialing is allowed.
+            Instant nextOpen = nextShiftOpen(now, s.getCallingShifts(), tz);
+            Instant resumeAt = nextOpen != null ? nextOpen : recheck;
+            log.info("CALL_AI node: outside calling shift for lead {} — resuming at next shift-open {} (tz {}) instead of recheck +{}m",
+                    userId, resumeAt, tz, Math.max(1, s.getRecheckMinutes()));
+            return new Plan(Action.DEFER, resumeAt, "outside_shift");
         }
         LocalDate today = LocalDate.now(tz);
         int effectiveToday = today.toString().equals(callsDay) ? callsToday : 0;
@@ -254,6 +261,33 @@ public class CallAiNodeHandler implements NodeHandler {
             if (within) return true;
         }
         return false;
+    }
+
+    /**
+     * Earliest upcoming shift-open instant in the institute tz: the smallest shift
+     * start that is still ahead of {@code now} today; if none remain today, the
+     * smallest shift start tomorrow. Returns null if no usable shift starts (caller
+     * falls back to the recheck time). Uses the same parse/tz helpers as
+     * {@link #withinAnyShift}.
+     */
+    private Instant nextShiftOpen(Instant now, List<AiCallingSettingsPojo.Shift> shifts, ZoneId tz) {
+        if (shifts == null || shifts.isEmpty()) return null;
+        LocalDate today = LocalDate.now(tz);
+        LocalTime nowT = LocalTime.ofInstant(now, tz);
+
+        LocalTime earliestToday = null; // smallest start still ahead today
+        LocalTime earliestOverall = null; // smallest start of the day (for tomorrow)
+        for (AiCallingSettingsPojo.Shift sh : shifts) {
+            LocalTime start = parseTime(sh.getStart());
+            if (start == null) continue;
+            if (earliestOverall == null || start.isBefore(earliestOverall)) earliestOverall = start;
+            if (start.isAfter(nowT) && (earliestToday == null || start.isBefore(earliestToday))) {
+                earliestToday = start;
+            }
+        }
+        if (earliestToday != null) return today.atTime(earliestToday).atZone(tz).toInstant();
+        if (earliestOverall != null) return today.plusDays(1).atTime(earliestOverall).atZone(tz).toInstant();
+        return null;
     }
 
     private LocalTime parseTime(String hhmm) {

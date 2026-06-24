@@ -163,7 +163,9 @@ const fetchAiCallingSettings = async (): Promise<AiCallingSettingsData> => {
         url: GET_URL,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    const saved = response.data?.data?.[SETTING_KEY]?.data as
+    // `/get` returns a SettingDto shape: { key, name, data } — the saved settings
+    // live at response.data.data, NOT nested again under the settingKey.
+    const saved = response.data?.data as
         | (Partial<AiCallingSettingsData> & { windowStart?: string; windowEnd?: string })
         | undefined;
     if (!saved) return DEFAULT_AI_CALLING_SETTINGS;

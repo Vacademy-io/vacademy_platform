@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useRouterState } from '@tanstack/react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
     ArrowClockwise,
     ChatCircleDots,
@@ -47,6 +47,21 @@ export function VacademyAssistant() {
     const [input, setInput] = useState('');
     const { messages, status, error, sendMessage, reset } = useVacademyAssistant();
     const scrollEndRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+
+    // A help answer can include a route link (e.g. [Open Courses](/study-library/courses));
+    // navigate in-app and collapse the panel so the user lands on the page.
+    const handleInternalLink = useCallback(
+        (to: string) => {
+            setOpen(false);
+            navigate({ to });
+        },
+        [navigate]
+    );
+    const mdComponents = useMemo(
+        () => createMdComponents(handleInternalLink),
+        [handleInternalLink]
+    );
 
     useEffect(() => {
         scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -159,7 +174,11 @@ export function VacademyAssistant() {
                     )}
 
                     {messages.map((message) => (
-                        <MessageBubble key={message.id} message={message} />
+                        <MessageBubble
+                            key={message.id}
+                            message={message}
+                            mdComponents={mdComponents}
+                        />
                     ))}
 
                     {awaitingFirstToken && (
@@ -209,32 +228,64 @@ export function VacademyAssistant() {
 // Token-styled markdown renderer for assistant replies (mirrors the AI-usage
 // dialog's map, so it stays design-system-conformant — no `prose` plugin).
 type MdProps = { children?: ReactNode; href?: string };
-const mdComponents: Components = {
-    p: ({ children }: MdProps) => <p className="mb-2 last:mb-0">{children}</p>,
-    ul: ({ children }: MdProps) => <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>,
-    ol: ({ children }: MdProps) => <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>,
-    li: ({ children }: MdProps) => <li className="mb-1">{children}</li>,
-    strong: ({ children }: MdProps) => <strong className="font-semibold">{children}</strong>,
-    em: ({ children }: MdProps) => <em className="italic">{children}</em>,
-    a: ({ children, href }: MdProps) => (
-        <a href={href} target="_blank" rel="noreferrer" className="text-primary-600 underline">
-            {children}
-        </a>
-    ),
-    code: ({ children }: MdProps) => (
-        <code className="rounded-sm bg-neutral-100 px-1 py-0.5 text-caption">{children}</code>
-    ),
-    pre: ({ children }: MdProps) => (
-        <pre className="mb-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-caption last:mb-0">
-            {children}
-        </pre>
-    ),
-    h1: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
-    h2: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
-    h3: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
-};
+function createMdComponents(onInternalLink: (to: string) => void): Components {
+    return {
+        p: ({ children }: MdProps) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }: MdProps) => (
+            <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>
+        ),
+        ol: ({ children }: MdProps) => (
+            <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>
+        ),
+        li: ({ children }: MdProps) => <li className="mb-1">{children}</li>,
+        strong: ({ children }: MdProps) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }: MdProps) => <em className="italic">{children}</em>,
+        a: ({ children, href }: MdProps) => {
+            // In-app routes start with "/": navigate within the SPA. Anything else
+            // (http…) opens in a new tab.
+            if (href && href.startsWith('/')) {
+                return (
+                    <button
+                        type="button"
+                        onClick={() => onInternalLink(href)}
+                        className="font-medium text-primary-600 underline"
+                    >
+                        {children}
+                    </button>
+                );
+            }
+            return (
+                <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary-600 underline"
+                >
+                    {children}
+                </a>
+            );
+        },
+        code: ({ children }: MdProps) => (
+            <code className="rounded-sm bg-neutral-100 px-1 py-0.5 text-caption">{children}</code>
+        ),
+        pre: ({ children }: MdProps) => (
+            <pre className="mb-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-caption last:mb-0">
+                {children}
+            </pre>
+        ),
+        h1: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+        h2: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+        h3: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+    };
+}
 
-function MessageBubble({ message }: { message: AssistantMessage }) {
+function MessageBubble({
+    message,
+    mdComponents,
+}: {
+    message: AssistantMessage;
+    mdComponents: Components;
+}) {
     const isUser = message.role === 'user';
     return (
         <div className={cn('flex', isUser ? 'justify-end pl-8' : 'justify-start pr-6')}>

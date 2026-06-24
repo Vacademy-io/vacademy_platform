@@ -238,15 +238,13 @@ export const useAnnouncementStore = create<AnnouncementStore>()(
 
         try {
           const response = await announcementApi.getDashboardPins();
-          if (response) {
-            set((state) => ({
-              dashboardPins: {
-                ...state.dashboardPins,
-                items: response,
-                loading: false,
-              }
-            }));
-          }
+          set((state) => ({
+            dashboardPins: {
+              ...state.dashboardPins,
+              items: Array.isArray(response) ? response : [],
+              loading: false,
+            }
+          }));
         } catch (error) {
           set((state) => ({
             dashboardPins: {

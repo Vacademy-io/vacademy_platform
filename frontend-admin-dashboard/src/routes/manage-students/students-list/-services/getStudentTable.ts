@@ -43,6 +43,7 @@ export const useStudentList = (
             sort_columns: filters.sort_columns || {},
             session_expiry_days: filters.session_expiry_days?.sort((a, b) => a - b) || [],
             sub_org_user_types: filters.sub_org_user_types?.sort() || [],
+            sub_org_ids: filters.sub_org_ids?.sort() || [],
             type: filters.type || '',
             enroll_invite_ids: filters.enroll_invite_ids?.sort() || [],
             audience_ids: filters.audience_ids?.sort() || [],

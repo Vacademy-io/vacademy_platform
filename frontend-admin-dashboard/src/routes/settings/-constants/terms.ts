@@ -121,6 +121,8 @@ export const enum SettingsTabs {
     Telephony = 'telephony',
     PaymentGateways = 'paymentGateways',
     Lms = 'lms',
+    AiCalling = 'aiCalling',
+    AssistantTools = 'assistantTools',
 }
 
 export const DAYS_IN_MONTH = 30;

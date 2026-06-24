@@ -1,4 +1,4 @@
-import { ArrowUpRight, Phone, Plus, UserPlus } from '@phosphor-icons/react';
+import { ArrowUpRight, Phone, Plus, Robot, UserPlus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { LeadCardVM } from './lead-view-model';
 import type { LeadActionHandlers } from './lead-actions';
@@ -35,6 +35,9 @@ export function LeadRowActions({
     // Call gating — `canCall` is the single source of truth; if missing,
     // assume the surface doesn't expose calling at all.
     const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
+    // AI Call gating — falls back to canCall (both need a phone on file).
+    const aiGateFn = actions.canAiCall ?? actions.canCall;
+    const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
 
     return (
         <div className="flex items-center justify-end gap-0.5">
@@ -66,6 +69,26 @@ export function LeadRowActions({
                     )}
                 >
                     <Phone className="size-4" />
+                </button>
+            )}
+            {canOps && actions.onAiCallLead && aiGate && (
+                <button
+                    type="button"
+                    title={aiGate.allowed ? 'AI call lead' : aiGate.reason ?? 'AI call lead'}
+                    aria-label="AI call lead"
+                    disabled={!aiGate.allowed}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (aiGate.allowed) actions.onAiCallLead!(vm);
+                    }}
+                    className={cn(
+                        QUICK,
+                        aiGate.allowed
+                            ? 'hover:text-primary-600'
+                            : 'cursor-not-allowed opacity-50'
+                    )}
+                >
+                    <Robot className="size-4" />
                 </button>
             )}
             {canOps && actions.onAddNote && (

@@ -6,7 +6,9 @@ admin slide editor's axios client parses it straight into an object.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -15,7 +17,9 @@ from sqlalchemy.orm import Session
 
 from ..core.security import get_optional_user
 from ..db import db_dependency
+from ..dependencies import require_internal_service_token
 from ..services import presentation_service
+from ..services import ppt_anim_backfill as backfill
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +117,55 @@ async def animate_pptx(req: AnimatePptxRequest) -> dict:
 async def animate_pptx_status(job_id: str) -> dict:
     """Poll a pptx-anim job's status (proxied from the render worker)."""
     return await presentation_service.get_pptx_anim_status(job_id)
+
+
+# ---------------------------------------------------------------------------
+# HOTFIX: backfill an institute's old PPT->PDF slides to animated PPT_ANIM decks.
+# Internal-only (X-Internal-Service-Token). dry_run (default) returns the plan
+# with each slide's Course > Subject > Module > Chapter location and no writes;
+# apply runs in the background and is polled via GET /ppt-anim-backfill/{job_id}.
+# ---------------------------------------------------------------------------
+
+_backfill_jobs: dict = {}
+
+
+class PptAnimBackfillRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore", protected_namespaces=())
+
+    institute_id: str
+    dry_run: bool = True
+    limit: int = 0  # 0 = all matched slides
+    dpi: int = 110
+    private_bucket: str = "vacademy-media-storage"
+
+
+@router.post("/ppt-anim-backfill", dependencies=[Depends(require_internal_service_token)])
+async def ppt_anim_backfill_run(req: PptAnimBackfillRequest) -> dict:
+    """Dry-run (default) returns the planned PDF->PPT_ANIM replacements; with
+    dry_run=false it kicks off the conversion+replace in the background."""
+    if not req.institute_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="institute_id is required")
+
+    if req.dry_run:
+        try:
+            return await asyncio.to_thread(backfill.build_plan, req.institute_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("ppt-anim-backfill plan failed")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    job_id = str(uuid.uuid4())
+    job = {"job_id": job_id, "institute_id": req.institute_id,
+           "status": "running", "done": 0, "total": 0}
+    _backfill_jobs[job_id] = job
+    asyncio.create_task(
+        backfill.run_apply(job, req.institute_id, req.limit, req.dpi, req.private_bucket)
+    )
+    return {"job_id": job_id, "status": "running"}
+
+
+@router.get("/ppt-anim-backfill/{job_id}", dependencies=[Depends(require_internal_service_token)])
+async def ppt_anim_backfill_status(job_id: str) -> dict:
+    job = _backfill_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
+    return job

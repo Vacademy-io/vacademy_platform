@@ -15,6 +15,7 @@ import {
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { CourseDetailsRatingsComponent } from "./course-details-ratings-page";
 import {
   formatTotalCourseDuration,
@@ -354,12 +355,15 @@ export const CourseSidebar = ({
             </div>
           )}
 
-          {/* Action Button — hidden entirely for learners already enrolled in this course */}
+          {/* Action Button — hidden entirely for learners already enrolled in
+              this course, and in reader mode (iOS / reader-mode institutes,
+              Apple 3.1.1). */}
           {selectedTab === "ALL" &&
             selectedSession &&
             selectedLevel &&
             !isEnrolledInCourse &&
-            !isAlreadyEnrolled && (
+            !isAlreadyEnrolled &&
+            !shouldHidePaidPurchaseUI() && (
               <div className="pt-2">
                 <Button
                   className={cn(

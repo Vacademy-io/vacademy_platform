@@ -1,6 +1,7 @@
 import { formatCurrency, getCurrencySymbol } from "@/utils/currency";
 import { cn } from "@/lib/utils";
 import { Sparkle } from "@phosphor-icons/react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 export interface PriceWithMrpProps {
   actual?: number | null;
@@ -75,6 +76,12 @@ export const PriceWithMrp = ({
   freeForZero = true,
   className,
 }: PriceWithMrpProps) => {
+  // Reader mode (iOS / reader-mode institutes): hide all pricing. This is the
+  // global choke point for every price / MRP / "% off" in the app.
+  if (shouldHidePaidPurchaseUI()) {
+    return null;
+  }
+
   if (actual == null) {
     return <span className={className}>—</span>;
   }
@@ -145,6 +152,10 @@ export interface OfferBadgeProps {
 }
 
 export const OfferBadge = ({ actual, elevated, className }: OfferBadgeProps) => {
+  // Reader mode: hide all offer/discount/FREE ribbons alongside pricing.
+  if (shouldHidePaidPurchaseUI()) {
+    return null;
+  }
   // Free course → show a "FREE" ribbon instead of a discount percentage.
   // (A 0-priced course would otherwise read as "100% OFF", or show nothing
   //  when there's no elevated price.) Green to match the "Free" price text.

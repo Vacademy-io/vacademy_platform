@@ -284,8 +284,51 @@ public class LearnerAuthManager {
                 notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
         }
 
+        /**
+         * Resolves the identifier a learner typed into the username field to a canonical
+         * username. Username is unique, so a direct match wins. Otherwise, if the input
+         * looks like an email, the matching account is found by email — and because email
+         * is NOT unique, candidates are disambiguated by the supplied password (preferring
+         * an account in the requested institute, then the most recent). If nothing matches,
+         * the original input is returned unchanged so authentication fails as before.
+         */
+        private String resolveLoginUsername(String identifier, String password, String instituteId) {
+                if (!StringUtils.hasText(identifier) || !identifier.contains("@")) {
+                        return identifier;
+                }
+                if (userRepository.findByUsername(identifier).isPresent()) {
+                        return identifier;
+                }
+                List<User> passwordMatches = userRepository.findUserDetailsByEmail(identifier).stream()
+                                .filter(u -> password != null && password.equals(u.getPassword()))
+                                .toList();
+                if (passwordMatches.isEmpty()) {
+                        return identifier;
+                }
+                if (StringUtils.hasText(instituteId)) {
+                        for (User candidate : passwordMatches) {
+                                boolean inInstitute = userRoleRepository
+                                                .findUserRolesByUserIdAndStatusesAndRoleNames(candidate.getId(),
+                                                                List.of(UserRoleStatus.ACTIVE.name(),
+                                                                                UserRoleStatus.INVITED.name()),
+                                                                AuthConstants.VALID_ROLES_FOR_STUDENT_PORTAL)
+                                                .stream()
+                                                .anyMatch(role -> instituteId.equals(role.getInstituteId()));
+                                if (inInstitute) {
+                                        return candidate.getUsername();
+                                }
+                        }
+                }
+                // findUserDetailsByEmail is ordered by created_at desc → first is most recent
+                return passwordMatches.get(0).getUsername();
+        }
+
         public JwtResponseDto loginUser(AuthRequestDto authRequestDTO) {
-                String userName = authRequestDTO.getUserName();
+                // Learners frequently type their email into the username field. Username is
+                // unique, so it is tried first; if the input is an email that maps to an
+                // account, resolve it to that account's real username before authenticating.
+                String userName = resolveLoginUsername(authRequestDTO.getUserName(),
+                                authRequestDTO.getPassword(), authRequestDTO.getInstituteId());
                 String password = authRequestDTO.getPassword();
 
                 Authentication authentication = authRequestDTO.getInstituteId() == null

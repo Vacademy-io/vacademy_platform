@@ -18,6 +18,9 @@ public class ConnectorListItemDTO {
     private String platformFormId;
     private String platformFormName;
     private String connectionStatus;
+    /** Human reason/remediation when connectionStatus is not ACTIVE (e.g. needs Full control). */
+    private String statusDetail;
+    private String lastCheckedAt;
     private String producesSourceType;
     private String createdAt;
     private String tokenExpiresAt;
@@ -40,6 +43,8 @@ public class ConnectorListItemDTO {
                 .platformFormId(c.getPlatformFormId())
                 .platformFormName(c.getPlatformFormName())
                 .connectionStatus(c.getConnectionStatus())
+                .statusDetail(c.getStatusDetail())
+                .lastCheckedAt(c.getLastCheckedAt() != null ? c.getLastCheckedAt().toString() : null)
                 .producesSourceType(c.getProducesSourceType())
                 .createdAt(c.getCreatedAt() != null ? c.getCreatedAt().toString() : null)
                 .tokenExpiresAt(c.getOauthTokenExpiresAt() != null

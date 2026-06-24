@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.19.0",
+    "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor-community/electron": "^5.0.1",
     "@capacitor-community/privacy-screen": "^6.0.0",
     "@capacitor-firebase/messaging": "^7.3.0",

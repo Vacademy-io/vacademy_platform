@@ -14,6 +14,7 @@ from .routers.api_keys import router as api_keys_router
 from .routers.token_usage import router as token_usage_router
 from .routers.chat_bot import router as chat_bot_router
 from .routers.chat_agent import router as chat_agent_router
+from .routers.assistant import router as assistant_router
 from .routers.validation import router as validation_router
 from .routers.institute_settings import router as institute_settings_router
 from .routers.utils import router as utils_router
@@ -85,6 +86,14 @@ async def _lifespan(app: FastAPI):
         start_reels_reaper()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("reels reaper startup skipped: %s", exc)
+    # Vacademy Assistant help corpus: keep the deployed pgvector corpus in sync
+    # with app/data/help_knowledge.jsonl. Change-detected, so an unchanged corpus
+    # is a no-op. Lazy import + background task so it can't block app boot.
+    try:
+        from .services.help_corpus_sync import start_help_corpus_sync
+        start_help_corpus_sync()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("help corpus sync startup skipped: %s", exc)
     yield
 
 
@@ -175,6 +184,7 @@ def create_app() -> FastAPI:
     app.include_router(token_usage_router, prefix=settings.api_base_path)
     app.include_router(chat_bot_router, prefix=settings.api_base_path)
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
+    app.include_router(assistant_router, prefix=settings.api_base_path)
     app.include_router(validation_router, prefix=settings.api_base_path)
     app.include_router(institute_settings_router, prefix=settings.api_base_path)
     app.include_router(utils_router, prefix=settings.api_base_path)

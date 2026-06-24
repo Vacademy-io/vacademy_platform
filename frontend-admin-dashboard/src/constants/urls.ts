@@ -17,6 +17,17 @@ export const BASE_URL_LEARNER_DASHBOARD =
 export const AI_SERVICE_BASE_URL =
     import.meta.env.VITE_AI_SERVICE_BASE_URL || `${BACKEND_BASE_URL}/ai-service`;
 
+// Vacademy Assistant (admin AI agent). All require Authorization + clientId
+// headers; the stream is SSE and must be read with fetch (EventSource cannot
+// send headers). See ai_service app/routers/assistant.py.
+export const ASSISTANT_SESSION_INIT = `${AI_SERVICE_BASE_URL}/assistant/session/init`;
+export const ASSISTANT_SESSION_MESSAGE = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/message`;
+export const ASSISTANT_SESSION_STREAM = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/stream`;
+export const ASSISTANT_SESSION_CLOSE = (sessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/close`;
+
 // PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
 // {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.
 export const ANIMATE_PPTX_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/animate-pptx`;
@@ -115,6 +126,9 @@ export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/le
 // host. For local testing against a different port, swap to LOCAL_ADMIN_CORE_BASE
 // temporarily, but don't commit that — production needs BASE_URL.
 export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telephony/calls/connect`;
+// AI voice-agent call (provider-agnostic). Fire-and-forget — the outcome arrives
+// later via the end-of-call webhook, so (unlike the bridge call) there's no live SSE.
+export const TELEPHONY_AI_CALL_CONNECT = `${BASE_URL}/admin-core-service/v1/telephony/ai-call/connect`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
@@ -128,6 +142,15 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
 export const TELEPHONY_CONFIG = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/config/${instituteId}`;
+// Backend-driven provider catalogue: every provider with a registered adapter,
+// with its capabilities + credential schema. Drives the provider dropdown +
+// the schema-rendered credential form (a new provider = no frontend change).
+export const TELEPHONY_PROVIDERS = `${BASE_URL}/admin-core-service/v1/telephony/providers`;
+// Per-counsellor extension/DID mapping for no-pool providers (Airtel).
+export const TELEPHONY_COUNSELLOR_ENDPOINTS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${instituteId}`;
+export const TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/counsellor-endpoints/${encodeURIComponent(id)}`;
 export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
 export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
@@ -338,6 +361,12 @@ export const GET_PUBLIC_URL = `${BASE_URL}/media-service/get-public-url`;
 export const GET_PUBLIC_URL_PUBLIC = `${BASE_URL}/media-service/public/get-public-url`;
 // Domain routing - resolve institute by domain/subdomain (public)
 export const DOMAIN_ROUTING_RESOLVE = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`;
+// Domain routing - resolve branding/theme by a fixed institute id (public).
+// Used by native flavors (e.g. Vacademy Admin) that anchor on an institute id
+// instead of the request host. Falls back gracefully if not yet deployed.
+export const DOMAIN_ROUTING_RESOLVE_BY_INSTITUTE = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve-by-institute`;
+// OTA self-hosted update check (public). Mirrors the learner app.
+export const OTA_CHECK = `${BASE_URL}/admin-core-service/public/ota/v1/check`;
 export const GET_DETAILS = `${BASE_URL}/media-service/get-details/ids`;
 export const ACKNOWLEDGE_FOR_PUBLIC_URL = `${BASE_URL}/media-service/acknowledge-get-details`;
 
@@ -446,6 +475,8 @@ export const GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-se
 export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
 export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
+// A learner's interactive-block responses (checklist / fill-blank / MCQ) for a document slide.
+export const GET_SLIDE_INTERACTIONS_ADMIN = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction/admin`;
 export const GET_SLIDE_BY_ID = `${BASE_URL}/admin-core-service/slide/v1/slide`;
 export const SAVE_QUIZ_QUESTION_FEEDBACK = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
@@ -817,6 +848,7 @@ export const SUB_ORG_TEAM_LIST = `${BASE_URL}/admin-core-service/sub-org/v1/team
 export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/add`;
 export const SUB_ORG_TEAM_REMOVE = `${BASE_URL}/admin-core-service/sub-org/v1/team/remove`;
 export const SUB_ORG_TEAM_ACCESSIBLE = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-sub-orgs`;
+export const SUB_ORG_TEAM_USER_LINKS = `${BASE_URL}/admin-core-service/sub-org/v1/team/user-sub-org-links`;
 export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-grants`;
 export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues

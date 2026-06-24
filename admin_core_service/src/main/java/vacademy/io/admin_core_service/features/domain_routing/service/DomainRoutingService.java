@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.institute.entity.Institute;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -31,12 +33,52 @@ public class DomainRoutingService {
             return Optional.empty();
         }
 
-        Optional<InstituteDomainRouting> mappingOpt = routingRepository.resolveMapping(domain.trim(), subdomain.trim());
-        if (mappingOpt.isEmpty()) {
+        return routingRepository.resolveMapping(domain.trim(), subdomain.trim())
+                .flatMap(this::buildResponse);
+    }
+
+    /**
+     * Resolve branding/theme for a fixed institute id rather than the request
+     * host. Used by native flavors (e.g. Vacademy Admin) whose WebView has no
+     * meaningful hostname but which are anchored to a single institute. When the
+     * institute has several routing rows, an admin/teacher-facing row is
+     * preferred; otherwise the first row is used.
+     */
+    public Optional<DomainRoutingResolveResponse> resolveByInstituteId(String instituteId) {
+        if (!StringUtils.hasText(instituteId)) {
             return Optional.empty();
         }
 
-        InstituteDomainRouting mapping = mappingOpt.get();
+        List<InstituteDomainRouting> mappings = routingRepository.findByInstituteId(instituteId.trim());
+        if (mappings.isEmpty()) {
+            return Optional.empty();
+        }
+
+        // Deterministic order so a multi-row institute resolves the same branding
+        // on every request/restart (findByInstituteId has no ORDER BY, and Postgres
+        // row order is otherwise arbitrary). Prefer an admin/teacher-facing row,
+        // then fall back to the lowest id.
+        List<InstituteDomainRouting> ordered = mappings.stream()
+                .sorted(Comparator.comparing(InstituteDomainRouting::getId,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        InstituteDomainRouting mapping = ordered.stream()
+                .filter(m -> {
+                    String role = m.getRole();
+                    if (role == null) {
+                        return false;
+                    }
+                    String upper = role.toUpperCase();
+                    return upper.contains("ADMIN") || upper.contains("TEACHER");
+                })
+                .findFirst()
+                .orElse(ordered.get(0));
+
+        return buildResponse(mapping);
+    }
+
+    private Optional<DomainRoutingResolveResponse> buildResponse(InstituteDomainRouting mapping) {
         Institute institute = null;
 
         if (StringUtils.hasText(mapping.getInstituteId())) {

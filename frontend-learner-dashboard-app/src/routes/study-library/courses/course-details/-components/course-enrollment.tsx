@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 // Static label for a session/level field — dropdowns are deprecated in favour of
 // navigating to the course from the catalog with a specific packageSessionId in the URL.
@@ -164,7 +165,9 @@ export const CourseEnrollment = ({
     selectedTab === "ALL" &&
     !!selectedSession &&
     !!selectedLevel &&
-    !isAlreadyEnrolledInCurrent;
+    !isAlreadyEnrolledInCurrent &&
+    // Reader mode: never surface an enroll/pay CTA (Apple 3.1.1).
+    !shouldHidePaidPurchaseUI();
   const hasAnythingToShow =
     showSessionField ||
     showLevelField ||
@@ -318,6 +321,7 @@ export const CourseEnrollment = ({
         {/* Inline Enroll card when sidebar is hidden */}
         {!hasRightSidebar &&
           selectedTab === "ALL" &&
+          !shouldHidePaidPurchaseUI() &&
           (() => {
             if (!selectedSession || !selectedLevel) return null;
             if (isAlreadyEnrolledInCurrent) return null;

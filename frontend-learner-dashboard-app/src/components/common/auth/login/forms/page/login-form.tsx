@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { isIOSNative } from "@/utils/ios-iap-compliance";
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate } from "@tanstack/react-router";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
@@ -45,6 +46,12 @@ import {
   isNativeOAuthRequired,
   openOAuthInSystemBrowser,
 } from "@/lib/auth/nativeOAuth";
+import {
+  loginWithAppleNative,
+  AppleSessionLimitError,
+  AppleSignInCancelledError,
+} from "@/lib/auth/appleNativeAuth";
+import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
 import {
   getTerminology,
   getTerminologyPlural,
@@ -806,7 +813,34 @@ export function LoginForm({
     }
   };
 
-  const handleOAuthLogin = async (provider: "google" | "github") => {
+  const handleOAuthLogin = async (provider: "google" | "github" | "apple") => {
+    // Native iOS: "Sign in with Apple" uses the native ASAuthorization sheet
+    // (no browser redirect / Universal Link). The helper completes the auth
+    // cycle and navigates on success.
+    if (provider === "apple" && isIOSNative()) {
+      try {
+        setIsSSOLoading(true);
+        await loginWithAppleNative({ instituteId: domainRouting?.instituteId });
+      } catch (e) {
+        setIsSSOLoading(false);
+        if (e instanceof AppleSignInCancelledError) {
+          return; // user dismissed the sheet — no error UI
+        }
+        if (e instanceof AppleSessionLimitError) {
+          toast.error(
+            "You've reached the active session limit. Please log out from another device and try again.",
+          );
+        } else {
+          toast.error(
+            e instanceof Error
+              ? e.message
+              : "Failed to sign in with Apple. Please try again.",
+          );
+        }
+      }
+      return;
+    }
+
     try {
       // Resolve the public-facing origin for OAuth redirect
       const redirectOrigin = await getOAuthRedirectOrigin();
@@ -978,6 +1012,11 @@ export function LoginForm({
                   transition={{ delay: 0.7 }}
                   className="grid grid-cols-1 gap-3"
                 >
+                  {/* Apple Guideline 4.8: on native iOS, an app offering
+                      third-party social login (Google/GitHub) MUST also offer
+                      Sign in with Apple as a peer. The Apple button below
+                      satisfies that, so Google/GitHub are no longer hidden on
+                      iOS. web / Android / Electron are unaffected. */}
                   {authProviders?.google && (
                     <Button
                       variant="outline"
@@ -1000,6 +1039,15 @@ export function LoginForm({
                       Continue with GitHub
                     </Button>
                   )}
+                  {/* Sign in with Apple — native iOS only (the plugin has no
+                      Android support; web/Android Apple login is a later phase).
+                      Shown whenever a third-party provider is offered, per 4.8. */}
+                  {isIOSNative() &&
+                    (authProviders?.google || authProviders?.github) && (
+                      <AppleSignInButton
+                        onClick={() => handleOAuthLogin("apple")}
+                      />
+                    )}
                 </motion.div>
 
                 {/* Divider */}

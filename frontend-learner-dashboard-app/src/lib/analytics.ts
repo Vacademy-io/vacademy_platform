@@ -1,4 +1,5 @@
 import * as amplitude from '@amplitude/analytics-browser';
+import { Capacitor } from '@capacitor/core';
 
 // Local readiness flag to ensure analytics failures never impact the app
 let analyticsReady = false;
@@ -11,6 +12,13 @@ const AMPLITUDE_API_KEY = import.meta.env.VITE_AMPLITUDE_API_KEY;
  * Initialize Amplitude analytics
  */
 export const initializeAnalytics = () => {
+  // Apple Guideline 5.1.2 (App Tracking Transparency): Amplitude's autocapture
+  // ties cross-session events to a persistent user id, which Apple treats as
+  // "tracking". The app shows no ATT prompt, so analytics must NOT run on
+  // native iOS. web / Android / Electron are unaffected.
+  if (Capacitor.getPlatform() === 'ios') {
+    return;
+  }
   try {
     amplitude.init(AMPLITUDE_API_KEY, {
       autocapture: true,

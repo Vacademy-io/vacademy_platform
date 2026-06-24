@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import {
     Envelope,
     Phone,
+    Robot,
     Clock,
     Plus,
     UserPlus,
@@ -259,6 +260,9 @@ export function LeadTable({
                     return <span className="text-sm text-neutral-300">—</span>;
                 const callGate =
                     actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
+                // AI Call gating — falls back to canCall (both need a phone on file).
+                const aiGateFn = actions.canAiCall ?? actions.canCall;
+                const aiGate = actions.onAiCallLead && aiGateFn ? aiGateFn(vm) : null;
                 return (
                     <div className="min-w-0 space-y-1">
                         {showEmail && (
@@ -304,6 +308,30 @@ export function LeadTable({
                                             </button>
                                         }
                                     />
+                                )}
+                                {aiGate && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (aiGate.allowed) actions.onAiCallLead?.(vm);
+                                        }}
+                                        disabled={!aiGate.allowed}
+                                        title={
+                                            aiGate.allowed
+                                                ? 'AI call lead'
+                                                : aiGate.reason ?? 'AI call lead'
+                                        }
+                                        aria-label="AI call lead"
+                                        className={cn(
+                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                            aiGate.allowed
+                                                ? 'hover:bg-primary-50 hover:text-primary-600'
+                                                : 'cursor-not-allowed'
+                                        )}
+                                    >
+                                        <Robot weight="fill" className="size-4" />
+                                    </button>
                                 )}
                             </p>
                         )}

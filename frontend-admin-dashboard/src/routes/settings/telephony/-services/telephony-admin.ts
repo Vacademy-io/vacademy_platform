@@ -1,6 +1,9 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     TELEPHONY_CONFIG,
+    TELEPHONY_PROVIDERS,
+    TELEPHONY_COUNSELLOR_ENDPOINTS,
+    TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID,
     TELEPHONY_NUMBERS,
     TELEPHONY_NUMBER_BY_ID,
     TELEPHONY_NUMBER_ATTACH,
@@ -8,16 +11,47 @@ import {
     TELEPHONY_EXOTEL_BALANCE,
 } from '@/constants/urls';
 
+/** One field in a provider's credential schema (from GET /telephony/providers). */
+export interface ProviderCredentialField {
+    key: string;
+    label: string;
+    secret: boolean;
+    required: boolean;
+    helpText?: string | null;
+    validationRegex?: string | null;
+}
+
+/** A provider the backend has an adapter for. */
+export interface ProviderDescriptor {
+    providerType: string;
+    displayName: string;
+    authType: string;
+    usesGenericCredentialStore: boolean;
+    capabilities: string[];
+    credentialSchema: ProviderCredentialField[];
+}
+
+export interface TelephonyCounsellorEndpoint {
+    id?: string;
+    counsellorUserId: string;
+    providerType: string;
+    extension?: string | null;
+    providerUserId?: string | null;
+    did?: string | null;
+    enabled?: boolean | null;
+}
+
 export interface TelephonyConfigView {
     id?: string;
     instituteId: string;
     providerType: string;
-    apiAccountId: string;
+    /** Null for generic (Airtel) configs — account id lives in `config`. */
+    apiAccountId?: string | null;
     apiUsernameSet: boolean;
     apiPasswordSet: boolean;
     webhookTokenSet: boolean;
     recordCalls?: boolean | null;
-    defaultSelectorKey: string;
+    defaultSelectorKey?: string | null;
     enabled?: boolean | null;
     /** Fallback number dialled when an inbound lead call has no agent — null
      *  means no fallback (call drops to provider default). */
@@ -29,6 +63,11 @@ export interface TelephonyConfigView {
      *  Guide so the admin sees the exact route URL to paste into App Bazaar. */
     webhookCallbackBase?: string | null;
     updatedAt?: string | null;
+    /** Generic credential model (non-Exotel providers). */
+    authType?: string | null;
+    config?: Record<string, string> | null;
+    /** True if a generic encrypted secrets blob is stored (secrets never echoed). */
+    providerSecretsSet?: boolean | null;
 }
 
 export interface TelephonyConfigInput {
@@ -44,6 +83,10 @@ export interface TelephonyConfigInput {
     inboundVoicemailNumber?: string | null;
     /** Empty string clears the saved value; null/undefined leaves it as-is. */
     flowSid?: string | null;
+    /** Generic (non-Exotel) credential model: auth scheme + secret/config maps. */
+    authType?: string;
+    secrets?: Record<string, string>;
+    config?: Record<string, string>;
 }
 
 export interface TelephonyProviderNumber {
@@ -92,6 +135,37 @@ export const SELECTOR_OPTIONS: { value: SelectorKey; label: string; helper: stri
         helper: 'Prefer a number from the same region as the lead (based on the lead’s phone code).',
     },
 ];
+
+/** Every provider the backend has an adapter for (drives the dropdown + form). */
+export const fetchTelephonyProviders = async (): Promise<ProviderDescriptor[]> => {
+    const { data } = await authenticatedAxiosInstance.get<ProviderDescriptor[]>(TELEPHONY_PROVIDERS);
+    return data ?? [];
+};
+
+export const fetchCounsellorEndpoints = async (
+    instituteId: string,
+    providerType = 'AIRTEL'
+): Promise<TelephonyCounsellorEndpoint[]> => {
+    const { data } = await authenticatedAxiosInstance.get<TelephonyCounsellorEndpoint[]>(
+        `${TELEPHONY_COUNSELLOR_ENDPOINTS(instituteId)}?providerType=${encodeURIComponent(providerType)}`
+    );
+    return data ?? [];
+};
+
+export const upsertCounsellorEndpoint = async (
+    instituteId: string,
+    input: TelephonyCounsellorEndpoint
+): Promise<TelephonyCounsellorEndpoint> => {
+    const { data } = await authenticatedAxiosInstance.put<TelephonyCounsellorEndpoint>(
+        TELEPHONY_COUNSELLOR_ENDPOINTS(instituteId),
+        input
+    );
+    return data;
+};
+
+export const deleteCounsellorEndpoint = async (id: string): Promise<void> => {
+    await authenticatedAxiosInstance.delete(TELEPHONY_COUNSELLOR_ENDPOINT_BY_ID(id));
+};
 
 export const fetchTelephonyConfig = async (
     instituteId: string

@@ -30,6 +30,9 @@ export const HOLISTIC_INSTITUTE_ID =
 export const LOGIN_URL = `${BASE_URL}/auth-service/learner/v1/login`;
 
 export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/oauth2/authorization`;
+// Native iOS "Sign in with Apple" — the app POSTs the Apple identityToken here
+// (the native sheet returns it directly, so there is no browser-redirect round-trip).
+export const LOGIN_URL_APPLE_NATIVE = `${BASE_URL}/auth-service/learner/v1/oauth/apple/native`;
 export const LOGIN_USING_USERNAME = `${BASE_URL}/auth-service/open/user-details/by-username`;
 export const LOGIN_USING_OTP = `${BASE_URL}/auth-service/learner/v1/login-otp-ten-days`;
 
@@ -86,10 +89,15 @@ export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessme
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
 export const ADD_UPDATE_AUDIO_ACTIVITY = `${BASE_URL}/admin-core-service/learner/activity/add-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
+// Per-learner interaction state for a document slide's interactive blocks
+// (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists
+// all blocks for the current learner; POST upserts one block.
+export const SLIDE_INTERACTION = `${BASE_URL}/admin-core-service/learner-tracking/v1/slide-interaction`;
 export const SUBMIT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/add-or-update`;
 export const SUBMIT_ASSIGNMENT_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/add-or-update-assignment-slide-activity-log`;
 export const GET_ASSIGNMENT_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
 export const SUBMIT_QUESTION_SLIDE_ANSWERS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/add-or-update-question-slide-activity-log`;
+export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const INIT_STUDY_LIBRARY = `${BASE_URL}/admin-core-service/v1/learner-study-library/init-details`;
 export const MODULES_WITH_CHAPTERS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/modules-with-chapters`;
 export const MODULES_WITH_CHAPTERS_PRIVATE = `${BASE_URL}/admin-core-service/v1/learner-study-library/modules-with-chapters`;

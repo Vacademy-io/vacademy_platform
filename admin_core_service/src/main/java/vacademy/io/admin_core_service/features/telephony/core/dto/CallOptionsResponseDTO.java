@@ -32,4 +32,10 @@ public class CallOptionsResponseDTO {
     private List<NumberChoice> numbers;
     private String recommendedNumberId;
     private String strategyKey;
+    /** The active provider type (e.g. EXOTEL / AIRTEL) so the picker can adapt. */
+    private String providerType;
+    /** False for no-pool providers (Airtel): there is no caller-ID number to pick
+     *  — the call dials from the counsellor's own extension. {@code numbers} is
+     *  empty in that case and the picker just confirms the dial. */
+    private boolean usesNumberPool;
 }

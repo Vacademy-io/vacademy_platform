@@ -29,6 +29,48 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         List<AudienceResponse> findByAudienceId(String audienceId);
 
         /**
+         * Lead lookup by phone number for telephony attribution: the most recent
+         * lead in this institute whose {@code parent_mobile} matches on the last 10
+         * digits. Returns {@code [audience_response.id, user_id]}. Institute-scoped
+         * via the audience join so a call never attaches to another institute's
+         * lead. Used by the Airtel CCR/CDR importer to attribute inbound +
+         * softphone-originated outbound calls that have no CRM click2dial row.
+         */
+        @Query(value = """
+                SELECT ar.id, ar.user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.parent_mobile IS NOT NULL
+                  AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                ORDER BY ar.created_at DESC
+                LIMIT 1
+                """, nativeQuery = true)
+        List<Object[]> findLeadIdAndUserByInstituteAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /**
+         * The most recent {@code audience_response.id} for a given user in this
+         * institute — i.e. confirms the user IS a lead here and returns the lead's
+         * response id. Used by the telephony resolver after it finds the user by
+         * mobile in auth_service: the call attaches to {@code user_id}, scoped to
+         * the call's institute so it never crosses tenants.
+         */
+        @Query(value = """
+                SELECT ar.id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id = :userId
+                ORDER BY ar.created_at DESC
+                LIMIT 1
+                """, nativeQuery = true)
+        List<String> findResponseIdByInstituteAndUser(
+                        @Param("instituteId") String instituteId,
+                        @Param("userId") String userId);
+
+        /**
          * Find all leads for a campaign with pagination
          */
         Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);
@@ -687,6 +729,12 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Count total leads for a campaign
          */
         Long countByAudienceId(String audienceId);
+
+        /**
+         * Most recent response for an audience — used by the connector health
+         * check as a "leads are actually arriving" heartbeat.
+         */
+        Optional<AudienceResponse> findTopByAudienceIdOrderBySubmittedAtDesc(String audienceId);
 
         /**
          * Count converted leads for a campaign

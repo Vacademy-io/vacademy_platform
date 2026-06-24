@@ -291,6 +291,14 @@ export const SlideMaterial = ({
     // re-run we must NOT re-deserialize, or we'd overwrite the editor's live
     // bold/colour edits and revert the formatting right after the user saves.
     const lastLoadContentSlideIdRef = useRef<string | null>(null);
+    // True when the last DOC content-apply had to fall back to manually
+    // reconstructing editor.plugins/blocks because the real <YooptaEditor>
+    // hadn't mounted yet. That manual reconstruction is incomplete (no
+    // formats/blockEditorsMap), so html.deserialize can silently drop blocks
+    // → blank on first open. When the real editor mounts (onMount below) we
+    // re-deserialize once with the proper maps. Reset to false on the warm
+    // path so the re-apply is a no-op there.
+    const usedManualPluginInitRef = useRef(false);
 
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
@@ -397,6 +405,21 @@ export const SlideMaterial = ({
             }
         };
 
+        // Fires once the real <YooptaEditor> has mounted (and thus built the
+        // proper plugin/block/format maps on the shared editor instance). If
+        // the initial content-apply had to fall back to the incomplete manual
+        // reconstruction (cold path — first DOC opened since mount), the
+        // deserialize may have silently dropped blocks → blank. Re-deserialize
+        // once now with the correct maps so the content actually renders.
+        const handleEditorMount = () => {
+            if (!usedManualPluginInitRef.current) return;
+            usedManualPluginInitRef.current = false;
+            applyDocContentToEditor();
+            setShowPlaceholder(checkIsEmptyFromEditor());
+            // Re-baseline the unsaved-change snapshot against the corrected content.
+            captureInitialDocSnapshot();
+        };
+
         return (
             <div className="relative w-full">
                 {showPlaceholder && (
@@ -423,6 +446,7 @@ export const SlideMaterial = ({
                         selectionBoxRoot={selectionRef}
                         autoFocus={true}
                         readOnly={isLearnerView}
+                        onMount={handleEditorMount}
                         onChange={() => {
                             // Check emptiness from JSON structure (instant, no serialization)
                             setShowPlaceholder(checkIsEmptyFromEditor());
@@ -448,12 +472,22 @@ export const SlideMaterial = ({
         );
     };
 
-    const setEditorContent = () => {
+    // Deserialize the active DOC slide's HTML into the shared Yoopta editor and
+    // push it via setEditorValue. Returns whether the content is empty (for the
+    // placeholder). Does NOT mount the editor component — setEditorContent()
+    // does that. Split out so it can be re-run after the real <YooptaEditor>
+    // mounts (see usedManualPluginInitRef / EditorWithPlaceholder onMount),
+    // which fixes "DOC blank on first open".
+    const applyDocContentToEditor = (): boolean => {
         // Ensure plugins and blocks are registered on the editor BEFORE
         // calling html.deserialize.  On a fresh page load the YooptaEditor
         // component hasn't mounted yet so editor.plugins / editor.blocks are
         // still empty — the deserializer would silently drop every block.
         if (!editor.plugins || Object.keys(editor.plugins).length === 0) {
+            // Cold path: real editor maps not built yet. The manual
+            // reconstruction below is incomplete, so flag a re-apply once the
+            // real editor mounts.
+            usedManualPluginInitRef.current = true;
             const pluginDefs = plugins.map((p: any) =>
                 typeof p.getPlugin === 'object' ? p.getPlugin : p
             );
@@ -507,12 +541,28 @@ export const SlideMaterial = ({
                 };
             });
             (editor as any).blocks = blocksMap;
+        } else {
+            // Warm path: real editor already mounted with proper maps, so this
+            // deserialize is reliable — no post-mount re-apply needed.
+            usedManualPluginInitRef.current = false;
         }
 
+        // Fall back to published_data when a non-published slide's draft `data`
+        // is missing OR blank. `data` can be a non-null but empty editor wrapper
+        // (e.g. an auto-save race that clobbered it, or a copied PUBLISHED doc
+        // whose content lives only in published_data). A plain `data || ...`
+        // would NOT fall back, because the empty wrapper is a truthy string — so
+        // the slide opens blank even though the content survives in
+        // published_data. checkIsHtmlEmpty detects the blank wrapper.
+        const draftDocData = activeItem?.document_slide?.data;
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
-                : activeItem?.document_slide?.data || null;
+                : (draftDocData && !checkIsHtmlEmpty(draftDocData)
+                      ? draftDocData
+                      : null) ||
+                  activeItem?.document_slide?.published_data ||
+                  null;
 
         // Sanitize any public S3 URLs that may contain expired signatures
         let sanitizedDocData = stripAwsQueryParamsFromUrls(docData || '');
@@ -580,6 +630,31 @@ export const SlideMaterial = ({
                 doc.body.querySelectorAll('video').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('img').forEach(unwrapFromDiv);
                 doc.body.querySelectorAll('a[download]').forEach(unwrapFromDiv);
+
+                // Accordion: serializes as <div>…<details><summary/>…</details>…</div>
+                // (the accordion-list wraps its items). Yoopta finds accordions by the
+                // bare <details> nodeName, so lift them out of that wrapper div —
+                // otherwise the buried accordion is dropped on reload and disappears.
+                // Snapshot the wrapper divs (children are ALL <details>, so we don't
+                // touch the outer content div) and unwrap each once.
+                const accordionWrappers = new Set<Element>();
+                doc.body.querySelectorAll('details').forEach((d) => {
+                    const p = d.parentElement;
+                    if (
+                        p &&
+                        p.tagName === 'DIV' &&
+                        !p.hasAttribute('data-yoopta-type') &&
+                        Array.from(p.children).every((c) => c.tagName === 'DETAILS')
+                    ) {
+                        accordionWrappers.add(p);
+                    }
+                });
+                accordionWrappers.forEach((wrapper) => {
+                    while (wrapper.firstChild) {
+                        wrapper.parentNode?.insertBefore(wrapper.firstChild, wrapper);
+                    }
+                    wrapper.remove();
+                });
 
                 // Convert in-text newlines to <br> so Yoopta's deserializer
                 // preserves line breaks in list items, paragraphs, etc.
@@ -869,7 +944,28 @@ export const SlideMaterial = ({
         }
 
         // Check if content is empty - use shared utility
-        const isEmpty = checkIsHtmlEmpty(sanitizedDocData);
+        return checkIsHtmlEmpty(sanitizedDocData);
+    };
+
+    // Capture initial HTML for DOC slides to detect unsaved changes later.
+    // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
+    // html.deserialize → html.serialize is NOT a lossless round-trip.
+    // If we compare raw stored HTML against Yoopta's serialized output, they
+    // will always differ even with zero user edits → false positive dialog.
+    const captureInitialDocSnapshot = () => {
+        if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
+            prevDocSlideRef.current = activeItem;
+            // Use a short delay so Yoopta finishes rendering before we snapshot
+            setTimeout(() => {
+                const editorHtml = getCurrentEditorHTMLContent();
+                initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
+                currentDocHtmlRef.current = editorHtml;
+            }, 300);
+        }
+    };
+
+    const setEditorContent = () => {
+        const isEmpty = applyDocContentToEditor();
 
         setContent(<EditorWithPlaceholder initialIsEmpty={isEmpty} />);
         // Delay focus until after React re-renders the DOM with the new editor state.
@@ -887,20 +983,7 @@ export const SlideMaterial = ({
             });
         }, 300);
 
-        // Capture initial HTML for DOC slides to detect unsaved changes later.
-        // IMPORTANT: We must capture AFTER Yoopta has loaded the content, because
-        // html.deserialize → html.serialize is NOT a lossless round-trip.
-        // If we compare raw stored HTML against Yoopta's serialized output, they
-        // will always differ even with zero user edits → false positive dialog.
-        if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
-            prevDocSlideRef.current = activeItem;
-            // Use a short delay so Yoopta finishes rendering before we snapshot
-            setTimeout(() => {
-                const editorHtml = getCurrentEditorHTMLContent();
-                initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
-                currentDocHtmlRef.current = editorHtml;
-            }, 300);
-        }
+        captureInitialDocSnapshot();
     };
 
     const getCurrentEditorHTMLContent: () => string = () => {
@@ -910,8 +993,13 @@ export const SlideMaterial = ({
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
-            // at path" Slate bug) have something to fall back to.
-            currentDocHtmlRef.current = formatted;
+            // at path" Slate bug) have something to fall back to. Only cache a
+            // NON-empty result: a transient empty/degenerate serialize (e.g.
+            // mid slide-switch) must not poison the fallback, or the catch
+            // block below would itself recover empty content and lose work.
+            if (!checkIsHtmlEmpty(formatted)) {
+                currentDocHtmlRef.current = formatted;
+            }
             return formatted;
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
@@ -1165,6 +1253,19 @@ export const SlideMaterial = ({
                 ? itemsNow.find((s) => s.id === slide.id)?.status === 'DELETED'
                 : false;
             if (!stillExists || deletedInStore || slide.status === 'DELETED') {
+                return;
+            }
+
+            // Never let an empty/blank editor serialization clobber a slide that
+            // has content. Mirrors SaveDraft's empty-guard. Without this, a
+            // slide-switch race (the editor is momentarily empty before its
+            // content finishes loading) auto-saves the empty wrapper into `data`
+            // and flips a PUBLISHED slide to UNSYNC — the slide then opens blank
+            // even though the real content still lives in published_data.
+            if (checkIsHtmlEmpty(htmlString)) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor content is empty; refusing to overwrite existing slide data.'
+                );
                 return;
             }
 
@@ -2103,6 +2204,10 @@ export const SlideMaterial = ({
                     console.error('Payload that failed:', videoSlidePayload);
                     toast.error(`Error saving split screen slide: ${error}`);
                 }
+                // Split-screen VIDEO is fully handled here. Return so it does
+                // not fall through to the DOC path below and get overwritten as
+                // a type:'DOC' document (the split embedded_data would be lost).
+                return;
             } else if (activeItem?.source_type == 'VIDEO') {
                 // Handle regular video slides (non-split screen)
                 const convertedData = converDataToVideoFormat({
@@ -2117,6 +2222,21 @@ export const SlideMaterial = ({
                 } catch {
                     toast.error(`Error in saving the slide`);
                 }
+                // VIDEO is fully handled here. Without this return the slide
+                // would continue into the DOC path below and risk being
+                // overwritten as a type:'DOC' document (it only survives today
+                // because the editor happens to be empty and the empty-guard
+                // catches it — too fragile to rely on).
+                return;
+            }
+
+            // HTML_VIDEO (AI Video / AI Slides / AI Storybook) is AI-generated,
+            // rendered read-only via VideoSlidePreview, and has no editor content
+            // or draft-save action (handlePublishSlide has no HTML_VIDEO branch
+            // either). Return here so it never falls through to the DOC path and
+            // gets overwritten as a type:'DOC' slide.
+            if (activeItem?.source_type === 'HTML_VIDEO') {
+                return;
             }
 
             if (activeItem?.source_type === 'QUESTION') {
@@ -2198,8 +2318,13 @@ export const SlideMaterial = ({
                         id: activeItem.id,
                         title: activeItem.title,
                         description: activeItem.description || null,
+                        // Mirror the publish/unpublish SCORM payload so a draft
+                        // save doesn't drop the thumbnail — the backend may
+                        // treat an absent image_file_id as "clear".
+                        image_file_id: activeItem.image_file_id || '',
                         status: status as 'DRAFT' | 'PUBLISHED',
                         slide_order: activeItem.slide_order,
+                        notify: false,
                         new_slide: false,
                         scorm_slide: {
                             id: activeItem.scorm_slide.id,
@@ -2378,6 +2503,57 @@ export const SlideMaterial = ({
                     toast.error(
                         `Error saving ${activeItem.document_slide.type.toLowerCase()} slide`
                     );
+                }
+                return;
+            }
+
+            // PDF and PPT_ANIM slides have no editor content — they reference an
+            // uploaded file by id in document_slide.data (PDF = file id rendered
+            // by the PDF viewer; PPT_ANIM = deck base rendered by DeckPlayer).
+            // Without this branch, Save Draft falls through to the DOC path
+            // below, serializes the (empty) document editor, and overwrites the
+            // slide as type:'DOC' — wiping the file and leaving only the title.
+            // Re-save in place, preserving the type / file id / page count /
+            // published snapshot.
+            if (
+                slide?.source_type === 'DOCUMENT' &&
+                (slide?.document_slide?.type === 'PDF' ||
+                    slide?.document_slide?.type === 'PPT_ANIM')
+            ) {
+                try {
+                    await addUpdateDocumentSlide({
+                        id: slide?.id || '',
+                        title: slide?.title || '',
+                        image_file_id: slide?.image_file_id || '',
+                        description: slide?.description || '',
+                        slide_order: null,
+                        document_slide: {
+                            id: slide?.document_slide?.id || '',
+                            type: slide?.document_slide?.type || 'PDF',
+                            // Fall back to the published snapshot so we never
+                            // write data:null for a deck/PDF that only has a
+                            // published copy (the UNSYNC admin preview reads
+                            // data, and a null would show a blank deck).
+                            data:
+                                slide?.document_slide?.data ||
+                                slide?.document_slide?.published_data ||
+                                null,
+                            title: slide?.document_slide?.title || '',
+                            cover_file_id: slide?.document_slide?.cover_file_id || '',
+                            total_pages: slide?.document_slide?.total_pages || 1,
+                            published_data:
+                                slide?.document_slide?.published_data || null,
+                            published_document_total_pages:
+                                slide?.document_slide
+                                    ?.published_document_total_pages || 1,
+                        },
+                        status: status,
+                        new_slide: false,
+                        notify: false,
+                    });
+                    toast.success(`slide saved in draft successfully!`);
+                } catch {
+                    toast.error(`Error in saving the slide`);
                 }
                 return;
             }
@@ -2678,6 +2854,18 @@ export const SlideMaterial = ({
         }
     }, [items, slideId]);
 
+    // For read-only file-backed document slides (PDF / PPT_ANIM) the rendered
+    // content is derived purely from the file URL in data/published_data — there's
+    // no live editor to disrupt. Track it so the view re-renders when the URL fills
+    // in (e.g. right after an upload, once the slides refetch lands). Scoped to
+    // these two types so we never rebuild the DOC/CODE/JUPYTER/Excalidraw editors
+    // on their autosave-triggered refetches (the reason `items` was kept out of deps).
+    const docContentSignature =
+        activeItem?.source_type === 'DOCUMENT' &&
+        ['PDF', 'PPT_ANIM'].includes(activeItem?.document_slide?.type ?? '')
+            ? `${activeItem?.document_slide?.data ?? ''}|${activeItem?.document_slide?.published_data ?? ''}`
+            : null;
+
     useEffect(() => {
         setHeading(activeItem?.title || '');
         // Only reload content if the slide identity or shape changes.
@@ -2691,6 +2879,8 @@ export const SlideMaterial = ({
         activeItem?.source_type,
         activeItem?.document_slide?.type,
         activeItem?.status,
+        // File-backed doc slides: re-render when the URL fills in (post-upload).
+        docContentSignature,
         // Re-render the video preview when an external link is edited in place.
         activeItem?.video_slide?.url,
         activeItem?.video_slide?.published_url,
@@ -2768,13 +2958,19 @@ export const SlideMaterial = ({
                                         <MyButton
                                             layoutVariant="icon"
                                             onClick={async () => {
-                                                await SaveDraft(activeItem);
                                                 if (activeItem.status === 'PUBLISHED') {
+                                                    // Don't re-save a published slide on download —
+                                                    // SaveDraft would flip it to UNSYNC (un-publish it).
+                                                    // The published content is already persisted; just
+                                                    // export it as-is.
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.published_data ||
                                                             null
                                                     );
                                                 } else {
+                                                    // Draft/unsync: persist the latest edits first so the
+                                                    // exported PDF reflects them.
+                                                    await SaveDraft(activeItem);
                                                     await handleConvertAndUpload(
                                                         activeItem.document_slide?.data || null
                                                     );

@@ -72,6 +72,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
                        LOWER(a.campaignType) LIKE LOWER(CONCAT('%', :campaignType, '%')))
                   AND (COALESCE(:searchName, '') = '' OR
                        LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :searchName, '%')))
+                  AND (COALESCE(:subOrgId, '') = '' OR a.subOrgId = :subOrgId)
                   AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
                   AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
                   AND (:restrictByAllowedIds = false OR a.id IN :allowedAudienceIds)
@@ -82,6 +83,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("status") String status,
             @Param("campaignType") String campaignType,
             @Param("searchName") String searchName,
+            @Param("subOrgId") String subOrgId,
             @Param("startDateFrom") Timestamp startDateFrom,
             @Param("startDateFromProvided") boolean startDateFromProvided,
             @Param("startDateTo") Timestamp startDateTo,

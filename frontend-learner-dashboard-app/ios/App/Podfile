@@ -11,9 +11,11 @@ install! 'cocoapods', :disable_input_output_paths => true
 def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/.pnpm/@capacitor+ios@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/.pnpm/@capacitor+ios@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/ios'
+  pod 'CapacitorCommunityAppleSignIn', :path => '../../node_modules/.pnpm/@capacitor-community+apple-sign-in@7.1.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/apple-sign-in'
   pod 'CapacitorCommunityPrivacyScreen', :path => '../../node_modules/.pnpm/@capacitor-community+privacy-screen@6.0.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/privacy-screen'
   pod 'CapacitorFirebaseMessaging', :path => '../../node_modules/.pnpm/@capacitor-firebase+messaging@7.3.0_@capacitor+core@7.4.2_firebase@10.14.1/node_modules/@capacitor-firebase/messaging'
   pod 'CapacitorApp', :path => '../../node_modules/.pnpm/@capacitor+app@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/app'
+  pod 'CapacitorAppLauncher', :path => '../../node_modules/.pnpm/@capacitor+app-launcher@7.0.4_@capacitor+core@7.4.2/node_modules/@capacitor/app-launcher'
   pod 'CapacitorBrowser', :path => '../../node_modules/.pnpm/@capacitor+browser@7.0.5_@capacitor+core@7.4.2/node_modules/@capacitor/browser'
   pod 'CapacitorNetwork', :path => '../../node_modules/.pnpm/@capacitor+network@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/network'
   pod 'CapacitorPreferences', :path => '../../node_modules/.pnpm/@capacitor+preferences@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/preferences'

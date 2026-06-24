@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { DOMAIN_ROUTING_RESOLVE, GET_PUBLIC_URL_PUBLIC } from '@/constants/urls';
+import {
+    DOMAIN_ROUTING_RESOLVE,
+    DOMAIN_ROUTING_RESOLVE_BY_INSTITUTE,
+    GET_PUBLIC_URL_PUBLIC,
+} from '@/constants/urls';
 import { getMainDomain, getSubdomain } from '@/utils/subdomain';
 
 export type DomainResolveResponse = {
@@ -116,6 +120,33 @@ export async function resolveInstituteForCurrentHost(): Promise<DomainResolveRes
     } catch (_error) {
         // Return null on any error (404, timeout, network failure, etc.)
         // The app will use default branding in this case
+        return null;
+    }
+}
+
+/**
+ * Resolve institute branding/theme by a fixed institute id, rather than the
+ * request host. Used by native flavors (e.g. Vacademy Admin) whose WebView has
+ * no meaningful hostname but which are anchored to one institute.
+ *
+ * Returns null if the endpoint is unavailable (e.g. not yet deployed) or the
+ * institute has no domain-routing config — callers fall back to default
+ * branding while still treating the institute id as the selected institute.
+ */
+export async function resolveInstituteById(
+    instituteId: string
+): Promise<DomainResolveResponse | null> {
+    if (!instituteId) return null;
+    try {
+        const { data } = await axios.get<DomainResolveResponse>(
+            DOMAIN_ROUTING_RESOLVE_BY_INSTITUTE,
+            {
+                params: { instituteId },
+                timeout: 5000,
+            }
+        );
+        return data;
+    } catch (_error) {
         return null;
     }
 }

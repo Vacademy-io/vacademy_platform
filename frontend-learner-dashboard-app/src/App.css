@@ -288,9 +288,14 @@
   line-height: 1.6;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* NOTE: This app renders light-only (no `.dark` class is ever applied).
+     The old Vite-scaffold defaults here (`color-scheme: light dark` +
+     near-white `color: rgba(255,255,255,0.87)`) made the inherited text
+     color near-white on devices whose OS is in dark mode. Any element
+     without an explicit text-color class (e.g. the answer <Textarea> in a
+     question slide) then rendered white-on-white and was invisible — but
+     only for dark-OS users. Removed so inherited text stays dark for
+     everyone; surfaces/text are set explicitly via design tokens elsewhere. */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;

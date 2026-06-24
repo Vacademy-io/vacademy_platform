@@ -25,6 +25,7 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import { listAccessibleSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getCustomFieldSettingsFromCache, getCustomFieldSettings } from '@/services/custom-field-settings';
@@ -142,6 +143,16 @@ export const StudentsListSection = () => {
         })
     );
 
+    // Sub-orgs for the Sub-Org filter chip. listAccessibleSubOrgs returns {id, name} where
+    // id is the child-institute id (= ssigm.sub_org_id), matching the backend filter; it also
+    // scopes to the caller (institute admin → all; sub-org admin → their own).
+    const { data: subOrgsData } = useQuery({
+        queryKey: ['ACCESSIBLE_SUB_ORGS', audienceInstituteId],
+        queryFn: () => listAccessibleSubOrgs(audienceInstituteId),
+        enabled: !!audienceInstituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+
     const hasOrgAssociatedBatches = useMemo(
         () =>
             (instituteDetails?.batches_for_sessions || []).some(
@@ -206,7 +217,7 @@ export const StudentsListSection = () => {
         return map;
     }, [instituteDetails]);
 
-    const allFilters = GetFilterData(instituteDetails, currentSession.id, campaignsData?.content);
+    const allFilters = GetFilterData(instituteDetails, currentSession.id, campaignsData?.content, subOrgsData);
     const filters = allFilters.filter((f) => {
         const fixed = FILTER_TO_COLUMNS[f.id];
         if (fixed) return fixed.some((accessor) => !roleHiddenColumns.has(accessor));
@@ -561,6 +572,9 @@ export const StudentsListSection = () => {
                                                         plan_type: paymentFilterApplied,
                                                         amount_paid: paymentFilterApplied,
                                                         preffered_batch: false,
+                                                        // Only surface the Sub-Org column for institutes that actually
+                                                        // have sub-orgs (matches the Sub-Org filter chip gating).
+                                                        sub_org_name: (subOrgsData?.length ?? 0) > 0,
                                                         membership_role:
                                                             hasOrgAssociatedBatches &&
                                                             roleEnabledCustomFields.has(

@@ -40,6 +40,12 @@ export interface BrandKit {
     intro: IntroOutroConfig;
     outro: IntroOutroConfig;
     watermark: WatermarkConfig;
+    /**
+     * Free-text director instructions auto-appended to the AI video generation
+     * prompts (ShotPlanner / Director / NarrationWriter / per-shot HTML) for
+     * every video made with this kit. Empty/undefined = no brand direction.
+     */
+    system_prompt?: string;
     created_at?: number;
     updated_at?: number;
 }

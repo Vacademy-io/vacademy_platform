@@ -578,6 +578,9 @@ export function LoginForm() {
                                                                         required={true}
                                                                         size="large"
                                                                         label="Username"
+                                                                        autoCapitalize="none"
+                                                                        autoCorrect="off"
+                                                                        spellCheck={false}
                                                                         {...field}
                                                                         className="w-full sm:w-full"
                                                                     />

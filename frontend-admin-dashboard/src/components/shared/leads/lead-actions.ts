@@ -26,6 +26,12 @@ export interface LeadActionHandlers {
     /** Decides whether the Call button is rendered/enabled for this lead.
      *  Reason is shown as a tooltip when allowed=false (e.g. "No phone on file"). */
     canCall?: (vm: LeadCardVM) => { allowed: boolean; reason?: string };
+    /** Place an AI voice-agent call to this lead — wired through usePlaceAiCall().
+     *  Fire-and-forget; the outcome (assign-or-retry) is handled server-side. */
+    onAiCallLead?: (vm: LeadCardVM) => void;
+    /** Gate for the AI Call button (same shape as canCall). Defaults to canCall
+     *  when omitted — both need a phone on file. */
+    canAiCall?: (vm: LeadCardVM) => { allowed: boolean; reason?: string };
     /** Surface-specific overflow-menu items (e.g. the campaign list's Delete). */
     renderExtraActions?: (vm: LeadCardVM) => ReactNode;
 }

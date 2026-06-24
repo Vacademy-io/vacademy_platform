@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
+import vacademy.io.admin_core_service.features.audience.dto.WebhookSubscriptionResult;
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 
 import java.util.*;
@@ -159,9 +160,10 @@ public class GoogleLeadFormStrategy implements AdPlatformStrategy {
     }
 
     @Override
-    public void subscribePageToWebhooks(FormWebhookConnector connector, String decryptedToken) {
+    public WebhookSubscriptionResult subscribePageToWebhooks(FormWebhookConnector connector, String decryptedToken) {
         // No subscription step for Google — webhook URL is pasted directly in Google Ads UI
         log.info("Google Lead Forms connector {} configured. Webhook URL must be set in Google Ads UI.", connector.getId());
+        return WebhookSubscriptionResult.ok();
     }
 
     @Override

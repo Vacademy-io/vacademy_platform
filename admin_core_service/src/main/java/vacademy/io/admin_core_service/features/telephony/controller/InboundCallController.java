@@ -16,8 +16,9 @@ import vacademy.io.admin_core_service.features.telephony.core.TelephonyProviderR
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
-import vacademy.io.admin_core_service.features.telephony.providers.exotel.ExotelInboundResponseBuilder;
 import vacademy.io.admin_core_service.features.telephony.spi.CallWebhookHandler;
+import vacademy.io.admin_core_service.features.telephony.spi.InboundResponseRenderer;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundEnvelope;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundRouteDecision;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.ProviderSecrets;
@@ -53,7 +54,6 @@ public class InboundCallController {
     private static final Logger log = LoggerFactory.getLogger(InboundCallController.class);
 
     @Autowired private InboundRoutingService routingService;
-    @Autowired private ExotelInboundResponseBuilder exotelResponseBuilder;
     @Autowired private TelephonyConfigCache configCache;
     @Autowired private TelephonyCallLogRepository callLogRepo;
     @Autowired private TelephonyProviderRegistry registry;
@@ -71,7 +71,7 @@ public class InboundCallController {
      * unavailable" message and we have a missed-call row.
      */
     @GetMapping("/route")
-    public ResponseEntity<Map<String, Object>> route(
+    public ResponseEntity<?> route(
             @RequestParam("provider") String providerType,
             HttpServletRequest req,
             @RequestParam(value = "CallSid", required = false) String callSid,
@@ -95,8 +95,9 @@ public class InboundCallController {
         // Token verification — we identify the institute from CallTo, then
         // compare against its stored webhook token. "Open mode" institutes
         // (no token configured) accept any inbound route call.
+        String pt = normaliseProvider(providerType);
         InboundRoutingService.RoutedInbound routed = routingService.route(
-                normaliseProvider(providerType), callFrom, callTo, callSid);
+                pt, callFrom, callTo, callSid);
 
         if (!routed.isRouted()) {
             // We couldn't even attribute the institute. Return an empty
@@ -111,8 +112,17 @@ public class InboundCallController {
             return ResponseEntity.ok(emptyDestination());
         }
 
+        InboundResponseRenderer renderer = registry.inboundResponseRenderer(pt).orElse(null);
+        if (renderer == null) {
+            // Provider has no synchronous applet to render (it routes inbound
+            // natively). Such a provider shouldn't be calling /route at all —
+            // reject rather than emit an Exotel-shaped empty body.
+            log.warn("inbound /route: no inbound renderer for provider {} (native-routed?)", pt);
+            return ResponseEntity.badRequest().build();
+        }
+
         InboundRouteDecision decision = routed.getDecision();
-        Map<String, Object> body = exotelResponseBuilder.build(decision, callTo);
+        Object body = renderer.render(decision, callTo);
 
         log.info("inbound /route: institute={} callSid={} strategy={} legs={}",
                 routed.getInstituteId(), callSid,
@@ -164,13 +174,16 @@ public class InboundCallController {
             return ResponseEntity.badRequest().build();
         }
 
-        if (!handler.verify(req, body,
-                ProviderSecrets.builder().webhookToken(resolved.getWebhookToken()).build())) {
+        InboundEnvelope env = InboundEnvelope.from(req, body);
+        if (!handler.verify(env, ProviderSecrets.builder()
+                .webhookToken(resolved.getWebhookToken())
+                .secrets(resolved.getCredentials().getSecrets())
+                .build())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         try {
-            NormalizedCallEvent ev = handler.parse(req, body);
+            NormalizedCallEvent ev = handler.parse(env);
             log.info("inbound /status: row={} status={} terminal={} hasRecording={} provider={}",
                     row.getId(), ev.getStatus(), ev.isTerminal(),
                     ev.getRecordingUrl() != null, pt);

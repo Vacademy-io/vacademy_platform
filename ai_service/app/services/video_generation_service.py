@@ -313,6 +313,10 @@ class VideoGenerationService:
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
+        # Per-video brand overrides (palette/intro/outro/watermark/system_prompt)
+        # layered on top of the resolved kit. Untyped (Any) to avoid a
+        # schemas → service circular import; shape is the pydantic BrandOverrides.
+        brand_overrides: Optional[Any] = None,
         visual_preferences: Optional[Any] = None,
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
@@ -523,6 +527,25 @@ class VideoGenerationService:
                         gen_metadata["visual_preferences"] = _vp_dump
                 except Exception:
                     pass
+            # Persist the brand kit + per-video overrides so resume / retry
+            # re-apply the SAME brand direction (kit system_prompt + palette +
+            # intro/outro/watermark, and any overrides) to the shots generated
+            # in the second half of a resumed run. Without this, a resumed video
+            # drifts off-brand: the later shots regenerate with no brand
+            # direction while the cached first-half shots keep theirs.
+            if brand_kit_id:
+                gen_metadata["brand_kit_id"] = brand_kit_id
+            if brand_overrides is not None:
+                try:
+                    _bo_dump = (
+                        brand_overrides.model_dump(exclude_none=True)
+                        if hasattr(brand_overrides, "model_dump")
+                        else dict(brand_overrides)
+                    )
+                    if _bo_dump:
+                        gen_metadata["brand_overrides"] = _bo_dump
+                except Exception:
+                    pass
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -601,6 +624,7 @@ class VideoGenerationService:
                     routing_overrides=routing_overrides,
                     host=host,
                     brand_kit_id=brand_kit_id,
+                    brand_overrides=brand_overrides,
                     resolved_saved_avatar=resolved_saved_avatar,
                     visual_preferences=visual_preferences,
                     ai_video_enabled=ai_video_enabled,
@@ -710,6 +734,7 @@ class VideoGenerationService:
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
+        brand_overrides: Optional[Any] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Any] = None,
         # AI video (Phase 3b) — per-run opt-in, ultra+ only. Passed through
@@ -867,6 +892,7 @@ class VideoGenerationService:
         #    institute setting_json.
         branding_config = None
         style_config = None
+        brand_kit_system_prompt = None
         if institute_id and brand_kit_id:
             try:
                 from .vimotion_resolver import resolve_brand_kit
@@ -899,9 +925,13 @@ class VideoGenerationService:
                         "outro": kit.get("outro_json") or {},
                         "watermark": kit.get("watermark_json") or {},
                     }
+                    # Free-text director instructions for this kit. Injected into
+                    # the planner / narration / per-shot system prompts downstream.
+                    brand_kit_system_prompt = kit.get("system_prompt") or None
                     logger.info(
                         f"[VideoGenService] Using brand_kit name={kit.get('name')!r} "
-                        f"id={kit.get('id')!r} (replaces institute-wide style/branding)"
+                        f"id={kit.get('id')!r} (replaces institute-wide style/branding; "
+                        f"system_prompt={'yes' if brand_kit_system_prompt else 'no'})"
                     )
             except Exception as e:
                 logger.warning(
@@ -928,7 +958,68 @@ class VideoGenerationService:
                     logger.info(f"[VideoGenService] No custom video style for institute {institute_id}, using pipeline defaults")
             except Exception as e:
                 logger.warning(f"[VideoGenService] Could not fetch branding/style config: {e}. Using defaults.")
-        
+
+        # ── Per-video brand overrides ──────────────────────────────────
+        # Layer request-level overrides on top of whatever branding/style
+        # resolved above (kit → institute → pipeline defaults). palette is
+        # field-merged onto style_config; intro/outro/watermark replace those
+        # branding sections; the system_prompt override REPLACES the kit's
+        # system_prompt for this run (per product decision). Works with or
+        # without a brand kit. One-shot — the FE does not persist these.
+        effective_brand_system_prompt = brand_kit_system_prompt
+        if brand_overrides is not None:
+            # brand_overrides may be a pydantic BrandOverrides (fresh request) or a
+            # plain dict (rehydrated from extra_metadata on resume / retry).
+            _bo = (
+                brand_overrides.model_dump()
+                if hasattr(brand_overrides, "model_dump")
+                else (brand_overrides if isinstance(brand_overrides, dict) else {})
+            )
+            ov_palette = _bo.get("palette")
+            ov_intro = _bo.get("intro")
+            ov_outro = _bo.get("outro")
+            ov_watermark = _bo.get("watermark")
+            ov_system_prompt = _bo.get("system_prompt")
+
+            if isinstance(ov_palette, dict) and ov_palette:
+                if not isinstance(style_config, dict):
+                    style_config = {}
+                # Map FE palette keys → pipeline style_config color keys; only the
+                # provided keys win (field-level merge over the kit / institute).
+                _palette_key_map = {
+                    "primary": "primary_color",
+                    "secondary": "secondary_color",
+                    "accent": "accent_color",
+                    "background": "background_color",
+                }
+                for _src, _dst in _palette_key_map.items():
+                    _val = ov_palette.get(_src)
+                    if _val:
+                        style_config[_dst] = _val
+
+            if any(isinstance(x, dict) and x for x in (ov_intro, ov_outro, ov_watermark)):
+                if not isinstance(branding_config, dict):
+                    branding_config = {}
+                if isinstance(ov_intro, dict) and ov_intro:
+                    branding_config["intro"] = ov_intro
+                if isinstance(ov_outro, dict) and ov_outro:
+                    branding_config["outro"] = ov_outro
+                if isinstance(ov_watermark, dict) and ov_watermark:
+                    branding_config["watermark"] = ov_watermark
+
+            if isinstance(ov_system_prompt, str) and ov_system_prompt.strip():
+                # Replace (not append) the kit's system prompt for this run.
+                effective_brand_system_prompt = ov_system_prompt.strip()
+
+            logger.info(
+                "[VideoGenService] Applied per-video brand overrides "
+                f"(palette={bool(isinstance(ov_palette, dict) and ov_palette)}, "
+                f"intro={bool(isinstance(ov_intro, dict) and ov_intro)}, "
+                f"outro={bool(isinstance(ov_outro, dict) and ov_outro)}, "
+                f"watermark={bool(isinstance(ov_watermark, dict) and ov_watermark)}, "
+                f"system_prompt={'yes' if (isinstance(ov_system_prompt, str) and ov_system_prompt.strip()) else 'no'})"
+            )
+
         # Map stage indices to pipeline stage names and file keys
         stage_config = {
             1: {"name": "script", "file_key": "script", "file_name": "script.txt"},
@@ -1902,6 +1993,11 @@ class VideoGenerationService:
                     voice_id=voice_id,
                     branding_config=branding_config,
                     style_config=style_config,
+                    # Free-text brand-kit director instructions (or the per-video
+                    # system_prompt override, which replaces it). Injected into the
+                    # ShotPlanner / Director / NarrationWriter / per-shot HTML system
+                    # prompts. None = no brand direction (today's behavior).
+                    brand_system_prompt=effective_brand_system_prompt,
                     content_type=content_type,
                     generate_avatar=generate_avatar,
                     avatar_image_url=avatar_image_url,

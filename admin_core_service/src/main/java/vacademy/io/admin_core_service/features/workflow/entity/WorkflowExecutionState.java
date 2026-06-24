@@ -8,6 +8,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 @Entity
 @Table(name = "workflow_execution_state")
@@ -18,10 +19,13 @@ import java.util.Map;
 @NoArgsConstructor
 public class WorkflowExecutionState {
 
+    // The column is uuid (V180). Use a real UUID field so Hibernate binds a UUID
+    // natively (a String field + @UuidGenerator binds varchar → "column id is of
+    // type uuid but expression is of type character varying" on every pause insert).
     @Id
     @UuidGenerator
     @Column(name = "id", nullable = false, unique = true, updatable = false)
-    private String id;
+    private UUID id;
 
     @Column(name = "execution_id", nullable = false)
     private String executionId;

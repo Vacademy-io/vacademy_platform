@@ -393,7 +393,10 @@ export function VideoConsoleWorkspace({
     }, [prompt]);
 
     useEffect(() => {
-        localStorage.setItem('video-studio-options', JSON.stringify(options));
+        // brand_overrides is a per-video, one-shot field — never persist it so it
+        // doesn't silently stick to the next video / survive a reload.
+        const { brand_overrides: _omitBrandOverrides, ...persistable } = options;
+        localStorage.setItem('video-studio-options', JSON.stringify(persistable));
     }, [options]);
 
     const [currentGeneration, setCurrentGeneration] = useState<CurrentGeneration | null>(null);
@@ -985,6 +988,18 @@ export function VideoConsoleWorkspace({
             // Reset state
             setConsoleState('generating');
             setSelectedHistoryId(null);
+
+            // Per-video brand overrides are one-shot. This generation already
+            // captured them in `request`, so clear them from the live options now
+            // — the next video starts clean from the kit (matches the
+            // non-persisted localStorage behavior + the "reset each video" rule).
+            if (options.brand_overrides) {
+                setOptions((prev) => {
+                    if (!prev.brand_overrides) return prev;
+                    const { brand_overrides: _omit, ...rest } = prev;
+                    return rest;
+                });
+            }
 
             const contentType = request.content_type || 'VIDEO';
 

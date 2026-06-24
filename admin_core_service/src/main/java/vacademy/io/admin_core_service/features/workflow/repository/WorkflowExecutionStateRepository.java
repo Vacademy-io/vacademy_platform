@@ -12,8 +12,9 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface WorkflowExecutionStateRepository extends JpaRepository<WorkflowExecutionState, String> {
+public interface WorkflowExecutionStateRepository extends JpaRepository<WorkflowExecutionState, UUID> {
 
     @Query("""
         SELECT s FROM WorkflowExecutionState s
@@ -47,7 +48,23 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
     @Modifying
     @Transactional
     @Query("UPDATE WorkflowExecutionState s SET s.status = 'RESUMED', s.updatedAt = :now WHERE s.id = :id AND s.status = 'WAITING'")
-    int claimForResume(@Param("id") String id, @Param("now") Instant now);
+    int claimForResume(@Param("id") UUID id, @Param("now") Instant now);
 
     List<WorkflowExecutionState> findByExecutionId(String executionId);
+
+    /**
+     * Cancel a lead's paused <b>AI-call retry</b> states (the CALL_AI pause/resume
+     * loop) when its outcome is terminal. Deliberately scoped to the AI-call
+     * {@code pause_reason}s so it never touches other workflows paused for the same
+     * lead (DELAY / APPROVAL / external waits — e.g. a delayed confirmation email).
+     * Native because it reads a JSON field of {@code serialized_context}.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE workflow_execution_state SET status = 'CANCELLED', updated_at = now() " +
+            "WHERE status = 'WAITING' " +
+            "AND pause_reason IN ('AI_CALL_RETRY', 'AI_CALL_RECHECK') " +
+            "AND serialized_context ->> 'responseId' = :responseId",
+            nativeQuery = true)
+    int cancelAiCallRetriesByResponseId(@Param("responseId") String responseId);
 }

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { BookOpen, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyBooksWidgetProps {
     className?: string;
@@ -127,6 +128,13 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
         };
         init();
     }, [fetchBooks]);
+
+    // Reader mode: the Purchased/Rented framing (time-limited paid access)
+    // reads as in-app commerce (Apple 3.1.1). The book content itself stays
+    // reachable via the study library, so hide this dashboard summary.
+    if (shouldHidePaidPurchaseUI()) {
+        return null;
+    }
 
     if (initialLoading) {
         return (

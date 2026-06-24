@@ -1138,7 +1138,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                     className={`flex items-center text-sm ${selected ? "font-medium text-primary-700" : "text-neutral-700"}`}
                   >
                     <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
-                    <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
+                    <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                   </label>
                 </div>
               );
@@ -1177,11 +1177,11 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                     className={`flex items-center text-sm ${selected ? "font-medium text-primary-700" : "text-neutral-700"}`}
                   >
                     {questionType === "TRUE_FALSE" ? (
-                      <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
+                      <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                     ) : (
                       <>
                         <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
-                        <span dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
+                        <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                       </>
                     )}
                   </label>
@@ -1249,7 +1249,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Passage:</h3>
             <div 
-              className="text-sm text-gray-800 leading-relaxed"
+              className="text-sm text-gray-800 leading-relaxed rich-text-content"
               dangerouslySetInnerHTML={{ __html: showFullPassage || !isPassageLong ? renderHtmlWithMath(passageHtml) : renderHtmlWithMath(passageToShow) }}
             />
             {isPassageLong && (
@@ -1265,7 +1265,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             <div className="mt-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
               <div 
-                className="text-sm font-medium text-gray-900 leading-relaxed"
+                className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
                 dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
               />
             </div>
@@ -1274,8 +1274,8 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           // No passage, just show question text as before
           <div className="mb-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Question:</h3>
-            <div 
-              className="text-sm font-medium text-gray-900 leading-relaxed"
+            <div
+              className="text-sm font-medium text-gray-900 leading-relaxed rich-text-content"
               dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(getQuestionText() || "Question text not available") }}
             />
           </div>

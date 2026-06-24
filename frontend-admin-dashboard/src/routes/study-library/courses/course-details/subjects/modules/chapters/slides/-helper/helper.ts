@@ -34,8 +34,12 @@ const isoUtcToLocalDatetimeLocal = (iso: string | undefined | null): string => {
 export const convertHtmlToPdf = async (
     htmlString: string
 ): Promise<{ pdfBlob: Blob; totalPages: number }> => {
-    // Create temporary div to hold the HTML content
+    // Create temporary div to hold the HTML content. Tag it with the global
+    // .rich-text-content class so the slide's tables/lists/headings/paragraph
+    // spacing are styled in the capture — otherwise Tailwind's preflight (applied
+    // app-wide) strips borders/markers/margins and the PDF comes out unformatted.
     const tempDiv: HTMLElement = document.createElement('div');
+    tempDiv.className = 'rich-text-content';
     tempDiv.innerHTML = htmlString;
 
     // Pre-process images
@@ -82,83 +86,77 @@ export const convertHtmlToPdf = async (
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
 
-        // Get content HTML element with content
-        const content = tempDiv.querySelector('body') || tempDiv;
-        const contentHeight = content.scrollHeight;
+        const content = tempDiv;
 
-        // Capture the entire content in one go
+        // Collect safe page-break points: the TOP of each block-level element, so a
+        // page never splits a block mid-way. offsetTop is relative to tempDiv (the
+        // nearest positioned ancestor), matching the captured canvas's coordinates.
+        let blocks = Array.from(content.children) as HTMLElement[];
+        const onlyChild = blocks.length === 1 ? blocks[0] : undefined;
+        if (onlyChild && onlyChild.children.length > 1) {
+            // Yoopta sometimes wraps all blocks in a single container div.
+            blocks = Array.from(onlyChild.children) as HTMLElement[];
+        }
+        const blockTops = blocks.map((el) => el.offsetTop);
+
         const { default: html2canvas } = await import('html2canvas');
         const canvas = await html2canvas(content, {
-            scale: 1.5,
+            scale: 2, // sharper text/images than 1.5
             useCORS: true,
             logging: false,
-            backgroundColor: '#ffffff',
+            backgroundColor: '#ffffff', // design-lint-ignore: html2canvas render background (canvas API, not a UI token)
             width: content.scrollWidth,
-            height: contentHeight,
+            height: content.scrollHeight,
             windowWidth: content.scrollWidth,
-            windowHeight: contentHeight,
+            windowHeight: content.scrollHeight,
             allowTaint: true,
         });
 
-        // How many pages do we need?
-        const pageHeightInPx = 277 * 3.78 * 1.5; // A4 height in px (with scale)
-        const totalPages = Math.ceil(canvas.height / pageHeightInPx);
+        // Paginate by slicing the canvas at block boundaries (not fixed heights), so
+        // headings/paragraphs/list-items/table rows aren't cut across pages. Each
+        // slice is added top-aligned at the page width, preserving aspect ratio (no
+        // stretching). A block taller than a page is hard-cut as a fallback.
+        const imgWidth = pdfWidth;
+        const renderScale = canvas.width / content.scrollWidth; // html2canvas scale actually used
+        const pxPerPage = pdfHeight * (canvas.width / pdfWidth); // one A4 page in canvas px
+        const candidates = Array.from(
+            new Set([0, ...blockTops.map((t) => Math.round(t * renderScale)), canvas.height])
+        )
+            .filter((y) => y >= 0 && y <= canvas.height)
+            .sort((a, b) => a - b);
 
-        // Add each page to the PDF
-        for (let i = 0; i < totalPages; i++) {
-            // Add new page if not the first page
-            if (i > 0) {
-                pdf.addPage();
+        const pages: Array<[number, number]> = [];
+        let y = 0;
+        while (y < canvas.height - 1) {
+            const maxY = y + pxPerPage;
+            let next = -1;
+            for (const c of candidates) {
+                if (c > y && c <= maxY) next = c; // furthest break that still fits a page
             }
-
-            // Set white background for the page
-            pdf.setFillColor(255, 255, 255);
-            pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
-
-            // Create a temporary canvas for this page slice
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = pageHeightInPx;
-
-            if (tempCtx) {
-                // Fill with white background
-                tempCtx.fillStyle = '#ffffff';
-                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-                // Position for this slice
-                const sourceY = i * pageHeightInPx;
-                const sourceHeight = Math.min(pageHeightInPx, canvas.height - sourceY);
-
-                // Draw portion of original canvas to this temp canvas
-                tempCtx.drawImage(
-                    canvas,
-                    0,
-                    sourceY,
-                    canvas.width,
-                    sourceHeight,
-                    0,
-                    0,
-                    canvas.width,
-                    sourceHeight
-                );
-
-                // Get optimized image data for this page
-                const pageImgData = optimizeImage(tempCanvas);
-
-                // Add to PDF - keep original dimensions
-                pdf.addImage({
-                    imageData: pageImgData,
-                    format: 'JPEG',
-                    x: 0,
-                    y: 0,
-                    width: pdfWidth,
-                    height: pdfHeight, // Use full page height
-                    compression: 'FAST',
-                    rotation: 0,
-                });
-            }
+            if (next === -1) next = Math.min(Math.round(maxY), canvas.height); // oversized block
+            pages.push([y, next]);
+            y = next;
         }
+        if (pages.length === 0) pages.push([0, canvas.height]);
+
+        for (let i = 0; i < pages.length; i++) {
+            const [y0, y1] = pages[i]!;
+            const sliceH = Math.max(1, y1 - y0);
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = sliceH;
+            const ctx = sliceCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#ffffff'; // design-lint-ignore: canvas fill color (canvas API, not a UI token)
+                ctx.fillRect(0, 0, canvas.width, sliceH);
+                ctx.drawImage(canvas, 0, y0, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+            }
+            const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.85);
+            const sliceImgHeight = (sliceH * imgWidth) / canvas.width;
+            if (i > 0) pdf.addPage();
+            pdf.addImage(sliceImg, 'JPEG', 0, 0, imgWidth, sliceImgHeight, undefined, 'FAST');
+        }
+        const totalPages = pages.length;
 
         // Generate the PDF blob
         const pdfOutput = pdf.output('datauristring');
@@ -173,43 +171,6 @@ export const convertHtmlToPdf = async (
             document.body.removeChild(tempDiv);
         }
     }
-};
-
-// Modified optimizeImage function with white background
-const optimizeImage = (canvas: HTMLCanvasElement): string => {
-    // Create a new canvas with optimal dimensions
-    const optimizedCanvas = document.createElement('canvas');
-    const ctx = optimizedCanvas.getContext('2d');
-
-    // Set dimensions to A4 at 200 DPI (same as ExportHandler)
-    optimizedCanvas.width = 1654;
-    optimizedCanvas.height = 2339;
-
-    if (ctx) {
-        // Fill with white background first
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, optimizedCanvas.width, optimizedCanvas.height);
-
-        // Enable image smoothing for better quality
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        // Draw original canvas onto optimized canvas
-        ctx.drawImage(
-            canvas,
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-            0,
-            0,
-            optimizedCanvas.width,
-            optimizedCanvas.height
-        );
-    }
-
-    // Convert to compressed JPEG instead of PNG - same as ExportHandler
-    return optimizedCanvas.toDataURL('image/jpeg', 0.8);
 };
 
 export function updateDocumentDataInSlides<T>(

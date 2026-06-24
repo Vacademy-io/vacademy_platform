@@ -18,6 +18,7 @@ import {
     X
 } from "@phosphor-icons/react";
 import { useState } from "react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 // Types for the enrollment policy response
 export interface EnrollmentPolicyFrontendAction {
@@ -107,7 +108,9 @@ const EnrollmentPolicyDialog = ({
     const reenrollmentPolicy = policyResponse?.reenrollmentPolicy;
     const onEnrollment = policyResponse?.onEnrollment;
 
-    // Handle action button click
+    // Handle action button click. These are post-enrollment activation steps
+    // (e.g. WhatsApp verification), NOT purchases, so they stay functional on
+    // iOS — only the paid-upgrade CTAs below are reader-mode gated.
     const handleActionClick = (action: EnrollmentPolicyFrontendAction) => {
         if (action.actionUrl) {
             setIsRedirecting(true);
@@ -118,6 +121,7 @@ const EnrollmentPolicyDialog = ({
 
     // Handle upgrade button click
     const handleUpgradeClick = (url: string) => {
+        if (shouldHidePaidPurchaseUI()) return;
         if (url) {
             setIsRedirecting(true);
             if (onUpgrade) {
@@ -233,7 +237,7 @@ const EnrollmentPolicyDialog = ({
                 </div> */}
 
                 {/* Upgrade option if available */}
-                {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
+                {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
                             <Sparkle className="w-6 h-6 text-primary-600" />
@@ -304,7 +308,7 @@ const EnrollmentPolicyDialog = ({
                 </div>
             </DialogHeader>
 
-            {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
+            {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                 <div className="py-4">
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
@@ -350,7 +354,7 @@ const EnrollmentPolicyDialog = ({
                 </div>
             </DialogHeader>
 
-            {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
+            {!shouldHidePaidPurchaseUI() && reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                 <div className="py-4">
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">

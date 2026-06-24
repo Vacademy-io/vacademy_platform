@@ -310,6 +310,9 @@ public class AudienceService {
         // Allow explicit null to clear the floor; only update when the field is present
         // in the request
         audience.setDefaultInitialScore(audienceDTO.getDefaultInitialScore());
+        // Sub-org link: set unconditionally so the edit form can set, change, or clear it
+        // (this PUT is only called from the full campaign edit form, which sends the whole DTO).
+        audience.setSubOrgId(audienceDTO.getSubOrgId());
 
         Audience updated = audienceRepository.save(audience);
 
@@ -351,6 +354,7 @@ public class AudienceService {
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
                 .defaultInitialScore(audience.getDefaultInitialScore())
+                .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -395,6 +399,7 @@ public class AudienceService {
                 filterDTO.getStatus(),
                 filterDTO.getCampaignType(),
                 filterDTO.getCampaignName(),
+                filterDTO.getSubOrgId(),
                 filterDTO.getStartDateFromLocal(),
                 filterDTO.getStartDateFromLocal() != null,
                 filterDTO.getStartDateToLocal(),
@@ -419,6 +424,7 @@ public class AudienceService {
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
                 .defaultInitialScore(audience.getDefaultInitialScore())
+                .subOrgId(audience.getSubOrgId())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }
@@ -773,6 +779,12 @@ public class AudienceService {
                     contextData.put("customFields", customFieldsForEmail);
                     contextData.put("submissionTime", submissionTime);
                     contextData.put("responseId", savedResponse.getId());
+                    // Lead-grain identity the CALL_AI / SEND_WHATSAPP nodes read directly
+                    // (phone/parentMobile + userId/leadUserId).
+                    contextData.put("userId", savedResponse.getUserId());
+                    contextData.put("leadUserId", savedResponse.getUserId());
+                    contextData.put("phone", savedResponse.getParentMobile());
+                    contextData.put("parentMobile", savedResponse.getParentMobile());
                     contextData.put("campaignName", audience.getCampaignName());
                     contextData.put("sendRespondentEmail",
                             audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
@@ -1117,6 +1129,14 @@ public class AudienceService {
                 contextData.put("customFields", customFieldsForEmail); // Map of custom field name -> value
                 contextData.put("submissionTime", submissionTime);
                 contextData.put("responseId", savedResponse.getId());
+                // Lead-grain identity the CALL_AI / SEND_WHATSAPP nodes read directly off
+                // the context (phone/parentMobile + userId/leadUserId) — so they don't
+                // depend on downstream responseId resolution and other lead nodes have a
+                // recipient. Mirrors the keys the CALL_AI node looks up.
+                contextData.put("userId", savedResponse.getUserId());
+                contextData.put("leadUserId", savedResponse.getUserId());
+                contextData.put("phone", savedResponse.getParentMobile());
+                contextData.put("parentMobile", savedResponse.getParentMobile());
                 contextData.put("campaignName", audience.getCampaignName());
 
                 // Email sending configuration
@@ -2073,11 +2093,20 @@ public class AudienceService {
         // auth_service for matching user IDs first, then OR'ing them into the
         // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
         // CSV → predicate behaves exactly as before for non-search queries.
+        //
+        // We intentionally pass instituteId = null here. searchUserIdsByQuery scopes
+        // matches to users that hold a user_role for the institute, but lead/enquiry
+        // users are bare contacts with no role — passing the instituteId excluded
+        // every such user, so name/email/phone search returned 0 rows for leads whose
+        // identity lives only on the auth User. Broadening the auth lookup is safe:
+        // the returned IDs are intersected with ar.user_id, and audience_response is
+        // already institute-scoped (JOIN audience a ON a.institute_id = :instituteId),
+        // so no cross-institute lead can leak in.
         String searchUserIdsCsv = null;
         String rawSearch = filterDTO.getSearchQuery();
         if (rawSearch != null && !rawSearch.isBlank()) {
             try {
-                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, null);
                 if (ids != null && !ids.isEmpty()) {
                     searchUserIdsCsv = String.join(",", ids);
                 }

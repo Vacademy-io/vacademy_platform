@@ -11,6 +11,9 @@ importers:
       '@amplitude/analytics-browser':
         specifier: ^2.19.0
         version: 2.19.0
+      '@capacitor-community/apple-sign-in':
+        specifier: ^7.1.0
+        version: 7.1.0(@capacitor/core@7.4.2)
       '@capacitor-community/electron':
         specifier: ^5.0.1
         version: 5.0.1
@@ -786,6 +789,11 @@ packages:
 
   '@braintree/sanitize-url@7.1.1':
     resolution: {integrity: sha512-i1L7noDNxtFyL5DmZafWy1wRVhGehQmzZaz1HiN5e7iylJMSZR7ekOV7NsIqa5qBldlLrsKv4HbgFUVlQrz8Mw==}
+
+  '@capacitor-community/apple-sign-in@7.1.0':
+    resolution: {integrity: sha512-df7cA7vfvvvilTtpJKeVvxO31W+py5t3HK9233GBD5MvgAgtGvCqeQ3pI0noNkVsKPF9B1g/po8Mph6s4bVSmw==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor-community/electron@5.0.1':
     resolution: {integrity: sha512-4/x12ycTq0Kq8JIn/BmIBdFVP5Cqw8iA6SU6YfFjmONfjW3OELwsB3zwLxOwAjLxnjyCMOBHl4ci9E5jLgZgAQ==}
@@ -3652,6 +3660,9 @@ packages:
 
   '@types/react@18.3.23':
     resolution: {integrity: sha512-/LDXMQh55EzZQ0uVAZmKKhfENivEvWz6E+EYzh+/MCjMhNsotd+ZHhBGIjFDTi6+fz0OhQQQLbTgdQIxxCsC0w==}
+
+  '@types/scriptjs@0.0.2':
+    resolution: {integrity: sha512-GFrUgzGYfNX3VWZwMyzr0JrBwzLv5Kes4BQBvo6hXdRy14/GBbpCiVwwB7v1o2xIEvFf+9GyznmYhuesQQjSag==}
 
   '@types/slice-ansi@4.0.0':
     resolution: {integrity: sha512-+OpjSaq85gvlZAYINyzKpLeiFkSC4EsC6IIiT6v6TLSU5k5U83fHGj9Lel8oKEXM0HqgrMVCjXPDPVICtxF7EQ==}
@@ -7405,6 +7416,9 @@ packages:
   scheduler@0.26.0:
     resolution: {integrity: sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA==}
 
+  scriptjs@2.5.9:
+    resolution: {integrity: sha512-qGVDoreyYiP1pkQnbnFAUIS5AjenNwwQBdl7zeos9etl+hYKWahjRTfzAZZYBv5xNHx7vNKCmaLDQZ6Fr2AEXg==}
+
   semver@5.7.2:
     resolution: {integrity: sha512-cBznnQ9KjJqU67B52RMC65CMarK2600WFnbkcaiwWq3xy/5haFJlshgnpjovMVJ+Hff49d8GEn0b87C5pDQ10g==}
     hasBin: true
@@ -8627,6 +8641,12 @@ snapshots:
   '@braintree/sanitize-url@6.0.2': {}
 
   '@braintree/sanitize-url@7.1.1': {}
+
+  '@capacitor-community/apple-sign-in@7.1.0(@capacitor/core@7.4.2)':
+    dependencies:
+      '@capacitor/core': 7.4.2
+      '@types/scriptjs': 0.0.2
+      scriptjs: 2.5.9
 
   '@capacitor-community/electron@5.0.1':
     dependencies:
@@ -11852,6 +11872,8 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.1.3
+
+  '@types/scriptjs@0.0.2': {}
 
   '@types/slice-ansi@4.0.0': {}
 
@@ -16296,6 +16318,8 @@ snapshots:
       xmlchars: 2.2.0
 
   scheduler@0.26.0: {}
+
+  scriptjs@2.5.9: {}
 
   semver@5.7.2: {}
 

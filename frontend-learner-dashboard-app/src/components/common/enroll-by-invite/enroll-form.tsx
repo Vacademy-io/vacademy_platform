@@ -1,5 +1,6 @@
 import { Route } from "@/routes/learner-invitation-response";
 import { Preferences } from "@capacitor/preferences";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { applyTabBranding } from "@/utils/branding";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { useSuspenseQuery, useQuery } from "@tanstack/react-query";
@@ -1027,6 +1028,10 @@ const EnrollByInvite = ({
   };
 
   const handleUpgrade = (url: string) => {
+    // Reader mode (iOS / reader-mode institutes): never redirect to an external
+    // paid-upgrade URL (Apple 3.1.1). Defense-in-depth — the route is already
+    // blocked in reader mode.
+    if (shouldHidePaidPurchaseUI()) return;
     // Save form data to LocalStorage for prefilling the next form
     const formData = form.getValues();
     const prefillData: Record<string, string> = {};

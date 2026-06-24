@@ -67,6 +67,10 @@ public class Audience {
     @Column(name = "default_initial_score")
     private Integer defaultInitialScore;
 
+    /** Sub-org this campaign belongs to. Nullable. Stores the child-institute id (= ssigm.sub_org_id). */
+    @Column(name = "sub_org_id")
+    private String subOrgId;
+
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
@@ -95,6 +99,7 @@ public class Audience {
         this.sessionId = dto.getSessionId();
         this.settingJson = dto.getSettingJson();
         this.defaultInitialScore = dto.getDefaultInitialScore();
+        this.subOrgId = dto.getSubOrgId();
         this.createdByUserId = dto.getCreatedByUserId();
     }
 }

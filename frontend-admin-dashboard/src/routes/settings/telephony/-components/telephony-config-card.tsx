@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Phone, CheckCircle, WarningCircle } from '@phosphor-icons/react';
@@ -16,64 +16,84 @@ import { Switch } from '@/components/ui/switch';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     fetchTelephonyConfig,
+    fetchTelephonyProviders,
     upsertTelephonyConfig,
     SELECTOR_OPTIONS,
+    type ProviderDescriptor,
+    type ProviderCredentialField,
     type TelephonyConfigInput,
+    type TelephonyConfigView,
     type SelectorKey,
 } from '../-services/telephony-admin';
 
 /**
- * Provider config + credential card. Designed so it scales beyond Exotel —
- * the provider dropdown will show every provider the backend has an adapter
- * for. Adding a new one is a backend-only change.
+ * Provider config + credential card — fully backend-driven. The provider
+ * dropdown and the credential form both come from GET /telephony/providers, so
+ * adding a provider (e.g. Airtel) is a backend-only change. Exotel keeps its
+ * legacy field shape; every other provider submits generic secrets/config maps.
  */
-const PROVIDER_OPTIONS = [{ value: 'EXOTEL', label: 'Exotel' }];
-
 export function TelephonyConfigCard() {
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
 
+    const providersQuery = useQuery({
+        queryKey: ['telephony-providers'],
+        queryFn: fetchTelephonyProviders,
+    });
     const configQuery = useQuery({
         queryKey: ['telephony-config', instituteId],
         queryFn: () => fetchTelephonyConfig(instituteId),
         enabled: !!instituteId,
     });
 
-    const [providerType, setProviderType] = useState('EXOTEL');
-    const [apiAccountId, setApiAccountId] = useState('');
-    const [apiUsername, setApiUsername] = useState('');
-    const [apiPassword, setApiPassword] = useState('');
-    const [webhookToken, setWebhookToken] = useState('');
-    const [recordCalls, setRecordCalls] = useState(true);
-    const [defaultSelectorKey, setDefaultSelectorKey] = useState<SelectorKey>('STICKY_PER_LEAD');
-    const [enabled, setEnabled] = useState(true);
-    const [voicemailNumber, setVoicemailNumber] = useState('');
-    const [flowSid, setFlowSid] = useState('');
+    const providers = useMemo(() => providersQuery.data ?? [], [providersQuery.data]);
 
-    // Hydrate form once config arrives. Secret fields are intentionally blank —
-    // backend treats blank as "leave unchanged" so admins don't accidentally
-    // wipe stored creds by saving the form.
+    const [providerType, setProviderType] = useState('');
+    // Credential/config field values keyed by the schema field key.
+    const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+    const [recordCalls, setRecordCalls] = useState(true);
+    const [enabled, setEnabled] = useState(true);
+    const [defaultSelectorKey, setDefaultSelectorKey] = useState<SelectorKey>('STICKY_PER_LEAD');
+    const [voicemailNumber, setVoicemailNumber] = useState('');
+
+    const cfg = configQuery.data;
+    const provider = providers.find((p) => p.providerType === providerType);
+    const has = (cap: string) => !!provider?.capabilities?.includes(cap);
+
+    // Pick the active provider: the institute's SAVED one wins. Wait for the
+    // config query to settle before falling back to the first provider —
+    // otherwise the (faster) providers list could select a different provider
+    // for a live institute, and a save would switch (and corrupt) its config.
     useEffect(() => {
-        const c = configQuery.data;
-        if (!c) return;
-        setProviderType(c.providerType ?? 'EXOTEL');
-        setApiAccountId(c.apiAccountId ?? '');
-        setRecordCalls(c.recordCalls !== false);
-        setDefaultSelectorKey((c.defaultSelectorKey as SelectorKey) ?? 'STICKY_PER_LEAD');
-        setEnabled(c.enabled !== false);
-        setVoicemailNumber(c.inboundVoicemailNumber ?? '');
-        setFlowSid(c.flowSid ?? '');
-    }, [configQuery.data]);
+        if (providerType) return;
+        if (instituteId && !configQuery.isSuccess) return;
+        if (cfg?.providerType) setProviderType(cfg.providerType);
+        else if (providers[0]) setProviderType(providers[0].providerType);
+    }, [cfg, providers, providerType, instituteId, configQuery.isSuccess]);
+
+    // Hydrate non-secret fields + flags from the saved config. Secrets stay blank
+    // (backend treats blank as "leave unchanged" — never echoed back).
+    useEffect(() => {
+        if (!cfg) return;
+        setRecordCalls(cfg.recordCalls !== false);
+        setEnabled(cfg.enabled !== false);
+        setDefaultSelectorKey((cfg.defaultSelectorKey as SelectorKey) ?? 'STICKY_PER_LEAD');
+        setVoicemailNumber(cfg.inboundVoicemailNumber ?? '');
+        setFieldValues(hydrateNonSecret(cfg));
+    }, [cfg]);
 
     const saveMutation = useMutation({
         mutationFn: (input: TelephonyConfigInput) => upsertTelephonyConfig(instituteId, input),
         onSuccess: () => {
-            toast.success('Telephony settings saved');
-            // Clear the inputs that are 'leave unchanged' so the next save
-            // doesn't re-encrypt the same plaintext.
-            setApiUsername('');
-            setApiPassword('');
-            setWebhookToken('');
+            toast.success('Calling settings saved');
+            // Clear secret inputs so a re-save doesn't re-encrypt the same plaintext.
+            setFieldValues((prev) => {
+                const next = { ...prev };
+                provider?.credentialSchema.forEach((f) => {
+                    if (f.secret) delete next[f.key];
+                });
+                return next;
+            });
             queryClient.invalidateQueries({ queryKey: ['telephony-config', instituteId] });
         },
         onError: (err) => {
@@ -85,30 +105,61 @@ export function TelephonyConfigCard() {
         },
     });
 
-    const onSave = () =>
-        saveMutation.mutate({
-            providerType,
-            apiAccountId: apiAccountId || undefined,
-            apiUsername: apiUsername || undefined,
-            apiPassword: apiPassword || undefined,
-            webhookToken: webhookToken || undefined,
-            recordCalls,
-            defaultSelectorKey,
-            enabled,
-            // Always send the voicemail number — empty string explicitly
-            // clears the saved value (vs. undefined which would skip it).
-            inboundVoicemailNumber: voicemailNumber.trim(),
-            flowSid: flowSid.trim(),
-        });
+    const onSave = () => {
+        if (!provider) return;
+        const trimmed = (k: string) => (fieldValues[k] ?? '').trim();
 
-    const cfg = configQuery.data;
+        if (provider.usesGenericCredentialStore) {
+            const secrets: Record<string, string> = {};
+            const config: Record<string, string> = {};
+            provider.credentialSchema.forEach((f) => {
+                const v = trimmed(f.key);
+                if (f.secret) {
+                    if (v) secrets[f.key] = v; // blank = leave unchanged
+                } else {
+                    config[f.key] = v;
+                }
+            });
+            saveMutation.mutate({
+                providerType: provider.providerType,
+                authType: provider.authType,
+                secrets,
+                config,
+                recordCalls,
+                enabled,
+            });
+        } else {
+            // Exotel: schema keys map 1:1 onto the legacy DTO fields.
+            saveMutation.mutate({
+                providerType: provider.providerType,
+                apiAccountId: trimmed('apiAccountId') || undefined,
+                apiUsername: trimmed('apiUsername') || undefined,
+                apiPassword: trimmed('apiPassword') || undefined,
+                webhookToken: trimmed('webhookToken') || undefined,
+                flowSid: trimmed('flowSid'),
+                recordCalls,
+                enabled,
+                defaultSelectorKey,
+                inboundVoicemailNumber: voicemailNumber.trim(),
+            });
+        }
+    };
+
+    const isFieldSet = (field: ProviderCredentialField): boolean => {
+        if (!cfg || !field.secret) return false;
+        if (provider?.usesGenericCredentialStore) return !!cfg.providerSecretsSet;
+        if (field.key === 'apiUsername') return !!cfg.apiUsernameSet;
+        if (field.key === 'apiPassword') return !!cfg.apiPasswordSet;
+        if (field.key === 'webhookToken') return !!cfg.webhookTokenSet;
+        return false;
+    };
+
+    const setField = (key: string, value: string) =>
+        setFieldValues((prev) => ({ ...prev, [key]: value }));
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-5">
-            {/* Decoy fields absorb browser autofill so the real credential
-                inputs below stay empty. Chrome/Edge ignore autoComplete="off"
-                on login-shaped fields, so we feed them a throwaway pair at
-                the very top of the form. */}
+            {/* Decoy fields absorb browser autofill so the real credential inputs stay empty. */}
             <div aria-hidden className="pointer-events-none size-0 overflow-hidden opacity-0">
                 <input type="text" tabIndex={-1} autoComplete="username" name="fake-username" />
                 <input
@@ -123,142 +174,132 @@ export function TelephonyConfigCard() {
                 <div className="flex items-center gap-2">
                     <Phone className="size-5 text-primary-600" />
                     <div>
-                        <h2 className="text-base font-semibold text-neutral-900">
-                            Calling provider
-                        </h2>
+                        <h2 className="text-base font-semibold text-neutral-900">Calling provider</h2>
                         <p className="text-sm text-neutral-500">
-                            Choose your calling service and enter the keys it gave you.
-                            Once saved, the call button next to each lead starts working.
+                            Choose your calling service and enter the keys it gave you. Once saved,
+                            the call button next to each lead starts working.
                         </p>
                     </div>
                 </div>
                 <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enable calling" />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                    <Label>Calling service</Label>
-                    <Select value={providerType} onValueChange={setProviderType}>
-                        <SelectTrigger className="h-10">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {PROVIDER_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                    {opt.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                    <Label>Account ID</Label>
-                    <Input
-                        value={apiAccountId}
-                        onChange={(e) => setApiAccountId(e.target.value)}
-                        placeholder="e.g. acmecorpsales123"
-                    />
-                    <p className="text-xs text-neutral-500">
-                        Copy this from your provider's dashboard (Exotel shows it on the
-                        API Settings page).
-                    </p>
-                </div>
-
-                <CredentialField
-                    label="API Key"
-                    value={apiUsername}
-                    set={setApiUsername}
-                    isSet={!!cfg?.apiUsernameSet}
-                    helper="The username-style key from your provider's API Settings page."
-                />
-                <CredentialField
-                    label="API Token"
-                    value={apiPassword}
-                    set={setApiPassword}
-                    isSet={!!cfg?.apiPasswordSet}
-                    secret
-                    helper="The password-style token from your provider's API Settings page. Stored encrypted."
-                />
-                <CredentialField
-                    label="Callback security code (optional)"
-                    value={webhookToken}
-                    set={setWebhookToken}
-                    isSet={!!cfg?.webhookTokenSet}
-                    secret
-                    helper="Adds an extra check so only call updates from your provider are accepted. Leave blank for testing — your provider's calls will still work."
-                />
-
-                <div className="space-y-1.5">
-                    <Label>Which number should leads see?</Label>
-                    <Select
-                        value={defaultSelectorKey}
-                        onValueChange={(v) => setDefaultSelectorKey(v as SelectorKey)}
-                    >
-                        <SelectTrigger className="h-10">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {SELECTOR_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                    <div className="flex flex-col">
-                                        <span>{opt.label}</span>
-                                        <span className="text-xs text-neutral-500">
-                                            {opt.helper}
-                                        </span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <p className="text-xs text-neutral-500">
-                        Decides which of your numbers (added below) is used for an
-                        outgoing call. You can still override per call when dialling.
-                    </p>
-                </div>
-
-                <div className="space-y-1.5">
-                    <Label>Voicemail / fallback number</Label>
-                    <Input
-                        value={voicemailNumber}
-                        onChange={(e) => setVoicemailNumber(e.target.value)}
-                        placeholder="+91xxxxxxxxxx"
-                    />
-                    <p className="text-xs text-neutral-500">
-                        When a lead calls back and no counsellor is available, the
-                        call is forwarded here instead of being dropped. Leave blank
-                        to let the provider play its default “no agents available”
-                        message.
-                    </p>
-                </div>
-
-                <div className="space-y-1.5">
-                    <Label>Inbound flow id</Label>
-                    <Input
-                        value={flowSid}
-                        onChange={(e) => setFlowSid(e.target.value)}
-                        placeholder="e.g. 1234567"
-                    />
-                    <p className="text-xs text-neutral-500">
-                        Paste the flow id from your App Bazaar flow once — every
-                        ExoPhone you add will be wired to that flow automatically.
-                        See the setup guide below for the one-time steps.
-                    </p>
-                </div>
-
-                <div className="flex items-center justify-between rounded-md border border-neutral-200 px-3 py-2">
-                    <div>
-                        <Label className="cursor-pointer">Record calls</Label>
-                        <p className="text-xs text-neutral-500">
-                            Needed to play back recordings from the lead's activity timeline.
-                        </p>
+            {providersQuery.isLoading ? (
+                <p className="text-sm text-neutral-500">Loading providers…</p>
+            ) : providers.length === 0 ? (
+                <p className="text-sm text-warning-700">
+                    No calling providers are available on this server.
+                </p>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                        <Label>Calling service</Label>
+                        <Select value={providerType} onValueChange={setProviderType}>
+                            <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Select a provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {providers.map((p: ProviderDescriptor) => (
+                                    <SelectItem key={p.providerType} value={p.providerType}>
+                                        {p.displayName}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
-                    <Switch checked={recordCalls} onCheckedChange={setRecordCalls} />
+
+                    {/* Schema-driven credential + config fields for the selected provider. */}
+                    {(provider?.credentialSchema ?? []).map((field) =>
+                        field.secret ? (
+                            <SecretField
+                                key={field.key}
+                                label={field.label}
+                                value={fieldValues[field.key] ?? ''}
+                                set={(v) => setField(field.key, v)}
+                                isSet={isFieldSet(field)}
+                                helper={field.helpText ?? undefined}
+                            />
+                        ) : (
+                            <div key={field.key} className="space-y-1.5">
+                                <Label>
+                                    {field.label}
+                                    {field.required ? '' : ' (optional)'}
+                                </Label>
+                                <Input
+                                    value={fieldValues[field.key] ?? ''}
+                                    onChange={(e) => setField(field.key, e.target.value)}
+                                    placeholder={field.required ? 'Required' : 'Optional'}
+                                />
+                                {field.helpText && (
+                                    <p className="text-xs text-neutral-500">{field.helpText}</p>
+                                )}
+                            </div>
+                        )
+                    )}
+
+                    {/* Exotel-only: caller-ID number strategy (pooled numbers). */}
+                    {has('NUMBER_POOL') && (
+                        <div className="space-y-1.5">
+                            <Label>Which number should leads see?</Label>
+                            <Select
+                                value={defaultSelectorKey}
+                                onValueChange={(v) => setDefaultSelectorKey(v as SelectorKey)}
+                            >
+                                <SelectTrigger className="h-10">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {SELECTOR_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                            <div className="flex flex-col">
+                                                <span>{opt.label}</span>
+                                                <span className="text-xs text-neutral-500">
+                                                    {opt.helper}
+                                                </span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-neutral-500">
+                                Decides which of your numbers is used for an outgoing call. You can
+                                still override per call when dialling.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Exotel-only: inbound voicemail fallback (synchronous applet routing). */}
+                    {has('SYNC_INBOUND_APPLET') && (
+                        <div className="space-y-1.5">
+                            <Label>Voicemail / fallback number</Label>
+                            <Input
+                                value={voicemailNumber}
+                                onChange={(e) => setVoicemailNumber(e.target.value)}
+                                placeholder="+91xxxxxxxxxx"
+                            />
+                            <p className="text-xs text-neutral-500">
+                                When a lead calls back and no counsellor is available, the call is
+                                forwarded here instead of being dropped.
+                            </p>
+                        </div>
+                    )}
+
+                    {has('RECORDING') && (
+                        <div className="flex items-center justify-between rounded-md border border-neutral-200 px-3 py-2">
+                            <div>
+                                <Label className="cursor-pointer">Record calls</Label>
+                                <p className="text-xs text-neutral-500">
+                                    Needed to play back recordings from the lead's activity timeline.
+                                </p>
+                            </div>
+                            <Switch checked={recordCalls} onCheckedChange={setRecordCalls} />
+                        </div>
+                    )}
                 </div>
-            </div>
+            )}
 
             <div className="mt-5 flex justify-end gap-2">
-                <Button onClick={onSave} disabled={saveMutation.isPending}>
+                <Button onClick={onSave} disabled={saveMutation.isPending || !provider}>
                     {saveMutation.isPending ? 'Saving…' : 'Save changes'}
                 </Button>
             </div>
@@ -266,30 +307,31 @@ export function TelephonyConfigCard() {
     );
 }
 
-function CredentialField({
+/** Pre-fill non-secret (config) fields from the saved config; secrets stay blank. */
+function hydrateNonSecret(cfg: TelephonyConfigView): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (cfg.apiAccountId) out['apiAccountId'] = cfg.apiAccountId; // Exotel legacy
+    if (cfg.flowSid) out['flowSid'] = cfg.flowSid; // Exotel legacy
+    if (cfg.config) Object.entries(cfg.config).forEach(([k, v]) => (out[k] = v)); // generic
+    return out;
+}
+
+function SecretField({
     label,
     value,
     set,
     isSet,
-    secret = false,
     helper,
 }: {
     label: string;
     value: string;
     set: (v: string) => void;
     isSet: boolean;
-    secret?: boolean;
     helper?: string;
 }) {
-    // Block browser autofill aggressively: every render uses a fresh random
-    // `name` so saved Chrome credentials can't match by field name, and the
-    // input stays `readOnly` until the user actually focuses it (Chrome
-    // skips autofill on readOnly fields). We deliberately do NOT echo the
-    // stored value back from the API — the form state starts empty.
+    // Block browser autofill: fresh random name per render + readOnly-until-focus.
     const [readOnly, setReadOnly] = useState(true);
-    const [fieldName] = useState(
-        () => `tel-${Math.random().toString(36).slice(2)}-${secret ? 'tok' : 'key'}`
-    );
+    const [fieldName] = useState(() => `tel-${Math.random().toString(36).slice(2)}-tok`);
     return (
         <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -305,7 +347,7 @@ function CredentialField({
                 )}
             </div>
             <Input
-                type={secret ? 'password' : 'text'}
+                type="password"
                 name={fieldName}
                 id={fieldName}
                 value={value}

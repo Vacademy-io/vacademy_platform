@@ -5,6 +5,7 @@ import { getCurrencySymbol } from "./payment-selection-step";
 import { getPaymentCompletionStatus } from "../-services/enroll-invite-services";
 import { useEffect } from "react";
 import { SelectedPayment } from "./types";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 export interface User {
   id: string;
@@ -60,6 +61,9 @@ const PaymentPendingStep = ({
   setCurrentStep,
 }: PaymentPendingStepProps) => {
   const handleCompletePayment = (paymentUrl: string) => {
+    // Reader mode (iOS / reader-mode institutes): never redirect to an external
+    // payment gateway (Apple 3.1.1).
+    if (shouldHidePaidPurchaseUI()) return;
     if (!paymentUrl) {
       return;
     }
@@ -157,22 +161,25 @@ const PaymentPendingStep = ({
 
       {/* Action Buttons */}
       <div className="flex flex-col gap-4 sm:items-center">
-        <MyButton
-          type="button"
-          buttonType="primary"
-          scale="large"
-          layoutVariant="default"
-          onClick={() =>
-            handleCompletePayment(
-              paymentCompletionResponse?.payment_response?.response_data
-                ?.paymentUrl
-            )
-          }
-          className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-        >
-          Complete Payment
-          <ArrowRight className="w-5 h-5 ml-2" />
-        </MyButton>
+        {/* Complete Payment (external gateway) hidden in reader mode (Apple 3.1.1). */}
+        {!shouldHidePaidPurchaseUI() && (
+          <MyButton
+            type="button"
+            buttonType="primary"
+            scale="large"
+            layoutVariant="default"
+            onClick={() =>
+              handleCompletePayment(
+                paymentCompletionResponse?.payment_response?.response_data
+                  ?.paymentUrl
+              )
+            }
+            className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+          >
+            Complete Payment
+            <ArrowRight className="w-5 h-5 ml-2" />
+          </MyButton>
+        )}
         <MyButton
           type="button"
           buttonType="secondary"
@@ -191,13 +198,15 @@ const PaymentPendingStep = ({
         </MyButton>
       </div>
 
-      {/* Redirect Notice */}
-      <div className="text-center space-y-2">
-        <p className="text-gray-600 text-sm">
-          You will be redirected to Stripe's secure payment page
-        </p>
-        <p className="text-gray-500 text-xs">Powered by Stripe</p>
-      </div>
+      {/* Redirect Notice — hidden in reader mode (no external payment). */}
+      {!shouldHidePaidPurchaseUI() && (
+        <div className="text-center space-y-2">
+          <p className="text-gray-600 text-sm">
+            You will be redirected to Stripe's secure payment page
+          </p>
+          <p className="text-gray-500 text-xs">Powered by Stripe</p>
+        </div>
+      )}
     </div>
   );
 };

@@ -268,13 +268,13 @@ public class StudentListManager {
         if (StringUtils.hasText(studentListFilter.getName())) {
             studentPage = studentFilterService.getAllStudentWithSearch(studentListFilter.getName(),studentListFilter.getStatuses(),
                     studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getSubOrgIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         if (Objects.isNull(studentPage) && !studentListFilter.getInstituteIds().isEmpty()) {
             studentPage = studentFilterService.getAllStudentWithFilterAndCustomFields(studentListFilter.getStatuses(),
                     studentListFilter.getGender(), studentListFilter.getInstituteIds(), studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),studentListFilter.getCustomFields(), pageable);
+                    studentListFilter.getPackageSessionIds(),studentListFilter.getSubOrgIds(),studentListFilter.getCustomFields(), pageable);
         }
 
         return ResponseEntity.ok(createAllStudentResponseFromPaginatedData(studentPage));
@@ -338,6 +338,12 @@ public class StudentListManager {
         boolean hasEnrollInviteFilter = studentListFilter.getServerEnrollInviteIds() != null && !studentListFilter.getServerEnrollInviteIds().isEmpty();
         boolean hasNameSearch = StringUtils.hasText(studentListFilter.getName());
         boolean hasPaymentStatusFilter = studentListFilter.getPaymentStatuses() != null && !studentListFilter.getPaymentStatuses().isEmpty();
+        // Sub-org is a plain ssigm column, so the default two-phase paginator filters it directly
+        // (sub_org_id clause added to findPagedCombinedUserIdsForLearnerList). hasSubOrgFilter only
+        // (a) excludes audience-only rows below, and (b) — in fetchStudentPage — forces the
+        // custom-repo variant when sub-org is combined with a payment/custom/invite filter (the raw
+        // @Query variants have no sub_org_id clause).
+        boolean hasSubOrgFilter = studentListFilter.getSubOrgIds() != null && !studentListFilter.getSubOrgIds().isEmpty();
 
         // Complex filters (custom fields, payment status, invite filter) require full JOIN query
         if (hasCustomFieldFilters || hasEnrollInviteFilter || hasPaymentStatusFilter) {
@@ -350,8 +356,8 @@ public class StudentListManager {
 
         // The learner-list is a superset: institute-enrolled users + audience-only respondents.
         // Audience-only rows are dropped the moment any enrollment-scoped filter is active
-        // (status, batch, group, source/type/typeId, destPSID, levelId, subOrgUserType, date range);
-        // gender / audience / name search are user-scoped and do not gate them out.
+        // (status, batch, group, source/type/typeId, destPSID, levelId, subOrgUserType, subOrgId,
+        // date range); gender / audience / name search are user-scoped and do not gate them out.
         boolean includeAudienceOnly = CollectionUtils.isEmpty(studentListFilter.getStatuses())
                 && CollectionUtils.isEmpty(studentListFilter.getPackageSessionIds())
                 && CollectionUtils.isEmpty(studentListFilter.getGroupIds())
@@ -361,6 +367,7 @@ public class StudentListManager {
                 && CollectionUtils.isEmpty(studentListFilter.getDestinationPackageSessionIds())
                 && CollectionUtils.isEmpty(studentListFilter.getLevelIds())
                 && CollectionUtils.isEmpty(studentListFilter.getSubOrgUserTypes())
+                && !hasSubOrgFilter
                 && studentListFilter.getStartDate() == null
                 && studentListFilter.getEndDate() == null;
 
@@ -376,6 +383,7 @@ public class StudentListManager {
                 studentListFilter.getTypeIds(),
                 studentListFilter.getDestinationPackageSessionIds(),
                 studentListFilter.getLevelIds(),
+                studentListFilter.getSubOrgIds(),
                 studentListFilter.getSubOrgUserTypes(),
                 studentListFilter.getStartDate(),
                 studentListFilter.getEndDate(),
@@ -469,8 +477,10 @@ public class StudentListManager {
     private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
         boolean hasCustomFieldFilters = filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty();
         boolean hasEnrollInviteFilter = filter.getServerEnrollInviteIds() != null && !filter.getServerEnrollInviteIds().isEmpty();
-        // Use custom repo methods when custom field filters or enroll invite filters are present
-        boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter;
+        boolean hasSubOrgFilter = filter.getSubOrgIds() != null && !filter.getSubOrgIds().isEmpty();
+        // Use custom repo methods when custom field, enroll invite, or sub-org filters are present
+        // (the raw @Query variants have no ssigm.sub_org_id clause; the custom impl applies it via addListFilter)
+        boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter || hasSubOrgFilter;
 
         if (StringUtils.hasText(filter.getName())) {
             if (useCustomRepo) {
@@ -486,6 +496,7 @@ public class StudentListManager {
                         filter.getDestinationPackageSessionIds(),
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
+                        filter.getSubOrgIds(),
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),
@@ -527,6 +538,7 @@ public class StudentListManager {
                         filter.getDestinationPackageSessionIds(),
                         filter.getLevelIds(),
                         filter.getSubOrgUserTypes(),
+                        filter.getSubOrgIds(),
                         filter.getCustomFieldFilters(),
                         filter.getStartDate(),
                         filter.getEndDate(),

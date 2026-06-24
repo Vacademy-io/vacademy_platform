@@ -9,6 +9,7 @@ import { PAYMENT_LOGS_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { ShoppingBag, CaretLeft, CaretRight, Package } from "@phosphor-icons/react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyOrdersWidgetProps {
     className?: string;
@@ -336,6 +337,12 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
     useEffect(() => {
         fetchOrders(page);
     }, [page]);
+
+    // Reader mode: "My Orders" shows paid amounts + payment/transaction history,
+    // i.e. an in-app purchase record — hide it entirely (Apple 3.1.1).
+    if (shouldHidePaidPurchaseUI()) {
+        return null;
+    }
 
     const getBookName = (entry: PaymentLogEntry): string => {
         return entry.user_plan?.enroll_invite?.name || "Unknown";

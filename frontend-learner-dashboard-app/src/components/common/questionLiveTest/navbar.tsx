@@ -333,11 +333,16 @@ export function Navbar({
   };
 
   useEffect(() => {
+    // Bail out until the assessment has loaded. `handleSubmit` is declared
+    // below the `if (!assessment) return null` early-return, so on a render
+    // where `assessment` is still null that const is never initialized — calling
+    // it here would throw "Cannot access 'handleSubmit' before initialization".
+    if (!assessment) return;
     if (evaluationType !== "MANUAL" && tabSwitchCount >= 3) {
       setShowSubmitModal(true);
       handleSubmit();
     }
-  }, [tabSwitchCount, evaluationType]);
+  }, [tabSwitchCount, evaluationType, assessment]);
 
   useEffect(() => {
     let backButtonListener: PluginListenerHandle | null = null;
@@ -391,6 +396,15 @@ export function Navbar({
   }, []);
 
   useEffect(() => {
+    // Guard against the uninitialized-assessment render: when `assessment` is
+    // null the component early-returns above the `const handleSubmit`
+    // declaration, leaving it in the temporal dead zone. Without this guard the
+    // effect fires (entireTestTimer defaults to 0, so it isn't > 0) and calls
+    // `handleSubmit()` -> "Cannot access 'handleSubmit' before initialization".
+    // It's also semantically correct: never auto-submit a test that hasn't
+    // loaded. `setAssessment` sets `assessment` and `entireTestTimer` together,
+    // so a loaded assessment always has entireTestTimer > 0 here.
+    if (!assessment) return;
     if (evaluationType === "MANUAL") return;
     if (isSubmitted) return;
     if (entireTestTimer > 0) return;
@@ -399,7 +413,7 @@ export function Navbar({
     hasAutoSubmittedRef.current = true;
     setShowTimesUpModal(true);
     void handleSubmit();
-  }, [entireTestTimer, evaluationType, isSubmitted]);
+  }, [entireTestTimer, evaluationType, isSubmitted, assessment]);
 
   const formatTime = (timeInSeconds: number) => {
     const hours = Math.floor(timeInSeconds / 3600);

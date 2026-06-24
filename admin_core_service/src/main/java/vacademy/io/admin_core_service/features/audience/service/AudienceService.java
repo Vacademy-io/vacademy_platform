@@ -779,6 +779,12 @@ public class AudienceService {
                     contextData.put("customFields", customFieldsForEmail);
                     contextData.put("submissionTime", submissionTime);
                     contextData.put("responseId", savedResponse.getId());
+                    // Lead-grain identity the CALL_AI / SEND_WHATSAPP nodes read directly
+                    // (phone/parentMobile + userId/leadUserId).
+                    contextData.put("userId", savedResponse.getUserId());
+                    contextData.put("leadUserId", savedResponse.getUserId());
+                    contextData.put("phone", savedResponse.getParentMobile());
+                    contextData.put("parentMobile", savedResponse.getParentMobile());
                     contextData.put("campaignName", audience.getCampaignName());
                     contextData.put("sendRespondentEmail",
                             audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
@@ -1123,6 +1129,14 @@ public class AudienceService {
                 contextData.put("customFields", customFieldsForEmail); // Map of custom field name -> value
                 contextData.put("submissionTime", submissionTime);
                 contextData.put("responseId", savedResponse.getId());
+                // Lead-grain identity the CALL_AI / SEND_WHATSAPP nodes read directly off
+                // the context (phone/parentMobile + userId/leadUserId) — so they don't
+                // depend on downstream responseId resolution and other lead nodes have a
+                // recipient. Mirrors the keys the CALL_AI node looks up.
+                contextData.put("userId", savedResponse.getUserId());
+                contextData.put("leadUserId", savedResponse.getUserId());
+                contextData.put("phone", savedResponse.getParentMobile());
+                contextData.put("parentMobile", savedResponse.getParentMobile());
                 contextData.put("campaignName", audience.getCampaignName());
 
                 // Email sending configuration

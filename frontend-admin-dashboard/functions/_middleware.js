@@ -154,6 +154,13 @@ export const onRequest = async (context) => {
   ]);
   const favicon = faviconRaw || ogImage;
 
+  // The S3 objects are served with a wrong content-type, which makes crawlers
+  // refuse to render them. Route og:image through our same-origin proxy, which
+  // re-serves the bytes with a correct image/* content-type.
+  const ogImageProxied = ogImage
+    ? `${url.origin}/branding-image?u=${encodeURIComponent(ogImage)}`
+    : "";
+
   const ogTags = [
     `<meta name="description" content="${description}" />`,
     `<meta property="og:title" content="${title}" />`,
@@ -161,11 +168,11 @@ export const onRequest = async (context) => {
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="${title}" />`,
     `<meta property="og:url" content="${escapeHtml(request.url)}" />`,
-    ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : "",
+    ogImageProxied ? `<meta property="og:image" content="${escapeHtml(ogImageProxied)}" />` : "",
     `<meta name="twitter:card" content="summary" />`,
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
-    ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />` : "",
+    ogImageProxied ? `<meta name="twitter:image" content="${escapeHtml(ogImageProxied)}" />` : "",
   ]
     .filter(Boolean)
     .join("\n    ");

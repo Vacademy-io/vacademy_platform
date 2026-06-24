@@ -18,6 +18,26 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             String providerType, String providerCallId);
 
     /**
+     * Link an AI-voice end-of-call report to the call we placed, for providers that
+     * neither echo our correlationId nor return a provider call id at placement
+     * (Aavtaar): the most-recent OUTBOUND call to this phone in this institute.
+     * Last-10-digit match tolerates country-code/format variance (same approach as
+     * {@link #findRecentOutboundAttributionByLeadPhone}).
+     */
+    @Query(value = """
+            SELECT * FROM telephony_call_log
+            WHERE institute_id = :instituteId
+              AND direction = 'OUTBOUND'
+              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
+                = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelephonyCallLog> findMostRecentOutboundByPhone(
+            @Param("instituteId") String instituteId,
+            @Param("phone") String phone);
+
+    /**
      * Most-recent provider_number_id this lead saw — powers STICKY_PER_LEAD via
      * idx_tcl_sticky. Returns one row max.
      */

@@ -78,6 +78,16 @@ public class AiCallOutcomeProcessor {
 
         TelephonyCallLog existing = (r.getCorrelationId() == null) ? null
                 : callLogRepo.findById(r.getCorrelationId()).orElse(null);
+        // Aavtaar doesn't echo our correlationId and returns no provider call id at
+        // placement, so the correlation lookup above misses. Bind the report to the
+        // call we actually placed: the most-recent OUTBOUND call to this phone in
+        // this institute. Without this the result can't bind → call_log_id stays
+        // empty and the recording/disposition/status never attach to the lead.
+        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null) {
+            existing = callLogRepo
+                    .findMostRecentOutboundByPhone(r.getInstituteId(), r.getPhoneNumber())
+                    .orElse(null);
+        }
 
         Lead lead = resolveLead(r, existing);
         String callLogId = upsertCallLog(r, lead, existing);

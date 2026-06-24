@@ -37,12 +37,12 @@ public class AiCallRetryPlanner {
     private final AiCallingSettingsService settingsService;
     private final UserLeadProfileRepository userLeadProfileRepository;
 
-    /** Gap before the next attempt after a dial. */
-    @Value("${aavtaar.redialer.gap-minutes:120}")
+    /** Gap before the CALL_AI node re-dials a lead on its next pause/resume cycle. */
+    @Value("${aiCall.retry.gap-minutes:120}")
     private long gapMinutes;
 
-    /** Wait before re-checking a deferred lead (outside shift / day cap reached). */
-    @Value("${aavtaar.redialer.recheck-minutes:30}")
+    /** Wait before the CALL_AI node re-checks a deferred lead (outside shift / day cap). */
+    @Value("${aiCall.retry.recheck-minutes:30}")
     private long recheckMinutes;
 
     public Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay) {

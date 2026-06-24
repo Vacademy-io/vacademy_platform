@@ -61,8 +61,8 @@ public class AiCallRecordingService {
             try (InputStream in = fetcherOpt.get().fetch(recordingUrl, null)) {
                 bytes = in.readAllBytes();
             }
-            if (bytes.length == 0 || !looksLikeMp3(bytes)) {
-                log.warn("ai-call recording: callLog {} fetched {} bytes that don't look like mp3 — skipping",
+            if (bytes.length == 0 || !looksLikeAudio(bytes)) {
+                log.warn("ai-call recording: callLog {} fetched {} bytes that aren't audio — skipping",
                         callLogId, bytes.length);
                 return;
             }
@@ -96,12 +96,14 @@ public class AiCallRecordingService {
         }
     }
 
-    /** Magic-byte check: ID3 tag or MPEG audio sync — rejects HTML error pages. */
-    private static boolean looksLikeMp3(byte[] bytes) {
+    /**
+     * Accept any binary audio (mp3 / wav / ogg / m4a / …); reject only obvious
+     * text/markup error responses (HTML, XML, JSON). The earlier mp3-only magic
+     * check silently dropped non-mp3 provider recordings.
+     */
+    private static boolean looksLikeAudio(byte[] bytes) {
         if (bytes == null || bytes.length < 4) return false;
-        if (bytes[0] == 'I' && bytes[1] == 'D' && bytes[2] == '3') return true;
         int b0 = bytes[0] & 0xFF;
-        int b1 = bytes[1] & 0xFF;
-        return b0 == 0xFF && (b1 & 0xE0) == 0xE0;
+        return b0 != '<' && b0 != '{' && b0 != '[';
     }
 }

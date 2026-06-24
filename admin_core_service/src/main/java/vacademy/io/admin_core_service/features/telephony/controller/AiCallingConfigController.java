@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Per-institute AI-voice credentials (company code + bearer token + webhook
- * secret), stored encrypted in institute_telephony_config. Authenticated admin
+ * secret), stored encrypted in ai_calling_config. Authenticated admin
  * action. GET returns a masked view; PUT writes (token/secret encrypted).
  */
 @RestController

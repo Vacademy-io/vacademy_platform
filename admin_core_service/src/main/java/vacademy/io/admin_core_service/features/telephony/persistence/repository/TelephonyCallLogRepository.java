@@ -28,6 +28,7 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             SELECT * FROM telephony_call_log t
             WHERE t.institute_id = :instituteId
               AND t.direction = 'OUTBOUND'
+              AND t.provider_type = :providerType
               AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
               AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
@@ -36,6 +37,7 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findMostRecentOutboundByPhone(
             @Param("instituteId") String instituteId,
+            @Param("providerType") String providerType,
             @Param("phone") String phone);
 
     /**
@@ -48,6 +50,7 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             SELECT * FROM telephony_call_log t
             WHERE t.institute_id = :instituteId
               AND t.direction = 'OUTBOUND'
+              AND t.provider_type = :providerType
               AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
               AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
@@ -56,6 +59,7 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findOutboundByPhoneNearest(
             @Param("instituteId") String instituteId,
+            @Param("providerType") String providerType,
             @Param("phone") String phone,
             @Param("anchor") java.sql.Timestamp anchor);
 

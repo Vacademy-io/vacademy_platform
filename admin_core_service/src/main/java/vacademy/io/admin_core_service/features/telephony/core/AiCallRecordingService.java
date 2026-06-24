@@ -30,6 +30,13 @@ import java.util.Optional;
  * {@link TelephonyProviderRegistry}, never hardcoded — then uploaded via a
  * media_service <b>pre-signed S3 PUT URL</b> (not the multipart API). Dropping in a
  * new AI agent only needs its {@code RecordingFetcher} bean; this service is unchanged.
+ *
+ * <p><b>Why it retries:</b> the provider's end-of-call webhook frequently arrives
+ * BEFORE the recording has finished uploading to its public object store, so an
+ * immediate single fetch returns 404/empty/non-audio and the recording is lost. In
+ * production ~60% of copies missed for exactly this reason. We retry with backoff so
+ * the copy lands once the object is available; it runs on a dedicated pool so the
+ * webhook never blocks.
  */
 @Service
 @RequiredArgsConstructor
@@ -37,30 +44,51 @@ public class AiCallRecordingService {
 
     private static final Logger log = LoggerFactory.getLogger(AiCallRecordingService.class);
 
+    /** Attempt schedule (ms to sleep BEFORE each attempt). Covers the provider's
+     *  post-webhook upload lag without tying a worker up indefinitely. */
+    private static final long[] RETRY_BACKOFF_MS = {0L, 15_000L, 45_000L, 90_000L};
+
     private final TelephonyProviderRegistry registry;
     private final FileService fileService;
     private final TelephonyCallLogRepository callLogRepo;
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private enum Step { DONE, STOP, RETRY }
+
     @Async("aiCallRecordingExecutor")
     public void persistAsync(String callLogId) {
+        for (int attempt = 0; attempt < RETRY_BACKOFF_MS.length; attempt++) {
+            if (RETRY_BACKOFF_MS[attempt] > 0) {
+                try {
+                    Thread.sleep(RETRY_BACKOFF_MS[attempt]);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+            // DONE (copied) or STOP (no url / already logged / row gone) → finished.
+            if (copyOnce(callLogId, attempt + 1, RETRY_BACKOFF_MS.length) != Step.RETRY) return;
+        }
+        log.warn("ai-call recording: gave up on callLog {} after {} attempts — recording never became "
+                + "fetchable (provider likely never finished uploading)", callLogId, RETRY_BACKOFF_MS.length);
+    }
+
+    private Step copyOnce(String callLogId, int attempt, int maxAttempts) {
         try {
             TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);
-            if (row == null || Boolean.TRUE.equals(row.getRecordingLogged())) return;
+            if (row == null || Boolean.TRUE.equals(row.getRecordingLogged())) return Step.STOP;
             String recordingUrl = row.getRecordingUrl();
-            if (recordingUrl == null || recordingUrl.isBlank()) return;
-            // Log the source URL up front: a provider API host (e.g. api.plivo.com) needs
-            // the provider's own auth — our unauthenticated fetch would 401 — whereas a
-            // public object-store URL (DO Spaces / S3) fetches fine. This one line tells
-            // you which case you're in when the copy fails.
-            log.info("ai-call recording: copying callLog {} (provider {}) from {}",
-                    callLogId, row.getProviderType(), recordingUrl);
+            if (recordingUrl == null || recordingUrl.isBlank()) return Step.STOP;
+            if (attempt == 1) {
+                log.info("ai-call recording: copying callLog {} (provider {}) from {}",
+                        callLogId, row.getProviderType(), recordingUrl);
+            }
 
             Optional<RecordingFetcher> fetcherOpt = registry.fetcher(row.getProviderType());
             if (fetcherOpt.isEmpty()) {
                 log.warn("ai-call recording: no fetcher registered for provider {} — skipping callLog {}",
                         row.getProviderType(), callLogId);
-                return;
+                return Step.STOP;
             }
 
             byte[] bytes;
@@ -68,20 +96,21 @@ public class AiCallRecordingService {
                 bytes = in.readAllBytes();
             }
             if (bytes.length == 0 || !looksLikeAudio(bytes)) {
-                log.warn("ai-call recording: callLog {} fetched {} bytes that aren't audio — skipping",
-                        callLogId, bytes.length);
-                return;
+                // Almost always "not uploaded to the object store yet" — retry.
+                log.info("ai-call recording: callLog {} not ready yet ({} bytes, attempt {}/{}) — will retry",
+                        callLogId, bytes.length, attempt, maxAttempts);
+                return Step.RETRY;
             }
 
-            // 1) ask media_service for a pre-signed PUT URL (the shared client BBB +
-            //    Zoom recordings use — creates the FileMetadata and returns {id, url})
+            // 1) pre-signed PUT URL from media_service (creates FileMetadata, returns {id,url})
             Map<String, String> signed = fileService.getPresignedUploadUrl(
                     "call-recording-" + callLogId + ".mp3", "audio/mpeg", "AI_CALL_RECORDING", callLogId);
             String fileId = signed.get("id");
             String putUrl = signed.get("url");
             if (fileId == null || putUrl == null) {
-                log.warn("ai-call recording: media_service returned no pre-signed url for callLog {}", callLogId);
-                return;
+                log.warn("ai-call recording: media_service returned no pre-signed url for callLog {} (attempt {}/{})",
+                        callLogId, attempt, maxAttempts);
+                return Step.RETRY;
             }
 
             // 2) PUT the bytes straight to S3 via the pre-signed URL
@@ -91,14 +120,19 @@ public class AiCallRecordingService {
 
             // 3) stamp the file id onto the call log so the UI can stream it
             TelephonyCallLog fresh = callLogRepo.findById(callLogId).orElse(null);
-            if (fresh == null) return;
+            if (fresh == null) return Step.STOP;
             fresh.setRecordingStorageKey(fileId);
             fresh.setRecordingLogged(true);
             callLogRepo.save(fresh);
-            log.info("ai-call recording: callLog {} uploaded via pre-signed url → storageKey {}", callLogId, fileId);
+            log.info("ai-call recording: callLog {} uploaded → storageKey {} (attempt {}/{})",
+                    callLogId, fileId, attempt, maxAttempts);
+            return Step.DONE;
 
         } catch (Exception e) {
-            log.warn("ai-call recording persist failed for {}: {}", callLogId, e.getMessage());
+            // Transient fetch/upload failure — retry within the budget.
+            log.warn("ai-call recording attempt {}/{} failed for {}: {}",
+                    attempt, maxAttempts, callLogId, e.getMessage());
+            return Step.RETRY;
         }
     }
 

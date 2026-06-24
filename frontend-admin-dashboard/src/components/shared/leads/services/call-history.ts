@@ -21,6 +21,9 @@ export interface CallLogItem {
     counsellorUserId: string | null;
     responseId?: string | null;
     userId: string;
+    // AI-call disposition (e.g. "Interested", "No_Response", "Callback") for
+    // calls placed by the AI voice agent; null/absent for human-dialed calls.
+    aiDisposition?: string | null;
 }
 
 export interface PagedCallLog {

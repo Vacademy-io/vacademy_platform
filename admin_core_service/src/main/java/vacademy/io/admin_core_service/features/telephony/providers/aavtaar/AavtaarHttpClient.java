@@ -21,7 +21,7 @@ import java.util.Map;
  *   Headers: Authorization: Bearer <token>, CampaignId: <campaignId>, Content-Type: application/json
  *   Body:    { phoneNumber, customerName?, customerEmail?, campaignId, metadata{} }
  *
- * Credentials are resolved per-institute from institute_telephony_config (the
+ * Credentials are resolved per-institute from ai_calling_config (the
  * Settings → AI Calling → Credentials card), falling back to the global
  * {@code aavtaar.api.*} properties when an institute hasn't configured them.
  */

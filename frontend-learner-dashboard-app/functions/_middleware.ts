@@ -138,13 +138,21 @@ export const onRequest: PagesFunction = async (context) => {
     `${branding.instituteName}`
   );
 
-  // Resolve logo URL from fileId
-  const logoFileId =
+  // The big unfurl thumbnail uses the main institute logo; the favicon /
+  // apple-touch-icon prefer the dedicated tab icon. Resolve both (deduped).
+  const ogImageFileId =
+    branding.instituteLogoFileId || branding.tabIconFileId || "";
+  const faviconFileId =
     branding.tabIconFileId || branding.instituteLogoFileId || "";
-  let ogImage = "";
-  if (logoFileId) {
-    ogImage = await resolveLogoUrl(logoFileId, backendBase);
-  }
+  const [ogImage, faviconResolved] = await Promise.all([
+    ogImageFileId ? resolveLogoUrl(ogImageFileId, backendBase) : Promise.resolve(""),
+    faviconFileId === ogImageFileId
+      ? Promise.resolve("")
+      : faviconFileId
+        ? resolveLogoUrl(faviconFileId, backendBase)
+        : Promise.resolve(""),
+  ]);
+  const favicon = faviconResolved || ogImage;
 
   // Build OG meta tags
   const ogTags = [
@@ -170,15 +178,15 @@ export const onRequest: PagesFunction = async (context) => {
     `<meta name="description" content="${description}" />`
   );
 
-  // Replace empty title
-  html = html.replace(/<title><\/title>/, `<title>${title}</title>`);
+  // Replace the static title (matches both empty and "Course Catalogue").
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
 
   // Inject OG tags before </head>
   html = html.replace("</head>", `    ${ogTags}\n  </head>`);
 
-  // Replace existing apple-touch-icon and favicon with institute logo for crawlers
-  if (ogImage) {
-    const escapedLogo = escapeHtml(ogImage);
+  // Replace existing apple-touch-icon and favicon with the institute icon for crawlers
+  if (favicon) {
+    const escapedLogo = escapeHtml(favicon);
     // Replace apple-touch-icon href
     html = html.replace(
       /<link\s+rel="apple-touch-icon"[^>]*\/>/,
@@ -201,8 +209,16 @@ export const onRequest: PagesFunction = async (context) => {
   // Strip the manifest link for crawlers — it references default Vacademy icons
   html = html.replace(/<link\s+rel="manifest"[^>]*\/?>/, "");
 
+  // Rebuild headers: the body length changed (and reading .text() may have
+  // decompressed it), so a stale content-length/content-encoding would
+  // truncate or corrupt the response. Let the runtime recompute them.
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+
   return new Response(html, {
     status: response.status,
-    headers: response.headers,
+    statusText: response.statusText,
+    headers,
   });
 };

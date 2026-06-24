@@ -4,6 +4,7 @@ import { Warning, ArrowClockwise } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { getCachedInstituteBranding, getPublicUrl } from '@/services/domain-routing';
+import { isVacademyOwnedDomain } from '@/utils/subdomain';
 
 interface Props {
     children: ReactNode;
@@ -91,7 +92,8 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 }
 
-// Vacademy Logo Component (fallback)
+// Vacademy mark — shown as a branding fallback ONLY on Vacademy-owned domains
+// (see isVacademyOwnedDomain). Never rendered on a white-labelled domain.
 const VacademyLogoSVG = ({ className = '' }: { className?: string }) => (
     <svg className={className} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
         <rect
@@ -101,8 +103,8 @@ const VacademyLogoSVG = ({ className = '' }: { className?: string }) => (
             height="348.192"
             rx="52.0933"
             transform="rotate(-143.162 258.938 427.189)"
-            fill="#ED7424"
-            stroke="#ED7424"
+            fill="#ED7424" // design-lint-ignore: fixed Vacademy brand mark color
+            stroke="#ED7424" // design-lint-ignore: fixed Vacademy brand mark color
         />
         <rect
             x="-0.163552"
@@ -111,13 +113,13 @@ const VacademyLogoSVG = ({ className = '' }: { className?: string }) => (
             height="186.707"
             rx="52.0933"
             transform="matrix(0.851484 -0.52438 -0.52438 -0.851484 142.718 299.424)"
-            fill="#ED7424"
-            stroke="#ED7424"
+            fill="#ED7424" // design-lint-ignore: fixed Vacademy brand mark color
+            stroke="#ED7424" // design-lint-ignore: fixed Vacademy brand mark color
         />
     </svg>
 );
 
-// Logo Component (Institute or Vacademy)
+// Logo Component (institute logo; Vacademy mark only on Vacademy-owned domains)
 const Logo = ({ className = '' }: { className?: string }) => {
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [logoLoaded, setLogoLoaded] = useState(false);
@@ -178,8 +180,14 @@ const Logo = ({ className = '' }: { className?: string }) => {
         return <img src={logoUrl} alt="Logo" className={className} />;
     }
 
-    // Fallback to Vacademy logo
-    return <VacademyLogoSVG className={className} />;
+    // No institute logo in the branding cache. Vacademy-owned domains fall back
+    // to the Vacademy mark; white-labelled domains must never show it, so they
+    // get a brand-neutral placeholder (the progress bar still indicates loading).
+    return isVacademyOwnedDomain() ? (
+        <VacademyLogoSVG className={className} />
+    ) : (
+        <div className={className} />
+    );
 };
 
 // Main dashboard loader component

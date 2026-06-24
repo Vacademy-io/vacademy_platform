@@ -25,12 +25,13 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
      * {@link #findRecentOutboundAttributionByLeadPhone}).
      */
     @Query(value = """
-            SELECT * FROM telephony_call_log
-            WHERE institute_id = :instituteId
-              AND direction = 'OUTBOUND'
-              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
+            SELECT * FROM telephony_call_log t
+            WHERE t.institute_id = :instituteId
+              AND t.direction = 'OUTBOUND'
+              AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
-            ORDER BY created_at DESC
+              AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
+            ORDER BY t.created_at DESC
             LIMIT 1
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findMostRecentOutboundByPhone(
@@ -44,12 +45,13 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
      * to the attempt it actually describes, not whichever dial is most recent.
      */
     @Query(value = """
-            SELECT * FROM telephony_call_log
-            WHERE institute_id = :instituteId
-              AND direction = 'OUTBOUND'
-              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
+            SELECT * FROM telephony_call_log t
+            WHERE t.institute_id = :instituteId
+              AND t.direction = 'OUTBOUND'
+              AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
-            ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - :anchor)))
+              AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
+            ORDER BY ABS(EXTRACT(EPOCH FROM (t.created_at - :anchor)))
             LIMIT 1
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findOutboundByPhoneNearest(

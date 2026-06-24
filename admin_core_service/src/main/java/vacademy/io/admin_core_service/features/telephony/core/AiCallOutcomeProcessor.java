@@ -79,14 +79,20 @@ public class AiCallOutcomeProcessor {
         TelephonyCallLog existing = (r.getCorrelationId() == null) ? null
                 : callLogRepo.findById(r.getCorrelationId()).orElse(null);
         // Aavtaar doesn't echo our correlationId and returns no provider call id at
-        // placement, so the correlation lookup above misses. Bind the report to the
-        // call we actually placed: the most-recent OUTBOUND call to this phone in
-        // this institute. Without this the result can't bind → call_log_id stays
-        // empty and the recording/disposition/status never attach to the lead.
+        // placement, so the correlation lookup above misses — bind by phone instead.
+        // The webhook can arrive LATE (after the next retry dial), so anchor on the
+        // report's dial time (callStart) and pick the OUTBOUND call placed CLOSEST to
+        // it, so a late report binds to the attempt it describes rather than the most
+        // recent dial. Fall back to most-recent when the report carries no dial time.
+        // Without this the result can't bind → call_log_id stays empty and the
+        // recording/disposition/status never attach to the lead.
         if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null) {
-            existing = callLogRepo
-                    .findMostRecentOutboundByPhone(r.getInstituteId(), r.getPhoneNumber())
-                    .orElse(null);
+            var anchor = r.getCallStart();
+            existing = (anchor != null)
+                    ? callLogRepo.findOutboundByPhoneNearest(
+                            r.getInstituteId(), r.getPhoneNumber(), java.sql.Timestamp.from(anchor)).orElse(null)
+                    : callLogRepo.findMostRecentOutboundByPhone(
+                            r.getInstituteId(), r.getPhoneNumber()).orElse(null);
         }
 
         Lead lead = resolveLead(r, existing);

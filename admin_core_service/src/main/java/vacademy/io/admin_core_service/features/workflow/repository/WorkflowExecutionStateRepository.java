@@ -12,8 +12,9 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-public interface WorkflowExecutionStateRepository extends JpaRepository<WorkflowExecutionState, String> {
+public interface WorkflowExecutionStateRepository extends JpaRepository<WorkflowExecutionState, UUID> {
 
     @Query("""
         SELECT s FROM WorkflowExecutionState s
@@ -47,7 +48,7 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
     @Modifying
     @Transactional
     @Query("UPDATE WorkflowExecutionState s SET s.status = 'RESUMED', s.updatedAt = :now WHERE s.id = :id AND s.status = 'WAITING'")
-    int claimForResume(@Param("id") String id, @Param("now") Instant now);
+    int claimForResume(@Param("id") UUID id, @Param("now") Instant now);
 
     List<WorkflowExecutionState> findByExecutionId(String executionId);
 

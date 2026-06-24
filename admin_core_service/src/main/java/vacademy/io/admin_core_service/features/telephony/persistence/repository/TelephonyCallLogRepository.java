@@ -38,6 +38,26 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             @Param("phone") String phone);
 
     /**
+     * Same as {@link #findMostRecentOutboundByPhone} but binds to the OUTBOUND call
+     * whose {@code created_at} is CLOSEST to the report's dial time ({@code anchor}).
+     * A late end-of-call webhook (it can arrive after the next retry dial) must bind
+     * to the attempt it actually describes, not whichever dial is most recent.
+     */
+    @Query(value = """
+            SELECT * FROM telephony_call_log
+            WHERE institute_id = :instituteId
+              AND direction = 'OUTBOUND'
+              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
+                = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
+            ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - :anchor)))
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelephonyCallLog> findOutboundByPhoneNearest(
+            @Param("instituteId") String instituteId,
+            @Param("phone") String phone,
+            @Param("anchor") java.sql.Timestamp anchor);
+
+    /**
      * Most-recent provider_number_id this lead saw — powers STICKY_PER_LEAD via
      * idx_tcl_sticky. Returns one row max.
      */

@@ -34,6 +34,11 @@ public class AiCallingSettingsPojo {
     private int maxRetries = 3;
     private int maxCallsPerDayPerLead = 3;
 
+    /** Minutes the CALL_AI node waits before re-dialing a no-answer lead (per pause/resume cycle). */
+    private int retryGapMinutes = 120;
+    /** Minutes before re-checking a lead deferred for being outside its calling shift / at the day cap. */
+    private int recheckMinutes = 30;
+
     /**
      * Time windows (institute timezone) the AI bot may (re)dial in — supports
      * multiple shifts (e.g. 09:00–13:00 and 16:00–20:00). Consumed by the timed

@@ -51,6 +51,10 @@ export interface AiCallingSettingsData {
     // Retry policy
     maxRetries: number;
     maxCallsPerDayPerLead: number;
+    /** Minutes the bot waits before re-dialing a no-answer lead. */
+    retryGapMinutes: number;
+    /** Minutes before re-checking a lead deferred (outside shift / at the day cap). */
+    recheckMinutes: number;
     /** Time windows the bot may (re)dial in — supports multiple shifts. */
     callingShifts: Shift[];
     timezone: string; // e.g. "Asia/Kolkata"
@@ -88,6 +92,8 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     connectThresholdSec: 20,
     maxRetries: 3,
     maxCallsPerDayPerLead: 3,
+    retryGapMinutes: 120,
+    recheckMinutes: 30,
     callingShifts: [{ start: '09:00', end: '21:00' }],
     timezone: 'Asia/Kolkata',
     assignOnDispositions: ['Interested', 'Likely_Interested'],
@@ -541,6 +547,25 @@ export default function AiCallingSettings() {
                                     }
                                     className="w-28"
                                 />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="retry-gap">Minutes between retries</Label>
+                                <Input
+                                    id="retry-gap"
+                                    type="number"
+                                    min={1}
+                                    max={1440}
+                                    value={settings.retryGapMinutes}
+                                    onChange={(e) =>
+                                        update({
+                                            retryGapMinutes: parseInt(e.target.value, 10) || 1,
+                                        })
+                                    }
+                                    className="w-28"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    How long the bot waits before re-dialing a no-answer lead.
+                                </p>
                             </div>
                             <div className="grid gap-2 sm:col-span-2">
                                 <Label>Calling shifts</Label>

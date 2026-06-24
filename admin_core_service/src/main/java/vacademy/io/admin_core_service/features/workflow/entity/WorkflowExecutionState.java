@@ -20,6 +20,10 @@ public class WorkflowExecutionState {
 
     @Id
     @UuidGenerator
+    // The column is uuid (V180) while this field is a String, so bind it as UUID
+    // (Hibernate converts via UUID.fromString) — otherwise the insert fails with
+    // "column id is of type uuid but expression is of type character varying".
+    @JdbcTypeCode(SqlTypes.UUID)
     @Column(name = "id", nullable = false, unique = true, updatable = false)
     private String id;
 

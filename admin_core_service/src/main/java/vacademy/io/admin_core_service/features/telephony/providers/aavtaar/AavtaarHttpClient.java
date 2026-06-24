@@ -43,7 +43,7 @@ public class AavtaarHttpClient {
     @Value("${aavtaar.api.company-code:}")
     private String fallbackCompanyCode;
 
-    public record Result(boolean success, String message, String data) {}
+    public record Result(boolean success, String message, String data, String callUuid) {}
 
     public Result clickToCall(String instituteId, String phoneNumber, String campaignId,
                               String customerName, String customerEmail, Map<String, Object> metadata) {
@@ -81,8 +81,19 @@ public class AavtaarHttpClient {
         boolean ok = respBody != null && Boolean.TRUE.equals(respBody.get("isSuccess"));
         String message = respBody == null ? null : asString(respBody.get("message"));
         String data = respBody == null ? null : asString(respBody.get("data"));
-        log.info("aavtaar click-to-call: phone={} campaign={} ok={} msg={}", phoneNumber, campaignId, ok, message);
-        return new Result(ok, message, data);
+        // Aavtaar now returns the call's id on the click-to-call response (agreed with
+        // their team) so we can map the end-of-call webhook to this exact call. The field
+        // name may vary — check the common keys, and the data envelope if it's an object.
+        String callUuid = firstNonBlank(
+                get(respBody, "callUuid"), get(respBody, "callId"),
+                get(respBody, "call_uuid"), get(respBody, "callUUID"), get(respBody, "uuid"));
+        if (!notBlank(callUuid) && respBody != null && respBody.get("data") instanceof Map<?, ?> dataObj) {
+            callUuid = firstNonBlank(get(dataObj, "callUuid"), get(dataObj, "callId"),
+                    get(dataObj, "call_uuid"), get(dataObj, "uuid"));
+        }
+        log.info("aavtaar click-to-call: phone={} campaign={} ok={} callUuid={} msg={}",
+                phoneNumber, campaignId, ok, callUuid, message);
+        return new Result(ok, message, data, callUuid);
     }
 
     private boolean notBlank(String s) {
@@ -91,5 +102,14 @@ public class AavtaarHttpClient {
 
     private String asString(Object o) {
         return o == null ? null : String.valueOf(o);
+    }
+
+    private String get(Map<?, ?> m, String key) {
+        return m == null ? null : asString(m.get(key));
+    }
+
+    private String firstNonBlank(String... vals) {
+        for (String v : vals) if (notBlank(v)) return v;
+        return null;
     }
 }

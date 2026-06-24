@@ -41,7 +41,10 @@ public class AavtaarOutboundCaller implements AiOutboundCaller {
                 spec.getCustomerName(), spec.getCustomerEmail(), metadata);
 
         return AiCallHandle.builder()
-                .providerCallId(null)
+                // Aavtaar now returns its call id on the click-to-call response — store it
+                // as provider_call_id so the end-of-call webhook maps back to THIS exact
+                // call (callUuid -> provider_call_id). Null when not returned → phone fallback.
+                .providerCallId(r.callUuid())
                 .accepted(r.success())
                 .message(r.message())
                 .build();

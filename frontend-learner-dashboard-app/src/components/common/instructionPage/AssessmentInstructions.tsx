@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 import { formatDuration } from "@/constants/helper";
 import { Assessment } from "@/types/assessment";
 import {
@@ -7,8 +8,12 @@ import {
   ArrowsLeftRight,
   ListChecks,
   Info,
+  FilePdf,
+  Paperclip,
+  ArrowSquareOut,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
 
 interface AssessmentInstructionsProps {
   instructions: string;
@@ -17,6 +22,67 @@ interface AssessmentInstructionsProps {
   canSwitchSections: boolean;
   assessmentInfo: Assessment;
 }
+
+interface InstructionAttachment {
+  url: string;
+  fileName: string;
+  isPdf: boolean;
+}
+
+const FILE_EXT_PATTERN =
+  /\.(pdf|docx?|xlsx?|csv|pptx?|zip|rar|7z|tar|gz|jpg|jpeg|png|gif|svg|webp|mp4|mov|webm|mp3|wav|ogg)(\?|#|$)/i;
+
+/**
+ * The instruction rich-text can embed a question paper as a file-attachment
+ * anchor (`<a data-attachment="true" href="…pdf">`). Rendered raw it shows up
+ * as a bare link, so we pull those anchors out of the HTML, strip them so they
+ * don't render twice, and surface PDFs as an inline viewer / other files as
+ * download links. Mirrors `extractAndStripAttachments` in assignment-slide.tsx.
+ */
+const parseInstructions = (
+  html: string
+): { cleanHtml: string; attachments: InstructionAttachment[] } => {
+  if (!html || typeof DOMParser === "undefined") {
+    return { cleanHtml: html, attachments: [] };
+  }
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const anchors = doc.querySelectorAll('a[data-attachment="true"], a[href]');
+    const attachments: InstructionAttachment[] = [];
+    const seen = new Set<string>();
+
+    anchors.forEach((node) => {
+      const anchor = node as HTMLAnchorElement;
+      const href = anchor.getAttribute("href") || "";
+      if (!href || href === "#") return;
+      const name =
+        anchor.getAttribute("name") || anchor.textContent?.trim() || "";
+      const type = anchor.getAttribute("type") || "";
+      const isAttachment = anchor.getAttribute("data-attachment") === "true";
+      const isFileLink =
+        FILE_EXT_PATTERN.test(href) || (!!name && FILE_EXT_PATTERN.test(name));
+      if (!isAttachment && !isFileLink) return;
+
+      if (!seen.has(href)) {
+        seen.add(href);
+        const isPdf =
+          /\.pdf(\?|#|$)/i.test(href) ||
+          /\.pdf$/i.test(name) ||
+          type.toLowerCase().includes("pdf");
+        attachments.push({
+          url: href,
+          fileName: name || href.split("/").pop() || "Attachment",
+          isPdf,
+        });
+      }
+      anchor.parentNode?.removeChild(anchor);
+    });
+
+    return { cleanHtml: doc.body?.innerHTML || "", attachments };
+  } catch {
+    return { cleanHtml: html, attachments: [] };
+  }
+};
 
 const getAttemptInfo = (assessmentInfo: Assessment) => {
   // assessment_attempts is the globally configured max; created_attempts is how
@@ -62,6 +128,14 @@ export const AssessmentInstructions = ({
   const showAttempts =
     assessmentInfo.play_mode !== "PRACTICE" &&
     assessmentInfo.play_mode !== "MOCK";
+
+  const { cleanHtml, attachments } = useMemo(
+    () => parseInstructions(instructions),
+    [instructions]
+  );
+  const hasInstructionText = cleanHtml.replace(/<[^>]+>/g, "").trim() !== "";
+  const pdfAttachments = attachments.filter((a) => a.isPdf);
+  const fileAttachments = attachments.filter((a) => !a.isPdf);
 
   return (
     <div className="w-full space-y-5">
@@ -109,24 +183,75 @@ export const AssessmentInstructions = ({
       </div>
 
       {/* Instructions */}
-      <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
-        <div className="mb-3 flex items-center gap-2">
-          <Info size={16} weight="duotone" className="text-primary-400" />
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
-            Assessment Instructions
-          </h2>
+      {(hasInstructionText ||
+        fileAttachments.length > 0 ||
+        attachments.length === 0) && (
+        <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Info size={16} weight="duotone" className="text-primary-400" />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-600">
+              Assessment Instructions
+            </h2>
+          </div>
+          {hasInstructionText ? (
+            <div
+              className="prose prose-sm max-w-none text-neutral-700"
+              dangerouslySetInnerHTML={{ __html: cleanHtml }}
+            />
+          ) : attachments.length === 0 ? (
+            <p className="text-sm text-neutral-400 italic">
+              No instructions provided for this assessment.
+            </p>
+          ) : null}
+
+          {/* Non-PDF attachments (docs, images, …) as download links */}
+          {fileAttachments.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {fileAttachments.map((att) => (
+                <a
+                  key={att.url}
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700 transition-colors hover:border-primary-200 hover:bg-primary-50"
+                >
+                  <Paperclip
+                    size={16}
+                    weight="duotone"
+                    className="shrink-0 text-primary-400"
+                  />
+                  <span className="truncate">{att.fileName}</span>
+                  <ArrowSquareOut
+                    size={14}
+                    className="ml-auto shrink-0 text-neutral-400"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
-        {instructions ? (
-          <div
-            className="prose prose-sm max-w-none text-neutral-700"
-            dangerouslySetInnerHTML={{ __html: instructions }}
-          />
-        ) : (
-          <p className="text-sm text-neutral-400 italic">
-            No instructions provided for this assessment.
-          </p>
-        )}
-      </div>
+      )}
+
+      {/* Question paper(s) rendered inline */}
+      {pdfAttachments.map((att) => (
+        <div
+          key={att.url}
+          className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-sm"
+        >
+          <div className="flex items-center gap-2 border-b border-neutral-100 p-4">
+            <FilePdf size={16} weight="duotone" className="text-danger-500" />
+            <h2
+              className="truncate text-sm font-semibold uppercase tracking-wide text-neutral-600"
+              title={att.fileName}
+            >
+              {att.fileName}
+            </h2>
+          </div>
+          <div className="h-screen-70 w-full">
+            <SimplePDFViewer pdfUrl={att.url} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

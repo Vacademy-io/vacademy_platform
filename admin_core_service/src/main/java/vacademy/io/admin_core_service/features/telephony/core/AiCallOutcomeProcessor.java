@@ -78,9 +78,17 @@ public class AiCallOutcomeProcessor {
 
         TelephonyCallLog existing = (r.getCorrelationId() == null) ? null
                 : callLogRepo.findById(r.getCorrelationId()).orElse(null);
-        // Aavtaar doesn't echo our correlationId and returns no provider call id at
-        // placement, so the correlation lookup above misses — bind by phone instead.
-        // The webhook can arrive LATE (after the next retry dial), so anchor on the
+        // Exact match: when the provider returns its call id at placement (Aavtaar now
+        // does), it's stored as the call log's provider_call_id and the webhook carries the
+        // same id as call_uuid — binding the report to THE exact call (timing-immune,
+        // and unaffected by leads sharing a phone).
+        if (existing == null && r.getCallUuid() != null && r.getProvider() != null) {
+            existing = callLogRepo
+                    .findByProviderTypeAndProviderCallId(r.getProvider(), r.getCallUuid())
+                    .orElse(null);
+        }
+        // Fallback (no provider call id — older calls / provider didn't return one): bind by
+        // phone. The webhook can arrive LATE (after the next retry dial), so anchor on the
         // report's dial time (callStart) and pick the OUTBOUND call placed CLOSEST to
         // it, so a late report binds to the attempt it describes rather than the most
         // recent dial. Fall back to most-recent when the report carries no dial time.

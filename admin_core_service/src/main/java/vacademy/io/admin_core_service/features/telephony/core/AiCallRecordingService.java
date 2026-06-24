@@ -49,6 +49,12 @@ public class AiCallRecordingService {
             if (row == null || Boolean.TRUE.equals(row.getRecordingLogged())) return;
             String recordingUrl = row.getRecordingUrl();
             if (recordingUrl == null || recordingUrl.isBlank()) return;
+            // Log the source URL up front: a provider API host (e.g. api.plivo.com) needs
+            // the provider's own auth — our unauthenticated fetch would 401 — whereas a
+            // public object-store URL (DO Spaces / S3) fetches fine. This one line tells
+            // you which case you're in when the copy fails.
+            log.info("ai-call recording: copying callLog {} (provider {}) from {}",
+                    callLogId, row.getProviderType(), recordingUrl);
 
             Optional<RecordingFetcher> fetcherOpt = registry.fetcher(row.getProviderType());
             if (fetcherOpt.isEmpty()) {

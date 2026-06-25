@@ -81,6 +81,20 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             String userId, String instituteId, Pageable pageable);
 
     /**
+     * Real AI-call attempt rank per call log for a lead (1 = first dial, 2 = first
+     * retry, …) — our own re-dial sequence. The provider-reported {@code call_retry}
+     * resets to 0 on every fresh click-to-call, so it can't be used. Returns rows of
+     * {@code [id, attempt]}.
+     */
+    @Query(value = "SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) AS attempt " +
+            "FROM telephony_call_log " +
+            "WHERE user_id = :userId AND institute_id = :instituteId " +
+            "AND direction = 'OUTBOUND' AND provider_type = 'AAVTAAR'",
+            nativeQuery = true)
+    java.util.List<Object[]> aiCallAttemptRanks(@Param("userId") String userId,
+                                                @Param("instituteId") String instituteId);
+
+    /**
      * All calls placed/received by one counsellor in an institute — powers the
      * manager's "Calls" coaching tab in the counsellor workbench drawer.
      * Served by idx_tcl_counsellor (counsellor_user_id, created_at DESC).

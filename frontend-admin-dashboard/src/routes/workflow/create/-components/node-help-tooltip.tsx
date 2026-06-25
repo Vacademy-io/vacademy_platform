@@ -80,6 +80,11 @@ const NODE_HELP: Record<string, { description: string; example: string; required
         example: 'Mark enrollment status as ACTIVE after payment confirmed.',
         required: ['Table', 'WHERE clause', 'SET clause'],
     },
+    SET_LEAD_STATUS: {
+        description: 'Moves the lead to a CRM status (via LeadStatusService — dual-store safe). Wire it after CALL_AI/CONDITION to react to a call disposition.',
+        example: 'Callback disposition → Set Lead Status = Call Back.',
+        required: ['Lead Status'],
+    },
 };
 
 export function NodeHelpTooltip({ nodeType }: Props) {

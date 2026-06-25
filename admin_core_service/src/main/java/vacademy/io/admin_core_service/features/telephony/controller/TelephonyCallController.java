@@ -19,6 +19,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -102,8 +103,13 @@ public class TelephonyCallController {
         // Best-effort enrichment: a failure here must never break the (shared) call list.
         try {
             enrichWithAiDisposition(result.getContent());
+            // Overlay the REAL attempt number for the lead view — our re-dial sequence,
+            // since the provider's call_retry resets to 0 on every fresh click-to-call.
+            if (userId != null && !userId.isBlank()) {
+                setAiCallAttempts(result.getContent(), userId, instituteId);
+            }
         } catch (Exception e) {
-            log.warn("AI-disposition enrichment failed for call list; returning list without it", e);
+            log.warn("AI enrichment failed for call list; returning list without it", e);
         }
         return ResponseEntity.ok(result);
     }
@@ -140,8 +146,27 @@ public class TelephonyCallController {
             AiCallResult r = resultByCallLogId.get(dto.getId());
             if (r != null) {
                 dto.setAiDisposition(r.getDisposition());
-                dto.setAiCallRetry(r.getCallRetry());
             }
+        });
+    }
+
+    /**
+     * Overlay each AI call's REAL attempt number (1 = first dial, 2 = first retry, …)
+     * for the lead view — our own re-dial sequence (rank by created_at), NOT the
+     * provider's call_retry which is 0 on every fresh click-to-call. Stored on
+     * aiCallRetry so the UI's "Attempt {retry+1}" badge reads correctly.
+     */
+    private void setAiCallAttempts(List<CallLogDTO> dtos, String userId, String instituteId) {
+        if (dtos == null || dtos.isEmpty()) return;
+        Map<String, Integer> rankByLog = new HashMap<>();
+        for (Object[] row : callLogRepo.aiCallAttemptRanks(userId, instituteId)) {
+            if (row[0] != null && row[1] != null) {
+                rankByLog.put(String.valueOf(row[0]), ((Number) row[1]).intValue());
+            }
+        }
+        dtos.forEach(dto -> {
+            Integer rank = rankByLog.get(dto.getId());
+            if (rank != null) dto.setAiCallRetry(rank - 1); // badge: "Attempt {retry+1}" = rank
         });
     }
 }

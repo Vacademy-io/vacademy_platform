@@ -67,4 +67,28 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
             "AND serialized_context ->> 'responseId' = :responseId",
             nativeQuery = true)
     int cancelAiCallRetriesByResponseId(@Param("responseId") String responseId);
+
+    /**
+     * Read-side mirror of {@link #cancelAiCallRetriesByResponseId} — fetches the lead's
+     * paused AI-call states (same scope: WAITING + AI_CALL_* pause reasons matched on the
+     * serialized_context responseId) so the outcome processor can RESUME them with the
+     * terminal disposition injected into context (instead of cancelling → graph dies at
+     * CALL_AI). Native for the same JSON-field read reason.
+     */
+    @Query(value = "SELECT * FROM workflow_execution_state WHERE status='WAITING' AND pause_reason IN ('AI_CALL_RETRY','AI_CALL_RECHECK') AND serialized_context ->> 'responseId' = :responseId", nativeQuery=true)
+    List<WorkflowExecutionState> findActiveAiCallStatesByResponseId(@Param("responseId") String responseId);
+
+    /**
+     * Resume a paused AI-call state with the terminal disposition injected — atomically and
+     * ONLY if still WAITING. Status-guarded so it can never revert a row the resume job has
+     * already claimed (RESUMED) back to WAITING (which would double-dial/assign). Returns 1
+     * if resumed, 0 if already claimed. {@code resume_at=now()} so the next tick picks it up.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE workflow_execution_state " +
+            "SET status='WAITING', resume_at=now(), serialized_context=CAST(:ctxJson AS jsonb), updated_at=now() " +
+            "WHERE id=:id AND status='WAITING'",
+            nativeQuery = true)
+    int resumeWithContextIfWaiting(@Param("id") UUID id, @Param("ctxJson") String ctxJson);
 }

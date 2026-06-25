@@ -33,6 +33,20 @@ export interface Shift {
     end: string;
 }
 
+/** Direction of an AI campaign: we dial the lead (Outbound), or the lead dials our AI line (Inbound). */
+export type CampaignDirection = 'OUTBOUND' | 'INBOUND';
+
+/**
+ * One registered provider campaign id and its direction. Inbound-tagged ids let the
+ * backend classify an incoming AI-call webhook (matched to the lead by phone, since
+ * inbound calls carry no call id); `name` is a friendly label for the call/recording view.
+ */
+export interface Campaign {
+    campaignId: string;
+    name: string;
+    direction: CampaignDirection;
+}
+
 export interface AiCallingSettingsData {
     /** Master switch — when off, no AI calls are placed for this institute. */
     enabled: boolean;
@@ -45,6 +59,12 @@ export interface AiCallingSettingsData {
     provider: string;
     /** Provider campaign id (AI script/persona) used for outbound AI calls. */
     defaultCampaignId: string;
+    /**
+     * Campaign registry: every provider campaign id this institute uses, each tagged
+     * Inbound or Outbound. Inbound-tagged ids classify incoming AI-call webhooks (the
+     * lead dialed our AI line); the rest are informational/outbound.
+     */
+    campaigns: Campaign[];
     /** A call shorter than this (seconds) counts as "didn't really connect" → retry. */
     connectThresholdSec: number;
 
@@ -89,6 +109,7 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     showInLeadList: false,
     provider: 'AAVTAAR',
     defaultCampaignId: '',
+    campaigns: [],
     connectThresholdSec: 20,
     maxRetries: 3,
     maxCallsPerDayPerLead: 3,
@@ -350,6 +371,30 @@ export default function AiCallingSettings() {
         setHasChanges(true);
     };
 
+    const addCampaign = () => {
+        setSettings((prev) => ({
+            ...prev,
+            campaigns: [...(prev.campaigns ?? []), { campaignId: '', name: '', direction: 'OUTBOUND' }],
+        }));
+        setHasChanges(true);
+    };
+
+    const removeCampaign = (index: number) => {
+        setSettings((prev) => ({
+            ...prev,
+            campaigns: (prev.campaigns ?? []).filter((_, i) => i !== index),
+        }));
+        setHasChanges(true);
+    };
+
+    const updateCampaign = (index: number, patch: Partial<Campaign>) => {
+        setSettings((prev) => ({
+            ...prev,
+            campaigns: (prev.campaigns ?? []).map((c, i) => (i === index ? { ...c, ...patch } : c)),
+        }));
+        setHasChanges(true);
+    };
+
     const handleSave = () => {
         if (settings.enabled && !settings.defaultCampaignId.trim()) {
             toast.error('A default Campaign ID is required to enable AI calling.');
@@ -439,6 +484,72 @@ export default function AiCallingSettings() {
                             <p className="text-xs text-muted-foreground">{meta.campaignHelp}</p>
                         </div>
                     )}
+                </CardContent>
+            </Card>
+
+            {/* ── Campaigns (inbound / outbound) ── */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Campaigns</CardTitle>
+                    <CardDescription>
+                        Register every provider campaign id this institute uses and tag each as
+                        Outbound (you dial the lead) or Inbound (the lead dials your AI line). Inbound
+                        calls are detected by matching the webhook&apos;s campaign id here — they carry
+                        no call id, so the lead is matched by phone number. The name is shown on the
+                        call &amp; recording.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="space-y-2">
+                        {(settings.campaigns ?? []).map((c, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                                <Input
+                                    value={c.campaignId}
+                                    placeholder="Campaign ID"
+                                    onChange={(e) => updateCampaign(i, { campaignId: e.target.value })}
+                                    className="flex-1"
+                                />
+                                <Input
+                                    value={c.name}
+                                    placeholder="Name (e.g. Inbound line)"
+                                    onChange={(e) => updateCampaign(i, { name: e.target.value })}
+                                    className="flex-1"
+                                />
+                                <Select
+                                    value={c.direction}
+                                    onValueChange={(v) =>
+                                        updateCampaign(i, { direction: v as CampaignDirection })
+                                    }
+                                >
+                                    <SelectTrigger className="w-36">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
+                                        <SelectItem value="INBOUND">Inbound</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => removeCampaign(i)}
+                                >
+                                    <Trash className="size-4" />
+                                </MyButton>
+                            </div>
+                        ))}
+                        {(settings.campaigns ?? []).length === 0 && (
+                            <p className="text-xs text-muted-foreground">
+                                No campaigns registered yet. Add one and tag it Inbound to enable
+                                inbound-call detection.
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <MyButton buttonType="secondary" scale="medium" onClick={addCampaign}>
+                            <Plus className="size-4" /> Add campaign
+                        </MyButton>
+                    </div>
                 </CardContent>
             </Card>
 

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -22,12 +24,13 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -74,6 +77,14 @@ public class AiCallOutcomeProcessor {
     private final AiCallRecordingService aiCallRecordingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // @Lazy + field injection (NOT constructor): WorkflowTriggerService transitively
+    // reaches the workflow engine, so a final constructor dependency here would form an
+    // eager Spring bean cycle that fails context startup (compiles fine, breaks at boot).
+    // The lazy proxy breaks it. Used only on the inbound LEAD_CALLED_BACK path.
+    @Autowired
+    @Lazy
+    private WorkflowTriggerService workflowTriggerService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
@@ -82,36 +93,55 @@ public class AiCallOutcomeProcessor {
         if (r == null) return;
         if ("PROCESSED".equals(r.getProcessingStatus())) return;
 
-        TelephonyCallLog existing = (r.getCorrelationId() == null) ? null
-                : callLogRepo.findById(r.getCorrelationId()).orElse(null);
-        // Exact match: when the provider returns its call id at placement (Aavtaar now
-        // does), it's stored as the call log's provider_call_id and the webhook carries the
-        // same id as call_uuid — binding the report to THE exact call (timing-immune,
-        // and unaffected by leads sharing a phone).
-        if (existing == null && r.getCallUuid() != null && r.getProvider() != null) {
-            existing = callLogRepo
-                    .findByProviderTypeAndProviderCallId(r.getProvider(), r.getCallUuid())
-                    .orElse(null);
+        // Read settings up-front (scoped to the result's institute) so we can classify
+        // inbound vs outbound BEFORE attempting any outbound-call matching. Re-scoped to
+        // the lead's institute after resolution for the disposition classifier below.
+        String instituteId = r.getInstituteId();
+        AiCallingSettingsPojo settings = settingsService.get(instituteId); // never null (defaults())
+
+        // Inbound classification. An inbound AI call (the lead dialed our AI line) carries
+        // a campaign id the institute tagged INBOUND. We never placed it, so there's no
+        // correlation id / provider call id to bind — skip outbound matching entirely and
+        // resolve the lead by phone (resolveLead's last-10 path). Stamp INBOUND so the new
+        // telephony_call_log row records the right direction.
+        boolean isInbound = isInboundCampaign(r.getCampaignId(), settings);
+        if (isInbound) {
+            r.setDirection(CallDirection.INBOUND.name());
         }
-        // Fallback (no provider call id — older calls / provider didn't return one): bind by
-        // phone. The webhook can arrive LATE (after the next retry dial), so anchor on the
-        // report's dial time (callStart) and pick the OUTBOUND call placed CLOSEST to
-        // it, so a late report binds to the attempt it describes rather than the most
-        // recent dial. Fall back to most-recent when the report carries no dial time.
-        // Without this the result can't bind → call_log_id stays empty and the
-        // recording/disposition/status never attach to the lead.
-        // Provider-scoped: only ever bind to a call placed by THIS provider, so an
-        // Aavtaar report can never attach to (and overwrite) an Exotel/Airtel call log
-        // that happens to share the lead's phone number.
-        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null
-                && r.getProvider() != null) {
-            var anchor = r.getCallStart();
-            existing = (anchor != null)
-                    ? callLogRepo.findOutboundByPhoneNearest(
-                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber(),
-                            java.sql.Timestamp.from(anchor)).orElse(null)
-                    : callLogRepo.findMostRecentOutboundByPhone(
-                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber()).orElse(null);
+
+        TelephonyCallLog existing = null;
+        if (!isInbound) {
+            existing = (r.getCorrelationId() == null) ? null
+                    : callLogRepo.findById(r.getCorrelationId()).orElse(null);
+            // Exact match: when the provider returns its call id at placement (Aavtaar now
+            // does), it's stored as the call log's provider_call_id and the webhook carries the
+            // same id as call_uuid — binding the report to THE exact call (timing-immune,
+            // and unaffected by leads sharing a phone).
+            if (existing == null && r.getCallUuid() != null && r.getProvider() != null) {
+                existing = callLogRepo
+                        .findByProviderTypeAndProviderCallId(r.getProvider(), r.getCallUuid())
+                        .orElse(null);
+            }
+            // Fallback (no provider call id — older calls / provider didn't return one): bind by
+            // phone. The webhook can arrive LATE (after the next retry dial), so anchor on the
+            // report's dial time (callStart) and pick the OUTBOUND call placed CLOSEST to
+            // it, so a late report binds to the attempt it describes rather than the most
+            // recent dial. Fall back to most-recent when the report carries no dial time.
+            // Without this the result can't bind → call_log_id stays empty and the
+            // recording/disposition/status never attach to the lead.
+            // Provider-scoped: only ever bind to a call placed by THIS provider, so an
+            // Aavtaar report can never attach to (and overwrite) an Exotel/Airtel call log
+            // that happens to share the lead's phone number.
+            if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null
+                    && r.getProvider() != null) {
+                var anchor = r.getCallStart();
+                existing = (anchor != null)
+                        ? callLogRepo.findOutboundByPhoneNearest(
+                                r.getInstituteId(), r.getProvider(), r.getPhoneNumber(),
+                                java.sql.Timestamp.from(anchor)).orElse(null)
+                        : callLogRepo.findMostRecentOutboundByPhone(
+                                r.getInstituteId(), r.getProvider(), r.getPhoneNumber()).orElse(null);
+            }
         }
 
         Lead lead = resolveLead(r, existing);
@@ -137,8 +167,8 @@ public class AiCallOutcomeProcessor {
             }
         }
 
-        String instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
-        AiCallingSettingsPojo settings = settingsService.get(instituteId);
+        instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
+        settings = settingsService.get(instituteId);
         int priorAttempts = r.getCallRetry() == null ? 0 : r.getCallRetry();
         AiCallDecision decision = classifier.classify(
                 r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings);
@@ -156,6 +186,27 @@ public class AiCallOutcomeProcessor {
         // applyDecision so it's the authoritative status write for this outcome.
         stampStatusFromDisposition(lead, r.getDisposition());
 
+        // Inbound: the lead dialed our AI line. Once the call log + status are settled,
+        // fire LEAD_CALLED_BACK so any workflow wired to "lead called back" can react.
+        // Best-effort, and handleTriggerEvents runs in its own (REQUIRES_NEW) transaction,
+        // so a trigger miss never rolls back the call-log/result write. Only fires once we
+        // resolved the caller to a lead (unknown callers leave only the ai_call_result row).
+        if (isInbound && lead.responseId() != null) {
+            try {
+                Map<String, Object> ctx = new java.util.HashMap<>();
+                ctx.put("responseId", lead.responseId());
+                if (lead.userId() != null) ctx.put("userId", lead.userId());
+                if (lead.audienceId() != null) ctx.put("audienceId", lead.audienceId());
+                if (r.getDisposition() != null) ctx.put("disposition", r.getDisposition());
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.LEAD_CALLED_BACK.name(),
+                        lead.responseId(), lead.instituteId(), ctx);
+            } catch (Exception ex) {
+                log.warn("ai-call: LEAD_CALLED_BACK fire failed for response {}: {}",
+                        lead.responseId(), ex.getMessage());
+            }
+        }
+
         r.setProcessingStatus("PROCESSED");
         aiCallResultRepo.save(r);
     }
@@ -169,16 +220,22 @@ public class AiCallOutcomeProcessor {
                         .map(AudienceResponse::getAudienceId).orElse(null);
             return new Lead(existing.getResponseId(), existing.getUserId(), audienceId, existing.getInstituteId());
         }
-        // Inbound (or lost correlation): match the lead by phone within the institute.
-        String phone = lastDigits(r.getPhoneNumber());
-        if (r.getInstituteId() == null || phone == null) {
+        // Inbound (or lost correlation): match the lead by the CALLER's phone within the
+        // institute, LAST-10 normalized so country-code/format variance can't miss or
+        // mis-bind. Uses the exact RIGHT(...,10) lookup, not the old %phone% LIKE (H2).
+        String last10 = lastDigits(r.getPhoneNumber());
+        if (r.getInstituteId() == null || last10 == null) {
             return new Lead(null, null, null, r.getInstituteId());
         }
-        AudienceResponse ar = audienceResponseRepo
-                .findByInstituteIdAndParentMobile(r.getInstituteId(), phone)
-                .stream().findFirst().orElse(null);
-        if (ar == null) return new Lead(null, null, null, r.getInstituteId());
-        return new Lead(ar.getId(), ar.getUserId(), ar.getAudienceId(), r.getInstituteId());
+        List<Object[]> rows = audienceResponseRepo
+                .findLeadIdAndUserByInstituteAndPhoneLast10(r.getInstituteId(), last10);
+        if (rows.isEmpty()) return new Lead(null, null, null, r.getInstituteId());
+        Object[] row = rows.get(0); // [audience_response.id, user_id]
+        String responseId = (String) row[0];
+        String userId = (String) row[1];
+        String audienceId = audienceResponseRepo.findById(responseId)
+                .map(AudienceResponse::getAudienceId).orElse(null);
+        return new Lead(responseId, userId, audienceId, r.getInstituteId());
     }
 
     // ── call-log promotion ──────────────────────────────────────────────────────
@@ -403,5 +460,19 @@ public class AiCallOutcomeProcessor {
         String digits = phone.replaceAll("[^0-9]", "");
         if (digits.isEmpty()) return null;
         return digits.length() <= 10 ? digits : digits.substring(digits.length() - 10);
+    }
+
+    /**
+     * True when {@code campaignId} is one the institute tagged INBOUND in its
+     * AI_CALLING_SETTING campaign registry. Blank id / no campaigns ⇒ false (the call
+     * stays outbound — the default for every institute that hasn't registered inbound
+     * campaigns, so existing behaviour is unchanged until they opt in).
+     */
+    private boolean isInboundCampaign(String campaignId, AiCallingSettingsPojo settings) {
+        if (campaignId == null || campaignId.isBlank()
+                || settings == null || settings.getCampaigns() == null) return false;
+        return settings.getCampaigns().stream().anyMatch(c ->
+                c != null && "INBOUND".equalsIgnoreCase(c.getDirection())
+                        && campaignId.equals(c.getCampaignId()));
     }
 }

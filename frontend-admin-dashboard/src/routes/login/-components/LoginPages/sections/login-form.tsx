@@ -360,6 +360,34 @@ export function LoginForm() {
         mutation.mutate(values);
     }
 
+    // Demo handoff: an onboarding "Enter as Admin" link arrives as
+    // /login?demo=1&demo_username=…&demo_password=…  → prefill + auto sign-in,
+    // then scrub the credentials out of the URL/history.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('demo') !== '1') return;
+        const demoUsername = params.get('demo_username');
+        const demoPassword = params.get('demo_password');
+        if (!demoUsername || !demoPassword) return;
+
+        setAuthMethod('USERNAME');
+        form.setValue('username', demoUsername);
+        form.setValue('password', demoPassword);
+
+        const cleanUrl = new URL(window.location.href);
+        ['demo', 'demo_username', 'demo_password'].forEach((k) =>
+            cleanUrl.searchParams.delete(k)
+        );
+        window.history.replaceState({}, '', cleanUrl.toString());
+
+        const timer = setTimeout(
+            () => mutation.mutate({ username: demoUsername, password: demoPassword }),
+            150
+        );
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleNavigateSignup = () => {
         navigate({ to: '/signup' });
     };

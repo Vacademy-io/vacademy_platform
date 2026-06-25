@@ -4,6 +4,9 @@ export const BASE_URL = BACKEND_BASE_URL;
 // Institute-facing help desk (community-service feature/support). Institute is taken
 // from the auto-attached `clientId` header; see services/support.ts.
 export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
+// Super-admin-managed dashboard widgets (community-service feature/dashboardwidget). Institute is
+// taken from the `clientId` header / instituteId param; see services/institute-widgets.ts.
+export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';

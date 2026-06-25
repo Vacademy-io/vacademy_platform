@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useVacademyAssistant } from './useVacademyAssistant';
+import { useAssistDock } from '@/components/assist-dock/store';
 import type { AssistantMessage } from './types';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -43,8 +44,10 @@ const SUGGESTIONS = [
 
 export function VacademyAssistant() {
     const pathname = useRouterState({ select: (s) => s.location.pathname });
-    const [open, setOpen] = useState(false);
     const [input, setInput] = useState('');
+    const panel = useAssistDock((s) => s.panel);
+    const setPanel = useAssistDock((s) => s.setPanel);
+    const open = panel === 'assistant';
     const { messages, status, error, sendMessage, reset } = useVacademyAssistant();
     const scrollEndRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
@@ -53,10 +56,10 @@ export function VacademyAssistant() {
     // navigate in-app and collapse the panel so the user lands on the page.
     const handleInternalLink = useCallback(
         (to: string) => {
-            setOpen(false);
+            setPanel('none');
             navigate({ to });
         },
-        [navigate]
+        [navigate, setPanel]
     );
     const mdComponents = useMemo(
         () => createMdComponents(handleInternalLink),
@@ -70,7 +73,8 @@ export function VacademyAssistant() {
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
     const onPublicRoute = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
-    if (!isAuthed || onPublicRoute) return null;
+    // The rail (AssistDock) owns the trigger now; render only when it asks us to.
+    if (!isAuthed || onPublicRoute || !open) return null;
 
     const isBusy = status === 'connecting' || status === 'streaming';
     const lastMessage = messages[messages.length - 1];
@@ -90,21 +94,8 @@ export function VacademyAssistant() {
         sendMessage(text);
     };
 
-    if (!open) {
-        return (
-            <button
-                type="button"
-                aria-label="Open Vacademy Assistant"
-                onClick={() => setOpen(true)}
-                className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-lg transition-colors hover:bg-primary-600"
-            >
-                <Sparkle size={26} weight="fill" />
-            </button>
-        );
-    }
-
     return (
-        <div className="fixed inset-x-4 bottom-6 top-20 z-50 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-6 sm:top-24 sm:w-96">
+        <div className="fixed inset-x-4 bottom-6 top-20 z-40 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-20 sm:top-24 sm:w-96">
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-primary-500 px-4 py-3 text-white">
                 <div className="flex items-center gap-2">
@@ -132,7 +123,7 @@ export function VacademyAssistant() {
                     <button
                         type="button"
                         aria-label="Close assistant"
-                        onClick={() => setOpen(false)}
+                        onClick={() => setPanel('none')}
                         className="flex size-8 items-center justify-center rounded-md text-white/90 transition-colors hover:bg-white/20"
                     >
                         <X size={18} />

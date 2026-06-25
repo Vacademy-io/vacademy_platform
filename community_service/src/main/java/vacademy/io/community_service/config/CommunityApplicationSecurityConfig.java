@@ -36,6 +36,8 @@ public class CommunityApplicationSecurityConfig {
             "/community-service/diagnostics/**",
             // Public status-page incidents - open for health dashboard
             "/community-service/public/v1/status/**",
+            // Public onboarding form (intake + demo handoff) - open for the onboarding pages
+            "/community-service/public/v1/onboarding/**",
             // BBB server health check & management
             "/community-service/bbb/**" };
 

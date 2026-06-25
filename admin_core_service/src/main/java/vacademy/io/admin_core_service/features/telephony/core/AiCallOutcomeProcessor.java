@@ -148,6 +148,14 @@ public class AiCallOutcomeProcessor {
 
         applyDecision(decision, lead, r);
 
+        // Reflect the call disposition in the lead status for EVERY outcome (including
+        // retry-worthy ones like Callback) by auto-matching the disposition to the
+        // institute's lead-status catalog (e.g. "Callback" -> CALL_BACK / "Call Back").
+        // Only fires when a matching status exists, so it never forces a status the
+        // institute hasn't defined; otherwise the lead is left as-is. Runs after
+        // applyDecision so it's the authoritative status write for this outcome.
+        stampStatusFromDisposition(lead, r.getDisposition());
+
         r.setProcessingStatus("PROCESSED");
         aiCallResultRepo.save(r);
     }
@@ -339,6 +347,40 @@ public class AiCallOutcomeProcessor {
             return;
         }
         leadStatusService.changeLeadStatus(lead.responseId(), status.getId(), null, "AI_CALLING");
+    }
+
+    /**
+     * Stamp the lead status to whatever institute lead-status matches the call
+     * disposition by name (e.g. disposition "Callback" → status_key CALL_BACK or label
+     * "Call Back"; "Not_Interested" → NOT_INTERESTED). Matching is case- and
+     * separator-insensitive. If the institute has no matching status the lead is left
+     * untouched (never forced to a non-existent status). This is what makes a Callback
+     * move the lead off "New" even though Callback is a retry-worthy disposition.
+     */
+    private void stampStatusFromDisposition(Lead lead, String disposition) {
+        if (lead.instituteId() == null || lead.responseId() == null
+                || disposition == null || disposition.isBlank()) return;
+        String norm = normalizeKey(disposition);
+        if (norm.isEmpty()) return;
+        LeadStatus match = leadStatusRepo
+                .findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(lead.instituteId())
+                .stream()
+                .filter(s -> norm.equals(normalizeKey(s.getStatusKey())) || norm.equals(normalizeKey(s.getLabel())))
+                .findFirst()
+                .orElse(null);
+        if (match == null) {
+            log.info("ai-call status: no lead-status matches disposition '{}' for institute {} — leaving as-is",
+                    disposition, lead.instituteId());
+            return;
+        }
+        leadStatusService.changeLeadStatus(lead.responseId(), match.getId(), null, "AI_CALLING");
+        log.info("ai-call status: lead {} -> {} (matched disposition '{}')",
+                lead.userId(), match.getStatusKey(), disposition);
+    }
+
+    /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */
+    private String normalizeKey(String s) {
+        return s == null ? "" : s.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

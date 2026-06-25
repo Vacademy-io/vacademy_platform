@@ -13,6 +13,7 @@ import { KeyValueBuilder } from './key-value-builder';
 import { EventEntityPicker } from './event-entity-picker';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import {
     getQueryKeysQuery,
     getTriggerEventsCatalogQuery,
@@ -119,6 +120,7 @@ export function NodeConfigPanel() {
     const { data: whatsappTemplatesUpper } = useQuery(getTemplatesByTypeQuery(instituteId, 'WHATSAPP'));
     const { data: whatsappTemplatesLower } = useQuery(getTemplatesByTypeQuery(instituteId, 'whatsapp'));
     const whatsappTemplates = [...(whatsappTemplatesUpper ?? []), ...(whatsappTemplatesLower ?? [])];
+    const { statuses: leadStatuses } = useLeadStatuses();
 
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -1203,6 +1205,25 @@ export function NodeConfigPanel() {
                     </>
                 )}
 
+                {/* Set Lead Status node config */}
+                {data.nodeType === 'SET_LEAD_STATUS' && (
+                    <div>
+                        <Label className="text-xs">Lead Status</Label>
+                        <select
+                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={(data.config.statusKey as string) ?? ''}
+                            onChange={(e) => handleConfigChange('statusKey', e.target.value)}
+                        >
+                            <option value="">Select status...</option>
+                            {leadStatuses.map((s) => (
+                                <option key={s.status_key} value={s.status_key}>
+                                    {s.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
                 {/* Generic JSON config for other types */}
                 {![
                     'TRIGGER',
@@ -1219,6 +1240,7 @@ export function NodeConfigPanel() {
                     'SCHEDULE_TASK',
                     'UPDATE_RECORD',
                     'SEND_PUSH_NOTIFICATION',
+                    'SET_LEAD_STATUS',
                 ].includes(data.nodeType) && (
                     <div>
                         <Label className="text-xs">

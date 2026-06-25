@@ -108,7 +108,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         id: 'ai_call_new_lead',
         name: 'AI-call new leads',
         description:
-            'When a lead comes in, the AI voice agent calls them first. Based on the result, a counsellor is auto-assigned or the lead is retried — per Settings → AI Calling.',
+            'When a lead comes in, the AI voice agent calls them first, then routes on the call disposition: interested leads get one status, everyone else a follow-up status. Pick the two statuses in the builder.',
         icon: '📞',
         triggerEvents: ['AUDIENCE_LEAD_SUBMISSION'],
         workflowType: 'EVENT_DRIVEN',
@@ -124,20 +124,69 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         ],
         generateWorkflow: (answers) => {
             const campaignId = ((answers.campaignId as string) || '').trim();
+
+            // CALL_AI (start) — places the Aavtaar voice-agent call. The end-of-call
+            // webhook → AiCallOutcomeProcessor injects #ctx['callOutcome']
+            // (ASSIGN | STOP | RETRY) and #ctx['callDisposition'] (raw) onto the
+            // workflow context before the engine resumes.
             const callNode = makeNode(
                 'CALL_AI',
                 'AI Call',
                 campaignId ? { campaignId } : {},
                 250,
-                100,
+                80,
                 true
             );
+
+            // CONDITION — branch on the AI outcome. The engine's ConditionNodeHandler
+            // SpEL-evaluates `config.condition`; ASSIGN means the bot qualified the
+            // lead as interested. trueLabel/falseLabel are the builder's display
+            // labels for the two branches.
+            const conditionNode = makeNode(
+                'CONDITION',
+                'Interested?',
+                {
+                    condition: "#ctx['callOutcome'] == 'ASSIGN'",
+                    trueLabel: 'Interested / assign',
+                    falseLabel: 'Not interested / follow-up',
+                },
+                250,
+                220
+            );
+
+            // SET_LEAD_STATUS (true branch) — statusKey left blank on purpose so the
+            // builder's validation prompts the admin to pick their own status.
+            const assignedNode = makeNode(
+                'SET_LEAD_STATUS',
+                'Set status: interested',
+                { statusKey: '' },
+                80,
+                360
+            );
+
+            // SET_LEAD_STATUS (false branch) — likewise blank for the admin to fill.
+            const followupNode = makeNode(
+                'SET_LEAD_STATUS',
+                'Set status: follow-up',
+                { statusKey: '' },
+                420,
+                360
+            );
+
             return {
-                nodes: [callNode],
-                edges: [],
+                nodes: [callNode, conditionNode, assignedNode, followupNode],
+                // CONDITION true/false convention (matches WorkflowBuilderService
+                // round-trip): the true branch edge is labelled 'true', the false
+                // branch edge 'false'. applyEdgesAsRouting pairs them into one
+                // `conditional` route (trueNodeId / falseNodeId).
+                edges: [
+                    makeEdge(callNode.id, conditionNode.id),
+                    makeEdge(conditionNode.id, assignedNode.id, 'true'),
+                    makeEdge(conditionNode.id, followupNode.id, 'false'),
+                ],
                 workflowName: 'AI-call new leads',
                 workflowDescription:
-                    'Place an AI call when a lead is submitted; counsellor assignment is settings-gated.',
+                    'Place an AI call when a lead is submitted, then route on the call disposition: callOutcome == ASSIGN sets the interested status, otherwise the follow-up status.',
             };
         },
     },

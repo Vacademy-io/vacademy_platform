@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.telephony.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +21,15 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,6 +72,7 @@ public class AiCallOutcomeProcessor {
     private final CallLogService callLogService;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final AiCallRecordingService aiCallRecordingService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
@@ -140,7 +146,7 @@ public class AiCallOutcomeProcessor {
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
                 r.getId(), lead.userId(), r.getDisposition(), r.getStatus(), decision.action(), decision.reason());
 
-        applyDecision(decision, lead);
+        applyDecision(decision, lead, r);
 
         r.setProcessingStatus("PROCESSED");
         aiCallResultRepo.save(r);
@@ -207,20 +213,67 @@ public class AiCallOutcomeProcessor {
 
     // ── actions ───────────────────────────────────────────────────────────────
 
-    private void applyDecision(AiCallDecision decision, Lead lead) {
+    private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r) {
         switch (decision.action()) {
             case ASSIGN -> {
                 assignCounsellor(lead);
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
-                stopRetryLoop(lead); // a human owns the lead → stop the pause/resume retries
+                // Resume the paused CALL_AI state PAST the node (instead of cancelling it,
+                // which killed the graph at CALL_AI) — inject the terminal disposition so
+                // the node short-circuits out and the workflow continues to its next node.
+                resumeWorkflowWithDisposition(lead, r, decision);
             }
             case STOP -> {
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_NOT_INTERESTED);
-                stopRetryLoop(lead); // terminal disposition (e.g. Not_Interested) → stop retrying
+                // Terminal disposition (e.g. Not_Interested): resume PAST CALL_AI rather than
+                // cancel, so any downstream nodes still run.
+                resumeWorkflowWithDisposition(lead, r, decision);
             }
             // RETRY: leave the paused CALL_AI workflow alone — it resumes itself and re-dials.
             case RETRY -> setStatus(lead, STATUS_RETRY_PENDING);
             case NONE -> { /* AI calling disabled — record only */ }
+        }
+    }
+
+    /**
+     * Cancel→resume bridge: on a terminal AI-call outcome, RESUME the lead's paused
+     * CALL_AI state(s) instead of cancelling them, so the workflow graph continues PAST
+     * the CALL_AI node. Injects the contract context keys the CALL_AI node reads to
+     * short-circuit out without re-dialing:
+     *   callOutcome    — the decision action name (ASSIGN | STOP | RETRY)
+     *   callDisposition— the raw provider disposition string
+     *   callConnected  — whether the call connected (false on a hard STOP)
+     * Best-effort: a miss just means the loop runs one more cycle and self-stops on its
+     * own assigned / max-retries gate (and stopRetryLoop remains as the fallback path).
+     */
+    private void resumeWorkflowWithDisposition(Lead lead, AiCallResult r, AiCallDecision decision) {
+        if (lead.responseId() == null) return;
+        try {
+            List<WorkflowExecutionState> states =
+                    executionStateRepository.findActiveAiCallStatesByResponseId(lead.responseId());
+            boolean callConnected = decision.action() != AiCallDecision.Action.STOP
+                    || "completed".equalsIgnoreCase(r.getStatus());
+            int resumed = 0;
+            for (WorkflowExecutionState state : states) {
+                Map<String, Object> ctx = state.getSerializedContext();
+                if (ctx == null) continue;
+                ctx.put("callOutcome", decision.action().name());
+                ctx.put("callDisposition", r.getDisposition());
+                ctx.put("callConnected", callConnected);
+                // Atomic, status-guarded update (WHERE status='WAITING') rather than a JPA
+                // read-modify-save: if the resume job already claimed this row (RESUMED) in
+                // the meantime, this no-ops instead of reverting it to WAITING and causing a
+                // double dial/assign. resume_at=now() so the next resume tick picks it up.
+                String ctxJson = objectMapper.writeValueAsString(ctx);
+                resumed += executionStateRepository.resumeWithContextIfWaiting(state.getId(), ctxJson);
+            }
+            if (resumed > 0) {
+                log.info("ai-call outcome: resumed {} paused CALL_AI state(s) past the node for lead {} (outcome={} disposition={} connected={})",
+                        resumed, lead.userId(), decision.action(), r.getDisposition(), callConnected);
+            }
+        } catch (Exception e) {
+            log.warn("ai-call outcome: could not resume CALL_AI state for response {}: {}",
+                    lead.responseId(), e.getMessage());
         }
     }
 

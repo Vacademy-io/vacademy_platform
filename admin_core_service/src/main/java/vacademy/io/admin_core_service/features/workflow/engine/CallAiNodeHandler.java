@@ -92,6 +92,25 @@ public class CallAiNodeHandler implements NodeHandler {
         int callsToday = asInt(context.get("aiCallsToday"));
         String callsDay = str(context.get("aiCallDay"));
 
+        // Cancel→resume bridge: the outcome processor resumed this paused state with a
+        // terminal disposition injected (callOutcome). Short-circuit OUT of the node —
+        // route to the next node via normal traversal — without re-dialing or pausing.
+        // CONSUME the one-shot bridge keys immediately (remove from the live context) so
+        // they can NEVER persist into a later pause/resume: otherwise a re-entry (a
+        // downstream DELAY pause, or a graph that loops back to CALL_AI) would re-read the
+        // stale callOutcome and short-circuit again with no new call — silently killing
+        // the retry loop. remove() not null-put: a "null" round-trips to the String "null".
+        String callOutcome = str(context.get("callOutcome"));
+        context.remove("callOutcome");
+        context.remove("callDisposition");
+        context.remove("callConnected");
+        if ("ASSIGN".equals(callOutcome) || "STOP".equals(callOutcome)) {
+            out.put("aiCallDone", true);
+            out.put("aiCallStopReason", "disposition_terminal");
+            log.info("CALL_AI node: terminal disposition ({}) for lead {} — routing out without re-dial", callOutcome, userId);
+            return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
+        }
+
         Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay);
 
         switch (plan.action()) {

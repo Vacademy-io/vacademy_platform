@@ -19,5 +19,6 @@ public enum NodeType {
     SCHEDULE_TASK,
     UPDATE_RECORD,
     SEND_PUSH_NOTIFICATION,
-    CALL_AI
+    CALL_AI,
+    SET_LEAD_STATUS
 }

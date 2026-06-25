@@ -152,6 +152,7 @@ export const WORKFLOW_NODE_TYPES = [
     { type: 'SCHEDULE_TASK', label: 'Schedule Task', icon: '📅', color: 'sky', category: 'Actions' },
     { type: 'UPDATE_RECORD', label: 'Update Record', icon: '📝', color: 'lime', category: 'Data' },
     { type: 'SEND_PUSH_NOTIFICATION', label: 'Push Notification', icon: '🔔', color: 'fuchsia', category: 'Notifications' },
+    { type: 'SET_LEAD_STATUS', label: 'Set Lead Status', icon: '🏷️', color: 'purple', category: 'Actions' },
     { type: 'ROUTER', label: 'Router', icon: '🔀', color: 'yellow', category: 'Logic' },
     { type: 'CALL_AI', label: 'AI Call', icon: '📞', color: 'emerald', category: 'Actions' },
 ] as const;

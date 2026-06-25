@@ -125,17 +125,23 @@ public class TelephonyCallController {
         if (callLogIds.isEmpty()) {
             return;
         }
-        Map<String, String> dispositionByCallLogId = aiCallResultRepo
+        // Newest result wins when a call has multiple results (webhook retries/dupes),
+        // so disposition + attempt number are deterministic, not arbitrary.
+        Map<String, AiCallResult> resultByCallLogId = aiCallResultRepo
                 .findByCallLogIdIn(callLogIds).stream()
-                .filter(r -> r.getCallLogId() != null && r.getDisposition() != null)
-                // Newest result wins when a call has multiple results (webhook retries/dupes),
-                // so the disposition shown is deterministic, not arbitrary.
+                .filter(r -> r.getCallLogId() != null)
                 .sorted(Comparator.comparing(AiCallResult::getReceivedAt,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .collect(Collectors.toMap(
                         AiCallResult::getCallLogId,
-                        AiCallResult::getDisposition,
+                        r -> r,
                         (a, b) -> a));
-        dtos.forEach(dto -> dto.setAiDisposition(dispositionByCallLogId.get(dto.getId())));
+        dtos.forEach(dto -> {
+            AiCallResult r = resultByCallLogId.get(dto.getId());
+            if (r != null) {
+                dto.setAiDisposition(r.getDisposition());
+                dto.setAiCallRetry(r.getCallRetry());
+            }
+        });
     }
 }

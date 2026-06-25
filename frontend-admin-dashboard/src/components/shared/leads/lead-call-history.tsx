@@ -184,6 +184,9 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
     const tone = STATUS_TONE[item.status] ?? 'bg-neutral-100 text-neutral-600';
 
     const isInbound = item.direction === 'INBOUND';
+    // AI voice-agent calls (Aavtaar) get an "AI" tag + attempt number so a
+    // counsellor can tell a bot dial from a human one at a glance.
+    const isAi = (item.providerType ?? '').toUpperCase() === 'AAVTAAR';
     // The lead's phone is the From on inbound, the To on outbound. Masked
     // versions are what the backend exposes — fine for display + audit.
     const leadPhone = isInbound ? item.fromNumberMasked : item.toNumberMasked;
@@ -232,6 +235,11 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
                     >
                         {isInbound ? 'Lead called back' : 'Outbound'}
                     </span>
+                    {isAi && (
+                        <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
+                            AI
+                        </span>
+                    )}
                     <span className={cn('rounded-full px-2 py-0.5 text-xs', tone)}>{label}</span>
                     {item.aiDisposition && (
                         <span
@@ -244,12 +252,19 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
                             {prettifyDisposition(item.aiDisposition)}
                         </span>
                     )}
+                    {isAi && item.aiCallRetry != null && (
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                            Attempt {item.aiCallRetry + 1}
+                        </span>
+                    )}
                     <span className="text-xs text-neutral-500">
                         · {formatDuration(item.durationSeconds)}
                     </span>
                 </div>
                 <span className="text-xs text-neutral-400">
-                    {item.startTime ? new Date(item.startTime).toLocaleString() : ''}
+                    {item.startTime || item.createdAt
+                        ? new Date((item.startTime || item.createdAt) as string).toLocaleString()
+                        : ''}
                 </span>
             </div>
             <div className="mt-1 text-xs text-neutral-500">

@@ -2825,25 +2825,30 @@ export const SlideMaterial = ({
         }
 
         if (items && items.length > 0) {
-            // Priority 1: Use slideId from URL if available (ALWAYS respect URL)
-            if (slideId) {
-                const targetSlide = items.find((slide) => slide.id === slideId);
-                if (targetSlide) {
-                    // Only update if it's different from current activeItem
-                    if (!activeItem || activeItem.id !== slideId) {
-                        setActiveItem(targetSlide);
-                    }
-                    return;
-                }
-            }
-
-            // Priority 2: Check if current active slide still exists in items
+            // Priority 1: keep the current active slide if it still exists.
+            // A slides refetch (e.g. after publishing a freshly-uploaded slide)
+            // must NOT yank selection back to the URL slideId: the URL is only
+            // updated on explicit sidebar clicks, not on new-slide creation, so
+            // right after an upload it still points at the previously-selected
+            // slide. Honoring it here flipped the sidebar highlight + header
+            // title to that stale "previous" slide while the content stayed on
+            // the new one. This mirrors the sidebar's own selection priority.
             const activeSlideStillExists =
                 activeItem && items.find((slide) => slide.id === activeItem.id);
 
             if (activeSlideStillExists) {
                 // Active slide still exists, keep it selected
                 return;
+            }
+
+            // Priority 2: fall back to the URL slideId (initial load, deep link,
+            // or after the active slide was deleted).
+            if (slideId) {
+                const targetSlide = items.find((slide) => slide.id === slideId);
+                if (targetSlide) {
+                    setActiveItem(targetSlide);
+                    return;
+                }
             }
 
             // Priority 3: Always set first available slide as active

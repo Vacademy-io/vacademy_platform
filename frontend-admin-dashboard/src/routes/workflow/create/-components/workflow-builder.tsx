@@ -894,12 +894,25 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 is_end_node: n.data.isEndNode ?? !hasOutgoingEdge,
             };
         }),
-        edges: edges.map((e) => ({
-            id: e.id,
-            source_node_id: e.source,
-            target_node_id: e.target,
-            label: (e.label as string) ?? '',
-        })),
+        edges: edges.map((e) => {
+            // A CONDITION node's TRUE edge must carry the node's condition expression,
+            // otherwise WorkflowBuilderService.applyEdgesAsRouting finds no conditioned
+            // edge and fans out to BOTH branches (running true AND false). Propagate the
+            // source CONDITION node's config.condition onto its non-"false" edge.
+            const src = nodes.find((n) => n.id === e.source);
+            const label = (e.label as string) ?? '';
+            const condition =
+                src?.data?.nodeType === 'CONDITION' && label.toLowerCase() !== 'false' && src.data.config
+                    ? ((src.data.config as Record<string, unknown>).condition as string | undefined)
+                    : undefined;
+            return {
+                id: e.id,
+                source_node_id: e.source,
+                target_node_id: e.target,
+                label,
+                ...(condition ? { condition } : {}),
+            };
+        }),
         ...(workflowType === 'SCHEDULED' && {
             schedule: {
                 schedule_type: scheduleConfig.scheduleType,

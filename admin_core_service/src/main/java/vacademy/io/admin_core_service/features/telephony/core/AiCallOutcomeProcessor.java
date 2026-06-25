@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.telephony.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +21,15 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,6 +72,7 @@ public class AiCallOutcomeProcessor {
     private final CallLogService callLogService;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final AiCallRecordingService aiCallRecordingService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
@@ -78,21 +84,34 @@ public class AiCallOutcomeProcessor {
 
         TelephonyCallLog existing = (r.getCorrelationId() == null) ? null
                 : callLogRepo.findById(r.getCorrelationId()).orElse(null);
-        // Aavtaar doesn't echo our correlationId and returns no provider call id at
-        // placement, so the correlation lookup above misses — bind by phone instead.
-        // The webhook can arrive LATE (after the next retry dial), so anchor on the
+        // Exact match: when the provider returns its call id at placement (Aavtaar now
+        // does), it's stored as the call log's provider_call_id and the webhook carries the
+        // same id as call_uuid — binding the report to THE exact call (timing-immune,
+        // and unaffected by leads sharing a phone).
+        if (existing == null && r.getCallUuid() != null && r.getProvider() != null) {
+            existing = callLogRepo
+                    .findByProviderTypeAndProviderCallId(r.getProvider(), r.getCallUuid())
+                    .orElse(null);
+        }
+        // Fallback (no provider call id — older calls / provider didn't return one): bind by
+        // phone. The webhook can arrive LATE (after the next retry dial), so anchor on the
         // report's dial time (callStart) and pick the OUTBOUND call placed CLOSEST to
         // it, so a late report binds to the attempt it describes rather than the most
         // recent dial. Fall back to most-recent when the report carries no dial time.
         // Without this the result can't bind → call_log_id stays empty and the
         // recording/disposition/status never attach to the lead.
-        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null) {
+        // Provider-scoped: only ever bind to a call placed by THIS provider, so an
+        // Aavtaar report can never attach to (and overwrite) an Exotel/Airtel call log
+        // that happens to share the lead's phone number.
+        if (existing == null && r.getInstituteId() != null && r.getPhoneNumber() != null
+                && r.getProvider() != null) {
             var anchor = r.getCallStart();
             existing = (anchor != null)
                     ? callLogRepo.findOutboundByPhoneNearest(
-                            r.getInstituteId(), r.getPhoneNumber(), java.sql.Timestamp.from(anchor)).orElse(null)
+                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber(),
+                            java.sql.Timestamp.from(anchor)).orElse(null)
                     : callLogRepo.findMostRecentOutboundByPhone(
-                            r.getInstituteId(), r.getPhoneNumber()).orElse(null);
+                            r.getInstituteId(), r.getProvider(), r.getPhoneNumber()).orElse(null);
         }
 
         Lead lead = resolveLead(r, existing);
@@ -127,7 +146,15 @@ public class AiCallOutcomeProcessor {
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
                 r.getId(), lead.userId(), r.getDisposition(), r.getStatus(), decision.action(), decision.reason());
 
-        applyDecision(decision, lead);
+        applyDecision(decision, lead, r);
+
+        // Reflect the call disposition in the lead status for EVERY outcome (including
+        // retry-worthy ones like Callback) by auto-matching the disposition to the
+        // institute's lead-status catalog (e.g. "Callback" -> CALL_BACK / "Call Back").
+        // Only fires when a matching status exists, so it never forces a status the
+        // institute hasn't defined; otherwise the lead is left as-is. Runs after
+        // applyDecision so it's the authoritative status write for this outcome.
+        stampStatusFromDisposition(lead, r.getDisposition());
 
         r.setProcessingStatus("PROCESSED");
         aiCallResultRepo.save(r);
@@ -194,20 +221,67 @@ public class AiCallOutcomeProcessor {
 
     // ── actions ───────────────────────────────────────────────────────────────
 
-    private void applyDecision(AiCallDecision decision, Lead lead) {
+    private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r) {
         switch (decision.action()) {
             case ASSIGN -> {
                 assignCounsellor(lead);
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
-                stopRetryLoop(lead); // a human owns the lead → stop the pause/resume retries
+                // Resume the paused CALL_AI state PAST the node (instead of cancelling it,
+                // which killed the graph at CALL_AI) — inject the terminal disposition so
+                // the node short-circuits out and the workflow continues to its next node.
+                resumeWorkflowWithDisposition(lead, r, decision);
             }
             case STOP -> {
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_NOT_INTERESTED);
-                stopRetryLoop(lead); // terminal disposition (e.g. Not_Interested) → stop retrying
+                // Terminal disposition (e.g. Not_Interested): resume PAST CALL_AI rather than
+                // cancel, so any downstream nodes still run.
+                resumeWorkflowWithDisposition(lead, r, decision);
             }
             // RETRY: leave the paused CALL_AI workflow alone — it resumes itself and re-dials.
             case RETRY -> setStatus(lead, STATUS_RETRY_PENDING);
             case NONE -> { /* AI calling disabled — record only */ }
+        }
+    }
+
+    /**
+     * Cancel→resume bridge: on a terminal AI-call outcome, RESUME the lead's paused
+     * CALL_AI state(s) instead of cancelling them, so the workflow graph continues PAST
+     * the CALL_AI node. Injects the contract context keys the CALL_AI node reads to
+     * short-circuit out without re-dialing:
+     *   callOutcome    — the decision action name (ASSIGN | STOP | RETRY)
+     *   callDisposition— the raw provider disposition string
+     *   callConnected  — whether the call connected (false on a hard STOP)
+     * Best-effort: a miss just means the loop runs one more cycle and self-stops on its
+     * own assigned / max-retries gate (and stopRetryLoop remains as the fallback path).
+     */
+    private void resumeWorkflowWithDisposition(Lead lead, AiCallResult r, AiCallDecision decision) {
+        if (lead.responseId() == null) return;
+        try {
+            List<WorkflowExecutionState> states =
+                    executionStateRepository.findActiveAiCallStatesByResponseId(lead.responseId());
+            boolean callConnected = decision.action() != AiCallDecision.Action.STOP
+                    || "completed".equalsIgnoreCase(r.getStatus());
+            int resumed = 0;
+            for (WorkflowExecutionState state : states) {
+                Map<String, Object> ctx = state.getSerializedContext();
+                if (ctx == null) continue;
+                ctx.put("callOutcome", decision.action().name());
+                ctx.put("callDisposition", r.getDisposition());
+                ctx.put("callConnected", callConnected);
+                // Atomic, status-guarded update (WHERE status='WAITING') rather than a JPA
+                // read-modify-save: if the resume job already claimed this row (RESUMED) in
+                // the meantime, this no-ops instead of reverting it to WAITING and causing a
+                // double dial/assign. resume_at=now() so the next resume tick picks it up.
+                String ctxJson = objectMapper.writeValueAsString(ctx);
+                resumed += executionStateRepository.resumeWithContextIfWaiting(state.getId(), ctxJson);
+            }
+            if (resumed > 0) {
+                log.info("ai-call outcome: resumed {} paused CALL_AI state(s) past the node for lead {} (outcome={} disposition={} connected={})",
+                        resumed, lead.userId(), decision.action(), r.getDisposition(), callConnected);
+            }
+        } catch (Exception e) {
+            log.warn("ai-call outcome: could not resume CALL_AI state for response {}: {}",
+                    lead.responseId(), e.getMessage());
         }
     }
 
@@ -273,6 +347,40 @@ public class AiCallOutcomeProcessor {
             return;
         }
         leadStatusService.changeLeadStatus(lead.responseId(), status.getId(), null, "AI_CALLING");
+    }
+
+    /**
+     * Stamp the lead status to whatever institute lead-status matches the call
+     * disposition by name (e.g. disposition "Callback" → status_key CALL_BACK or label
+     * "Call Back"; "Not_Interested" → NOT_INTERESTED). Matching is case- and
+     * separator-insensitive. If the institute has no matching status the lead is left
+     * untouched (never forced to a non-existent status). This is what makes a Callback
+     * move the lead off "New" even though Callback is a retry-worthy disposition.
+     */
+    private void stampStatusFromDisposition(Lead lead, String disposition) {
+        if (lead.instituteId() == null || lead.responseId() == null
+                || disposition == null || disposition.isBlank()) return;
+        String norm = normalizeKey(disposition);
+        if (norm.isEmpty()) return;
+        LeadStatus match = leadStatusRepo
+                .findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(lead.instituteId())
+                .stream()
+                .filter(s -> norm.equals(normalizeKey(s.getStatusKey())) || norm.equals(normalizeKey(s.getLabel())))
+                .findFirst()
+                .orElse(null);
+        if (match == null) {
+            log.info("ai-call status: no lead-status matches disposition '{}' for institute {} — leaving as-is",
+                    disposition, lead.instituteId());
+            return;
+        }
+        leadStatusService.changeLeadStatus(lead.responseId(), match.getId(), null, "AI_CALLING");
+        log.info("ai-call status: lead {} -> {} (matched disposition '{}')",
+                lead.userId(), match.getStatusKey(), disposition);
+    }
+
+    /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */
+    private String normalizeKey(String s) {
+        return s == null ? "" : s.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

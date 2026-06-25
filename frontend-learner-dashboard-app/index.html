@@ -18,6 +18,36 @@
       (function () {
         try {
           var branding = localStorage.getItem("TabBranding");
+          if (!branding) {
+            // Cold cache (no institute branding yet): the default /favicon.ico
+            // and /icons/icon-192.webp are the Vacademy mark. Keep them only on
+            // Vacademy-owned hosts; on a white-labelled domain blank them so the
+            // Vacademy "V" never flashes in the tab/PWA before React resolves the
+            // institute icon.
+            var coldHost = location.hostname;
+            var isVacademyHost =
+              /(^|\.)vacademy\.io$/.test(coldHost) ||
+              coldHost === "localhost" ||
+              coldHost === "127.0.0.1";
+            if (!isVacademyHost) {
+              var blankIcon =
+                "data:image/svg+xml," +
+                encodeURIComponent(
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>'
+                );
+              document
+                .querySelectorAll('link[rel*="icon"]')
+                .forEach(function (lnk) {
+                  lnk.setAttribute("href", blankIcon);
+                });
+              if (!document.querySelector('link[rel="icon"]')) {
+                var coldIconLink = document.createElement("link");
+                coldIconLink.setAttribute("rel", "icon");
+                coldIconLink.setAttribute("href", blankIcon);
+                document.head.appendChild(coldIconLink);
+              }
+            }
+          }
           if (branding) {
             var parsed = JSON.parse(branding);
             if (parsed.tabText) {

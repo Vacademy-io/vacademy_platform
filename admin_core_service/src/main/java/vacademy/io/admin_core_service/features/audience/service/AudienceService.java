@@ -537,6 +537,12 @@ public class AudienceService {
             logger.error("Catalogue lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
         }
 
+        // Pool auto-assignment — catalogue leads carry no counsellor, so this is pure pool
+        // routing (previously catalogue leads never got an owner).
+        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+                null, null, createdUser != null ? createdUser.getFullName() : null,
+                audience.getCampaignName());
+
         return savedResponse.getId();
     }
 
@@ -653,52 +659,13 @@ public class AudienceService {
                     // Non-blocking — lead is still saved even if scoring fails
                 }
 
-                // 3c. Counselor assignment. A manually supplied counsellor (e.g. a CSV bulk
-                // import that carries a lead owner per row) takes precedence and is written
-                // straight to user_lead_profile.assigned_counselor_id/name. Otherwise we fall
-                // back to pool auto-assignment: if the audience belongs to a pool, the pool's
-                // mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this lead.
-                // MANUAL pools and audiences not in any pool return Optional.empty() and we
-                // leave the lead unassigned. The full_name lookup mirrors what the manual-assign
-                // UI does so the Counsellor column renders the name (the UI checks
-                // assigned_counselor_name; an id-without-name shows up as Unassigned).
-                // Non-blocking — submission still succeeds if routing fails.
-                final String leadUserIdForAssignment = userId;
-                final String instituteIdForAssignment = instituteId;
-                if (StringUtils.hasText(requestDTO.getCounsellorId())) {
-                    try {
-                        assignManualCounsellor(
-                                leadUserIdForAssignment, instituteIdForAssignment,
-                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
-                                userForNotification.getFullName(), audience.getCampaignName());
-                    } catch (Exception e) {
-                        logger.error("Failed to assign manual counsellor for response {}: {}",
-                                savedResponse.getId(), e.getMessage());
-                    }
-                } else {
-                    try {
-                        counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
-                                .ifPresent(counselorUserId -> {
-                                    String counselorName = null;
-                                    try {
-                                        List<UserDTO> fetched = authService
-                                                .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
-                                        if (!fetched.isEmpty() && fetched.get(0) != null) {
-                                            counselorName = fetched.get(0).getFullName();
-                                        }
-                                    } catch (Exception nameLookupFailure) {
-                                        logger.warn("Could not fetch counselor name for {}: {}",
-                                                counselorUserId, nameLookupFailure.getMessage());
-                                    }
-                                    userLeadProfileService.assignCounselor(
-                                            leadUserIdForAssignment, instituteIdForAssignment,
-                                            counselorUserId, counselorName);
-                                });
-                    } catch (Exception e) {
-                        logger.error("Failed to auto-assign counselor for response {}: {}",
-                                savedResponse.getId(), e.getMessage());
-                    }
-                }
+                // 3c. Counsellor assignment — manual owner wins (e.g. a CSV bulk import that
+                // carries a lead owner per row), otherwise pool auto-assignment. Centralised in
+                // autoAssignCounsellorOnIntake so every pool-routed channel shares one
+                // implementation. Non-blocking — submission still succeeds if routing fails.
+                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                        requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                        userForNotification.getFullName(), audience.getCampaignName());
 
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -966,6 +933,62 @@ public class AudienceService {
     }
 
     /**
+     * Pool-based counsellor assignment for a freshly-created lead — the single place every
+     * pool-routed intake path (manual / audience-side submit, course-catalogue, v2, and all
+     * form webhooks incl. Facebook/Meta) calls, so a new lead channel only has to invoke this
+     * one method to get an owner. A manually supplied counsellor wins; otherwise we fall back
+     * to the campaign's counselor pool (ROUND_ROBIN / TIME_BASED). Audiences not in any pool,
+     * or MANUAL pools, leave the lead unassigned. All failures are swallowed — assignment must
+     * never break lead intake.
+     *
+     * NOTE: enquiry / walk-in leads use a SEPARATE assignment system ({@code linkCounsellorToEnquiry}
+     * → LinkedUsers + enquiry flag) and must NOT call this, or they'd be double-assigned.
+     * This helper is an interim de-duplication step; the fuller refactor is a single
+     * LeadIntakeService that owns save + score + assign so a channel can't forget to call it.
+     */
+    private void autoAssignCounsellorOnIntake(AudienceResponse savedResponse, String leadUserId,
+            String instituteId, String manualCounsellorId, String manualCounsellorName,
+            String leadFullName, String campaignName) {
+        if (savedResponse == null || !StringUtils.hasText(leadUserId)) {
+            return;
+        }
+        // Manual counsellor (e.g. a CSV import or a form that carries a chosen owner) wins.
+        if (StringUtils.hasText(manualCounsellorId)) {
+            try {
+                assignManualCounsellor(leadUserId, instituteId, manualCounsellorId,
+                        manualCounsellorName, leadFullName, campaignName);
+            } catch (Exception e) {
+                logger.error("Failed to assign manual counsellor for response {}: {}",
+                        savedResponse.getId(), e.getMessage());
+            }
+            return;
+        }
+        // Pool auto-assignment. The name lookup mirrors the manual-assign UI so the Counsellor
+        // column renders a name (an id without a name shows up as Unassigned).
+        try {
+            counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                    .ifPresent(counselorUserId -> {
+                        String counselorName = null;
+                        try {
+                            List<UserDTO> fetched = authService
+                                    .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                            if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                counselorName = fetched.get(0).getFullName();
+                            }
+                        } catch (Exception nameLookupFailure) {
+                            logger.warn("Could not fetch counselor name for {}: {}",
+                                    counselorUserId, nameLookupFailure.getMessage());
+                        }
+                        userLeadProfileService.assignCounselor(
+                                leadUserId, instituteId, counselorUserId, counselorName);
+                    });
+        } catch (Exception e) {
+            logger.error("Failed to auto-assign counselor for response {}: {}",
+                    savedResponse.getId(), e.getMessage());
+        }
+    }
+
+    /**
      * Resolve an optional pipeline lead status key to a lead_status.id within the institute.
      * Returns null when the key is blank or no matching status exists for the institute, in
      * which case the lead is created without a pipeline status (unchanged prior behaviour).
@@ -1063,6 +1086,13 @@ public class AudienceService {
                             savedResponse.getId(), e.getMessage());
                     // Non-blocking
                 }
+
+                // 3c. Counsellor assignment — manual owner wins, else pool auto-assign.
+                // Same centralised path as v1 submitLead (v2 previously skipped assignment,
+                // so v2-submitted leads never got an owner).
+                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                        requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                        createdUser.getFullName(), audience.getCampaignName());
 
                 // 4. Build custom field map for email (to pass to workflow)
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -3219,6 +3249,13 @@ public class AudienceService {
                     instituteId,
                     audienceId);
         }
+
+        // 3b. Pool auto-assignment. Webhook leads (Facebook/Meta Lead Ads, Google Lead Forms,
+        // Zoho, etc.) carry no counsellor, so this routes purely through the campaign's
+        // counselor pool. Centralised in autoAssignCounsellorOnIntake. Runs before the workflow
+        // trigger so downstream workflow nodes see an owned lead.
+        autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                null, null, createdUser.getFullName(), audience.getCampaignName());
 
         // 4. Build custom field map for workflow
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());

@@ -55,6 +55,9 @@ public enum WorkflowTriggerEvent {
     FOLLOW_UP_DUE,
     FOLLOW_UP_OVERDUE,
     LEAD_STATUS_CHANGED,
+    // Fired when an inbound AI call is received (lead dialed our AI line — detected by
+    // a campaign id tagged INBOUND in AI_CALLING_SETTING). Keyed by eventId = responseId.
+    LEAD_CALLED_BACK,
 
     // Assessment (cross-service via internal HTTP)
     ASSESSMENT_CREATE,

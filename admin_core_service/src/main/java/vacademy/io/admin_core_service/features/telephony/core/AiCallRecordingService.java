@@ -3,33 +3,29 @@ package vacademy.io.admin_core_service.features.telephony.core;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.RecordingFetcher;
-import vacademy.io.common.media.service.FileService;
+import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.io.InputStream;
-import java.net.URI;
-import java.util.Map;
 import java.util.Optional;
 
 /**
  * Provider-agnostic: copies an AI-voice call recording into our storage so it
  * plays from the lead profile's Call History (which streams from
- * {@code recording_storage_key}).
+ * {@code recording_storage_key} via {@code RecordingPlaybackController}).
  *
  * <p>The provider's recording is fetched through ITS registered
  * {@link RecordingFetcher} — resolved by the call log's {@code providerType} from
- * {@link TelephonyProviderRegistry}, never hardcoded — then uploaded via a
- * media_service <b>pre-signed S3 PUT URL</b> (not the multipart API). Dropping in a
- * new AI agent only needs its {@code RecordingFetcher} bean; this service is unchanged.
+ * {@link TelephonyProviderRegistry}, never hardcoded — then uploaded via
+ * {@link MediaService#uploadFileV2} to the <b>public</b> media bucket. This MUST
+ * match the Exotel path ({@code RecordingTxOps}) because the playback controller
+ * resolves the file with {@code getFilePublicUrlById}: a presigned PUT would land
+ * the object in the PRIVATE bucket and the player would 404 on it.
  *
  * <p><b>Why it retries:</b> the provider's end-of-call webhook frequently arrives
  * BEFORE the recording has finished uploading to its public object store, so an
@@ -49,9 +45,8 @@ public class AiCallRecordingService {
     private static final long[] RETRY_BACKOFF_MS = {0L, 15_000L, 45_000L, 90_000L};
 
     private final TelephonyProviderRegistry registry;
-    private final FileService fileService;
+    private final MediaService mediaService;
     private final TelephonyCallLogRepository callLogRepo;
-    private final RestTemplate restTemplate = new RestTemplate();
 
     private enum Step { DONE, STOP, RETRY }
 
@@ -102,30 +97,26 @@ public class AiCallRecordingService {
                 return Step.RETRY;
             }
 
-            // 1) pre-signed PUT URL from media_service (creates FileMetadata, returns {id,url})
-            Map<String, String> signed = fileService.getPresignedUploadUrl(
-                    "call-recording-" + callLogId + ".mp3", "audio/mpeg", "AI_CALL_RECORDING", callLogId);
-            String fileId = signed.get("id");
-            String putUrl = signed.get("url");
-            if (fileId == null || putUrl == null) {
-                log.warn("ai-call recording: media_service returned no pre-signed url for callLog {} (attempt {}/{})",
+            // Upload to the PUBLIC media bucket via uploadFileV2 — the SAME path the
+            // Exotel recordings use — so RecordingPlaybackController.getFilePublicUrlById
+            // can resolve it. (A presigned PUT writes to the PRIVATE bucket, which the
+            // playback endpoint can't read → the recording 404s in the UI.)
+            FileDetailsDTO uploaded = mediaService.uploadFileV2(new TelephonyMultipartBytes(
+                    "file", "call-recording-" + callLogId + ".mp3", "audio/mpeg", bytes));
+            if (uploaded == null || uploaded.getId() == null) {
+                log.warn("ai-call recording: media_service returned no file id for callLog {} (attempt {}/{})",
                         callLogId, attempt, maxAttempts);
                 return Step.RETRY;
             }
 
-            // 2) PUT the bytes straight to S3 via the pre-signed URL
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType("audio/mpeg"));
-            restTemplate.exchange(URI.create(putUrl), HttpMethod.PUT, new HttpEntity<>(bytes, headers), Void.class);
-
-            // 3) stamp the file id onto the call log so the UI can stream it
+            // stamp the file id onto the call log so the UI can stream it
             TelephonyCallLog fresh = callLogRepo.findById(callLogId).orElse(null);
             if (fresh == null) return Step.STOP;
-            fresh.setRecordingStorageKey(fileId);
+            fresh.setRecordingStorageKey(uploaded.getId());
             fresh.setRecordingLogged(true);
             callLogRepo.save(fresh);
             log.info("ai-call recording: callLog {} uploaded → storageKey {} (attempt {}/{})",
-                    callLogId, fileId, attempt, maxAttempts);
+                    callLogId, uploaded.getId(), attempt, maxAttempts);
             return Step.DONE;
 
         } catch (Exception e) {

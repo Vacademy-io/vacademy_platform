@@ -6,7 +6,7 @@
  * spec (POST /custom/run). No SQL ever leaves the browser — only whitelisted field keys. The page
  * date range + team/counsellor scope from the shared filter bar are applied to every run.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowClockwise, FunnelSimple, Play, Table as TableIcon } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,13 @@ import {
     type ReportTabProps,
 } from './report-shared';
 
-export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsellorUserId }: ReportTabProps) {
+export function CustomReportTab({
+    instituteId,
+    fromDate,
+    toDate,
+    teamId,
+    counsellorUserId,
+}: ReportTabProps) {
     const catalog = useQuery({
         queryKey: customCatalogQueryKey(instituteId),
         queryFn: () => fetchCustomCatalog(instituteId),
@@ -85,7 +91,8 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
     };
 
     if (catalog.isLoading) return <ReportTabSkeleton />;
-    if (catalog.isError) return <ReportErrorState error={catalog.error} onRetry={() => catalog.refetch()} />;
+    if (catalog.isError)
+        return <ReportErrorState error={catalog.error} onRetry={() => catalog.refetch()} />;
 
     const data = catalog.data;
 
@@ -124,7 +131,9 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
                                                     key={o.value}
                                                     label={o.label}
                                                     active={active}
-                                                    onClick={() => toggleFilterValue(f.key, o.value)}
+                                                    onClick={() =>
+                                                        toggleFilterValue(f.key, o.value)
+                                                    }
                                                 />
                                             );
                                         })}
@@ -135,8 +144,17 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
                 )}
 
                 <div className="flex items-center gap-3 border-t border-neutral-100 pt-4">
-                    <Button onClick={doRun} disabled={!canRun || run.isPending} size="sm" className="gap-1.5">
-                        {run.isPending ? <ArrowClockwise size={14} className="animate-spin" /> : <Play size={14} />}
+                    <Button
+                        onClick={doRun}
+                        disabled={!canRun || run.isPending}
+                        size="sm"
+                        className="gap-1.5"
+                    >
+                        {run.isPending ? (
+                            <ArrowClockwise size={14} className="animate-spin" />
+                        ) : (
+                            <Play size={14} />
+                        )}
                         Run report
                     </Button>
                     {!canRun && (
@@ -153,7 +171,12 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
                 <ReportSection
                     title="Result"
                     icon={<TableIcon size={18} />}
-                    actions={<ExportCsvButton onClick={exportResult} disabled={result.rows.length === 0} />}
+                    actions={
+                        <ExportCsvButton
+                            onClick={exportResult}
+                            disabled={result.rows.length === 0}
+                        />
+                    }
                 >
                     {result.rows.length === 0 ? (
                         <EmptyHint message="No rows match this spec." />
@@ -168,7 +191,9 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
                                                     key={c.key}
                                                     className={cn(
                                                         'py-2 pr-3',
-                                                        c.kind === 'measure' ? 'text-right' : 'text-left'
+                                                        c.kind === 'measure'
+                                                            ? 'text-right'
+                                                            : 'text-left'
                                                     )}
                                                 >
                                                     {c.label}
@@ -205,8 +230,8 @@ export function CustomReportTab({ instituteId, fromDate, toDate, teamId, counsel
                             </div>
                             {result.truncated && (
                                 <p className="text-xs text-amber-600">
-                                    Showing the first {result.row_count} rows — refine your filters to
-                                    narrow the result.
+                                    Showing the first {result.row_count} rows — refine your filters
+                                    to narrow the result.
                                 </p>
                             )}
                         </>
@@ -232,7 +257,9 @@ function FieldPicker({
 }) {
     return (
         <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                {label}
+            </span>
             <div className="flex flex-wrap gap-1.5">
                 {fields.map((f) => (
                     <Chip
@@ -260,14 +287,18 @@ function Chip({
     tone?: 'default' | 'primary';
 }) {
     const activeClass =
-        tone === 'primary' ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-green-500 bg-green-50 text-green-700';
+        tone === 'primary'
+            ? 'border-primary-500 bg-primary-50 text-primary-700'
+            : 'border-green-500 bg-green-50 text-green-700';
     return (
         <button
             type="button"
             onClick={onClick}
             className={cn(
                 'rounded-full border px-3 py-1 text-xs transition-colors',
-                active ? activeClass : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                active
+                    ? activeClass
+                    : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
             )}
         >
             {label}

@@ -31,7 +31,13 @@ import {
 type SourceSortKey = 'source_type' | 'revenue' | 'paying_leads' | 'payments' | 'avg_deal_value';
 type CounsellorSortKey = 'name' | 'revenue' | 'paying_leads' | 'payments' | 'avg_deal_value';
 
-export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUserId }: ReportTabProps) {
+export function RevenueTab({
+    instituteId,
+    fromDate,
+    toDate,
+    teamId,
+    counsellorUserId,
+}: ReportTabProps) {
     const params = { instituteId, fromDate, toDate, teamId, counsellorUserId };
     const query = useQuery({
         queryKey: revenueQueryKey(params),
@@ -58,7 +64,8 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
     );
 
     if (query.isLoading) return <ReportTabSkeleton />;
-    if (query.isError) return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
+    if (query.isError)
+        return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
 
     const totals = query.data?.totals ?? null;
     const trend = query.data?.trend ?? [];
@@ -83,7 +90,13 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
         exportCsv(
             `revenue-by-source_${fromDate}_${toDate}.csv`,
             ['Source', 'Revenue', 'Paying leads', 'Payments', 'Avg deal value'],
-            sources.map((r) => [r.source_type, r.revenue, r.paying_leads, r.payments, r.avg_deal_value])
+            sources.map((r) => [
+                r.source_type,
+                r.revenue,
+                r.paying_leads,
+                r.payments,
+                r.avg_deal_value,
+            ])
         );
     const exportCounsellors = () =>
         exportCsv(
@@ -133,7 +146,10 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
                 ) : (
                     <div className="flex h-40 items-end gap-0.5 overflow-x-auto">
                         {trend.map((d) => (
-                            <div key={d.date} className="group flex flex-1 flex-col items-center gap-1">
+                            <div
+                                key={d.date}
+                                className="group flex flex-1 flex-col items-center gap-1"
+                            >
                                 <div className="relative flex w-full flex-1 items-end">
                                     <div
                                         className="w-full rounded-t bg-green-500/80 transition-colors group-hover:bg-green-600"
@@ -155,7 +171,9 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
             <ReportSection
                 title="Revenue by source"
                 icon={<Megaphone size={18} />}
-                actions={<ExportCsvButton onClick={exportSources} disabled={sources.length === 0} />}
+                actions={
+                    <ExportCsvButton onClick={exportSources} disabled={sources.length === 0} />
+                }
             >
                 {sources.length === 0 ? (
                     <EmptyHint message="No revenue in this range." />
@@ -164,21 +182,65 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                                    <SortableHeader label="Source" sortKey="source_type" current={srcSort} dir={srcDir} onClick={toggleSrc} align="left" />
-                                    <SortableHeader label="Revenue" sortKey="revenue" current={srcSort} dir={srcDir} onClick={toggleSrc} />
-                                    <SortableHeader label="Paying leads" sortKey="paying_leads" current={srcSort} dir={srcDir} onClick={toggleSrc} />
-                                    <SortableHeader label="Payments" sortKey="payments" current={srcSort} dir={srcDir} onClick={toggleSrc} />
-                                    <SortableHeader label="Avg deal value" sortKey="avg_deal_value" current={srcSort} dir={srcDir} onClick={toggleSrc} />
+                                    <SortableHeader
+                                        label="Source"
+                                        sortKey="source_type"
+                                        current={srcSort}
+                                        dir={srcDir}
+                                        onClick={toggleSrc}
+                                        align="left"
+                                    />
+                                    <SortableHeader
+                                        label="Revenue"
+                                        sortKey="revenue"
+                                        current={srcSort}
+                                        dir={srcDir}
+                                        onClick={toggleSrc}
+                                    />
+                                    <SortableHeader
+                                        label="Paying leads"
+                                        sortKey="paying_leads"
+                                        current={srcSort}
+                                        dir={srcDir}
+                                        onClick={toggleSrc}
+                                    />
+                                    <SortableHeader
+                                        label="Payments"
+                                        sortKey="payments"
+                                        current={srcSort}
+                                        dir={srcDir}
+                                        onClick={toggleSrc}
+                                    />
+                                    <SortableHeader
+                                        label="Avg deal value"
+                                        sortKey="avg_deal_value"
+                                        current={srcSort}
+                                        dir={srcDir}
+                                        onClick={toggleSrc}
+                                    />
                                 </tr>
                             </thead>
                             <tbody>
                                 {sources.map((r) => (
-                                    <tr key={r.source_type} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
-                                        <td className="py-2.5 pr-3 font-medium text-neutral-900">{r.source_type}</td>
-                                        <td className="py-2.5 pr-3 text-right font-semibold text-green-700">{fmtCurrency(r.revenue, currency)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(r.paying_leads)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(r.payments)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtCurrency(r.avg_deal_value, currency)}</td>
+                                    <tr
+                                        key={r.source_type}
+                                        className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                    >
+                                        <td className="py-2.5 pr-3 font-medium text-neutral-900">
+                                            {r.source_type}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right font-semibold text-green-700">
+                                            {fmtCurrency(r.revenue, currency)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtNumber(r.paying_leads)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtNumber(r.payments)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtCurrency(r.avg_deal_value, currency)}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -190,7 +252,12 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
             <ReportSection
                 title="Revenue by counsellor"
                 icon={<Users size={18} />}
-                actions={<ExportCsvButton onClick={exportCounsellors} disabled={counsellors.length === 0} />}
+                actions={
+                    <ExportCsvButton
+                        onClick={exportCounsellors}
+                        disabled={counsellors.length === 0}
+                    />
+                }
             >
                 {counsellors.length === 0 ? (
                     <EmptyHint message="No counsellor-attributed revenue in this range." />
@@ -199,21 +266,65 @@ export function RevenueTab({ instituteId, fromDate, toDate, teamId, counsellorUs
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
-                                    <SortableHeader label="Counsellor" sortKey="name" current={cslSort} dir={cslDir} onClick={toggleCsl} align="left" />
-                                    <SortableHeader label="Revenue" sortKey="revenue" current={cslSort} dir={cslDir} onClick={toggleCsl} />
-                                    <SortableHeader label="Paying leads" sortKey="paying_leads" current={cslSort} dir={cslDir} onClick={toggleCsl} />
-                                    <SortableHeader label="Payments" sortKey="payments" current={cslSort} dir={cslDir} onClick={toggleCsl} />
-                                    <SortableHeader label="Avg deal value" sortKey="avg_deal_value" current={cslSort} dir={cslDir} onClick={toggleCsl} />
+                                    <SortableHeader
+                                        label="Counsellor"
+                                        sortKey="name"
+                                        current={cslSort}
+                                        dir={cslDir}
+                                        onClick={toggleCsl}
+                                        align="left"
+                                    />
+                                    <SortableHeader
+                                        label="Revenue"
+                                        sortKey="revenue"
+                                        current={cslSort}
+                                        dir={cslDir}
+                                        onClick={toggleCsl}
+                                    />
+                                    <SortableHeader
+                                        label="Paying leads"
+                                        sortKey="paying_leads"
+                                        current={cslSort}
+                                        dir={cslDir}
+                                        onClick={toggleCsl}
+                                    />
+                                    <SortableHeader
+                                        label="Payments"
+                                        sortKey="payments"
+                                        current={cslSort}
+                                        dir={cslDir}
+                                        onClick={toggleCsl}
+                                    />
+                                    <SortableHeader
+                                        label="Avg deal value"
+                                        sortKey="avg_deal_value"
+                                        current={cslSort}
+                                        dir={cslDir}
+                                        onClick={toggleCsl}
+                                    />
                                 </tr>
                             </thead>
                             <tbody>
                                 {counsellors.map((r) => (
-                                    <tr key={r.user_id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
-                                        <td className="py-2.5 pr-3 font-medium text-neutral-900">{r.name ?? r.user_id}</td>
-                                        <td className="py-2.5 pr-3 text-right font-semibold text-green-700">{fmtCurrency(r.revenue, currency)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(r.paying_leads)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(r.payments)}</td>
-                                        <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtCurrency(r.avg_deal_value, currency)}</td>
+                                    <tr
+                                        key={r.user_id}
+                                        className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                                    >
+                                        <td className="py-2.5 pr-3 font-medium text-neutral-900">
+                                            {r.name ?? r.user_id}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right font-semibold text-green-700">
+                                            {fmtCurrency(r.revenue, currency)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtNumber(r.paying_leads)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtNumber(r.payments)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-neutral-800">
+                                            {fmtCurrency(r.avg_deal_value, currency)}
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -238,7 +349,8 @@ function sortRows<T extends RevenueSourceRow | RevenueCounsellorRow, K extends k
         if (av == null && bv == null) return 0;
         if (av == null) return 1;
         if (bv == null) return -1;
-        if (typeof av === 'number' && typeof bv === 'number') return dir === 'asc' ? av - bv : bv - av;
+        if (typeof av === 'number' && typeof bv === 'number')
+            return dir === 'asc' ? av - bv : bv - av;
         const s = String(av).localeCompare(String(bv));
         return dir === 'asc' ? s : -s;
     });

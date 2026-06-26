@@ -143,16 +143,22 @@ public class PipelineReportService {
      * it to this institute's converted leads.
      */
     private static final String SOURCE_REVENUE_SQL = """
-            SELECT COALESCE(ulp.best_source_type, 'UNKNOWN') AS source_type,
-                   COALESCE(SUM(pl.payment_amount), 0)       AS revenue
+            SELECT COALESCE(ulp.best_source_type, ar.source_type, 'UNKNOWN') AS source_type,
+                   COALESCE(SUM(pl.payment_amount), 0)                        AS revenue
             FROM payment_log pl
             JOIN user_lead_profile ulp
                 ON ulp.user_id = pl.user_id AND ulp.institute_id = :instituteId
+            LEFT JOIN audience_response ar ON ar.id = ulp.best_score_response_id
+            LEFT JOIN LATERAL (
+                SELECT lu2.user_id FROM linked_users lu2
+                WHERE lu2.source = 'ENQUIRY' AND lu2.source_id = ar.enquiry_id
+                ORDER BY lu2.created_at DESC LIMIT 1
+            ) lu ON true
             WHERE pl.payment_status = 'PAID'
               AND pl.payment_amount IS NOT NULL
               AND ulp.conversion_status = 'CONVERTED'
               AND pl.created_at >= :fromTs AND pl.created_at < :toTs
-              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
             GROUP BY 1
             """;
 

@@ -82,14 +82,21 @@ public class DistinctUserAudienceService {
                 && StringUtils.hasText(request.getUserFilter().getNameSearch()))
                 ? request.getUserFilter().getNameSearch() : null;
 
+        // ── Extract gender filter (applies to both sources via the student table) ─
+        List<String> genders = (request.getUserFilter() != null
+                && !CollectionUtils.isEmpty(request.getUserFilter().getGenders()))
+                ? request.getUserFilter().getGenders() : null;
+
         if (!includeInstituteUsers && !includeAudienceRespondents) {
             return emptyResponse(request, audienceIds);
         }
 
         // ── Step 1: Paginated user IDs from DB ────────────────────────────────
         // The UNION ALL query handles both institute users and audience respondents.
-        // When a source is excluded, pass an empty list so its part returns nothing.
-        List<String> effectiveAudienceIds = includeAudienceRespondents ? audienceIds : null;
+        // When a source is excluded, pass the __EXCLUDE__ sentinel so its part
+        // matches nothing (a null/empty list is interpreted as "no filter" by the
+        // query and would otherwise include the whole source).
+        List<String> effectiveAudienceIds = includeAudienceRespondents ? audienceIds : List.of("__EXCLUDE__");
         List<String> effectiveStatuses = includeInstituteUsers ? request.getStatuses() : List.of("__EXCLUDE__");
         List<String> effectivePackageSessionIds = includeInstituteUsers ? request.getPackageSessionIds() : List.of("__EXCLUDE__");
 
@@ -100,6 +107,7 @@ public class DistinctUserAudienceService {
                 includeInstituteUsers ? request.getPaymentStatuses() : null,
                 includeInstituteUsers ? request.getSubOrgUserTypes() : null,
                 nameSearch,
+                genders,
                 effectiveAudienceIds,
                 PageRequest.of(page, size));
 

@@ -131,7 +131,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
 function buildFilterConfig(
     instituteDetails: InstituteDetailsType | null,
     currentSessionId: string,
-    campaigns?: { id?: string; audience_id?: string; campaign_name: string }[]
+    campaigns?: { id?: string; campaign_id?: string; audience_id?: string; campaign_name: string }[]
 ) {
     const filters: { id: string; title: string; filterList: { id: string; label: string }[] }[] = [];
 
@@ -183,11 +183,14 @@ function buildFilterConfig(
     // Audience filter
     if (campaigns && campaigns.length > 0) {
         const audienceOptions = campaigns
-            .filter((c) => c.id)
+            // The backend matches against `audience_response.audience_id`, which is the
+            // campaign identifier resolved as campaign_id || id || audience_id (the same
+            // resolution used throughout audience-manager). Using `c.id` alone mismatched.
             .map((c) => ({
-                id: c.id!,
+                id: (c.campaign_id || c.id || c.audience_id) ?? '',
                 label: c.campaign_name,
-            }));
+            }))
+            .filter((o) => o.id);
 
         if (audienceOptions.length > 0) {
             filters.push({

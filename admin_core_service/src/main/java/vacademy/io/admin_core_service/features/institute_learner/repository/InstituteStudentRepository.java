@@ -1661,6 +1661,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+            AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
             AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
@@ -1688,10 +1689,21 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           SELECT ar.user_id, MIN(ar.created_at) AS sort_date
           FROM audience_response ar
           JOIN audience a ON a.id = ar.audience_id
+          LEFT JOIN student sg ON sg.user_id = ar.user_id
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+            AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
+            AND (
+              CAST(:nameSearch AS TEXT) IS NULL
+              OR sg.full_name ILIKE '%' || :nameSearch || '%'
+              OR sg.email ILIKE '%' || :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
+            )
           GROUP BY ar.user_id
       ) all_sources
       GROUP BY user_id
@@ -1718,6 +1730,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+            AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
             AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
@@ -1743,10 +1756,21 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           SELECT DISTINCT ar.user_id
           FROM audience_response ar
           JOIN audience a ON a.id = ar.audience_id
+          LEFT JOIN student sg ON sg.user_id = ar.user_id
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+            AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
+            AND (
+              CAST(:nameSearch AS TEXT) IS NULL
+              OR sg.full_name ILIKE '%' || :nameSearch || '%'
+              OR sg.email ILIKE '%' || :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(sg.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
+            )
       ) total
       """)
   Page<String> findPagedCombinedUserIds(
@@ -1756,6 +1780,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("paymentStatuses") List<String> paymentStatuses,
       @Param("subOrgUserTypes") List<String> subOrgUserTypes,
       @Param("nameSearch") String nameSearch,
+      @Param("genders") List<String> genders,
       @Param("audienceIds") List<String> audienceIds,
       Pageable pageable);
 

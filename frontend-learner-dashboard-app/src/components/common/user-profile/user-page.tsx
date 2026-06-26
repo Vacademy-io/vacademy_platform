@@ -81,8 +81,11 @@ export default function ProfilePage() {
   const [tncAcceptedDate, setTncAcceptedDate] = useState<string | number | null>(null);
   const [tncFileUrl, setTncFileUrl] = useState<string | null>(null);
   const { showForInstitutes } = useInstituteFeatureStore();
-  const { permissions, isLoading: permissionsLoading } =
-    useStudentPermissions();
+  const {
+    permissions,
+    isLoading: permissionsLoading,
+    settings: displaySettings,
+  } = useStudentPermissions();
   // Honor the admin's system-field toggles (Settings → Custom Fields). Fails open.
   const { isFieldVisible } = useSystemFieldVisibility();
   const { setNavHeading } = useNavHeadingStore();
@@ -470,10 +473,13 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Session Expiry / Membership Status — hidden in reader mode
+              {/* Session Expiry / Membership Status — opt-in via the admin's
+                  Student Display settings (Profile Page → Show Membership
+                  Status); hidden by default. Also hidden in reader mode
                   (iOS / reader-mode institutes): "Access Days" + expiry reads
                   as a paid subscription to App Review (Apple 3.1.1). */}
-              {!shouldHidePaidPurchaseUI() && (
+              {displaySettings?.profile?.showMembershipStatus &&
+                !shouldHidePaidPurchaseUI() && (
                 <div className="bg-card rounded-xl border shadow p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-4">
                     Membership Status

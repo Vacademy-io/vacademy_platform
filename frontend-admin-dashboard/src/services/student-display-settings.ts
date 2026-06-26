@@ -139,6 +139,10 @@ function mergeWithDefaults(
             canViewFiles: incoming?.permissions?.canViewFiles ?? d.permissions.canViewFiles,
             canViewReports: incoming?.permissions?.canViewReports ?? d.permissions.canViewReports,
         },
+        profile: {
+            showMembershipStatus:
+                incoming?.profile?.showMembershipStatus ?? d.profile.showMembershipStatus,
+        },
         courseDetails: {
             tabs: mergeArrayById(incoming?.courseDetails?.tabs, d.courseDetails.tabs).map((t) => ({
                 id: t.id,

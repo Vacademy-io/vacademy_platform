@@ -104,6 +104,10 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         canViewFiles: false,
         canViewReports: false,
     },
+    profile: {
+        // Hidden by default; admins can enable it in Student Display settings.
+        showMembershipStatus: false,
+    },
     courseDetails: {
         tabs: [
             { id: 'OUTLINE', order: 1, visible: true },

@@ -10,47 +10,79 @@ import { getSlideInteractions, saveSlideInteraction } from '@/services/study-lib
 // Pattern: {blank:answer}
 const BLANK_REGEX = /\{blank:([^}]+)\}/g;
 
+// Decode a quiz/tabs data-* payload. New slides store base64 (immune to the
+// admin's HTML sanitizers, which used to truncate the JSON when it contained an
+// S3 image URL); older slides stored raw/escaped JSON (starts with { or [).
+function decodeBlockData<T>(raw: string | null | undefined, fallback: T): T {
+    if (raw == null) return fallback;
+    const s = String(raw).trim();
+    if (!s) return fallback;
+    if (s[0] === '{' || s[0] === '[') {
+        try { return JSON.parse(s) as T; } catch { return fallback; }
+    }
+    try { return JSON.parse(decodeURIComponent(escape(atob(s)))) as T; }
+    catch {
+        try { return JSON.parse(s) as T; } catch { return fallback; }
+    }
+}
+
 /** Interactive quiz component for learner side */
 function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; slideId?: string; elementIndex?: number }) {
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
     const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-    let quizData: { question: string; options: { text: string; isCorrect: boolean }[]; explanation?: string } = {
-        question: '', options: [], explanation: '',
-    };
-    try {
-        quizData = JSON.parse(quizJson);
-    } catch { /* use empty */ }
+    const quizData: { question: string; options: { text: string; isCorrect: boolean }[]; explanation?: string } =
+        decodeBlockData(quizJson, { question: '', options: [], explanation: '' });
 
-    if (!quizData.question) return null;
+    // Question/option content is rich-text HTML from the admin editor. Treat
+    // blank / "<p><br></p>" / nbsp-only as empty, but never embedded media.
+    const htmlEmpty = (h?: string) => {
+        if (!h) return true;
+        if (/<(img|iframe|video|audio)\b/i.test(h)) return false;
+        return (
+            h.replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').trim() === ''
+        );
+    };
+    // Plain text (entities decoded, list items separated) for activity analytics.
+    const stripTags = (h?: string) => {
+        if (!h) return '';
+        if (typeof document === 'undefined') return h.replace(/<[^>]+>/g, '').trim();
+        const d = document.createElement('div');
+        d.innerHTML = h;
+        return (d.textContent || '').replace(/\s+/g, ' ').trim();
+    };
+    const options = Array.isArray(quizData.options) ? quizData.options : [];
+    if (htmlEmpty(quizData.question) && options.length === 0) return null;
 
     // Reveal the result and (when rendered for a learner slide) record the
     // learner's choice so the admin activity log can show it.
     const handleCheck = () => {
         setShowResult(true);
         if (slideId && elementIndex != null && selectedAnswer != null) {
-            const opt = quizData.options[selectedAnswer];
+            const opt = options[selectedAnswer];
             saveSlideInteraction(slideId, `mcq-${elementIndex}`, 'MCQ', {
-                question: quizData.question,
-                options: quizData.options.map((o) => o.text),
+                question: stripTags(quizData.question),
+                options: options.map((o) => stripTags(o.text)),
                 selected: selectedAnswer,
-                selectedText: opt?.text ?? null,
+                selectedText: opt ? stripTags(opt.text) : null,
                 correct: !!opt?.isCorrect,
-                correctIndex: quizData.options.findIndex((o) => o.isCorrect),
+                correctIndex: options.findIndex((o) => o.isCorrect),
             });
         }
     };
 
     return (
-        <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
+        <div className="inline-quiz" style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', margin: '8px 0', background: '#fafafa' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
             <div style={{ padding: '4px 8px', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '4px', display: 'inline-block', fontSize: '12px', fontWeight: 600, color: '#4338ca', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
                 QUIZ
             </div>
-            <div style={{ fontSize: '16px', fontWeight: 600, color: '#333', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
-                {quizData.question}
-            </div>
-            {quizData.options.map((opt, i) => {
+            {!htmlEmpty(quizData.question) && (
+                <div style={{ fontSize: '16px', fontWeight: 400, color: '#333', marginBottom: '12px' }}> {/* design-lint-ignore: dynamic quiz UI state — style prop */}
+                    <div dangerouslySetInnerHTML={{ __html: quizData.question }} />
+                </div>
+            )}
+            {options.map((opt, i) => {
                 let bgColor = '#fff'; // design-lint-ignore: dynamic quiz option state
                 let borderColor = '#ddd'; // design-lint-ignore: dynamic quiz option state
                 let textColor = '#333'; // design-lint-ignore: dynamic quiz option state
@@ -61,11 +93,14 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
                 }
                 return (
                     <div key={i} onClick={() => { if (!showResult) setSelectedAnswer(i); }}
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', border: `2px solid ${borderColor}`, borderRadius: '6px', marginBottom: '6px', cursor: showResult ? 'default' : 'pointer', backgroundColor: bgColor, color: textColor, transition: 'all 0.2s' }}>
-                        <span style={{ width: '24px', height: '24px', borderRadius: '50%', border: `2px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, flexShrink: 0, backgroundColor: selectedAnswer === i ? borderColor : 'transparent', color: selectedAnswer === i ? 'white' : textColor }}>
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', border: `2px solid ${borderColor}`, borderRadius: '6px', marginBottom: '6px', cursor: showResult ? 'default' : 'pointer', backgroundColor: bgColor, color: textColor, transition: 'all 0.2s' }}>
+                        <span style={{ width: '24px', height: '24px', marginTop: '2px', borderRadius: '50%', border: `2px solid ${borderColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 600, flexShrink: 0, backgroundColor: selectedAnswer === i ? borderColor : 'transparent', color: selectedAnswer === i ? 'white' : textColor }}>
                             {showResult && opt.isCorrect ? '\u2713' : optionLabels[i]}
                         </span>
-                        <span style={{ fontSize: '14px' }}>{opt.text}</span>
+                        <div
+                            style={{ fontSize: '14px', flex: 1, minWidth: 0 }}
+                            dangerouslySetInnerHTML={{ __html: htmlEmpty(opt.text) ? `Option ${optionLabels[i]}` : opt.text }}
+                        />
                     </div>
                 );
             })}
@@ -82,9 +117,10 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
                     </button>
                 )}
             </div>
-            {showResult && quizData.explanation && (
+            {showResult && !htmlEmpty(quizData.explanation) && (
                 <div style={{ marginTop: '12px', padding: '10px 12px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '6px', fontSize: '13px', color: '#856404' }}> {/* design-lint-ignore: dynamic quiz explanation state — style prop */}
-                    <strong>Explanation:</strong> {quizData.explanation}
+                    <strong>Explanation:</strong>{' '}
+                    <span dangerouslySetInnerHTML={{ __html: quizData.explanation || '' }} />
                 </div>
             )}
         </div>
@@ -291,12 +327,9 @@ function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: 
 function InteractiveTabs({ tabsJson }: { tabsJson: string }) {
     const [activeTab, setActiveTab] = useState(0);
 
-    let tabs: Array<{ label: string; content: string }> = [];
-    try {
-        tabs = JSON.parse(tabsJson);
-    } catch { /* use empty */ }
+    const tabs: Array<{ label: string; content: string }> = decodeBlockData(tabsJson, []);
 
-    if (tabs.length === 0) return null;
+    if (!Array.isArray(tabs) || tabs.length === 0) return null;
 
     return (
         <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', margin: '8px 0', overflow: 'hidden', background: '#fafafa' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
@@ -320,8 +353,139 @@ function InteractiveTabs({ tabsJson }: { tabsJson: string }) {
                     </div>
                 ))}
             </div>
-            <div style={{ padding: '16px', fontSize: '14px', lineHeight: 1.6, color: '#333', whiteSpace: 'pre-wrap' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
-                {tabs[activeTab]?.content || ''}
+            {/* Tab content is rich-text HTML from the admin editor. The
+                "inline-quiz" class reuses the same list/paragraph/image resets so
+                authored bullets/numbers render past the document's list reset. */}
+            <div className="inline-quiz" style={{ padding: '16px', fontSize: '14px', lineHeight: 1.6, color: '#333' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
+                <div dangerouslySetInnerHTML={{ __html: tabs[activeTab]?.content || '' }} />
+            </div>
+        </div>
+    );
+}
+
+/** Live, interactive Table of Contents for the learner side. The admin
+ *  serializer can only emit a static placeholder (it can't read the document at
+ *  serialize time), so we rebuild the outline here from the document's headings.
+ *  Interactions: click to smooth-scroll to a section, plus a scroll-spy that
+ *  highlights the section currently on screen. Colours follow the institute
+ *  theme (--primary-* scale). */
+function InteractiveToc({
+    headings,
+    onNavigate,
+    containerRef,
+}: {
+    headings: Array<{ level: 1 | 2 | 3; text: string; anchor: number }>;
+    onNavigate: (anchor: number) => void;
+    containerRef: React.RefObject<HTMLDivElement>;
+}) {
+    const [activeAnchor, setActiveAnchor] = useState<number | null>(
+        headings.length > 0 ? headings[0]!.anchor : null
+    );
+
+    // Scroll-spy: highlight the heading the learner is currently reading — the
+    // lowest one whose top has scrolled above a small offset line near the top
+    // of the viewport. Recomputed on scroll (capture:true also catches nested
+    // scroll containers) and nudged by an IntersectionObserver.
+    useEffect(() => {
+        const root = containerRef.current;
+        if (!root || headings.length === 0) return;
+        const OFFSET = 120;
+        const els = headings
+            .map((h) => root.querySelector(`[data-toc-anchor="${h.anchor}"]`) as HTMLElement | null)
+            .filter((el): el is HTMLElement => el !== null);
+        if (els.length === 0) return;
+
+        const recompute = () => {
+            let active = Number(els[0]!.getAttribute('data-toc-anchor'));
+            for (const el of els) {
+                if (el.getBoundingClientRect().top - OFFSET <= 0) {
+                    active = Number(el.getAttribute('data-toc-anchor'));
+                } else {
+                    break; // els are in document order → first one below the line stops us
+                }
+            }
+            setActiveAnchor(active);
+        };
+
+        const observer = new IntersectionObserver(recompute, {
+            rootMargin: '-120px 0px -70% 0px',
+            threshold: 0,
+        });
+        els.forEach((el) => observer.observe(el));
+        window.addEventListener('scroll', recompute, { passive: true, capture: true });
+        recompute();
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('scroll', recompute, true);
+        };
+    }, [headings, containerRef]);
+
+    return (
+        <div style={{ border: '1px solid hsl(var(--primary-100))', borderRadius: '0.75rem', margin: '1.25rem 0', background: 'white', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', background: 'hsl(var(--primary-50))', borderBottom: '1px solid hsl(var(--primary-100))' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary-500))" strokeWidth="2" strokeLinecap="round">
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="7" y1="12" x2="21" y2="12" />
+                        <line x1="7" y1="18" x2="21" y2="18" />
+                        <circle cx="3" cy="12" r="1" fill="hsl(var(--primary-500))" />
+                        <circle cx="3" cy="18" r="1" fill="hsl(var(--primary-500))" />
+                    </svg>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'hsl(var(--primary-500))' }}>Table of Contents</span>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'hsl(var(--primary-500) / 0.7)', marginTop: '2px', marginLeft: '24px' }}>
+                    Tap a section to jump to it.
+                </div>
+            </div>
+            <div style={{ padding: '0.4rem' }}>
+                {headings.length === 0 ? (
+                    <div style={{ padding: '12px', textAlign: 'center', color: 'hsl(var(--primary-500) / 0.55)', fontSize: '0.9rem' }}>
+                        This document has no headings yet.
+                    </div>
+                ) : (
+                    headings.map((h) => {
+                        const isActive = h.anchor === activeAnchor;
+                        return (
+                            <button
+                                key={h.anchor}
+                                onClick={() => {
+                                    setActiveAnchor(h.anchor);
+                                    onNavigate(h.anchor);
+                                }}
+                                style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    textAlign: 'left',
+                                    border: 'none',
+                                    borderLeft: isActive
+                                        ? '3px solid hsl(var(--primary-500))'
+                                        : '3px solid transparent',
+                                    background: isActive ? 'hsl(var(--primary-50))' : 'transparent',
+                                    cursor: 'pointer',
+                                    padding: `0.34rem 0.75rem 0.34rem ${0.55 + (h.level - 1) * 1.05}rem`,
+                                    fontSize: h.level === 1 ? '1rem' : h.level === 2 ? '0.95rem' : '0.9rem',
+                                    fontWeight: isActive || h.level === 1 ? 600 : 400,
+                                    color: 'hsl(var(--primary-500))',
+                                    borderRadius: '0 0.375rem 0.375rem 0',
+                                    lineHeight: 1.7,
+                                    transition: 'background 0.15s ease, border-color 0.15s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                    if (!isActive)
+                                        (e.currentTarget as HTMLElement).style.background =
+                                            'hsl(var(--primary-50) / 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!isActive)
+                                        (e.currentTarget as HTMLElement).style.background = 'transparent';
+                                }}
+                            >
+                                {h.text}
+                            </button>
+                        );
+                    })
+                )}
             </div>
         </div>
     );
@@ -336,7 +500,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
     htmlContent,
     className = '',
 }) => {
-    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer'; content: string; meta?: Record<string, string> }>>([]);
+    const [sections, setSections] = useState<Array<{ type: 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer' | 'toc'; content: string; meta?: Record<string, string> }>>([]);
     // Current slide id (for persisting the learner's checkbox/checklist ticks)
     // and a ref over the rendered output so we can wire up todo-item clicks.
     const slideId = useContentStore((s) => s.activeItem?.id);
@@ -375,7 +539,12 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         if (!parent) continue;
                         const tag = (parent as Element).tagName;
                         if (tag === 'PRE' || tag === 'CODE' || tag === 'SCRIPT' || tag === 'STYLE') continue;
-                        if ((parent as Element).closest?.('pre')) continue;
+                        // Mermaid (<div class="mermaid">) and Yoopta custom blocks
+                        // (math latex, etc.) carry load-bearing multi-line code as
+                        // text content, read back via textContent — converting \n
+                        // to <br> here collapses it to one line and breaks the
+                        // diagram / formula on the learner. Skip them.
+                        if ((parent as Element).closest?.('pre, .mermaid, [data-yoopta-type]')) continue;
                         const parts = raw.split('\n');
                         const frag = document.createDocumentFragment();
                         parts.forEach((part, i) => {
@@ -486,6 +655,23 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             };
             convertTodoListsToCheckboxes(tempDiv);
 
+            // Build a live outline for any Table of Contents block. The admin TOC
+            // can't read the document at serialize time, so it ships a static
+            // placeholder; here we scan the rendered headings, tag each with a
+            // scroll anchor, and (below) swap the placeholder for a real clickable
+            // outline. Only runs when a TOC block is actually present.
+            const tocHeadings: Array<{ level: 1 | 2 | 3; text: string; anchor: number }> = [];
+            if (tempDiv.querySelector('div[data-yoopta-type="tableOfContents"]')) {
+                tempDiv.querySelectorAll('h1, h2, h3').forEach((h) => {
+                    const text = (h.textContent || '').trim();
+                    if (!text) return;
+                    const level = h.tagName === 'H1' ? 1 : h.tagName === 'H2' ? 2 : 3;
+                    const anchor = tocHeadings.length;
+                    h.setAttribute('data-toc-anchor', String(anchor));
+                    tocHeadings.push({ level: level as 1 | 2 | 3, text, anchor });
+                });
+            }
+
             // First, check for div.mermaid elements (most common pattern for mermaid)
             const mermaidDivs = tempDiv.querySelectorAll('div.mermaid');
 
@@ -495,7 +681,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
             // Also check raw HTML string for mermaid patterns
             const hasMermaidInHtml = /graph\s+TD|flowchart|sequenceDiagram|classDiagram|gantt|pie|erDiagram|journey/i.test(htmlContent);
 
-            type SectionType = 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer';
+            type SectionType = 'html' | 'mermaid' | 'code' | 'math' | 'quiz' | 'flashcard' | 'fillBlanks' | 'tabs' | 'pdfViewer' | 'toc';
             const newSections: Array<{ type: SectionType; content: string; meta?: Record<string, string> }> = [];
 
             // Mark special blocks in DOM
@@ -593,6 +779,17 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     element: div,
                     code: tabsJson,
                     type: 'tabs' as SectionType,
+                });
+            });
+
+            // Process Table of Contents blocks — render a live, clickable outline
+            // from the headings tagged above (replaces the static placeholder).
+            const tocDivs = tempDiv.querySelectorAll('div[data-yoopta-type="tableOfContents"]');
+            tocDivs.forEach((div) => {
+                specialBlocks.push({
+                    element: div,
+                    code: JSON.stringify(tocHeadings),
+                    type: 'toc' as SectionType,
                 });
             });
 
@@ -1066,6 +1263,148 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     margin: 0.25rem 0;
                 }
 
+                /* Accordion: Yoopta serializes each item as <details><summary>…</summary>.
+                   Rendered raw, the browser shows only a tiny ▶ disclosure triangle, so
+                   learners can't tell it's an expandable panel. Style it on-brand using the
+                   institute theme color (the --primary-* HSL scale set by ThemeProvider, so
+                   it follows each institute's theme code instead of a fixed hue): a card
+                   with a primary accent bar, hover lift, and a circular toggle button whose
+                   chevron flips + fills with the theme color when open. */
+                .document-with-mermaid details {
+                    position: relative;
+                    border: 1px solid hsl(var(--primary-100));
+                    border-radius: 0.75rem;
+                    margin: 1.25rem 0;
+                    background: #ffffff; /* design-lint-ignore: CSS-in-JS document theme */
+                    overflow: hidden;
+                    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); /* design-lint-ignore: CSS-in-JS document theme */
+                    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+                }
+                .document-with-mermaid details:hover {
+                    border-color: hsl(var(--primary-200));
+                    box-shadow: 0 6px 16px hsl(var(--primary-500) / 0.10);
+                }
+                /* Theme-colored accent bar down the left edge. */
+                .document-with-mermaid details::before {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    top: 0;
+                    bottom: 0;
+                    width: 0.25rem;
+                    background: linear-gradient(to bottom, hsl(var(--primary-400)), hsl(var(--primary-500)));
+                }
+                .document-with-mermaid details summary {
+                    list-style: none;
+                    cursor: pointer;
+                    position: relative;
+                    padding: 1rem 3.5rem 1rem 1.25rem;
+                    font-weight: 600;
+                    font-size: 1.0625rem;
+                    line-height: 1.5;
+                    color: #1e293b; /* design-lint-ignore: CSS-in-JS document theme */
+                    background: #ffffff; /* design-lint-ignore: CSS-in-JS document theme */
+                    user-select: none;
+                    transition: background 0.15s ease, color 0.15s ease;
+                }
+                .document-with-mermaid details summary::-webkit-details-marker {
+                    display: none;
+                }
+                .document-with-mermaid details summary:hover {
+                    background: hsl(var(--primary-50) / 0.5);
+                }
+                .document-with-mermaid details[open] summary {
+                    color: hsl(var(--primary-500));
+                    background: hsl(var(--primary-50));
+                    border-bottom: 1px solid hsl(var(--primary-100));
+                }
+                /* Circular toggle button background on the right. */
+                .document-with-mermaid details summary::before {
+                    content: '';
+                    position: absolute;
+                    right: 1rem;
+                    top: 50%;
+                    width: 1.85rem;
+                    height: 1.85rem;
+                    transform: translateY(-50%);
+                    border-radius: 9999px;
+                    background: hsl(var(--primary-50));
+                    transition: background 0.2s ease;
+                }
+                .document-with-mermaid details[open] summary::before {
+                    background: hsl(var(--primary-500));
+                }
+                /* Crisp SVG chevron centered in the toggle button; recolored via the mask
+                   + background-color so it flips from the theme color → its foreground
+                   (auto-contrast) when the circle fills on open. */
+                .document-with-mermaid details summary::after {
+                    content: '';
+                    position: absolute;
+                    right: 1.3rem;
+                    top: 50%;
+                    width: 1.25rem;
+                    height: 1.25rem;
+                    transform: translateY(-50%);
+                    background-color: hsl(var(--primary-500));
+                    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") center / 0.8rem no-repeat;
+                    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") center / 0.8rem no-repeat;
+                    transition: transform 0.25s ease, background-color 0.2s ease;
+                }
+                .document-with-mermaid details[open] summary::after {
+                    transform: translateY(-50%) rotate(180deg);
+                    background-color: hsl(var(--primary-foreground));
+                }
+                /* Accordion body — content paragraph(s), with a gentle reveal. */
+                .document-with-mermaid details > *:not(summary) {
+                    margin: 0;
+                    padding: 0.875rem 1.25rem 1.125rem;
+                    font-size: 1.0625rem;
+                    color: #374151; /* design-lint-ignore: CSS-in-JS document theme */
+                }
+                @keyframes accordionReveal {
+                    from { opacity: 0; transform: translateY(-4px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .document-with-mermaid details[open] > *:not(summary) {
+                    animation: accordionReveal 0.25s ease;
+                }
+
+                /* Inline quiz rich-text (Quill HTML): neutralise the heavy document
+                   paragraph/list styling so authored questions/options render
+                   compactly and native list markers show. */
+                .document-with-mermaid .inline-quiz p {
+                    margin: 0 0 0.35rem;
+                    font-size: inherit;
+                    color: inherit;
+                    line-height: 1.5;
+                }
+                .document-with-mermaid .inline-quiz p:last-child {
+                    margin-bottom: 0;
+                }
+                .document-with-mermaid .inline-quiz ul {
+                    list-style: disc outside;
+                    margin: 0.25rem 0;
+                    padding-left: 1.4rem;
+                }
+                .document-with-mermaid .inline-quiz ol {
+                    list-style: decimal outside;
+                    margin: 0.25rem 0;
+                    padding-left: 1.4rem;
+                }
+                .document-with-mermaid .inline-quiz li {
+                    display: list-item;
+                    margin: 0.1rem 0;
+                    padding-left: 0;
+                    font-size: inherit;
+                }
+                .document-with-mermaid .inline-quiz li::before {
+                    content: none;
+                }
+                .document-with-mermaid .inline-quiz img {
+                    max-width: 100%;
+                    height: auto;
+                }
+
                 /* Mobile responsiveness */
                 @media (min-width: 640px) {
                     .document-with-mermaid h1 { font-size: 2.25rem; padding-bottom: 1rem; }
@@ -1138,6 +1477,31 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         <InteractiveTabs
                             key={`tabs-${index}`}
                             tabsJson={section.content}
+                        />
+                    );
+                } else if (section.type === 'toc') {
+                    let tocHeadingsParsed: Array<{ level: 1 | 2 | 3; text: string; anchor: number }> = [];
+                    try { tocHeadingsParsed = JSON.parse(section.content); } catch { /* empty */ }
+                    return (
+                        <InteractiveToc
+                            key={`toc-${index}`}
+                            headings={tocHeadingsParsed}
+                            containerRef={containerRef}
+                            onNavigate={(anchor) => {
+                                const el = containerRef.current?.querySelector(
+                                    `[data-toc-anchor="${anchor}"]`
+                                ) as HTMLElement | null;
+                                if (!el) return;
+                                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                // Brief flash on the target heading so the learner
+                                // clearly sees where they landed after the scroll.
+                                el.style.transition = 'background-color 0.3s ease';
+                                el.style.backgroundColor = 'hsl(var(--primary-50))';
+                                el.style.borderRadius = '0.375rem';
+                                window.setTimeout(() => {
+                                    el.style.backgroundColor = 'transparent';
+                                }, 900);
+                            }}
                         />
                     );
                 } else if (section.type === 'pdfViewer') {

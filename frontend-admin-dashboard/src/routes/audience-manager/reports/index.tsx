@@ -11,10 +11,15 @@ export const REPORT_TABS = [
     'funnel',
     'dispositions',
     'calling',
+    'call-log',
     'activity',
     'followups',
     'counsellors',
     'manager',
+    'revenue',
+    'cohort',
+    'forecast',
+    'custom',
 ] as const;
 
 export type ReportTab = (typeof REPORT_TABS)[number];

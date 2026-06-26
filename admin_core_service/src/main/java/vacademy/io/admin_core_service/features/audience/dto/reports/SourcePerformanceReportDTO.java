@@ -22,7 +22,8 @@ import java.util.List;
  *   interested      — leads with ≥1 in-window status transition into an "interested" status key
  *   won             — leads whose profile converted in-window (conversion_status = 'CONVERTED')
  *   conversion_rate — won / leads as a 0–100 percentage (null when leads = 0)
- *   spend / cpl / roi — Wave 2/3 (ad-spend ingestion); always null in Wave 1
+ *   revenue         — PAID revenue (created_at in-window) from this source's converted leads
+ *   spend / cpl / roi — Wave 2/3 (ad-spend ingestion); always null until spend tracking ships
  */
 @Data
 @NoArgsConstructor
@@ -47,6 +48,8 @@ public class SourcePerformanceReportDTO {
         private long interested;
         private long won;
         private Double conversionRate; // % 0–100, one decimal; null when leads = 0
+        /** PAID revenue from this source's converted leads, in-window (institute currency). */
+        private double revenue;
         private Double spend;          // Wave 2 — always null for now
         private Double cpl;            // Wave 2 — always null for now
         private Double roi;            // Wave 3 — always null for now

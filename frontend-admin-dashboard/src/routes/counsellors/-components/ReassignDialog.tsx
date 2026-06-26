@@ -203,8 +203,8 @@ export function ReassignDialog({
                     {markInactive && (
                         <p className="mt-1 text-caption text-neutral-500">
                             {openLeads.length === 0
-                                ? `${fromUserName ?? 'They'} have no open leads — confirming will just take them offline.`
-                                : `Reassign their ${openLeads.length} open lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
+                                ? `${fromUserName ?? 'They'} have no leads — confirming will just take them offline.`
+                                : `Reassign their ${openLeads.length} lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
                         </p>
                     )}
                 </DialogHeader>

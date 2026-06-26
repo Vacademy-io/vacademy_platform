@@ -28,7 +28,7 @@ import type {
   TestCaseResult,
   Verdict,
 } from "./types";
-import { runCode, runTestCase } from "./executor";
+import { runCode, runTestCase, effectiveAccepted } from "./executor";
 import { preloadPyodide, isPyodideReady } from "../code-slide-utils.";
 import { SessionTimer } from "./SessionTimer";
 import { SubmissionHistory } from "./SubmissionHistory";
@@ -238,7 +238,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             code,
             language,
             tc.stdin,
-            tc.expectedStdout,
+            effectiveAccepted(tc),
             {
               cpuSeconds: question.perRunLimits.cpuSeconds,
               memoryKb: question.perRunLimits.memoryKb,
@@ -251,6 +251,8 @@ export function QuestionModeView({ question, slideId }: Props) {
             passed: r.passed,
             stdout: r.stdout,
             expected: tc.expectedStdout,
+            matchedIndex: r.matchedIndex,
+            acceptedCount: r.acceptedCount,
             stderr: r.stderr,
             timeMs: r.timeMs,
             memoryKb: r.memoryKb,
@@ -304,7 +306,7 @@ export function QuestionModeView({ question, slideId }: Props) {
       let hadError = false;
       try {
         for (const tc of question.testCases) {
-          const r = await runTestCase(code, language, tc.stdin, tc.expectedStdout, {
+          const r = await runTestCase(code, language, tc.stdin, effectiveAccepted(tc), {
             cpuSeconds: question.perRunLimits.cpuSeconds,
             memoryKb: question.perRunLimits.memoryKb,
           });
@@ -318,6 +320,8 @@ export function QuestionModeView({ question, slideId }: Props) {
             passed: r.passed,
             stdout: r.stdout,
             expected: tc.expectedStdout,
+            matchedIndex: r.matchedIndex,
+            acceptedCount: r.acceptedCount,
             stderr: r.stderr,
             timeMs: r.timeMs,
             memoryKb: r.memoryKb,
@@ -783,13 +787,24 @@ export function QuestionModeView({ question, slideId }: Props) {
                     </div>
                     {r.visible &&
                       (r.passed ? (
-                        <pre className="overflow-auto rounded bg-white p-1 font-mono text-2xs">
-                          {r.stdout || "(empty)"}
-                        </pre>
+                        <>
+                          <pre className="overflow-auto rounded bg-white p-1 font-mono text-2xs">
+                            {r.stdout || "(empty)"}
+                          </pre>
+                          {(r.acceptedCount ?? 1) > 1 &&
+                            r.matchedIndex != null &&
+                            r.matchedIndex >= 0 && (
+                              <div className="mt-0.5 text-3xs text-green-700">
+                                Matched accepted output {r.matchedIndex + 1} of{" "}
+                                {r.acceptedCount}
+                              </div>
+                            )}
+                        </>
                       ) : (
                         <OutputDiff
                           actual={r.stdout ?? ""}
                           expected={r.expected ?? ""}
+                          acceptedCount={r.acceptedCount}
                         />
                       ))}
                     {r.stderr && (
@@ -843,6 +858,15 @@ export function QuestionModeView({ question, slideId }: Props) {
                             <pre className="overflow-auto rounded bg-gray-50 p-1 font-mono text-2xs">
                               {tc.expectedStdout || "(empty)"}
                             </pre>
+                            {(tc.acceptedOutputs?.length ?? 0) > 1 && (
+                              <div className="mt-0.5 text-3xs text-gray-500">
+                                +{(tc.acceptedOutputs?.length ?? 1) - 1} more
+                                accepted output
+                                {(tc.acceptedOutputs?.length ?? 1) - 1 === 1
+                                  ? ""
+                                  : "s"}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>

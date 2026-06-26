@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { runTestCase } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/coding-question/executor";
+import { runTestCase, effectiveAccepted } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/coding-question/executor";
 import { LANGUAGE_REGISTRY } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/coding-question/language-registry";
 import {
     preloadPyodide,
@@ -166,7 +166,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
             let errored = false;
             let timedOut = false;
             for (const tc of tests) {
-                const r = await runTestCase(code, language, tc.stdin, tc.expectedStdout, {
+                const r = await runTestCase(code, language, tc.stdin, effectiveAccepted(tc), {
                     cpuSeconds,
                     memoryKb,
                 });

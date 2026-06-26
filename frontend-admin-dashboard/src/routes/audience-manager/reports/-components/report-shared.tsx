@@ -54,6 +54,44 @@ export function fmtNumber(n: number | null | undefined): string {
     return n.toLocaleString();
 }
 
+/**
+ * Money formatter for the revenue reports. Uses Intl currency formatting when a
+ * valid ISO code is supplied; falls back to a plain grouped number otherwise.
+ * Em-dash for null/NaN. Fractional digits collapse to 0 for whole amounts.
+ */
+export function fmtCurrency(n: number | null | undefined, currency?: string | null): string {
+    if (n == null || Number.isNaN(n)) return '—';
+    const fractionDigits = Number.isInteger(n) ? 0 : 2;
+    try {
+        if (currency) {
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency,
+                maximumFractionDigits: fractionDigits,
+                minimumFractionDigits: 0,
+            }).format(n);
+        }
+    } catch {
+        // Invalid currency code — fall through to plain number.
+    }
+    return n.toLocaleString(undefined, { maximumFractionDigits: fractionDigits });
+}
+
+/** Compact money for tight spots ("₹1.2L"-style via Intl compact notation). */
+export function fmtCurrencyCompact(n: number | null | undefined, currency?: string | null): string {
+    if (n == null || Number.isNaN(n)) return '—';
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: currency ? 'currency' : 'decimal',
+            currency: currency ?? undefined,
+            notation: 'compact',
+            maximumFractionDigits: 1,
+        }).format(n);
+    } catch {
+        return n.toLocaleString();
+    }
+}
+
 /** Days with one decimal ("3.5d"); em-dash when unknown. */
 export function fmtDays(d: number | null | undefined): string {
     if (d == null || Number.isNaN(d)) return '—';

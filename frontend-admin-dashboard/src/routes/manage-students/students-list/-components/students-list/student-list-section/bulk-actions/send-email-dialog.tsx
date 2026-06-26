@@ -34,10 +34,60 @@ import type { MessageTemplate } from '@/types/message-template-types';
 import { bulkEmailService, type BulkEmailResult } from '@/services/bulkEmailService';
 import { useDialogStore } from '../../../../-hooks/useDialogStore';
 
-// Two-step compose flow modelled on the audience-manager SendMessageDialog, but
+// Multi-step compose flow modelled on the audience-manager SendMessageDialog, but
 // email-only and wired to bulkEmailService so it targets the *selected* students
 // (with automatic per-student variable enrichment) rather than a saved audience.
-const STEP_TITLES = ['Compose Email', 'Review & Send'];
+const STEP_TITLES = ['Compose Email', 'Map Variables', 'Review & Send'];
+
+// Student fields a {{placeholder}} can be mapped to. The value after `field:` is the
+// canonical variable name that bulkEmailService auto-resolves per recipient on send.
+const STUDENT_FIELDS: { value: string; label: string }[] = [
+    { value: 'field:name', label: 'Full Name' },
+    { value: 'field:email', label: 'Email' },
+    { value: 'field:mobile_number', label: 'Mobile Number' },
+    { value: 'field:username', label: 'Username' },
+    { value: 'field:enrollment_number', label: 'Enrollment Number' },
+    { value: 'field:registration_date', label: 'Registration Date' },
+    { value: 'field:student_referral_code', label: 'Referral Code' },
+    { value: 'field:course_name', label: 'Course Name' },
+    { value: 'field:batch_name', label: 'Batch Name' },
+    { value: 'field:batch_start_date', label: 'Batch Start Date' },
+    { value: 'field:batch_end_date', label: 'Batch End Date' },
+    { value: 'field:institute_name', label: 'Institute Name' },
+    { value: 'field:institute_email', label: 'Institute Email' },
+    { value: 'field:institute_phone', label: 'Institute Phone' },
+    { value: 'field:attendance_percentage', label: 'Attendance %' },
+    { value: 'field:attendance_attended_classes', label: 'Classes Attended' },
+    { value: 'field:attendance_total_classes', label: 'Total Classes' },
+    { value: 'field:current_date', label: 'Current Date' },
+    { value: 'field:support_email', label: 'Support Email' },
+];
+
+// Pull unique {{placeholder}} keys out of a string.
+function extractPlaceholders(text: string): string[] {
+    const matches = text.match(/\{\{(\w+)\}\}/g);
+    if (!matches) return [];
+    return [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '')))];
+}
+
+// Rewrite a template by applying the variable mapping:
+//  - field:<var>  -> {{<var>}}  (a canonical name bulkEmailService resolves per student)
+//  - static:<txt> -> the literal text
+//  - unmapped     -> left as-is (standard names like {{name}} still auto-resolve)
+function applyMapping(text: string, mapping: Record<string, string>): string {
+    return text.replace(/\{\{(\w+)\}\}/g, (full, key) => {
+        const v = mapping[key];
+        if (!v) return full;
+        if (v.startsWith('static:')) return v.slice('static:'.length);
+        if (v.startsWith('field:')) return `{{${v.slice('field:'.length)}}}`;
+        return full;
+    });
+}
+
+const fieldLabel = (val: string): string => {
+    if (val.startsWith('static:')) return `Static: "${val.slice('static:'.length)}"`;
+    return STUDENT_FIELDS.find((o) => o.value === val)?.label ?? val;
+};
 
 export const SendEmailDialog = () => {
     const { isSendEmailOpen, bulkActionInfo, selectedStudent, isBulkAction, closeAllDialogs } =
@@ -57,9 +107,22 @@ export const SendEmailDialog = () => {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
     const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
 
+    // Variable mapping ({{placeholder}} -> field:<var> | static:<text>)
+    const [variableMapping, setVariableMapping] = useState<Record<string, string>>({});
+
     // Send state
     const [isSending, setIsSending] = useState(false);
     const [sendResult, setSendResult] = useState<BulkEmailResult | null>(null);
+
+    // Placeholders present across subject + body (drives the mapping step)
+    const variableKeys = useMemo(
+        () => extractPlaceholders(`${subject} ${body}`),
+        [subject, body]
+    );
+
+    const handleMappingChange = useCallback((varKey: string, fieldValue: string) => {
+        setVariableMapping((prev) => ({ ...prev, [varKey]: fieldValue }));
+    }, []);
 
     // -----------------------------------------------------------------------
     // Recipients (only students that actually have an email address)
@@ -93,6 +156,7 @@ export const SendEmailDialog = () => {
             setBodyView('edit');
             setSelectedTemplateId('custom');
             setLoadingTemplateContent(false);
+            setVariableMapping({});
             setIsSending(false);
             setSendResult(null);
         }
@@ -125,6 +189,8 @@ export const SendEmailDialog = () => {
     // -----------------------------------------------------------------------
     const handleTemplateSelect = useCallback(async (templateId: string) => {
         setSelectedTemplateId(templateId);
+        // Placeholders change with the template, so drop any prior mapping.
+        setVariableMapping({});
 
         if (templateId === 'custom') {
             setSubject('');
@@ -150,7 +216,18 @@ export const SendEmailDialog = () => {
     // -----------------------------------------------------------------------
     // Navigation
     // -----------------------------------------------------------------------
-    const canProceed = subject.trim() !== '' && body.trim() !== '' && recipients.length > 0;
+    const canProceed = useMemo(() => {
+        switch (step) {
+            case 1:
+                return subject.trim() !== '' && body.trim() !== '' && recipients.length > 0;
+            case 2:
+                // Mapping is optional, but a "Static value…" row left empty would send a
+                // blank — block until the user types something (or picks a field).
+                return !Object.values(variableMapping).some((v) => v === 'static:');
+            default:
+                return true;
+        }
+    }, [step, subject, body, recipients.length, variableMapping]);
 
     const handleClose = useCallback(
         (open: boolean) => {
@@ -171,9 +248,12 @@ export const SendEmailDialog = () => {
         }
         setIsSending(true);
         try {
+            // Resolve mapped placeholders to canonical variables / static text first.
+            const finalSubject = applyMapping(subject, variableMapping).trim();
+            const finalBody = applyMapping(body, variableMapping).trim();
             const result = await bulkEmailService.sendBulkEmail({
-                template: body.trim(),
-                subject: subject.trim(),
+                template: finalBody,
+                subject: finalSubject,
                 students: recipients,
                 context: 'student-management',
                 notificationType: 'EMAIL',
@@ -203,7 +283,7 @@ export const SendEmailDialog = () => {
         } finally {
             setIsSending(false);
         }
-    }, [recipients, body, subject]);
+    }, [recipients, body, subject, variableMapping]);
 
     // -----------------------------------------------------------------------
     // Step indicator
@@ -327,8 +407,9 @@ export const SendEmailDialog = () => {
                     </TabsContent>
                 </Tabs>
                 <p className="text-xs text-muted-foreground">
-                    Placeholders like <code className="font-mono">{'{{name}}'}</code> are replaced
-                    per-recipient on send (name, course, batch, attendance &amp; more).
+                    Use placeholders like <code className="font-mono">{'{{name}}'}</code> — you can
+                    map them to student fields (course, batch, attendance &amp; more) in the next
+                    step.
                 </p>
             </div>
 
@@ -348,7 +429,91 @@ export const SendEmailDialog = () => {
     );
 
     // -----------------------------------------------------------------------
-    // Step 2: review / result
+    // Step 2: variable mapping
+    // -----------------------------------------------------------------------
+    const renderVariableMapping = () => {
+        if (variableKeys.length === 0) {
+            return (
+                <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <CheckCircle className="size-8" />
+                    <p className="text-sm">No variables to map. You can proceed.</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="space-y-1">
+                <p className="mb-3 text-sm text-muted-foreground">
+                    Map each placeholder to a student field, or set a fixed value. Standard names
+                    you leave unmapped (e.g. <code className="font-mono">{'{{name}}'}</code>) still
+                    resolve automatically.
+                </p>
+                <div className="rounded-md border">
+                    <div className="grid grid-cols-2 gap-4 border-b bg-muted/40 px-4 py-2 text-xs font-semibold text-muted-foreground">
+                        <span>Variable</span>
+                        <span>Mapped Field</span>
+                    </div>
+                    {variableKeys.map((varKey) => {
+                        const currentValue = variableMapping[varKey] ?? '';
+                        const isStatic = currentValue.startsWith('static:');
+                        const selectValue = isStatic ? '__static__' : currentValue;
+                        const staticText = isStatic
+                            ? currentValue.substring('static:'.length)
+                            : '';
+
+                        return (
+                            <div
+                                key={varKey}
+                                className="grid grid-cols-2 items-center gap-4 border-b px-4 py-2 last:border-b-0"
+                            >
+                                <span className="rounded bg-muted px-2 py-1 font-mono text-sm">
+                                    {`{{${varKey}}}`}
+                                </span>
+                                <div className="flex flex-col gap-2">
+                                    <Select
+                                        value={selectValue}
+                                        onValueChange={(val) =>
+                                            handleMappingChange(
+                                                varKey,
+                                                val === '__static__' ? 'static:' : val
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select field..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__static__">Static value…</SelectItem>
+                                            {STUDENT_FIELDS.map((opt) => (
+                                                <SelectItem key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {isStatic && (
+                                        <Input
+                                            value={staticText}
+                                            onChange={(e) =>
+                                                handleMappingChange(
+                                                    varKey,
+                                                    `static:${e.target.value}`
+                                                )
+                                            }
+                                            placeholder='e.g. "Student"'
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    };
+
+    // -----------------------------------------------------------------------
+    // Step 3: review / result
     // -----------------------------------------------------------------------
     const renderReview = () => {
         if (sendResult) {
@@ -428,6 +593,27 @@ export const SendEmailDialog = () => {
                             )}
                         </p>
                     </div>
+                    {variableKeys.some((k) => variableMapping[k]) && (
+                        <div className="border-t pt-3">
+                            <p className="mb-2 text-xs text-muted-foreground">Variable Mappings</p>
+                            <div className="space-y-1">
+                                {variableKeys
+                                    .filter((k) => variableMapping[k])
+                                    .map((varKey) => (
+                                        <div
+                                            key={varKey}
+                                            className="flex items-center gap-2 text-xs"
+                                        >
+                                            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">
+                                                {`{{${varKey}}}`}
+                                            </span>
+                                            <CaretRight className="size-3 text-muted-foreground" />
+                                            <span>{fieldLabel(variableMapping[varKey] ?? '')}</span>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <Button className="w-full" onClick={handleSend} disabled={isSending}>
@@ -461,7 +647,8 @@ export const SendEmailDialog = () => {
                 {renderStepIndicator()}
 
                 {step === 1 && renderCompose()}
-                {step === 2 && renderReview()}
+                {step === 2 && renderVariableMapping()}
+                {step === 3 && renderReview()}
 
                 {/* Footer navigation (hidden once a result is shown) */}
                 {!sendResult && (
@@ -480,7 +667,7 @@ export const SendEmailDialog = () => {
                             )}
                         </div>
                         <div>
-                            {step < 2 && (
+                            {step < 3 && (
                                 <Button
                                     size="sm"
                                     onClick={() => setStep((s) => s + 1)}

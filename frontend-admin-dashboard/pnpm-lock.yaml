@@ -9,7 +9,7 @@ overrides:
 
 patchedDependencies:
   '@radix-ui/react-select@2.2.5':
-    hash: enxjotynmjbx4bwtp7yojtejoa
+    hash: c82ebbf31f9b961dce52b75bdeb703852ddf4a1ecea0b96b284218f0c1c07f23
     path: patches/@radix-ui__react-select@2.2.5.patch
 
 importers:
@@ -153,7 +153,7 @@ importers:
         version: 1.2.9(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-select':
         specifier: ^2.1.4
-        version: 2.2.5(patch_hash=enxjotynmjbx4bwtp7yojtejoa)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 2.2.5(patch_hash=c82ebbf31f9b961dce52b75bdeb703852ddf4a1ecea0b96b284218f0c1c07f23)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@radix-ui/react-separator':
         specifier: ^1.1.1
         version: 1.1.7(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -3174,6 +3174,7 @@ packages:
   '@oxc-parser/binding-darwin-arm64@0.112.0':
     resolution: {integrity: sha512-fh6/KQL/cbH5DukT3VkdCqnULLuvVnszVKySD5IgSE0WZb32YZo/cPsPdEv052kk6w3N4agu+NTiMnZjcvhUIg==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
     os: [darwin]
 
   '@pdf-lib/standard-fonts@1.0.0':
@@ -17980,7 +17981,7 @@ snapshots:
       '@types/react': 18.3.23
       '@types/react-dom': 19.0.4(@types/react@18.3.23)
 
-  '@radix-ui/react-select@2.2.5(patch_hash=enxjotynmjbx4bwtp7yojtejoa)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@radix-ui/react-select@2.2.5(patch_hash=c82ebbf31f9b961dce52b75bdeb703852ddf4a1ecea0b96b284218f0c1c07f23)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@radix-ui/number': 1.1.1
       '@radix-ui/primitive': 1.1.2
@@ -21001,7 +21002,7 @@ snapshots:
       '@codemirror/lang-yaml': 6.1.2
       '@codemirror/legacy-modes': 6.5.1
       '@codemirror/theme-one-dark': 6.1.3
-      '@radix-ui/react-select': 2.2.5(patch_hash=enxjotynmjbx4bwtp7yojtejoa)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-select': 2.2.5(patch_hash=c82ebbf31f9b961dce52b75bdeb703852ddf4a1ecea0b96b284218f0c1c07f23)(@types/react-dom@19.0.4(@types/react@18.3.23))(@types/react@18.3.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@uiw/codemirror-extensions-basic-setup': 4.24.1(@codemirror/autocomplete@6.18.6)(@codemirror/commands@6.8.1)(@codemirror/language@6.11.2)(@codemirror/lint@6.8.5)(@codemirror/search@6.5.11)(@codemirror/state@6.5.2)(@codemirror/view@6.38.1)
       '@uiw/codemirror-theme-basic': 4.24.1(@codemirror/language@6.11.2)(@codemirror/state@6.5.2)(@codemirror/view@6.38.1)
       '@uiw/codemirror-theme-copilot': 4.24.1(@codemirror/language@6.11.2)(@codemirror/state@6.5.2)(@codemirror/view@6.38.1)

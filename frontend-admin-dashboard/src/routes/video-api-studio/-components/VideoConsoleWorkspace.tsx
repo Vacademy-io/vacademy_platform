@@ -689,12 +689,64 @@ export function VideoConsoleWorkspace({
                             `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                     );
                 } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                    // COMPLETED without html_url. Two signals determine activity:
-                    // 1. Stage-based: pre-HTML stages COMPLETED = sub-stage finished, pipeline transitioning.
-                    // 2. Progress-based: generation_progress with sub_stage or shot data → still running.
+                    // A review-mode run (target_stage=SCRIPT) parks HERE on purpose
+                    // once the screenplay is written: the backend marks SCRIPT
+                    // COMPLETED with no html_url. Detect that FIRST — before any
+                    // "still transitioning" heuristic — because the backend leaves
+                    // generation_progress.sub_stage populated ("Shot plan + narration
+                    // ready…") after the stop, which would otherwise look like active
+                    // work and mask the review handoff (the bug that left review runs
+                    // spinning forever on the polling-fallback path).
+                    const wasReviewModeStop =
+                        pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT';
+
+                    if (wasReviewModeStop) {
+                        // Script artifact ready → drop straight into the editable
+                        // review UI (ScriptReview) instead of routing through History.
+                        if (scriptUrlFromStatus) {
+                            if (pollingRef.current) clearInterval(pollingRef.current);
+                            pollingRef.current = null;
+                            localStorage.removeItem(PENDING_GENERATION_KEY);
+                            setCurrentGeneration((prev) =>
+                                prev
+                                    ? {
+                                          ...prev,
+                                          stage: 'SCRIPT',
+                                          percentage: 100,
+                                          scriptUrl: scriptUrlFromStatus,
+                                          message: '',
+                                      }
+                                    : null
+                            );
+                            fetchScriptText(scriptUrlFromStatus)
+                                .then((text) => {
+                                    setReviewScript(text);
+                                    setConsoleState('reviewing');
+                                    toast.success('Script ready for review!');
+                                })
+                                .catch((err) => {
+                                    console.error('Failed to fetch script:', err);
+                                    toast.error('Failed to load script for review');
+                                    setConsoleState('idle');
+                                    setCurrentGeneration(null);
+                                });
+                            return;
+                        }
+                        // SCRIPT is COMPLETED but the script URL hasn't surfaced in
+                        // /status yet — keep polling (do NOT fall through to the
+                        // transition spinner, which would imply we're building visuals).
+                        setCurrentGeneration((prev) =>
+                            prev ? { ...prev, stage: 'SCRIPT', message: 'Finalizing script…' } : null
+                        );
+                        return;
+                    }
+
+                    // Non-review runs: COMPLETED without html_url means a pre-HTML
+                    // sub-stage finished and the pipeline is transitioning toward
+                    // visuals. Two activity signals: the stage bucket, or live
+                    // generation_progress (sub_stage / shots in flight).
                     const PRE_HTML_STAGES = new Set(['PENDING', 'SCRIPT', 'TTS', 'AUDIO', 'WORDS']);
-                    const stageIsTransitioning =
-                        PRE_HTML_STAGES.has(urls.current_stage) && pending.targetStage !== 'SCRIPT';
+                    const stageIsTransitioning = PRE_HTML_STAGES.has(urls.current_stage);
                     const progressSignalsActive =
                         genProg != null &&
                         (genProg.sub_stage != null || (genProg.shots_total ?? 0) > 0);
@@ -735,54 +787,15 @@ export function VideoConsoleWorkspace({
                         return;
                     }
 
-                    // Pipeline parked at SCRIPT for review-mode runs → auto-fetch the
-                    // script and transition straight into the reviewing UI instead of
-                    // forcing the user back through the History sidebar.
-                    const wasReviewModeStop =
-                        pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT';
-                    if (wasReviewModeStop && scriptUrlFromStatus) {
-                        if (pollingRef.current) clearInterval(pollingRef.current);
-                        pollingRef.current = null;
-                        localStorage.removeItem(PENDING_GENERATION_KEY);
-                        setCurrentGeneration((prev) =>
-                            prev
-                                ? {
-                                      ...prev,
-                                      stage: 'SCRIPT',
-                                      percentage: 100,
-                                      scriptUrl: scriptUrlFromStatus,
-                                      message: '',
-                                  }
-                                : null
-                        );
-                        fetchScriptText(scriptUrlFromStatus)
-                            .then((text) => {
-                                setReviewScript(text);
-                                setConsoleState('reviewing');
-                                toast.success('Script ready for review!');
-                            })
-                            .catch((err) => {
-                                console.error('Failed to fetch script:', err);
-                                toast.error('Failed to load script for review');
-                                setConsoleState('idle');
-                                setCurrentGeneration(null);
-                            });
-                        return;
-                    }
-
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     pollingRef.current = null;
                     localStorage.removeItem(PENDING_GENERATION_KEY);
                     setConsoleState('idle');
                     setCurrentGeneration(null);
-                    if (wasReviewModeStop) {
-                        toast.info('Script is ready. Open from History to review and continue.');
-                    } else {
-                        toast.error(
-                            urls.error_message ||
-                                `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
-                        );
-                    }
+                    toast.error(
+                        urls.error_message ||
+                            `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
+                    );
                 } else {
                     // Still IN_PROGRESS — update stage + sub-stage progress from DB.
                     // When shots are in flight, override stage to HTML even if the urls

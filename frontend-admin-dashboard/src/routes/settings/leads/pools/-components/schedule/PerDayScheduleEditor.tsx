@@ -151,13 +151,16 @@ export default function PerDayScheduleEditor({ pool }: Props) {
     const updateShift = (day: DayOfWeek, idx: number, patch: Partial<EditableShift>) =>
         updateDay(day, (shifts) => shifts.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
 
+    // Shift-aware ROUND_ROBIN defines assignment windows, not 24/7 coverage —
+    // gaps (and empty days) are allowed; outside a window leads stay unassigned.
+    const allowGaps = pool.assignment_mode === 'ROUND_ROBIN' && !!pool.shift_aware;
     const dayValidations = useMemo(() => {
         const out: Record<DayOfWeek, ReturnType<typeof validateDayCoverage>> = {} as never;
         for (const day of DAYS_OF_WEEK) {
-            out[day] = validateDayCoverage(schedule[day]);
+            out[day] = validateDayCoverage(schedule[day], { allowGaps });
         }
         return out;
-    }, [schedule]);
+    }, [schedule, allowGaps]);
 
     const allValid = DAYS_OF_WEEK.every((d) => dayValidations[d].ok);
 
@@ -229,13 +232,16 @@ export default function PerDayScheduleEditor({ pool }: Props) {
                 <CardHeader>
                     <CardTitle>Coverage Status</CardTitle>
                     <CardDescription>
-                        Each day must cover 00:00–23:59 with no gaps, and every shift must have
-                        at least one counsellor.
+                        {allowGaps
+                            ? 'Define each day’s assignment window(s). Leads arriving outside these windows (or on days with no shift) are left unassigned. Every shift must have at least one counsellor.'
+                            : 'Each day must cover 00:00–23:59 with no gaps, and every shift must have at least one counsellor.'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {allValid ? (
-                        <p className="text-sm text-green-700">✓ All 7 days are valid</p>
+                        <p className="text-sm text-green-700">
+                            {allowGaps ? '✓ All shifts valid' : '✓ All 7 days are valid'}
+                        </p>
                     ) : (
                         <ul className="space-y-1 text-sm text-red-700">
                             {DAYS_OF_WEEK.filter((d) => !dayValidations[d].ok).map((d) => (

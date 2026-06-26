@@ -109,7 +109,10 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
     const updateBlock = (idx: number, patch: Partial<EditableShift>) =>
         updateTemplate((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
 
-    const validation = useMemo(() => validateTemplate(template), [template]);
+    // Shift-aware ROUND_ROBIN defines assignment windows, not 24/7 coverage —
+    // gaps are allowed (outside a window, leads stay unassigned).
+    const allowGaps = pool.assignment_mode === 'ROUND_ROBIN' && !!pool.shift_aware;
+    const validation = useMemo(() => validateTemplate(template, allowGaps), [template, allowGaps]);
 
     const handleSave = () => {
         if (!validation.ok) {
@@ -179,14 +182,16 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
                 <CardHeader>
                     <CardTitle>Coverage Status</CardTitle>
                     <CardDescription>
-                        Define blocks that tile 24 hours. The same set of blocks is applied to
-                        Monday through Sunday. Blocks crossing midnight (e.g. 18:00–09:00) are
-                        allowed.
+                        {allowGaps
+                            ? 'Define the assignment window(s). The same set is applied to Monday through Sunday. Leads arriving outside these windows are left unassigned. Blocks crossing midnight (e.g. 18:00–09:00) are allowed.'
+                            : 'Define blocks that tile 24 hours. The same set of blocks is applied to Monday through Sunday. Blocks crossing midnight (e.g. 18:00–09:00) are allowed.'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     {validation.ok ? (
-                        <p className="text-sm text-green-700">✓ 24h covered, all blocks valid</p>
+                        <p className="text-sm text-green-700">
+                            {allowGaps ? '✓ All blocks valid' : '✓ 24h covered, all blocks valid'}
+                        </p>
                     ) : (
                         <ul className="space-y-1 text-sm text-red-700">
                             {validation.coverageErrors.map((e, i) => (
@@ -255,7 +260,7 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
 
 // ─── Validation ────────────────────────────────────────────────────────────
 
-function validateTemplate(template: EditableShift[]): {
+function validateTemplate(template: EditableShift[], allowGaps: boolean): {
     ok: boolean;
     coverageErrors: string[];
     shiftErrors: ShiftError[];
@@ -276,9 +281,10 @@ function validateTemplate(template: EditableShift[]): {
     }
 
     // Reuse the per-day coverage validator on the midnight-expanded view.
-    // It checks gaps and "first block must start at 00:00" / "must reach 23:59:59".
+    // For full coverage it checks gaps and "00:00 → 23:59:59"; with allowGaps
+    // (shift-aware round-robin) it only validates the blocks themselves.
     const expanded = expandOvernight(template);
-    const { coverageErrors } = validateDayCoverage(expanded);
+    const { coverageErrors } = validateDayCoverage(expanded, { allowGaps });
 
     return {
         ok: coverageErrors.length === 0 && shiftErrors.length === 0,

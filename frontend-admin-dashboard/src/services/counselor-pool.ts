@@ -93,6 +93,8 @@ export interface CounselorPoolDTO {
     assignment_mode: AssignmentMode;
     /** PER_DAY | SAME_HOURS_ALL_DAYS — drives which Schedule editor renders. */
     schedule_pattern?: SchedulePattern;
+    /** ROUND_ROBIN opt-in: rotate only among counsellors on shift right now. */
+    shift_aware?: boolean;
     created_by?: string;
     created_at?: string;
     updated_at?: string;
@@ -108,6 +110,8 @@ export interface CreatePoolRequest {
     assignment_mode: AssignmentMode;
     /** Optional: defaults to PER_DAY on the backend. */
     schedule_pattern?: SchedulePattern;
+    /** Optional ROUND_ROBIN opt-in: gate rotation to on-shift counsellors. */
+    shift_aware?: boolean;
     audience_ids?: string[];
     counselor_user_ids?: string[];
 }
@@ -121,6 +125,8 @@ export interface UpdatePoolRequest {
      * Admin must clear the schedule (delete all shifts) before switching.
      */
     schedule_pattern?: SchedulePattern;
+    /** ROUND_ROBIN opt-in: gate rotation to on-shift counsellors. Omit to leave unchanged. */
+    shift_aware?: boolean;
 }
 
 export interface UpdateMemberStatusRequest {

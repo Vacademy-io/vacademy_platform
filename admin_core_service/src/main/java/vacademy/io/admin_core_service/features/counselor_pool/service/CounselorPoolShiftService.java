@@ -6,8 +6,10 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.PoolShiftDTO;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.PoolShiftMemberDTO;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.WeeklyScheduleRequest;
+import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolShift;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolShiftMember;
+import vacademy.io.admin_core_service.features.counselor_pool.enums.AssignmentMode;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.PoolStatus;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.ShiftDayOfWeek;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolRepository;
@@ -20,11 +22,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Shift schedule management for a pool. Only relevant when the pool's
- * assignment_mode = TIME_BASED.
+ * Shift schedule management for a pool. Relevant for TIME_BASED pools and for
+ * ROUND_ROBIN pools that opted into shift-gating (shift_aware).
  *
  * The admin replaces the full weekly schedule at once via setWeeklySchedule.
- * Validation enforces 24/7 coverage across all 7 days before any write.
+ * TIME_BASED enforces 24/7 coverage across all 7 days before any write;
+ * shift-aware ROUND_ROBIN allows gaps (outside a window, leads stay
+ * unassigned) and validates only the individual blocks.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,14 +48,17 @@ public class CounselorPoolShiftService {
      */
     @Transactional
     public List<PoolShiftDTO> setWeeklySchedule(String poolId, WeeklyScheduleRequest request) {
-        if (!poolRepository.existsById(poolId)) {
-            throw new VacademyException("Pool not found: " + poolId);
-        }
+        CounselorPool pool = poolRepository.findById(poolId)
+                .orElseThrow(() -> new VacademyException("Pool not found: " + poolId));
         if (request == null || request.getShifts() == null || request.getShifts().isEmpty()) {
-            throw new VacademyException("Schedule must include shifts for all 7 days");
+            throw new VacademyException("Schedule must include at least one shift");
         }
 
-        validateScheduleCoverage(request.getShifts());
+        // TIME_BASED requires full 24/7 coverage (someone is always on shift). A
+        // shift-aware ROUND_ROBIN pool intentionally leaves gaps — outside its
+        // windows leads are left unassigned — so only the blocks are validated.
+        boolean requireFullCoverage = AssignmentMode.TIME_BASED.name().equals(pool.getAssignmentMode());
+        validateSchedule(request.getShifts(), requireFullCoverage);
 
         // Replace: delete all existing shifts (and their members), then insert new.
         List<CounselorPoolShift> existing = shiftRepository.findByPoolIdOrderByDayOfWeekAscStartTimeAsc(poolId);
@@ -113,10 +120,15 @@ public class CounselorPoolShiftService {
     // ────────────────────────────────────────────────────────────────
 
     /**
-     * Ensure every day of the week is covered from 00:00:00 through 23:59:59
-     * with no gaps. Overlaps are allowed (handled by the routing engine).
+     * Validate the submitted shift blocks. Per-block checks (valid day, present
+     * times, start before end) always run. When {@code requireFullCoverage} is
+     * true (TIME_BASED), additionally enforce that every day of the week is
+     * covered 00:00:00 → 23:59:59 with no gaps. Overlaps are always allowed
+     * (handled by the routing engine). When false (shift-aware ROUND_ROBIN),
+     * gaps and uncovered days are intentional — outside a window no one is
+     * picked — so the coverage walk is skipped.
      */
-    private void validateScheduleCoverage(List<WeeklyScheduleRequest.ShiftBlock> blocks) {
+    private void validateSchedule(List<WeeklyScheduleRequest.ShiftBlock> blocks, boolean requireFullCoverage) {
         // Group by day-of-week
         Map<String, List<WeeklyScheduleRequest.ShiftBlock>> byDay = new HashMap<>();
         for (WeeklyScheduleRequest.ShiftBlock b : blocks) {
@@ -133,6 +145,10 @@ public class CounselorPoolShiftService {
                 throw new VacademyException("Shift start_time must be before end_time (no overnight shifts in v1)");
             }
             byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(b);
+        }
+
+        if (!requireFullCoverage) {
+            return; // Gaps allowed — per-block validation above is sufficient.
         }
 
         for (ShiftDayOfWeek day : ShiftDayOfWeek.values()) {

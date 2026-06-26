@@ -39,13 +39,21 @@ export default function ScheduleTab({ pool }: ScheduleTabProps) {
     // saved. Once shifts exist, this is ignored — pattern is locked.
     const [forceChooser, setForceChooser] = useState(false);
 
-    if (pool.assignment_mode !== 'TIME_BASED') {
+    // Used by TIME_BASED pools, and by ROUND_ROBIN pools that turned on the
+    // "only assign to counsellors on shift" option (shift_aware) — both route
+    // off the same weekly shift schedule.
+    const usesSchedule =
+        pool.assignment_mode === 'TIME_BASED' ||
+        (pool.assignment_mode === 'ROUND_ROBIN' && !!pool.shift_aware);
+
+    if (!usesSchedule) {
         return (
             <Card>
                 <CardContent className="py-8 text-sm text-muted-foreground">
-                    This tab is only used when the pool&apos;s assignment mode is{' '}
-                    <strong>Time-based</strong>. Switch the mode in the Overview tab to
-                    configure a weekly shift schedule.
+                    This tab is used when the pool is <strong>Time-based</strong>, or when a{' '}
+                    <strong>Round-robin</strong> pool has &ldquo;only assign to counsellors on
+                    shift&rdquo; turned on. Enable one of those in the Overview tab to configure a
+                    weekly shift schedule.
                 </CardContent>
             </Card>
         );

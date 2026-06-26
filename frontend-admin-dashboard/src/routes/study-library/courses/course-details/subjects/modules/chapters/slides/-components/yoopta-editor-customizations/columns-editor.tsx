@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import { encodeBlockData, decodeBlockData } from './RichTextField';
 
 interface ColumnData {
     content: string;
@@ -262,14 +263,19 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
                     if (element.getAttribute?.('data-yoopta-type') !== 'columnsLayout') {
                         return undefined;
                     }
-                    let columns: ColumnData[] = [];
                     const gap = parseInt(element.getAttribute('data-gap') || '16', 10);
-                    try {
-                        const columnsJson = element.getAttribute('data-columns');
-                        if (columnsJson) {
-                            columns = JSON.parse(columnsJson);
-                        }
-                    } catch {
+                    // decodeBlockData handles both the new base64 payload and any
+                    // older escaped-JSON data-columns. Normalize each column so a
+                    // missing `content` can never make serialize throw.
+                    const rawCols = decodeBlockData<ColumnData[]>(
+                        element.getAttribute('data-columns'),
+                        []
+                    );
+                    let columns: ColumnData[] = (Array.isArray(rawCols) ? rawCols : []).map((c) => ({
+                        ...c,
+                        content: String(c?.content ?? ''),
+                    }));
+                    if (columns.length === 0) {
                         columns = [{ content: '' }, { content: '' }];
                     }
                     return {
@@ -281,14 +287,28 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
                 },
             },
             serialize: (element, _children) => {
-                const props = element.props || {};
-                const columns: ColumnData[] = props.columns || [];
-                const gap = props.gap ?? 16;
-                const columnsJson = JSON.stringify(columns).replace(/"/g, '&quot;');
+                // Bulletproof: must NEVER throw, or the whole-document Save aborts
+                // and the per-block fallback silently drops this block. data-columns
+                // (source of truth) is base64 so the document-wide HTML sanitizers
+                // can't corrupt it.
+                let columns: ColumnData[] = [];
+                try {
+                    const props = (element && element.props) || {};
+                    columns = Array.isArray(props.columns) ? props.columns : [];
+                } catch {
+                    columns = [];
+                }
+                const gap = (element?.props?.gap) ?? 16;
+                let columnsJson = '';
+                try {
+                    columnsJson = encodeBlockData(columns);
+                } catch {
+                    columnsJson = encodeBlockData([]);
+                }
 
                 const columnDivs = columns
                     .map((col) => {
-                        const contentEsc = col.content
+                        const contentEsc = String(col?.content ?? '')
                             .replace(/&/g, '&amp;')
                             .replace(/</g, '&lt;')
                             .replace(/>/g, '&gt;')

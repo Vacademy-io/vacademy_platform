@@ -177,16 +177,29 @@ export interface ShiftError {
  *
  * Returns top-level coverage errors plus per-shift errors keyed by localId.
  */
-export function validateDayCoverage(shifts: EditableShift[]): {
+export function validateDayCoverage(
+    shifts: EditableShift[],
+    opts?: { allowGaps?: boolean }
+): {
     ok: boolean;
     coverageErrors: string[];
     shiftErrors: ShiftError[];
 } {
+    // allowGaps = shift-aware ROUND_ROBIN: the schedule defines WHEN leads are
+    // assigned; outside the blocks nobody is picked (lead left unassigned). So
+    // gaps, a non-midnight start, and not reaching end-of-day are all fine —
+    // we only validate the blocks themselves. TIME_BASED still requires full
+    // 24/7 coverage (allowGaps falsy).
+    const allowGaps = opts?.allowGaps ?? false;
     const coverageErrors: string[] = [];
     const shiftErrors: ShiftError[] = [];
 
     if (shifts.length === 0) {
-        return { ok: false, coverageErrors: ['No shifts configured.'], shiftErrors };
+        // With gaps allowed, "no shifts" just means no assignment window — the
+        // caller decides whether an empty schedule is acceptable overall.
+        return allowGaps
+            ? { ok: true, coverageErrors, shiftErrors }
+            : { ok: false, coverageErrors: ['No shifts configured.'], shiftErrors };
     }
 
     for (const s of shifts) {
@@ -199,6 +212,11 @@ export function validateDayCoverage(shifts: EditableShift[]): {
                 message: 'End time must be after start time.',
             });
         }
+    }
+
+    if (allowGaps) {
+        // No coverage walk — only the per-block checks above matter.
+        return { ok: shiftErrors.length === 0, coverageErrors, shiftErrors };
     }
 
     // Snap minute-precision end-of-day (23:59:00) to second-precision

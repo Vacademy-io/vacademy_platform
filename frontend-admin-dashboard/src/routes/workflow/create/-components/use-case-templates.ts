@@ -114,25 +114,27 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         workflowType: 'EVENT_DRIVEN',
         questions: [
             {
-                id: 'campaignId',
-                label: 'AI Campaign ID (optional)',
+                id: 'campaignName',
+                label: 'AI agent (optional)',
                 helpText:
-                    'Aavtaar campaign that defines the bot script. Leave blank to use the default from Settings → AI Calling.',
+                    'Name of the AI agent/campaign to use (from Settings → AI Calling → Campaigns). Provider-agnostic — it resolves to the right campaign id for whichever provider is active. Leave blank to use the institute default.',
                 type: 'text',
                 required: false,
             },
         ],
         generateWorkflow: (answers) => {
-            const campaignId = ((answers.campaignId as string) || '').trim();
+            const campaignName = ((answers.campaignName as string) || '').trim();
 
-            // CALL_AI (start) — places the Aavtaar voice-agent call. The end-of-call
-            // webhook → AiCallOutcomeProcessor injects #ctx['callOutcome']
-            // (ASSIGN | STOP | RETRY) and #ctx['callDisposition'] (raw) onto the
-            // workflow context before the engine resumes.
+            // CALL_AI (start) — places the AI voice-agent call. Provider-agnostic: the
+            // institute's active provider + this agent NAME resolve to the right campaign id
+            // downstream (raw ids are never hardcoded here). The end-of-call webhook →
+            // AiCallOutcomeProcessor injects #ctx['callOutcome'] (ASSIGN | STOP | RETRY),
+            // #ctx['callDisposition'] (raw) and #ctx['callAnswers'] (the extracted data)
+            // onto the workflow context before the engine resumes.
             const callNode = makeNode(
                 'CALL_AI',
                 'AI Call',
-                campaignId ? { campaignId } : {},
+                campaignName ? { campaignName } : {},
                 250,
                 80,
                 true

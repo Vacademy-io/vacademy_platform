@@ -336,8 +336,11 @@ public class RevenueReportService {
         Double avgDealValue = payingLeads > 0 ? round2(trailingRevenue / payingLeads) : null;
 
         // Pipeline expected value if it fully matures: open × p(convert) × avg deal value.
-        double pipelineFull = (conversionRate != null && avgDealValue != null)
-                ? openPipeline * (conversionRate / 100.0) * avgDealValue : 0.0;
+        // historicalConversionRate is a velocity ratio (conversions ÷ acquisitions in the same
+        // window) and can exceed 100% when a backlog is being worked down — clamp the probability
+        // to [0,1] so the forecast can't over-count the open pipeline.
+        double convProb = conversionRate != null ? Math.max(0.0, Math.min(1.0, conversionRate / 100.0)) : 0.0;
+        double pipelineFull = avgDealValue != null ? openPipeline * convProb * avgDealValue : 0.0;
 
         List<RevenueForecastDTO.HorizonRow> horizons = new ArrayList<>();
         for (int days : FORECAST_HORIZONS) {

@@ -48,6 +48,9 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
     const headerTitle = isCreating ? 'Create Pool' : pool?.name ?? 'Pool';
     const isRoundRobin = pool?.assignment_mode === 'ROUND_ROBIN';
     const isTimeBased = pool?.assignment_mode === 'TIME_BASED';
+    // Schedule tab is needed by TIME_BASED, and by ROUND_ROBIN pools that opted
+    // into shift-gating (shift_aware) — both consume the weekly shift schedule.
+    const scheduleVisible = isTimeBased || (isRoundRobin && !!pool?.shift_aware);
 
     // Pick which tab to land on:
     //   1. URL search param ?tab=... (e.g. after create, we redirect to ?tab=audiences)
@@ -57,7 +60,7 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
     let landingTab: EditorTab = initialTab ?? 'overview';
     if (isCreating && landingTab !== 'overview') landingTab = 'overview';
     if (landingTab === 'order' && !orderVisible) landingTab = 'overview';
-    if (landingTab === 'schedule' && !isTimeBased) landingTab = 'overview';
+    if (landingTab === 'schedule' && !scheduleVisible) landingTab = 'overview';
 
     return (
         <div className="p-6">
@@ -84,7 +87,7 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
                     {!isCreating && orderVisible && (
                         <TabsTrigger value="order">Order</TabsTrigger>
                     )}
-                    {!isCreating && isTimeBased && (
+                    {!isCreating && scheduleVisible && (
                         <TabsTrigger value="schedule">Schedule</TabsTrigger>
                     )}
                 </TabsList>
@@ -106,7 +109,7 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
                                 <OrderTab pool={pool} />
                             </TabsContent>
                         )}
-                        {isTimeBased && (
+                        {scheduleVisible && (
                             <TabsContent value="schedule">
                                 <ScheduleTab pool={pool} />
                             </TabsContent>

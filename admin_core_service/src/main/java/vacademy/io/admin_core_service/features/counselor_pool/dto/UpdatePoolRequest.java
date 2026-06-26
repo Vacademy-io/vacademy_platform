@@ -29,4 +29,11 @@ public class UpdatePoolRequest {
      */
     @JsonProperty("schedule_pattern")
     private String schedulePattern;
+
+    /**
+     * ROUND_ROBIN opt-in: gate the rotation to on-shift counsellors. Null means
+     * "leave unchanged". Ignored at routing time for MANUAL / TIME_BASED.
+     */
+    @JsonProperty("shift_aware")
+    private Boolean shiftAware;
 }

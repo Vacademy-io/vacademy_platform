@@ -66,6 +66,7 @@ public class CounselorPoolService {
                 .description(request.getDescription())
                 .assignmentMode(request.getAssignmentMode())
                 .schedulePattern(schedulePattern)
+                .shiftAware(Boolean.TRUE.equals(request.getShiftAware()))
                 .createdBy(createdByUserId)
                 .build();
         pool = poolRepository.save(pool);
@@ -113,6 +114,9 @@ public class CounselorPoolService {
                 throw new VacademyException("Cannot change schedule_pattern while shifts exist. Clear the schedule first.");
             }
             pool.setSchedulePattern(newPattern);
+        }
+        if (request.getShiftAware() != null) {
+            pool.setShiftAware(request.getShiftAware());
         }
         poolRepository.save(pool);
 
@@ -648,6 +652,7 @@ public class CounselorPoolService {
                 .description(p.getDescription())
                 .assignmentMode(p.getAssignmentMode())
                 .schedulePattern(p.getSchedulePattern())
+                .shiftAware(p.getShiftAware())
                 .createdBy(p.getCreatedBy())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())

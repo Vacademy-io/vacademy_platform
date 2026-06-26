@@ -40,6 +40,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
+import { CallIntelligenceSummary } from '@/components/shared/leads';
 import { TELEPHONY_CALL_STATUSES, humanizeCallStatus } from '@/hooks/use-lead-report-settings';
 import {
     callsDailyQueryKey,
@@ -217,8 +218,22 @@ export default function CallingTab(props: {
         downloadCsv(`calling-counsellors-${fromDate}-to-${toDate}.csv`, csv);
     };
 
+    const fromMillis = Number.isNaN(new Date(fromDate).getTime())
+        ? undefined
+        : new Date(fromDate).getTime();
+    const toMillis = Number.isNaN(new Date(`${toDate}T23:59:59`).getTime())
+        ? undefined
+        : new Date(`${toDate}T23:59:59`).getTime();
+
     return (
         <div className="flex flex-col gap-6">
+            {/* 0 — Call Intelligence roll-up (team scope = acting user's reporting line) */}
+            <CallIntelligenceSummary
+                mode="team"
+                instituteId={instituteId}
+                fromMillis={fromMillis}
+                toMillis={toMillis}
+            />
             {/* 1 — KPI row */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiStat

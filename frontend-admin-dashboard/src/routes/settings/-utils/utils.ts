@@ -29,6 +29,7 @@ import TelephonySettings from '../-components/TelephonySettings';
 import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
 import LmsSettings from '../-components/Lms/LmsSettings';
 import AiCallingSettings from '../-components/AiCallingSettings';
+import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 
 export const getAvailableSettingsTabs = () => {
@@ -175,6 +176,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.AiCalling,
             value: 'AI Calling',
             component: AiCallingSettings,
+        },
+        {
+            tab: SettingsTabs.CrmIntelligence,
+            value: 'CRM Intelligence',
+            component: CrmIntelligenceSettings,
         },
         {
             tab: SettingsTabs.PaymentGateways,

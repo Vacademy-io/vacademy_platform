@@ -22,7 +22,8 @@ public enum RequestType {
     PDF_QUESTIONS("pdf_questions"), // PDF to questions processing
     AGENT("agent"), // AI Agent interactions
     ANALYTICS("analytics"), // Student analytics
-    COPILOT("copilot"); // Instructor copilot
+    COPILOT("copilot"), // Instructor copilot
+    CALL_INTELLIGENCE("call_intelligence"); // CRM call recording transcription + analysis
 
     private final String value;
 

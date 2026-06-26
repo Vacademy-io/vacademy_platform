@@ -11,6 +11,8 @@ import {
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchCallHistory, fetchCallRecordingUrl, type CallLogItem } from './services/call-history';
+import { CallIntelligencePanel } from './call-intelligence-panel';
+import { ManualCallUploadDialog } from './manual-call-upload-dialog';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import type { CallActivity } from '@/components/shared/lead-calls/call-activity';
 
@@ -153,25 +155,20 @@ export function LeadCallHistory({ userId, className }: LeadCallHistoryProps) {
     }
 
     const items = query.data?.content ?? [];
-    if (items.length === 0) {
-        return (
-            <div
-                className={cn(
-                    'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center text-sm text-neutral-500',
-                    className
-                )}
-            >
-                <Phone className="size-6 text-neutral-400" />
-                <span>No calls yet</span>
-            </div>
-        );
-    }
 
     return (
         <div className={cn('space-y-2', className)}>
-            {items.map((c) => (
-                <CallHistoryRow key={c.id} item={c} instituteId={instituteId} />
-            ))}
+            <div className="flex items-center justify-end">
+                <ManualCallUploadDialog userId={userId} />
+            </div>
+            {items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50 p-8 text-center text-sm text-neutral-500">
+                    <Phone className="size-6 text-neutral-400" />
+                    <span>No calls yet</span>
+                </div>
+            ) : (
+                items.map((c) => <CallHistoryRow key={c.id} item={c} instituteId={instituteId} />)
+            )}
         </div>
     );
 }
@@ -307,6 +304,12 @@ function CallHistoryRow({ item, instituteId }: { item: CallLogItem; instituteId:
                     )}
                 </div>
             )}
+            {/* AI analysis of this call (lazy — fetched on expand). Renders the
+                summary, the two ratings, action items, objections and coaching
+                tips when the recording has been transcribed + analyzed. */}
+            <div className="mt-2">
+                <CallIntelligencePanel callLogId={item.id} />
+            </div>
             {/* Add-note affordance — opens AddLeadNoteDialog pre-filled with
                 action_type=CALL_LOG and a link to this call row, so the
                 counsellor can pick an outcome + write a note in one shot.

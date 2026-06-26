@@ -43,6 +43,7 @@ public class RecordingTxOps {
     @Autowired private MediaService mediaService;
     @Autowired private TimelineEventService timelineEventService;
     @Autowired private UserMobileResolver userMobileResolver;
+    @Autowired private vacademy.io.admin_core_service.features.call_intelligence.core.CallIntelligenceEnqueueService callIntelligenceEnqueueService;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void persist(String callLogId) throws Exception {
@@ -111,6 +112,10 @@ public class RecordingTxOps {
         callLogRepo.save(row);
 
         writeTimelineEvent(row);
+
+        // Recording is now in our storage — kick off transcription + analysis if the
+        // institute has call intelligence on. Best-effort, never throws.
+        callIntelligenceEnqueueService.enqueueIfEligible(row);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

@@ -1,0 +1,298 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+    Sparkle,
+    Star,
+    Lightbulb,
+    Warning,
+    Target,
+    CheckCircle,
+    Quotes,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { fetchCallIntelligence, type CallIntelligenceDto } from './services/call-intelligence';
+
+/**
+ * Per-call AI analysis panel. Lazily fetches the call_intelligence row on first
+ * expand (so a long call list stays one round-trip) and renders the data points:
+ * the two ratings, a one-line goal + summary, status/sentiment chips, action
+ * items, objections, coaching tips and notable quotes. In-progress / skipped /
+ * failed states are surfaced explicitly so a counsellor knows why analysis isn't
+ * shown yet.
+ */
+
+const STATUS_NOTE: Record<string, string> = {
+    PENDING: 'Queued for analysis…',
+    TRANSCRIBING: 'Transcribing the recording…',
+    ANALYZING: 'Analyzing the conversation…',
+    FAILED: 'Analysis could not be completed.',
+};
+
+const SKIP_NOTE: Record<string, string> = {
+    INSUFFICIENT_CREDITS: 'Not analyzed — institute is out of AI credits.',
+    NO_RECORDING: 'Not analyzed — no recording was available.',
+    TOO_SHORT: 'Not analyzed — call too short.',
+    EMPTY_TRANSCRIPT: 'Not analyzed — no speech detected in the recording.',
+    NOT_CONNECTED: 'Not analyzed — call did not connect.',
+    SOURCE_DISABLED: 'Not analyzed — this call source is disabled in settings.',
+    DISABLED: 'Not analyzed — Call Intelligence is off for this institute.',
+};
+
+const STATUS_GENERIC_LABEL: Record<string, string> = {
+    CONNECTED_POSITIVE: 'Positive',
+    CONNECTED_NEUTRAL: 'Neutral',
+    CONNECTED_NEGATIVE: 'Negative',
+    CALLBACK_REQUESTED: 'Callback requested',
+    NOT_INTERESTED: 'Not interested',
+    INFORMATION_ONLY: 'Info only',
+    NO_CLEAR_OUTCOME: 'No clear outcome',
+    WRONG_NUMBER: 'Wrong number',
+};
+
+/** 0–10 rating → tone. */
+function ratingTone(score?: number | null): string {
+    if (score == null) return 'bg-neutral-100 text-neutral-600';
+    if (score >= 7) return 'bg-success-50 text-success-700';
+    if (score >= 4) return 'bg-warning-50 text-warning-700';
+    return 'bg-danger-50 text-danger-700';
+}
+
+const SENTIMENT_TONE: Record<string, string> = {
+    POSITIVE: 'bg-success-50 text-success-700',
+    NEUTRAL: 'bg-neutral-100 text-neutral-600',
+    NEGATIVE: 'bg-danger-50 text-danger-700',
+};
+
+function RatingChip({ label, score }: { label: string; score?: number | null }) {
+    return (
+        <div className={cn('flex items-center gap-1.5 rounded-md px-2 py-1', ratingTone(score))}>
+            <Star className="size-4" weight="fill" />
+            <span className="text-caption font-medium">{label}</span>
+            <span className="text-body font-semibold">{score == null ? '—' : `${score}/10`}</span>
+        </div>
+    );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <div className="space-y-1">
+            <p className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                {title}
+            </p>
+            {children}
+        </div>
+    );
+}
+
+function CompletedView({ ci }: { ci: CallIntelligenceDto }) {
+    const a = ci.analysis ?? {};
+    const goal = ci.inferredGoal ?? a.inferred_goal?.objective;
+    const actionItems = a.action_items ?? [];
+    const objections = (a.call_analysis?.objections ?? []).filter((o) => o.objection);
+    const coaching = a.coaching_tips ?? [];
+    const highlights = (a.highlights ?? []).filter((h) => h.quote);
+    const genericLabel = ci.genericStatus
+        ? STATUS_GENERIC_LABEL[ci.genericStatus] ?? ci.genericStatus
+        : null;
+
+    return (
+        <div className="space-y-4">
+            {/* Ratings + outcome chips */}
+            <div className="flex flex-wrap items-center gap-2">
+                <RatingChip label="Caller" score={ci.callerSelfGoalRating} />
+                <RatingChip label="Outcome" score={ci.callOutputRating} />
+                {genericLabel && (
+                    <span className="rounded-full bg-primary-50 px-2 py-0.5 text-caption text-primary-700">
+                        {genericLabel}
+                    </span>
+                )}
+                {ci.leadSentiment && (
+                    <span
+                        className={cn(
+                            'rounded-full px-2 py-0.5 text-caption',
+                            SENTIMENT_TONE[ci.leadSentiment] ?? 'bg-neutral-100 text-neutral-600'
+                        )}
+                    >
+                        Lead: {ci.leadSentiment.toLowerCase()}
+                    </span>
+                )}
+                {ci.conversionLikelihood && (
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption text-neutral-600">
+                        Conversion: {ci.conversionLikelihood.toLowerCase()}
+                    </span>
+                )}
+            </div>
+
+            {goal && (
+                <div className="flex items-start gap-1.5 text-body text-neutral-600">
+                    <Target className="mt-0.5 size-4 shrink-0 text-neutral-400" />
+                    <span>
+                        <span className="font-medium text-neutral-700">Goal:</span> {goal}
+                    </span>
+                </div>
+            )}
+
+            {ci.generalSummary && (
+                <Section title="Summary">
+                    <p className="text-body text-neutral-700">{ci.generalSummary}</p>
+                </Section>
+            )}
+
+            {actionItems.length > 0 && (
+                <Section title="Action items">
+                    <ul className="space-y-1">
+                        {actionItems.map((it, i) => (
+                            <li
+                                key={i}
+                                className="flex items-start gap-1.5 text-body text-neutral-700"
+                            >
+                                <CheckCircle className="mt-0.5 size-4 shrink-0 text-success-500" />
+                                <span>
+                                    {it.text}
+                                    {it.owner && it.owner !== 'UNSPECIFIED' && (
+                                        <span className="text-neutral-400">
+                                            {' '}
+                                            · {it.owner.toLowerCase()}
+                                        </span>
+                                    )}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </Section>
+            )}
+
+            {objections.length > 0 && (
+                <Section title="Objections">
+                    <ul className="space-y-1">
+                        {objections.map((o, i) => (
+                            <li
+                                key={i}
+                                className="flex items-start gap-1.5 text-body text-neutral-700"
+                            >
+                                <Warning
+                                    className={cn(
+                                        'mt-0.5 size-4 shrink-0',
+                                        o.handled ? 'text-success-500' : 'text-warning-500'
+                                    )}
+                                />
+                                <span>
+                                    {o.objection}
+                                    {o.resolution && (
+                                        <span className="text-neutral-400"> — {o.resolution}</span>
+                                    )}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </Section>
+            )}
+
+            {coaching.length > 0 && (
+                <Section title="Coaching tips">
+                    <ul className="space-y-1">
+                        {coaching.map((tip, i) => (
+                            <li
+                                key={i}
+                                className="flex items-start gap-1.5 text-body text-neutral-700"
+                            >
+                                <Lightbulb className="mt-0.5 size-4 shrink-0 text-primary-400" />
+                                <span>{tip}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </Section>
+            )}
+
+            {highlights.length > 0 && (
+                <Section title="Notable moments">
+                    <ul className="space-y-1">
+                        {highlights.map((h, i) => (
+                            <li
+                                key={i}
+                                className="flex items-start gap-1.5 text-body text-neutral-600"
+                            >
+                                <Quotes className="mt-0.5 size-4 shrink-0 text-neutral-400" />
+                                <span className="italic">
+                                    “{h.quote}”
+                                    {h.label && (
+                                        <span className="ml-1 not-italic text-neutral-400">
+                                            ({h.label})
+                                        </span>
+                                    )}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </Section>
+            )}
+
+            {ci.detectedLanguage && (
+                <p className="text-caption text-neutral-400">
+                    Language: {ci.detectedLanguage}
+                    {ci.creditsCharged != null && <> · {ci.creditsCharged} credits</>}
+                </p>
+            )}
+        </div>
+    );
+}
+
+export function CallIntelligencePanel({
+    callLogId,
+    className,
+}: {
+    callLogId: string;
+    className?: string;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const query = useQuery({
+        queryKey: ['call-intelligence', callLogId],
+        queryFn: () => fetchCallIntelligence(callLogId),
+        enabled: expanded,
+        staleTime: 60 * 1000,
+    });
+
+    if (!expanded) {
+        return (
+            <button
+                type="button"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setExpanded(true);
+                }}
+                className={cn(
+                    'inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-caption text-primary-700 hover:bg-primary-100',
+                    className
+                )}
+            >
+                <Sparkle className="size-4" weight="fill" />
+                View AI analysis
+            </button>
+        );
+    }
+
+    const ci = query.data;
+    return (
+        <div className={cn('rounded-md border border-primary-100 bg-primary-50/40 p-3', className)}>
+            <div className="mb-2 flex items-center gap-1.5 text-body font-medium text-primary-700">
+                <Sparkle className="size-4" weight="fill" />
+                Call intelligence
+            </div>
+            {query.isLoading ? (
+                <p className="text-body text-neutral-500">Loading analysis…</p>
+            ) : !ci ? (
+                <p className="text-body text-neutral-500">This call hasn’t been analyzed.</p>
+            ) : ci.status === 'COMPLETED' ? (
+                <CompletedView ci={ci} />
+            ) : ci.status === 'SKIPPED' ? (
+                <p className="text-body text-neutral-500">
+                    {(ci.skipReason && SKIP_NOTE[ci.skipReason]) ?? 'Not analyzed.'}
+                </p>
+            ) : (
+                <p className="text-body text-neutral-500">
+                    {STATUS_NOTE[ci.status] ?? 'Analysis in progress…'}
+                </p>
+            )}
+        </div>
+    );
+}

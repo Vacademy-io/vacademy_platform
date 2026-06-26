@@ -120,6 +120,7 @@ class RequestType(str, enum.Enum):
     ASSESSMENT = "assessment"        # AI assessment generation (topic / transcript)
     NOTES = "notes"                  # Auto study-notes from a lecture transcript
     TRANSCRIPTION = "transcription"  # Live-recording speech-to-text (per audio-minute)
+    CALL_INTELLIGENCE = "call_intelligence"  # CRM call recording transcription + LLM analysis (flat per call)
 
 
 class AiTokenUsage(Base):

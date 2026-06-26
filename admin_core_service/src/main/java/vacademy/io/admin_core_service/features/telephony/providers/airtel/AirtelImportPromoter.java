@@ -63,6 +63,7 @@ public class AirtelImportPromoter {
     @Autowired private TimelineEventService timelineEventService;
     @Autowired private UserMobileResolver userMobileResolver;
     @Autowired private LeadDirectoryResolver leadDirectoryResolver;
+    @Autowired private vacademy.io.admin_core_service.features.call_intelligence.core.CallIntelligenceEnqueueService callIntelligenceEnqueueService;
 
     /**
      * Promote one staging row, in its OWN transaction. On any failure it lets the
@@ -219,6 +220,9 @@ public class AirtelImportPromoter {
         callLogRepo.save(row);
         writeTimeline(row, "Call recording available");
         markPromoted(imp, row.getId());
+
+        // Recording attached — enqueue transcription + analysis if enabled. Best-effort.
+        callIntelligenceEnqueueService.enqueueIfEligible(row);
     }
 
     private TelephonyCallLog createCallLog(AirtelCallImport imp, String instituteId,

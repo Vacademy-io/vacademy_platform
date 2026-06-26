@@ -77,6 +77,8 @@ export interface SourcePerformanceRow {
     won: number;
     /** % 0–100; null when leads = 0. */
     conversion_rate: number | null;
+    /** PAID revenue from this source's converted leads, in-window (institute currency). */
+    revenue: number;
     /** Wave 2 (ad-spend ingestion) — always null for now. */
     spend: number | null;
     /** Wave 2 — always null for now. */

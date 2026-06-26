@@ -135,6 +135,27 @@ public class PipelineReportService {
             ORDER BY leads DESC, b.source_type
             """;
 
+    /**
+     * PAID revenue per source from CONVERTED leads whose payment landed in-window. Same recognition
+     * rule as RevenueReportService (payment_status='PAID', conversion_status='CONVERTED', payment
+     * created_at in window); attributed by the lead profile's best_source_type so it lines up with
+     * the source rows above. payment_log carries no institute_id — the user_lead_profile join scopes
+     * it to this institute's converted leads.
+     */
+    private static final String SOURCE_REVENUE_SQL = """
+            SELECT COALESCE(ulp.best_source_type, 'UNKNOWN') AS source_type,
+                   COALESCE(SUM(pl.payment_amount), 0)       AS revenue
+            FROM payment_log pl
+            JOIN user_lead_profile ulp
+                ON ulp.user_id = pl.user_id AND ulp.institute_id = :instituteId
+            WHERE pl.payment_status = 'PAID'
+              AND pl.payment_amount IS NOT NULL
+              AND ulp.conversion_status = 'CONVERTED'
+              AND pl.created_at >= :fromTs AND pl.created_at < :toTs
+              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+            GROUP BY 1
+            """;
+
     @Transactional(readOnly = true)
     public SourcePerformanceReportDTO getSourcePerformance(String instituteId, String fromDate, String toDate,
                                                            String teamId, String counsellorUserId,
@@ -148,16 +169,23 @@ public class PipelineReportService {
                 .addValue("connectedCsv", joinSet(settings.connectedCallStatuses()))
                 .addValue("interestedCsv", joinSet(settings.interestedStatusKeys()));
 
+        // Revenue per source (keyed by best_source_type), merged onto the rows below.
+        Map<String, Double> revenueBySource = new HashMap<>();
+        jdbc.query(SOURCE_REVENUE_SQL, p, (RowCallbackHandler) rs ->
+                revenueBySource.put(rs.getString("source_type"), rs.getDouble("revenue")));
+
         List<SourcePerformanceReportDTO.Row> rows = jdbc.query(SOURCE_PERFORMANCE_SQL, p, (rs, i) -> {
             long leads = rs.getLong("leads");
             long won = rs.getLong("won");
+            String sourceType = rs.getString("source_type");
             return SourcePerformanceReportDTO.Row.builder()
-                    .sourceType(rs.getString("source_type"))
+                    .sourceType(sourceType)
                     .leads(leads)
                     .connectedLeads(rs.getLong("connected_leads"))
                     .interested(rs.getLong("interested"))
                     .won(won)
                     .conversionRate(percentage(won, leads))
+                    .revenue(round2(revenueBySource.getOrDefault(sourceType, 0.0)))
                     .build(); // spend / cpl / roi stay null — Wave 2/3
         });
 
@@ -169,6 +197,7 @@ public class PipelineReportService {
                 .interested(rows.stream().mapToLong(SourcePerformanceReportDTO.Row::getInterested).sum())
                 .won(tWon)
                 .conversionRate(percentage(tWon, tLeads))
+                .revenue(round2(rows.stream().mapToDouble(SourcePerformanceReportDTO.Row::getRevenue).sum()))
                 .build();
 
         return SourcePerformanceReportDTO.builder().rows(rows).totals(totals).build();
@@ -535,6 +564,10 @@ public class PipelineReportService {
 
     private static Double round1(Double v) {
         return v == null ? null : Math.round(v * 10.0) / 10.0;
+    }
+
+    private static double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
     }
 
     private static Double getNullableDouble(java.sql.ResultSet rs, String col) throws java.sql.SQLException {

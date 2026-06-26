@@ -2908,7 +2908,15 @@ export const SlideMaterial = ({
 
     return (
         <div
-            className="flex w-full flex-1 flex-col transition-all duration-300 ease-in-out"
+            // Bounded-height scroll container so the `sticky top-0` header below
+            // actually freezes. The LayoutContainer wraps page content in an
+            // `overflow-x-hidden` div, which makes `overflow-y` compute to `auto`
+            // — a scroll container that never scrolls (the body does), so a sticky
+            // child has nothing to stick to. Owning the scroll here fixes that:
+            // header stays put, editor content scrolls beneath it. Offsets ≈
+            // viewport − navbar (h-14 / md:h-[72px]) − the wrapper's padding/margin
+            // (p-2 / sm:p-3 / md:p-4 / lg:m-7).
+            className="flex h-[calc(100vh-76px)] w-full flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out sm:h-[calc(100vh-84px)] md:h-[calc(100vh-108px)] lg:h-[calc(100vh-132px)]"
             ref={selectionRef}
         >
             {activeItem && (

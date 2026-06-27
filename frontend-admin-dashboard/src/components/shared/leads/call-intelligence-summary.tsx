@@ -8,6 +8,7 @@ import {
     fetchTeamCallIntelligence,
     type CallIntelligenceAnalyticsDto,
 } from './services/call-intelligence';
+import { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 
 /**
  * Compact Call-Intelligence roll-up card. Two modes:
@@ -55,6 +56,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
 }
 
 export function CallIntelligenceSummary(props: Props) {
+    const featureEnabled = useCallIntelligenceEnabled();
     const { mode, fromMillis, toMillis, className, nameByUserId } = props;
     const counsellorUserId = mode === 'counsellor' ? props.counsellorUserId : undefined;
     const instituteId = mode === 'team' ? props.instituteId : undefined;
@@ -72,7 +74,7 @@ export function CallIntelligenceSummary(props: Props) {
             mode === 'counsellor'
                 ? fetchCounsellorCallIntelligence(counsellorUserId, fromMillis, toMillis)
                 : fetchTeamCallIntelligence(instituteId as string, fromMillis, toMillis),
-        enabled: mode === 'counsellor' ? !!counsellorUserId : !!instituteId,
+        enabled: featureEnabled && (mode === 'counsellor' ? !!counsellorUserId : !!instituteId),
         staleTime: 60 * 1000,
     });
 
@@ -92,7 +94,7 @@ export function CallIntelligenceSummary(props: Props) {
         return m;
     }, [counsellorUsers, nameByUserId]);
 
-    if (query.isLoading || !data || data.totalAnalyzed === 0) return null;
+    if (!featureEnabled || query.isLoading || !data || data.totalAnalyzed === 0) return null;
 
     const perCounsellor = (data.perCounsellor ?? [])
         .slice()

@@ -16,6 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 
 /**
  * Upload a recording of a call a counsellor made off-platform. Creates a MANUAL
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function ManualCallUploadDialog({ userId, responseId, onUploaded }: Props) {
+    const featureEnabled = useCallIntelligenceEnabled();
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? '';
     const [open, setOpen] = useState(false);
@@ -74,6 +76,9 @@ export function ManualCallUploadDialog({ userId, responseId, onUploaded }: Props
             toast.error(msg ?? 'Failed to upload recording');
         },
     });
+
+    // No point offering an upload-for-analysis when Call Intelligence is off.
+    if (!featureEnabled) return null;
 
     return (
         <MyDialog

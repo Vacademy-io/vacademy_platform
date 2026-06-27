@@ -10,9 +10,17 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     ADD_UPDATE_DOCUMENT_SLIDE,
     ADD_UPDATE_VIDEO_SLIDE,
+    ADD_UPDATE_QUIZ_SLIDE,
+    ADD_UPDATE_ASSESSMENT_SLIDE,
     UPDATE_SLIDE_ORDER,
 } from '@/constants/urls';
-import type { DocumentSlidePayload, VideoSlidePayload } from '../-hooks/use-slides';
+import type {
+    DocumentSlidePayload,
+    VideoSlidePayload,
+    QuizSlidePayload,
+    QuizSlideQuestion,
+    AssessmentSlidePayload,
+} from '../-hooks/use-slides';
 
 export interface BulkSlideContext {
     chapterId: string;
@@ -44,6 +52,31 @@ const postVideoSlide = async (
 ): Promise<string> => {
     const response = await authenticatedAxiosInstance.post(videoSlideUrl(ctx), payload);
     return response.data || payload.id;
+};
+
+// Query-param order mirrors the working useSlidesMutations hook exactly so the
+// backend route binds identically (quiz puts instituteId second; assessment
+// puts instituteId last).
+const quizSlideUrl = (ctx: BulkSlideContext) =>
+    `${ADD_UPDATE_QUIZ_SLIDE}?chapterId=${ctx.chapterId}&instituteId=${ctx.instituteId}&packageSessionId=${ctx.packageSessionId}&subjectId=${ctx.subjectId}&moduleId=${ctx.moduleId}`;
+
+const assessmentSlideUrl = (ctx: BulkSlideContext) =>
+    `${ADD_UPDATE_ASSESSMENT_SLIDE}?chapterId=${ctx.chapterId}&moduleId=${ctx.moduleId}&subjectId=${ctx.subjectId}&packageSessionId=${ctx.packageSessionId}&instituteId=${ctx.instituteId}`;
+
+const postQuizSlide = async (
+    ctx: BulkSlideContext,
+    payload: QuizSlidePayload
+): Promise<string> => {
+    const response = await authenticatedAxiosInstance.post(quizSlideUrl(ctx), payload);
+    return response.data || payload.id || '';
+};
+
+const postAssessmentSlide = async (
+    ctx: BulkSlideContext,
+    payload: AssessmentSlidePayload
+): Promise<string> => {
+    const response = await authenticatedAxiosInstance.post(assessmentSlideUrl(ctx), payload);
+    return response.data || payload.id || '';
 };
 
 const escapeForSingleQuotedAttr = (val: string) =>
@@ -191,6 +224,71 @@ export const createYoutubeSlide = (
         new_slide: true,
         notify: ctx.notify,
     });
+};
+
+/**
+ * Create a self-contained QUIZ slide from already-transformed quiz questions.
+ * Mirrors the payload AddQuizDialog.createSlide posts (new_slide:true,
+ * source_type:'QUIZ'), but takes the chapter context per-call so it works for
+ * an arbitrary destination chapter (not the one the slides route is mounted on).
+ */
+export const createQuizSlide = (
+    ctx: BulkSlideContext,
+    args: { title: string; questions: QuizSlideQuestion[]; slideOrder: number }
+): Promise<string> => {
+    const payload: QuizSlidePayload = {
+        id: `quiz-${crypto.randomUUID()}`,
+        source_id: '',
+        source_type: 'QUIZ',
+        title: args.title,
+        image_file_id: '',
+        description: 'Quiz',
+        status: ctx.status,
+        slide_order: args.slideOrder,
+        video_slide: null,
+        document_slide: null,
+        question_slide: null,
+        assignment_slide: null,
+        quiz_slide: {
+            id: crypto.randomUUID(),
+            title: args.title,
+            description: { id: '', content: '', type: 'TEXT' },
+            questions: args.questions,
+        },
+        is_loaded: true,
+        new_slide: true,
+    };
+    return postQuizSlide(ctx, payload);
+};
+
+/**
+ * Create an ASSESSMENT slide that links an already-published assessment.
+ * Payload shape matches add-assessment-slide-dialog's linkAssessmentAsSlide.
+ */
+export const createAssessmentLinkSlide = (
+    ctx: BulkSlideContext,
+    args: { title: string; assessmentId: string; slideOrder: number }
+): Promise<string> => {
+    const assessmentSlideId = crypto.randomUUID();
+    const payload: AssessmentSlidePayload = {
+        id: crypto.randomUUID(),
+        source_id: assessmentSlideId,
+        source_type: 'ASSESSMENT',
+        title: args.title,
+        description: '',
+        image_file_id: '',
+        slide_order: args.slideOrder,
+        status: ctx.status,
+        new_slide: true,
+        notify: ctx.notify,
+        assessment_slide: {
+            id: assessmentSlideId,
+            assessment_id: args.assessmentId,
+            allow_reattempt: true,
+            show_result: true,
+        },
+    };
+    return postAssessmentSlide(ctx, payload);
 };
 
 export const updateChapterSlideOrder = async (

@@ -15,6 +15,7 @@ import {
     CircleNotch as Loader2,
     Sparkle as Sparkles,
     MagicWand as Wand2,
+    GraduationCap,
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -30,6 +31,8 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { saveStudyNotes, type AssessmentArtifact } from '../-services/utils';
 import { PastPapersSection } from './PastPapersSection';
+import { AddToCourseDialog } from './add-to-course/AddToCourseDialog';
+import type { jsPDF as JsPDF } from 'jspdf';
 
 /**
  * Single entrypoint dialog opened from the "Show Transcript" button on a
@@ -77,6 +80,8 @@ interface Props {
      * with the stored questions loaded — no LLM call.
      */
     onOpenArtifact?: (artifact: AssessmentArtifact) => void;
+    /** Live class's linked batches — used to default the course in "Add to course". */
+    linkedBatches?: Array<{ package_session_id: string; package_name?: string }>;
 }
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -232,7 +237,10 @@ const findSafePageBreak = (
     return tallest.bottom;
 };
 
-const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
+const buildPdfFromNode = async (
+    node: HTMLElement,
+    opts?: { watermarkDataUrl?: string | null }
+): Promise<{ pdf: JsPDF; totalPages: number }> => {
     const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
@@ -385,11 +393,55 @@ const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
             sliceHeightPt,
         );
 
+        // Optional centred, faint institute-logo watermark on every page.
+        if (opts?.watermarkDataUrl) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyPdf = pdf as any;
+            const GState = anyPdf.GState;
+            try {
+                const props = anyPdf.getImageProperties(opts.watermarkDataUrl);
+                const wmW = pageWidth * 0.5;
+                const wmH = (props.height / props.width) * wmW;
+                const wmX = (pageWidth - wmW) / 2;
+                const wmY = (pageHeight - wmH) / 2;
+                if (GState) anyPdf.setGState(new GState({ opacity: 0.08 }));
+                pdf.addImage(opts.watermarkDataUrl, 'PNG', wmX, wmY, wmW, wmH, undefined, 'FAST');
+            } catch {
+                // watermark is decorative — never block PDF generation
+            } finally {
+                // Always restore full opacity so a mid-stamp failure can't leave
+                // the NEXT page's content faint.
+                if (GState) {
+                    try {
+                        anyPdf.setGState(new GState({ opacity: 1 }));
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+        }
+
         yOffsetPx = cutY;
         pageNumber += 1;
     }
 
+    return { pdf, totalPages: pageNumber };
+};
+
+const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
+    const { pdf } = await buildPdfFromNode(node);
     pdf.save(filename);
+};
+
+// Same capture as the Download-PDF button, but returns a Blob so the rendered
+// notes node can be uploaded as a PDF slide — the uploaded PDF is then
+// byte-identical to what the user previews/downloads (plus optional watermark).
+const captureNodeToPdfBlob = async (
+    node: HTMLElement,
+    opts?: { watermarkDataUrl?: string | null }
+): Promise<{ blob: Blob; totalPages: number }> => {
+    const { pdf, totalPages } = await buildPdfFromNode(node, opts);
+    return { blob: pdf.output('blob') as Blob, totalPages };
 };
 
 /**
@@ -558,6 +610,7 @@ export function TranscriptActionsDialog({
     onSavedNotesChange,
     onCreateAssessment,
     onOpenArtifact,
+    linkedBatches,
 }: Props) {
     const [source, setSource] = useState<TextState>({ state: 'idle', text: '' });
     const [english, setEnglish] = useState<TextState>({ state: 'idle', text: '' });
@@ -590,6 +643,7 @@ export function TranscriptActionsDialog({
     // the user actually sees.
     const notesPrintRef = useRef<HTMLDivElement | null>(null);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const [addToCourseOpen, setAddToCourseOpen] = useState(false);
 
     useEffect(() => {
         if (!open) {
@@ -972,6 +1026,15 @@ export function TranscriptActionsDialog({
                             <div className="flex items-center gap-1.5">
                                 <MyButton
                                     type="button"
+                                    buttonType="primary"
+                                    scale="small"
+                                    onClick={() => setAddToCourseOpen(true)}
+                                >
+                                    <GraduationCap className="mr-1.5 size-3.5" />
+                                    Add to course
+                                </MyButton>
+                                <MyButton
+                                    type="button"
                                     buttonType="secondary"
                                     scale="small"
                                     onClick={() =>
@@ -1056,6 +1119,27 @@ export function TranscriptActionsDialog({
                         Loading transcript…
                     </div>
                 )}
+
+                {/* Push the generated lecture notes into a course slide.
+                    Rendered as a React descendant so Radix's nested-layer
+                    handling keeps this transcript dialog open underneath. */}
+                <AddToCourseDialog
+                    open={addToCourseOpen}
+                    onOpenChange={setAddToCourseOpen}
+                    linkedBatches={linkedBatches}
+                    content={{
+                        kind: 'NOTES',
+                        markdown: notes.markdown,
+                        suggestedTitle: recordingTitle,
+                    }}
+                    capturePdf={async (captureOpts) => {
+                        // Capture the exact rendered notes node the Download-PDF
+                        // button uses, so the uploaded PDF slide matches 1:1.
+                        const printNode = notesPrintRef.current;
+                        if (!printNode) throw new Error('Notes are not ready to export.');
+                        return captureNodeToPdfBlob(printNode, captureOpts);
+                    }}
+                />
             </div>
         </MyDialog>
     );

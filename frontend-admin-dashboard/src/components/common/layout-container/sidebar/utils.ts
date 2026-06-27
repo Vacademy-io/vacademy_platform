@@ -401,6 +401,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'follow-ups',
             },
             {
+                subItem: 'Call Log',
+                subItemLink: '/audience-manager/call-log',
+                subItemId: 'call-log',
+            },
+            {
                 subItem: 'Counsellors',
                 subItemLink: '/counsellors',
                 subItemId: 'counsellors',

@@ -325,10 +325,8 @@ export default function ProgressReports() {
                             </label>
                             <Select
                                 onValueChange={(value) => setValue('level', value)}
-                                defaultValue={search.studentReport ? search.studentReport.levelId : ''}
                                 value={selectedLevel}
                                 disabled={!levelList.length}
-                                {...register('level')}
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue

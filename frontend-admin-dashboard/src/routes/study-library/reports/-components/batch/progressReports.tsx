@@ -51,7 +51,7 @@ export default function ProgressReports() {
     const [levelList, setLevelList] = useState<LevelType[]>([]);
     const [subjectReportData, setSubjectReportData] = useState<SubjectProgressResponse>();
     const tableState = { columnVisibility: { module_id: false, user_id: false } };
-    const { register, handleSubmit, setValue, watch, trigger } = useForm<FormValues>({
+    const { handleSubmit, setValue, watch, trigger } = useForm<FormValues>({
         resolver: zodResolver(formSchema),
         defaultValues: {
             course: '',
@@ -221,8 +221,6 @@ export default function ProgressReports() {
                             </label>
                             <Select
                                 onValueChange={(value) => setValue('session', value)}
-                                {...register('session')}
-                                defaultValue=""
                                 value={selectedSession}
                                 disabled={!sessionList.length}
                             >
@@ -254,10 +252,8 @@ export default function ProgressReports() {
                                     setValue('level', value);
                                     trigger('level');
                                 }}
-                                defaultValue=""
                                 value={selectedLevel}
                                 disabled={!levelList.length}
-                                {...register('level')}
                             >
                                 <SelectTrigger className="h-9 text-sm">
                                     <SelectValue

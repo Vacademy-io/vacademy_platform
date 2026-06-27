@@ -5,6 +5,7 @@ import {
     LearnerLiveStats,
     formatDuration,
     parseEngagement,
+    perClassEngagement,
 } from './liveCompute';
 import { LiveSessionRow } from '../-services/liveReportApi';
 import {
@@ -52,7 +53,7 @@ export async function exportBatchLivePdf(meta: LivePdfMeta, summary: BatchLiveSu
         { label: 'Avg Attendance', value: `${summary.avgAttendancePct.toFixed(1)}%`, sub: `${summary.learnerCount} learners` },
         { label: 'Classes Held', value: `${summary.totalClassesHeld}` },
         { label: 'Avg Duration', value: formatDuration(summary.avgDurationMinutes), sub: 'per present learner' },
-        { label: 'Avg Engagement', value: `${summary.avgEngagementIndex}`, sub: 'interactions' },
+        { label: 'Avg Engagement', value: `${summary.avgEngagementScore}`, sub: '0–100' },
     ], y);
 
     y = sectionTitle(doc, 'Class-wise Attendance', y, theme);
@@ -79,7 +80,7 @@ export async function exportBatchLivePdf(meta: LivePdfMeta, summary: BatchLiveSu
     autoTable(doc, {
         ...tableBase(theme),
         startY: y,
-        head: [['Rank', 'Name', 'Attendance', 'Classes', 'Avg Duration', 'Engagement']],
+        head: [['Rank', 'Name', 'Attendance', 'Classes', 'Avg Duration', 'Engagement (0–100)']],
         columnStyles: {
             0: { halign: 'center', cellWidth: 16 },
             2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
@@ -90,7 +91,7 @@ export async function exportBatchLivePdf(meta: LivePdfMeta, summary: BatchLiveSu
             `${r.attendancePercentage.toFixed(1)}%`,
             `${r.attended}/${r.total}`,
             formatDuration(r.avgDurationMinutes),
-            String(r.engagementIndex),
+            String(r.engagementScore),
         ]),
     });
 
@@ -108,6 +109,15 @@ export async function exportLearnerLivePdf(
     const logo = await loadLogo(meta.logoUrl);
     const theme = resolveTheme();
 
+    const learnerEngagementScore =
+        batch.maxEngagementPerClass > 0
+            ? Math.round(
+                  (perClassEngagement(learner.engagementIndex, learner.attended) /
+                      batch.maxEngagementPerClass) *
+                      100
+              )
+            : 0;
+
     let y = drawTitleAndInfo(doc, 'Learner Live Class Report', [
         { label: 'Learner', value: learner.fullName },
         { label: 'Course', value: meta.courseName },
@@ -118,7 +128,7 @@ export async function exportLearnerLivePdf(
         { label: 'Attendance', value: `${learner.attendancePercentage.toFixed(1)}%`, sub: `Batch ${batch.avgAttendancePct.toFixed(1)}%` },
         { label: 'Classes Attended', value: `${learner.attended}/${learner.total}` },
         { label: 'Avg Duration', value: formatDuration(learner.avgDurationMinutes), sub: `Batch ${formatDuration(batch.avgDurationMinutes)}` },
-        { label: 'Engagement', value: `${learner.engagementIndex}`, sub: `Batch ${batch.avgEngagementIndex}` },
+        { label: 'Engagement', value: `${learnerEngagementScore}`, sub: `Batch ${batch.avgEngagementScore} · /100` },
     ], y);
 
     y = sectionTitle(doc, 'Class History', y, theme);

@@ -45,7 +45,6 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { TELEPHONY_CALL_STATUSES, humanizeCallStatus } from '@/hooks/use-lead-report-settings';
-import type { ReportTabProps } from '../report-shared';
 import {
     applyDisposition,
     callLogMetricsKey,
@@ -62,7 +61,16 @@ import {
     type CallLogScope,
     type CallRow,
     type DispositionOption,
-} from './call-log-service';
+} from '../-services/call-log-service';
+
+/** Scope passed in by the page (date window + RBAC narrowing), same shape the Reports tabs used. */
+export interface CallLogTabProps {
+    instituteId: string;
+    fromDate: string;
+    toDate: string;
+    teamId?: string;
+    counsellorUserId?: string;
+}
 
 const PAGE_SIZE = 25;
 const ALL = '__ALL__';
@@ -126,7 +134,7 @@ export default function CallLogTab({
     toDate,
     teamId,
     counsellorUserId,
-}: ReportTabProps) {
+}: CallLogTabProps) {
     const queryClient = useQueryClient();
     const scope: CallLogScope = { instituteId, fromDate, toDate, teamId, counsellorUserId };
 

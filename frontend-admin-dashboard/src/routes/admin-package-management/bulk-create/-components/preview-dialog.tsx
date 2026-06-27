@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CheckCircle, XCircle, Package, Users } from '@phosphor-icons/react';
 import { BulkCourseItem, GlobalDefaults, BulkCreateResponse, BatchConfig } from '../-types/bulk-create-types';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 interface PreviewDialogProps {
     open: boolean;
@@ -52,7 +53,7 @@ export function PreviewDialog({
         if (!config) return 'Free';
 
         if (config.payment_type === 'FREE') return 'Free';
-        if (config.price) return `₹${config.price}`;
+        if (config.price) return `₹${formatPlanPrice(config.price)}`;
         return PAYMENT_TYPE_LABELS[config.payment_type] || 'Free';
     };
 

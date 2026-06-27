@@ -80,6 +80,7 @@ import { extractBatchesFromInviteDetails } from '@/routes/manage-students/invite
 import { LoadingSpinner } from '@/components/ai-course-builder/LoadingSpinner';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 interface PackageSessionSidebarProps {
     selectedPackage: {
@@ -831,7 +832,7 @@ const InviteDetailView = ({ inviteId, onBack }: { inviteId: string; onBack: () =
                                             {plan.name}
                                         </span>
                                         <span className="text-xs font-bold text-primary-600">
-                                            {plan.currency} {plan.actual_price}
+                                            {plan.currency} {formatPlanPrice(plan.actual_price)}
                                         </span>
                                     </div>
                                     <div className="flex gap-2 text-[10px] text-neutral-500">

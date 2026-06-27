@@ -18,6 +18,25 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             String providerType, String providerCallId);
 
     /**
+     * Dedup guard for AI dispatch: has an AI call for this (institute, user, provider)
+     * been placed within the last {@code since} window? Aavtaar doesn't echo our
+     * correlation id, so a duplicated dispatch (workflow entered twice / bulk + node)
+     * becomes two real dials — one connects, the other gets BUSY — and two call-log
+     * rows. {@code AiCallService.placeCall} calls this under a per-lead lock to collapse
+     * the duplicate. {@code created_at} is DB-stamped at insert, so the first row is
+     * visible to the second caller once its insert commits.
+     */
+    @Query("""
+            SELECT (COUNT(t) > 0) FROM TelephonyCallLog t
+            WHERE t.instituteId = :instituteId AND t.userId = :userId
+              AND t.providerType = :providerType AND t.createdAt >= :since
+            """)
+    boolean existsRecentByInstituteUserProvider(@Param("instituteId") String instituteId,
+                                                @Param("userId") String userId,
+                                                @Param("providerType") String providerType,
+                                                @Param("since") java.sql.Timestamp since);
+
+    /**
      * Link an AI-voice end-of-call report to the call we placed, for providers that
      * neither echo our correlationId nor return a provider call id at placement
      * (Aavtaar): the most-recent OUTBOUND call to this phone in this institute.

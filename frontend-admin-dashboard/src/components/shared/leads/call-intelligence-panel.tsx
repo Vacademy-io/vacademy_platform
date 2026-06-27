@@ -280,6 +280,11 @@ export function CallIntelligencePanel({
             </div>
             {query.isLoading ? (
                 <p className="text-body text-neutral-500">Loading analysis…</p>
+            ) : query.isError ? (
+                <p className="text-body text-danger-600">
+                    Couldn’t reach the analysis service. If you’re on a backend without Call
+                    Intelligence deployed, this endpoint won’t exist yet.
+                </p>
             ) : !ci ? (
                 <p className="text-body text-neutral-500">This call hasn’t been analyzed.</p>
             ) : ci.status === 'COMPLETED' ? (

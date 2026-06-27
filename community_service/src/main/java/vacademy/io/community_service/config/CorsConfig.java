@@ -13,14 +13,13 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns(
-                    "http://localhost:*", // All localhost ports
-                    "https://*.vacademy.io",
-                    "https://*.edustream.ae", 
-                    "https://*.shikshanation.com", 
-                    "https://*.codecircle.org",// All vacademy.io subdomains
-                    "https://*.vacademy-platform.pages.dev" // All Cloudflare Pages subdomains
-                )
+                // Allow ANY origin so per-institute white-label custom domains (e.g.
+                // admin.elevateeducation.in) work, not just the platform's own domains —
+                // those domains are arbitrary, so a static allow-list can never cover them.
+                // allowedOriginPatterns("*") + allowCredentials echoes the request origin
+                // back (the spec forbids "*" + credentials), matching admin_core/auth which
+                // already use allowedOrigins("*").
+                .allowedOriginPatterns("*")
                 .allowedMethods("*")
                 .allowCredentials(true) // Allow credentials with pattern matching
                 .allowedHeaders("*"); // Allow any headers

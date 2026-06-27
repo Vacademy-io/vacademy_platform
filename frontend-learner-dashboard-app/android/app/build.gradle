@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// Release signing is read from a gitignored android/keystore.properties so the
+// upload key + passwords never land in git. Falls back to the debug key when the
+// file is absent (e.g. CI or a fresh clone), keeping local debug builds working.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace "io.vacademy.student.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -20,11 +29,21 @@ android {
 			DEEP_LINK_HOST: "learner.vacademy.io"
 		]
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.debug
+            signingConfig keystorePropsFile.exists() ? signingConfigs.release : signingConfigs.debug
         }
     }
 
@@ -34,8 +53,8 @@ android {
 		ssdc {
 			dimension "client"
 			applicationId "io.vacademy.student.app"
-			versionCode 27
-			versionName "2.2.0"
+			versionCode 28
+			versionName "2.2.1"
 			// Deep link host for this client
 			manifestPlaceholders.DEEP_LINK_HOST = "learner.vacademy.io"
 		}
@@ -43,8 +62,8 @@ android {
 		seven_cs {
 			dimension "client"
 			applicationId "com.sevencs.app"
-			versionCode 21
-			versionName "2.0.6"
+			versionCode 22
+			versionName "2.0.7"
 			// Change app name for Seven CS
 			resValue "string", "app_name", "The 7Cs"
 			// Set the deep link host for Seven CS (adjust to your domain)
@@ -53,8 +72,8 @@ android {
 		fivesep {
 			dimension "client"
 			applicationId "com.fivesep.app"
-			versionCode 4
-			versionName "1.0.3"
+			versionCode 5
+			versionName "1.0.4"
 			// Change app name for Fivesep
 			resValue "string", "app_name", "iThinkers by Fivesep"
 			// Set the deep link host for Fivesep (adjust to your domain)
@@ -63,8 +82,8 @@ android {
 		shikshanation {
 			dimension "client"
 			applicationId "com.shikshanation.new.app"
-			versionCode 5
-			versionName "1.1.0"
+			versionCode 6
+			versionName "1.1.1"
 			// Change app name for Fivesep
 			resValue "string", "app_name", "Shiksha Nation"
 			// Set the deep link host for Fivesep (adjust to your domain)
@@ -73,34 +92,42 @@ android {
 		enark{
 			dimension "client"
 			applicationId "com.enarkuplift.app"
-			versionCode 5
-			versionName "1.5.0"
+			versionCode 6
+			versionName "1.5.1"
 			resValue "string", "app_name", "Uplift Teacher Training"
 			manifestPlaceholders.DEEP_LINK_HOST = "training.enarkuplift.in"
 		}
 		edzumo {
 			dimension "client"
 			applicationId "com.edzumo.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 3
+			versionName "1.0.2"
 			resValue "string", "app_name", "Edzumo"
 			manifestPlaceholders.DEEP_LINK_HOST = "workout.edzumo.com"
 		}
 		chanakaya {
 			dimension "client"
 			applicationId "com.chanakayaiasacademy.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 3
+			versionName "1.0.2"
 			resValue "string", "app_name", "SADBHAVANA"
 			manifestPlaceholders.DEEP_LINK_HOST = "student-chanakayaiasacademy.vacademy.io"
 		}
 		stemx {
 			dimension "client"
 			applicationId "com.stemx.app"
-			versionCode 2
-			versionName "1.0.1"
+			versionCode 3
+			versionName "1.0.2"
 			resValue "string", "app_name", "STEMx Education"
 			manifestPlaceholders.DEEP_LINK_HOST = "learn.stemxindia.com"
+		}
+		elevate {
+			dimension "client"
+			applicationId "com.elevateeducation.app"
+			versionCode 1
+			versionName "1.0.0"
+			resValue "string", "app_name", "Elevate Education"
+			manifestPlaceholders.DEEP_LINK_HOST = "student.elevateeducation.in"
 		}
 	}
 }

@@ -101,14 +101,21 @@ export const flavorConfig: FlavorConfigs = {
 
   // Chanakaya IAS Academy iOS app
   "io.chanakayaiasacademy.app": {
-    appName: "Chanakaya IAS Academy",
+    appName: "Chanakya IAS Academy",
     domain: "vacademy.io",
     subdomain: "student-chanakayaiasacademy",
   },
 
+  // Sadbhavana iOS app (separate brand, dedicated subdomain sadbhavna.vacademy.io)
+  "io.sadbhavana.com": {
+    appName: "Sadbhavana",
+    domain: "vacademy.io",
+    subdomain: "sadbhavna",
+  },
+
   // Chanakaya IAS Academy Android app
   "com.chanakayaiasacademy.app": {
-    appName: "Chanakaya IAS Academy",
+    appName: "Chanakya IAS Academy",
     domain: "vacademy.io",
     subdomain: "student-chanakayaiasacademy",
   },
@@ -125,5 +132,19 @@ export const flavorConfig: FlavorConfigs = {
     appName: "STEMx Education",
     domain: "stemxindia.com",
     subdomain: "learn",
+  },
+
+  // Elevate Education iOS app
+  "io.elevateeducation.app": {
+    appName: "Elevate Education",
+    domain: "elevateeducation.in",
+    subdomain: "student",
+  },
+
+  // Elevate Education Android app
+  "com.elevateeducation.app": {
+    appName: "Elevate Education",
+    domain: "elevateeducation.in",
+    subdomain: "student",
   },
 };

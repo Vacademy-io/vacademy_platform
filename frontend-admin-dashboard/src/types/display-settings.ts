@@ -133,6 +133,7 @@ export type StudentSideViewTabId =
     | 'membership'
     | 'paymentHistory'
     | 'userTagging'
+    | 'badges'
     | 'files'
     | 'portalAccess'
     | 'reports'
@@ -151,6 +152,7 @@ export interface StudentSideViewSettings {
     membershipTab: boolean;
     paymentHistoryTab: boolean;
     userTaggingTab: boolean;
+    badgesTab: boolean;
     fileTab: boolean;
     portalAccessTab: boolean;
     reportsTab: boolean;
@@ -218,6 +220,7 @@ export type StudentSideViewVisibilityKey =
     | 'membershipTab'
     | 'paymentHistoryTab'
     | 'userTaggingTab'
+    | 'badgesTab'
     | 'fileTab'
     | 'portalAccessTab'
     | 'reportsTab'

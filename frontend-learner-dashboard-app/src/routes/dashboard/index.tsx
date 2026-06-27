@@ -82,10 +82,20 @@ import { playIllustrations } from "@/assets/play-illustrations";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
+import {
+  getBadgeConfig,
+  configNeedsAssessmentScore,
+  configNeedsLiveSession,
+  getScoringConfig,
+} from "@/services/badge-config";
+import { fetchBestAssessmentScorePct } from "@/services/assessment-score";
+import { fetchLiveAttendanceStats } from "@/services/live-attendance-stats";
+import { fetchAwardedBadges } from "@/services/awarded-badges";
 import { fetchLast7DaysProgress } from "./-lib/utils";
 import { StreakCounterWidget } from "./-components/play/StreakCounterWidget";
 import { XpDisplayWidget } from "./-components/play/XpDisplayWidget";
 import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWidget";
+import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 
@@ -387,9 +397,11 @@ export function DashboardComponent() {
     initializeDashboard();
   }, [setNavHeading, trackPageView]);
 
-  // Refresh play gamification data when theme is active and data is ready
+  // Refresh gamification data (badges / XP / streak) once dashboard data is ready.
+  // Runs for EVERY theme: the Play theme renders the play widgets while all other
+  // themes render DashboardGamificationPanel — both read from the same store.
   useEffect(() => {
-    if (!isPlayTheme || !data || !instituteId) return;
+    if (!data || !instituteId) return;
 
     const refreshGamification = async () => {
       try {
@@ -405,11 +417,36 @@ export function DashboardComponent() {
           end_date: now.toISOString().slice(0, 10),
         });
 
+        // Admin-configured badge definitions + awarded badges + points scoring.
+        const [badgeConfig, awardedBadges, scoring] = await Promise.all([
+          getBadgeConfig(),
+          fetchAwardedBadges(),
+          getScoringConfig(),
+        ]);
+        // Fetch the assessment score only when a badge OR the points scoring needs it.
+        const needAssessment =
+          configNeedsAssessmentScore(badgeConfig) || scoring.assessmentBestScore > 0;
+        const bestAssessmentScorePct = needAssessment
+          ? await fetchBestAssessmentScorePct()
+          : null;
+
+        // Live-class attendance is only needed when a live-session badge is configured.
+        const liveStats = configNeedsLiveSession(badgeConfig)
+          ? await fetchLiveAttendanceStats()
+          : { count: 0, streak: 0 };
+
         const gamificationData = computeGamificationData({
           dashboard: data,
           activities,
           attendance: weeklyAttendance ?? null,
           instituteId,
+          badgeConfig,
+          studyLibrary: studyLibraryData ?? null,
+          bestAssessmentScorePct,
+          awardedBadges,
+          scoring,
+          liveSessionCount: liveStats.count,
+          liveSessionStreak: liveStats.streak,
         });
 
         setGamificationData(gamificationData);
@@ -419,7 +456,13 @@ export function DashboardComponent() {
     };
 
     refreshGamification();
-  }, [isPlayTheme, data, weeklyAttendance, instituteId, setGamificationData]);
+  }, [
+    data,
+    weeklyAttendance,
+    instituteId,
+    studyLibraryData,
+    setGamificationData,
+  ]);
 
   const handleJoinSession = async (session: SessionDetails) => {
     // Track live session join attempt
@@ -856,13 +899,17 @@ export function DashboardComponent() {
               </div>
             </div>
 
-            {/* Play Theme Gamification Widgets — bottom of the main flow */}
-            {isPlayTheme && (
+            {/* Gamification (badges / XP / streak) — bottom of the main flow.
+                Play theme keeps its vibrant play-token widgets; every other theme
+                gets the standard design-token panel. */}
+            {isPlayTheme ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <StreakCounterWidget />
                 <XpDisplayWidget />
                 <AchievementBadgesWidget />
               </div>
+            ) : (
+              <DashboardGamificationPanel />
             )}
 
             {/* General query intake — only when the institute enabled the dashboard card */}

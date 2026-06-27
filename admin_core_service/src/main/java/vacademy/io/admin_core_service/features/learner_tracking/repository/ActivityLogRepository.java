@@ -1783,4 +1783,37 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     void updateProcessedData(@Param("id") String id, @Param("processedJson") String processedJson,
             @Param("status") String status);
 
+    /**
+     * BUG-6/BUG-10: Fetch assignment activity logs for a user within a date range,
+     * with assignmentSlideTracked JOIN FETCHed in-session so the collection is
+     * initialized when the collector runs in a CompletableFuture worker thread.
+     * Uses JPQL (not native), no LIMIT, no status filter.
+     */
+    @Query("SELECT DISTINCT a FROM ActivityLog a JOIN FETCH a.assignmentSlideTracked ast " +
+           "WHERE a.userId = :userId AND a.createdAt BETWEEN :start AND :end")
+    List<ActivityLog> findAssignmentActivityLogsForUserInRange(
+            @Param("userId") String userId,
+            @Param("start") java.sql.Timestamp start,
+            @Param("end") java.sql.Timestamp end);
+
+    // ── Student report v2: content-type engagement counts (READ-ONLY) ─────────
+
+    /**
+     * Returns rows of [source_type, count] for a user's activity logs in the date range.
+     * Used by ActivityCollector to populate content_engagement in StudyHabitsSection.
+     * READ-ONLY: SELECT only, no mutations.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+            SELECT al.source_type AS sourceType, COUNT(al.id) AS cnt
+            FROM activity_log al
+            WHERE al.user_id = :userId
+              AND al.created_at BETWEEN :start AND :end
+              AND al.source_type IS NOT NULL
+            GROUP BY al.source_type
+            """, nativeQuery = true)
+    List<Object[]> getContentTypeCountsForUser(
+            @org.springframework.data.repository.query.Param("userId") String userId,
+            @org.springframework.data.repository.query.Param("start") java.sql.Timestamp start,
+            @org.springframework.data.repository.query.Param("end") java.sql.Timestamp end);
+
 }

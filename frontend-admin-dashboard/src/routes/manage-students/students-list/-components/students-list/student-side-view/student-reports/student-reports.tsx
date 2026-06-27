@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { InitiateReportDialog } from './InitiateReportDialog';
-import { getStudentReports, getStudentReport } from '@/services/student-analysis';
-import { StudentReport, StudentReportData } from '@/types/student-analysis';
+import {
+    getStudentReports,
+    getStudentReport,
+    getStudentReportFull,
+} from '@/services/student-analysis';
+import {
+    StudentReport,
+    StudentReportData,
+    ComprehensiveStudentReport,
+} from '@/types/student-analysis';
 import {
     FileText,
     Clock,
@@ -12,10 +20,12 @@ import {
     CheckCircle,
     XCircle,
     Spinner,
+    CircleNotch,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { StudentReportDetailsDialog } from './StudentReportDetailsDialog';
+import { ComprehensiveReportDialog } from './ComprehensiveReportDialog';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -37,8 +47,23 @@ export const StudentReports = () => {
     const [totalPages, setTotalPages] = useState(0);
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
+
+    // V1 dialog state
     const [selectedReport, setSelectedReport] = useState<StudentReportData | null>(null);
+    const [selectedReportName, setSelectedReportName] = useState<string | undefined>(undefined);
     const [detailsOpen, setDetailsOpen] = useState(false);
+
+    // V2 dialog state
+    const [comprehensiveReport, setComprehensiveReport] =
+        useState<ComprehensiveStudentReport | null>(null);
+    const [comprehensiveProcessId, setComprehensiveProcessId] = useState<string | null>(null);
+    const [comprehensiveReportName, setComprehensiveReportName] = useState<string | undefined>(
+        undefined
+    );
+    const [comprehensiveOpen, setComprehensiveOpen] = useState(false);
+
+    // Per-row loading: stores the processId currently being fetched
+    const [viewLoading, setViewLoading] = useState<string | null>(null);
 
     const [pendingProcesses, setPendingProcesses] = useState<string[]>([]);
     const [statusCheckLoading, setStatusCheckLoading] = useState(false);
@@ -119,9 +144,36 @@ export const StudentReports = () => {
         }
     };
 
-    const handleViewDetails = (report: StudentReportData) => {
-        setSelectedReport(report);
-        setDetailsOpen(true);
+    /**
+     * Fetch the full report by processId, then dispatch to the correct dialog
+     * depending on report_version.
+     */
+    const handleViewDetails = async (processId: string) => {
+        setViewLoading(processId);
+        try {
+            const full = await getStudentReportFull(processId);
+            if (full.report_version === 'v2' && full.comprehensive_report) {
+                setComprehensiveReport(full.comprehensive_report);
+                setComprehensiveProcessId(processId);
+                setComprehensiveReportName(full.name);
+                setComprehensiveOpen(true);
+            } else {
+                // Fallback: v1 or missing version → open old dialog
+                const reportData = full.report;
+                if (reportData) {
+                    setSelectedReport(reportData);
+                    setSelectedReportName(full.name);
+                    setDetailsOpen(true);
+                } else {
+                    toast.error('Report data is not available yet');
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch report details:', error);
+            toast.error('Failed to load report details');
+        } finally {
+            setViewLoading(null);
+        }
     };
 
     const handleCheckStatus = async () => {
@@ -188,7 +240,8 @@ export const StudentReports = () => {
 
     const reportLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
 
-    const processingCount = reports.filter((r) => r.status === 'PROCESSING').length + pendingProcesses.length;
+    const processingCount =
+        reports.filter((r) => r.status === 'PROCESSING').length + pendingProcesses.length;
     const completedCount = reports.filter((r) => r.status === 'COMPLETED').length;
     const failedCount = reports.filter((r) => r.status === 'FAILED').length;
 
@@ -275,22 +328,36 @@ export const StudentReports = () => {
                     {groupedReports.map(({ status, items }) => (
                         <div key={status} className="flex flex-col gap-2">
                             <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                                {status === 'PROCESSING' ? 'Processing' : status === 'COMPLETED' ? 'Completed' : 'Failed'}
+                                {status === 'PROCESSING'
+                                    ? 'Processing'
+                                    : status === 'COMPLETED'
+                                      ? 'Completed'
+                                      : 'Failed'}
                             </span>
                             {items.map((report) => (
                                 <ProfileSectionCard
                                     key={report.process_id}
                                     icon={FileText as PhosphorIcon}
-                                    heading={`${format(new Date(report.start_date_iso), 'MMM d')} – ${format(new Date(report.end_date_iso), 'MMM d, yyyy')}`}
+                                    heading={
+                                        report.name ||
+                                        `${format(new Date(report.start_date_iso), 'MMM d')} – ${format(new Date(report.end_date_iso), 'MMM d, yyyy')}`
+                                    }
                                     action={
-                                        report.status === 'COMPLETED' && report.report ? (
+                                        report.status === 'COMPLETED' ? (
                                             <MyButton
                                                 buttonType="secondary"
                                                 scale="small"
-                                                onClick={() => handleViewDetails(report.report!)}
+                                                onClick={() => handleViewDetails(report.process_id)}
+                                                disabled={viewLoading === report.process_id}
                                             >
-                                                View
-                                                <ArrowRight className="size-3.5" />
+                                                {viewLoading === report.process_id ? (
+                                                    <CircleNotch className="size-3.5 animate-spin" />
+                                                ) : (
+                                                    <ArrowRight className="size-3.5" />
+                                                )}
+                                                {viewLoading === report.process_id
+                                                    ? 'Loading…'
+                                                    : 'View'}
                                             </MyButton>
                                         ) : undefined
                                     }
@@ -298,7 +365,8 @@ export const StudentReports = () => {
                                     <div className="flex items-center gap-1.5">
                                         <Clock className="size-3.5 text-neutral-400" />
                                         <span className="text-xs text-neutral-500">
-                                            Created {format(new Date(report.created_at), 'MMM d, yyyy')}
+                                            Created{' '}
+                                            {format(new Date(report.created_at), 'MMM d, yyyy')}
                                         </span>
                                         <span
                                             className={cn(
@@ -349,10 +417,21 @@ export const StudentReports = () => {
                 </div>
             )}
 
+            {/* V1 dialog */}
             <StudentReportDetailsDialog
                 open={detailsOpen}
                 onOpenChange={setDetailsOpen}
                 report={selectedReport}
+                title={selectedReportName || 'Analysis Report'}
+            />
+
+            {/* V2 comprehensive dialog */}
+            <ComprehensiveReportDialog
+                open={comprehensiveOpen}
+                onOpenChange={setComprehensiveOpen}
+                processId={comprehensiveProcessId}
+                report={comprehensiveReport}
+                reportName={comprehensiveReportName}
             />
         </div>
     );

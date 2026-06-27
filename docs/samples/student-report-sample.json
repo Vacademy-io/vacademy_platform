@@ -1,0 +1,196 @@
+{
+  "meta": {
+    "report_version": "v2",
+    "report_name": "June 2026 Progress Report",
+    "report_id": "rpt_8fce21a4",
+    "generated_at": "2026-07-01T09:15:00",
+    "language": "en"
+  },
+
+  "student": {
+    "name": "Aarav Sharma",
+    "class": "Class 9 — Science",
+    "batch": "Science Batch 2026",
+    "enrollment_no": "SNS-2026-0042",
+    "roll_no": "09S-042",
+    "avatar_url": null
+  },
+
+  "institute": {
+    "name": "Sunrise National School",
+    "logo_url": "https://media.vacademy.io/institutes/sunrise/logo.png",
+    "theme_color": "#2563eb"
+  },
+
+  "period": {
+    "start_date": "2026-06-01",
+    "end_date": "2026-06-30",
+    "label": "1–30 June 2026",
+    "days": 30
+  },
+
+  "overview": {
+    "overall_status": "On Track",
+    "overall_grade": "B+",
+    "one_line": "Consistent effort and improving scores — chemistry needs attention.",
+    "headline_metrics": [
+      { "key": "attendance",        "label": "Attendance",       "value": 88,   "unit": "%",   "trend": "up",     "change": "+4% vs May",   "sentiment": "good" },
+      { "key": "average_score",     "label": "Avg. Score",       "value": 76,   "unit": "%",   "trend": "up",     "change": "+6%",          "sentiment": "good" },
+      { "key": "course_completion", "label": "Course Progress",  "value": 64,   "unit": "%",   "trend": "up",     "change": "+12%",         "sentiment": "good" },
+      { "key": "study_time",        "label": "Study Time",       "value": 38.5, "unit": "hrs", "trend": "steady", "change": "~77 min/day",  "sentiment": "good" },
+      { "key": "class_rank",        "label": "Class Rank",       "value": "7 / 42",            "trend": "up",     "change": "up 3 places",  "sentiment": "good" },
+      { "key": "assignments",       "label": "Assignments Done", "value": "12 / 14",           "trend": "steady", "change": "86%",          "sentiment": "neutral" }
+    ]
+  },
+
+  "parent_summary": "Aarav had a strong and consistent June. He logged in on 26 of 30 days and studied for about 38 and a half hours, mostly in the evenings. His test scores improved by 6% and he moved up 3 places to rank 7 in a class of 42. He is doing very well in Physics (Mechanics) and Biology, but his Chemistry — especially Organic Chemistry — is lagging and pulled his average down. Attendance dipped in the third week (3 missed live classes) which lined up with a lower score on the 18 June Chemistry test. With a little focused practice in Chemistry and steady attendance, he is well positioned to reach the top 5.",
+
+  "attendance": {
+    "available": true,
+    "overall_percentage": 88,
+    "present": 44,
+    "absent": 5,
+    "late": 1,
+    "total_sessions": 50,
+    "trend": "up",
+    "change_vs_previous": "+4%",
+    "note": "Attendance dipped in the week of 15–21 June (3 absences).",
+    "weekly": [
+      { "week": "Jun 01–07", "percentage": 100 },
+      { "week": "Jun 08–14", "percentage": 92 },
+      { "week": "Jun 15–21", "percentage": 70 },
+      { "week": "Jun 22–30", "percentage": 90 }
+    ]
+  },
+
+  "academics": {
+    "available": true,
+    "average_percentage": 76,
+    "class_average_percentage": 68,
+    "best_subject": "Physics",
+    "weakest_subject": "Chemistry",
+    "assessments": [
+      { "name": "Unit Test 1 — Motion",        "date": "2026-06-05", "subject": "Physics",   "marks": 42, "total_marks": 50, "percentage": 84, "grade": "A",  "rank": 5,  "percentile": 89, "class_average": 34, "status": "PASS" },
+      { "name": "Quiz — Atomic Structure",      "date": "2026-06-11", "subject": "Chemistry", "marks": 14, "total_marks": 20, "percentage": 70, "grade": "B",  "rank": 12, "percentile": 71, "class_average": 13, "status": "PASS" },
+      { "name": "Unit Test — Organic Basics",   "date": "2026-06-18", "subject": "Chemistry", "marks": 22, "total_marks": 50, "percentage": 44, "grade": "D",  "rank": 28, "percentile": 38, "class_average": 27, "status": "NEEDS_WORK" },
+      { "name": "Algebra Mid-Module",           "date": "2026-06-22", "subject": "Maths",     "marks": 34, "total_marks": 50, "percentage": 68, "grade": "B",  "rank": 9,  "percentile": 78, "class_average": 30, "status": "PASS" },
+      { "name": "Biology — Cell & Tissues",     "date": "2026-06-27", "subject": "Biology",   "marks": 40, "total_marks": 50, "percentage": 80, "grade": "A",  "rank": 6,  "percentile": 86, "class_average": 33, "status": "PASS" }
+    ],
+    "subject_performance": [
+      { "subject": "Physics",   "score_percentage": 82, "class_average": 70, "trend": "up",     "sentiment": "good" },
+      { "subject": "Biology",   "score_percentage": 79, "class_average": 72, "trend": "steady", "sentiment": "good" },
+      { "subject": "Maths",     "score_percentage": 68, "class_average": 66, "trend": "up",     "sentiment": "neutral" },
+      { "subject": "Chemistry", "score_percentage": 57, "class_average": 65, "trend": "down",   "sentiment": "attention" }
+    ]
+  },
+
+  "study_habits": {
+    "available": true,
+    "total_study_hours": 38.5,
+    "avg_minutes_per_day": 77,
+    "active_days": 26,
+    "total_days": 30,
+    "longest_streak_days": 9,
+    "consistency_rating": "High",
+    "most_active_time": "6–8 PM",
+    "focus_score": 78,
+    "content_engagement": { "videos_watched": 31, "documents_read": 18, "quizzes_attempted": 14 },
+    "daily_study_minutes": [
+      { "date": "2026-06-01", "minutes": 65 }, { "date": "2026-06-02", "minutes": 80 },
+      { "date": "2026-06-03", "minutes": 95 }, { "date": "2026-06-04", "minutes": 40 },
+      { "date": "2026-06-05", "minutes": 110 }, { "date": "2026-06-06", "minutes": 70 },
+      { "date": "2026-06-07", "minutes": 0 }, { "date": "2026-06-08", "minutes": 85 },
+      { "date": "2026-06-09", "minutes": 90 }, { "date": "2026-06-10", "minutes": 75 },
+      { "date": "2026-06-11", "minutes": 100 }, { "date": "2026-06-12", "minutes": 60 },
+      { "date": "2026-06-13", "minutes": 45 }, { "date": "2026-06-14", "minutes": 0 },
+      { "date": "2026-06-15", "minutes": 55 }, { "date": "2026-06-16", "minutes": 70 },
+      { "date": "2026-06-17", "minutes": 50 }, { "date": "2026-06-18", "minutes": 30 },
+      { "date": "2026-06-19", "minutes": 0 }, { "date": "2026-06-20", "minutes": 40 },
+      { "date": "2026-06-21", "minutes": 65 }, { "date": "2026-06-22", "minutes": 120 },
+      { "date": "2026-06-23", "minutes": 95 }, { "date": "2026-06-24", "minutes": 85 },
+      { "date": "2026-06-25", "minutes": 100 }, { "date": "2026-06-26", "minutes": 90 },
+      { "date": "2026-06-27", "minutes": 110 }, { "date": "2026-06-28", "minutes": 70 },
+      { "date": "2026-06-29", "minutes": 80 }, { "date": "2026-06-30", "minutes": 75 }
+    ]
+  },
+
+  "course_progress": {
+    "available": true,
+    "overall_completion_percentage": 64,
+    "subjects": [
+      { "subject": "Physics",   "completion_percentage": 78, "time_hours": 11.5 },
+      { "subject": "Biology",   "completion_percentage": 70, "time_hours": 9.0 },
+      { "subject": "Maths",     "completion_percentage": 58, "time_hours": 10.0 },
+      { "subject": "Chemistry", "completion_percentage": 49, "time_hours": 8.0 }
+    ]
+  },
+
+  "live_classes": {
+    "available": true,
+    "attended": 18,
+    "missed": 3,
+    "total": 21,
+    "attendance_percentage": 86,
+    "participation": { "questions_asked": 12, "polls_answered": 22, "avg_engagement": "Active" }
+  },
+
+  "assignments": {
+    "available": true,
+    "assigned": 14,
+    "submitted": 12,
+    "on_time": 10,
+    "late": 2,
+    "pending": 2,
+    "avg_score_percentage": 81
+  },
+
+  "strengths": [
+    { "topic": "Mechanics (Physics)",   "confidence": 88 },
+    { "topic": "Cell Biology",          "confidence": 84 },
+    { "topic": "Linear Equations",      "confidence": 80 }
+  ],
+
+  "areas_to_improve": [
+    { "topic": "Organic Chemistry",     "confidence": 41 },
+    { "topic": "Trigonometry",          "confidence": 47 },
+    { "topic": "Chemical Bonding",      "confidence": 53 }
+  ],
+
+  "achievements": [
+    { "title": "Algebra Foundations — Certificate of Completion", "issued_at": "2026-06-24", "course_name": "Algebra Foundations", "completion_percentage": 100 },
+    { "title": "9-Day Study Streak", "issued_at": "2026-06-22", "type": "BADGE" }
+  ],
+
+  "doubts_and_engagement": {
+    "available": true,
+    "questions_asked": 9,
+    "resolved": 8,
+    "avg_resolution_hours": 6,
+    "note": "Aarav actively asks questions — a strong sign of engagement."
+  },
+
+  "ai_insights": {
+    "summary": "A consistent, improving month with one clear focus area: Chemistry.",
+    "cross_domain_insights": [
+      "Scores rose alongside study time — the 22–27 June streak (avg 100 min/day) coincided with his best Biology and Algebra results.",
+      "The 18 June Chemistry dip (44%) followed the only week with 3 missed live classes — attendance and outcomes are linked for him.",
+      "Strong consistency (26/30 active days) is his biggest asset; channelling 15 of those minutes/day into Chemistry could lift his average to ~80%."
+    ],
+    "recommendations": [
+      { "priority": "HIGH",   "area": "Organic Chemistry", "suggestion": "20 minutes/day on nomenclature and functional groups for two weeks; attend the Thursday Chemistry doubt-clearing live class." },
+      { "priority": "MEDIUM", "area": "Trigonometry",      "suggestion": "Practice 5 ratio problems daily; revisit the recorded 'Intro to Trig' video." },
+      { "priority": "LOW",    "area": "Attendance",        "suggestion": "Keep live-class attendance above 90% — it correlates directly with his test scores." }
+    ],
+    "section_commentary": {
+      "attendance": "Good overall (88%); just watch the occasional mid-month dips.",
+      "academics": "Above class average in 3 of 4 subjects; Chemistry is the outlier to address.",
+      "study_habits": "Excellent consistency and a healthy evening study routine."
+    }
+  },
+
+  "data_notes": [
+    "Trends ('+4% vs May') compare against the previous report period.",
+    "Class rank/percentile are within this batch for the selected period.",
+    "Sections the institute did not enable or had no data for are omitted."
+  ]
+}

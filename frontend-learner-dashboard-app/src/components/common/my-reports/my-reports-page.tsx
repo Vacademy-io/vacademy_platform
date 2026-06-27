@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchStudentReports,
-  StudentReport,
+  fetchMyReports,
+  type ReportListItem,
+  type StudentReport,
 } from "@/services/student-reports-api";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -18,15 +19,38 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { MyButton } from "@/components/design-system/button";
-import { format } from "date-fns";
 import { useReportStore } from "@/stores/report-store";
 import { X } from "@phosphor-icons/react";
+import { useEffect } from "react";
+
+function safeFormatDate(iso: string | undefined | null): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+/** Label to show in the card title: report name if set, else date range. */
+function reportLabel(report: ReportListItem): string {
+  if (report.name) return report.name;
+  const start = safeFormatDate(report.start_date_iso);
+  const end = safeFormatDate(report.end_date_iso);
+  return `${start} — ${end}`;
+}
 
 export default function MyReportsPage() {
   const navigate = useNavigate();
   const { permissions, isLoading: permissionsLoading } =
     useStudentPermissions();
-  const { setSelectedReport, clearSelectedReport } = useReportStore();
+  const { setSelectedReport } = useReportStore();
   const [currentPage, setCurrentPage] = useState(0);
 
   // Redirect if user doesn't have permission to view reports
@@ -41,18 +65,33 @@ export default function MyReportsPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["studentReports", currentPage],
-    queryFn: () => fetchStudentReports(currentPage, 20),
+    queryKey: ["myReports", currentPage],
+    queryFn: () => fetchMyReports(currentPage, 20),
     enabled: !!permissions.canViewReports,
   });
 
-  const handleViewDetails = (report: StudentReport) => {
-    setSelectedReport(report);
-    navigate({ to: `/my-reports/${report.process_id}` });
+  const handleViewDetails = (item: ReportListItem) => {
+    // For v1 reports: pre-populate the store so the detail page can show date
+    // range without a second fetch. V2 reports don't use the store.
+    if (item.report_version !== "v2" && item.report) {
+      const synthetic: StudentReport = {
+        process_id: item.process_id,
+        user_id: "",
+        institute_id: "",
+        start_date_iso: item.start_date_iso,
+        end_date_iso: item.end_date_iso,
+        status: item.status,
+        created_at: item.created_at,
+        updated_at: "",
+        report: item.report,
+      };
+      setSelectedReport(synthetic);
+    }
+    navigate({ to: `/my-reports/${item.process_id}` });
   };
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page - 1); // MyPagination uses 1-based, API uses 0-based
+    setCurrentPage(page - 1); // MyPagination is 1-based, API is 0-based
   };
 
   const handleClose = () => {
@@ -127,6 +166,7 @@ export default function MyReportsPage() {
           </div>
         </div>
       </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 w-full py-6 md:py-8 px-4">
         {reportsData.reports.map((report) => (
           <Card
@@ -134,30 +174,33 @@ export default function MyReportsPage() {
             className="hover:shadow-lg transition-shadow"
           >
             <CardHeader>
-              <CardTitle className="text-lg">
-                {format(new Date(report.start_date_iso), "MMM dd, yyyy")} -{" "}
-                {format(new Date(report.end_date_iso), "MMM dd, yyyy")}
-              </CardTitle>
+              <CardTitle className="text-lg">{reportLabel(report)}</CardTitle>
               <CardDescription>
-                Created: {format(new Date(report.created_at), "MMM dd, yyyy")}
+                {report.created_at
+                  ? `Created: ${safeFormatDate(report.created_at)}`
+                  : ""}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-center">
-                <span
-                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    report.status === "COMPLETED"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}
-                >
-                  {report.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      report.status === "COMPLETED"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {report.status}
+                  </span>
+                  {report.report_version === "v2" && (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-primary-50 text-primary-600 border border-primary-200">
+                      Comprehensive
+                    </span>
+                  )}
+                </div>
                 <MyButton
-                  onClick={() => {
-                    clearSelectedReport();
-                    handleViewDetails(report);
-                  }}
+                  onClick={() => handleViewDetails(report)}
                   size="sm"
                   buttonType="secondary"
                 >

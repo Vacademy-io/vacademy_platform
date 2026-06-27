@@ -121,7 +121,7 @@ function CounsellorCard({
                     <div className="flex items-center gap-2 text-caption text-neutral-500">
                         <span className="truncate">{counsellor.team_name ?? '—'}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{counsellor.open_leads_count} open</span>
+                        <span>{counsellor.open_leads_count} assigned</span>
                     </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">

@@ -2,6 +2,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useState, useEffect } from 'react';
 import BatchReports from './batch/batchReports';
 import StudentReports from './student/studentReports';
+import LiveClassReports from './live/liveClassReports';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,7 +24,6 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { BarChart3, Users, Settings, FileText } from 'lucide-react';
 
 const reportTypes = [
     ReportDurationEnum.DAILY,
@@ -177,6 +177,15 @@ export default function HeaderTabs() {
                         >
                             {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="LIVE"
+                            className={`flex min-w-fit gap-1.5 rounded-none px-6 py-2 !shadow-none sm:px-12 ${selectedTab === 'LIVE'
+                                    ? 'border-4px rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                    : 'border-none bg-transparent'
+                                }`}
+                        >
+                            Live Classes
+                        </TabsTrigger>
                     </TabsList>
                     <div className="w-full sm:w-auto">
                         <MyButton
@@ -195,6 +204,9 @@ export default function HeaderTabs() {
                 </TabsContent>
                 <TabsContent value="STUDENT">
                     <StudentReports></StudentReports>
+                </TabsContent>
+                <TabsContent value="LIVE">
+                    <LiveClassReports></LiveClassReports>
                 </TabsContent>
             </Tabs>
             <MyDialog

@@ -176,6 +176,7 @@ public class AttendanceReportService {
             details.setAttendanceTimestamp(record.getAttendanceTimestamp());
             details.setDailyAttendance(record.getDailyAttendance());
             details.setDurationMinutes(record.getProviderTotalDurationMinutes());
+            details.setEngagementData(record.getEngagementData());
 
             groupedData.get(record.getStudentId()).getSessions().add(details);
         }
@@ -263,6 +264,7 @@ public class AttendanceReportService {
             details.setAttendanceTimestamp(record.getAttendanceTimestamp());
             details.setDailyAttendance(record.getDailyAttendance());
             details.setDurationMinutes(record.getProviderTotalDurationMinutes());
+            details.setEngagementData(record.getEngagementData());
 
             groupedData.get(studentId).getSessions().add(details);
         }

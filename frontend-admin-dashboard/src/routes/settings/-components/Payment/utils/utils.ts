@@ -98,15 +98,5 @@ export const getTotalSteps = (planType: string): number => {
     return 3;
 };
 
-export const currencySymbols: { [key: string]: string } = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    INR: '₹',
-    AUD: 'A$',
-    CAD: 'C$',
-};
-
-export const getCurrencySymbol = (currencyCode: string) => {
-    return currencySymbols[currencyCode] || currencyCode;
-};
+// Currency symbols live in the canonical currency source so every flow stays in sync.
+export { currencySymbols, getCurrencySymbol } from '@/constants/currencies';

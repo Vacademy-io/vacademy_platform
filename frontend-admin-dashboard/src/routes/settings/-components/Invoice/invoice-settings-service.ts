@@ -1,6 +1,7 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS, SAVE_INSTITUTE_SETTING } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { CURRENCIES } from '@/constants/currencies';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -98,17 +99,8 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettingsData = {
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 /** Currencies the invoice generator knows how to render a symbol for. */
-export const CURRENCY_OPTIONS: Array<{ code: string; label: string; symbol: string }> = [
-    { code: 'INR', label: 'Indian Rupee', symbol: '₹' },
-    { code: 'USD', label: 'US Dollar', symbol: '$' },
-    { code: 'EUR', label: 'Euro', symbol: '€' },
-    { code: 'GBP', label: 'British Pound', symbol: '£' },
-    { code: 'JPY', label: 'Japanese Yen', symbol: '¥' },
-    { code: 'AUD', label: 'Australian Dollar', symbol: '$' },
-    { code: 'CAD', label: 'Canadian Dollar', symbol: 'C$' },
-    { code: 'SGD', label: 'Singapore Dollar', symbol: 'S$' },
-    { code: 'AED', label: 'UAE Dirham', symbol: 'د.إ' },
-];
+export const CURRENCY_OPTIONS: Array<{ code: string; label: string; symbol: string }> =
+    CURRENCIES.map(({ code, name, symbol }) => ({ code, label: name, symbol }));
 
 /**
  * Suggested tax components per country (applied when a country is picked and no

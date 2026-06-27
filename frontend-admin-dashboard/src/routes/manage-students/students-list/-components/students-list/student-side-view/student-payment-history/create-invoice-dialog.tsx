@@ -14,6 +14,7 @@ import {
     EnvelopeSimple,
 } from '@phosphor-icons/react';
 
+import { CURRENCIES, currencySymbols } from '@/constants/currencies';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
@@ -55,18 +56,13 @@ type InvoiceFormValues = z.infer<typeof invoiceFormSchema>;
 
 // ─── Currency options ────────────────────────────────────────────────────────
 
-const CURRENCY_OPTIONS = [
-    { _id: 'INR', value: 'INR', label: 'INR — Indian Rupee' },
-    { _id: 'USD', value: 'USD', label: 'USD — US Dollar' },
-    { _id: 'EUR', value: 'EUR', label: 'EUR — Euro' },
-    { _id: 'GBP', value: 'GBP', label: 'GBP — British Pound' },
-    { _id: 'AED', value: 'AED', label: 'AED — UAE Dirham' },
-    { _id: 'SGD', value: 'SGD', label: 'SGD — Singapore Dollar' },
-];
+const CURRENCY_OPTIONS = CURRENCIES.map(({ code, name }) => ({
+    _id: code,
+    value: code,
+    label: `${code} — ${name}`,
+}));
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-    INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'د.إ', SGD: 'S$',
-};
+const CURRENCY_SYMBOLS: Record<string, string> = currencySymbols;
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 

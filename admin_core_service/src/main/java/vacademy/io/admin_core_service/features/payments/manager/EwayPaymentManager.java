@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.payments.service.WebHookService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.payment.currency.CurrencyRegistry;
 import vacademy.io.common.payment.dto.*;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
@@ -54,7 +55,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
             LOGGER.info("Performing a Token Payment for customerId: {}", ewayRequest.getCustomerId());
             transaction = createTokenTransactionPayload(
                     ewayRequest.getCustomerId(),
-                    (int) (request.getAmount() * 100),
+                    (int) CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency()),
                     ewayRequest.getCvn(),
                     request.getCurrency()
             );
@@ -67,7 +68,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
                     fullName,
                     email,
                     ewayRequest,
-                    (int) (request.getAmount() * 100),
+                    (int) CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency()),
                     "ProcessPayment",
                     request.getCurrency()
             );
@@ -129,7 +130,7 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
     public PaymentResponseDTO chargeToken(String tokenCustomerId, double amount, String cvn, Map<String, Object> paymentGatewaySpecificData) {
         EwayApiResponseDTO.Transaction transaction = createTokenTransactionPayload(
                 tokenCustomerId,
-                (int) (amount * 100),
+                (int) CurrencyRegistry.toMinorUnits(amount, null),
                 cvn,
                 null // Assuming default currency or it should be passed in
         );
@@ -268,9 +269,12 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
 
         Map<String, Object> responseData = new HashMap<>();
 
-        int amount = 0;
+        double amount = 0;
         if (responseDTO.getPayment() != null && responseDTO.getPayment().getTotalAmount() != 0) {
-            amount = responseDTO.getPayment().getTotalAmount()/100; // convert cents to actual amount
+            // eWay returns the amount in minor units; decode with the currency's exponent.
+            amount = CurrencyRegistry.fromMinorUnits(
+                    responseDTO.getPayment().getTotalAmount(),
+                    responseDTO.getPayment().getCurrencyCode());
         }
 
         responseData.put("transactionId", responseDTO.getTransactionID());

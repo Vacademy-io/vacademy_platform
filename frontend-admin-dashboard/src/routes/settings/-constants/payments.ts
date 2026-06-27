@@ -1,8 +1,5 @@
-export const currencyOptions = [
-    { code: 'USD', name: 'US Dollar', symbol: '$' },
-    { code: 'EUR', name: 'Euro', symbol: '€' },
-    { code: 'GBP', name: 'British Pound', symbol: '£' },
-    { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
-    { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
-    { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
-];
+/**
+ * Re-exported from the canonical currency source so every payment-plan currency
+ * dropdown stays in sync. Add/edit currencies in `@/constants/currencies`.
+ */
+export { currencyOptions } from '@/constants/currencies';

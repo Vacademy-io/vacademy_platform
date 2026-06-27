@@ -11,6 +11,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.payment.currency.CurrencyRegistry;
 import vacademy.io.common.payment.dto.*;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
@@ -116,7 +117,7 @@ public class PhonePePaymentManager implements PaymentServiceStrategy {
 
     private PhonePePaymentRequestDTO buildPaymentRequest(UserDTO user, PaymentInitiationRequestDTO request,
             String merchantId) {
-        long amountInPaise = Math.round(request.getAmount() * 100);
+        long amountInPaise = CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency());
 
         PhonePeRequestDTO phonePeRequest = request.getPhonePeRequest();
         String redirectUrl = phonePeRequest != null ? phonePeRequest.getRedirectUrl() : "";

@@ -30,6 +30,13 @@ interface Props {
      */
     markInactive?: boolean;
     onComplete?: () => void;
+    /**
+     * Take the counsellor offline WITHOUT reassigning — leaves their leads
+     * assigned to them as-is. Only surfaced in the markInactive flow when
+     * there are leads (with none, the primary button already just flips
+     * inactive). The parent owns the status call + dialog close.
+     */
+    onMarkInactiveWithoutReassign?: () => Promise<void> | void;
 }
 
 /**
@@ -51,12 +58,14 @@ export function ReassignDialog({
     candidates,
     markInactive = false,
     onComplete,
+    onMarkInactiveWithoutReassign,
 }: Props) {
     const [mode, setMode] = useState<ReassignMode>('SINGLE');
     const [target, setTarget] = useState<string>('');
     const [preview, setPreview] = useState<ReassignResult | null>(null);
     const [perRowOverrides, setPerRowOverrides] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
+    const [skipping, setSkipping] = useState(false);
 
     const targets = useMemo(
         () => candidates.filter((c) => c.user_id !== fromUserId && c.is_active),
@@ -70,8 +79,19 @@ export function ReassignDialog({
             setPreview(null);
             setPerRowOverrides({});
             setSubmitting(false);
+            setSkipping(false);
         }
     }, [open]);
+
+    async function skipReassignAndMarkInactive() {
+        if (!onMarkInactiveWithoutReassign) return;
+        setSkipping(true);
+        try {
+            await onMarkInactiveWithoutReassign();
+        } finally {
+            setSkipping(false);
+        }
+    }
 
     async function loadPreview(nextMode: ReassignMode) {
         if (!fromUserId) return;
@@ -203,8 +223,8 @@ export function ReassignDialog({
                     {markInactive && (
                         <p className="mt-1 text-caption text-neutral-500">
                             {openLeads.length === 0
-                                ? `${fromUserName ?? 'They'} have no leads — confirming will just take them offline.`
-                                : `Reassign their ${openLeads.length} lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
+                                ? `${fromUserName ?? 'They'} have no assigned leads — confirming will just take them offline.`
+                                : `Reassign their ${openLeads.length} assigned lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
                         </p>
                     )}
                 </DialogHeader>
@@ -262,10 +282,26 @@ export function ReassignDialog({
                 </div>
 
                 <DialogFooter className="border-t border-neutral-200 px-6 py-4">
-                    <MyButton buttonType="secondary" onClick={() => onOpenChange(false)} disable={submitting}>
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={() => onOpenChange(false)}
+                        disable={submitting || skipping}
+                    >
                         Cancel
                     </MyButton>
-                    <MyButton buttonType="primary" onClick={submit} disable={submitting}>
+                    {/* Take the counsellor offline but leave their leads where
+                        they are — only meaningful when there ARE leads (with
+                        none, the primary button already just flips inactive). */}
+                    {markInactive && openLeads.length > 0 && onMarkInactiveWithoutReassign && (
+                        <MyButton
+                            buttonType="secondary"
+                            onClick={skipReassignAndMarkInactive}
+                            disable={submitting || skipping}
+                        >
+                            {skipping ? 'Marking inactive…' : 'Mark inactive without reassigning'}
+                        </MyButton>
+                    )}
+                    <MyButton buttonType="primary" onClick={submit} disable={submitting || skipping}>
                         {submitting
                             ? markInactive
                                 ? 'Working…'

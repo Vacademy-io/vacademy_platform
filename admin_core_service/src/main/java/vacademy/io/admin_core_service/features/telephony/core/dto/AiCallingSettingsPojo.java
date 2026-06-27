@@ -77,6 +77,32 @@ public class AiCallingSettingsPojo {
         return new AiCallingSettingsPojo();
     }
 
+    /**
+     * Resolve the raw provider campaign id for a provider-agnostic agent name, from the
+     * {@link #campaigns} registry. Preference order: an exact (name, provider) entry, then
+     * a (name, any-provider) entry, then {@link #defaultCampaignId}. This is what lets a
+     * workflow author pick a named agent and have it resolve to the right id for whichever
+     * provider is active — no raw campaign id in the node.
+     */
+    public String resolveCampaignId(String provider, String agentName) {
+        if (agentName != null && !agentName.isBlank() && campaigns != null) {
+            String byProvider = null, byAny = null;
+            String wanted = agentName.trim();
+            for (CampaignConfig c : campaigns) {
+                if (c == null || c.getCampaignId() == null || c.getCampaignId().isBlank()) continue;
+                if (c.getName() == null || !c.getName().equalsIgnoreCase(wanted)) continue;
+                if (provider != null && provider.equalsIgnoreCase(c.getProvider())) {
+                    byProvider = c.getCampaignId();
+                } else if (c.getProvider() == null || c.getProvider().isBlank()) {
+                    byAny = c.getCampaignId();
+                }
+            }
+            if (byProvider != null) return byProvider;
+            if (byAny != null) return byAny;
+        }
+        return defaultCampaignId;
+    }
+
     /** A single calling window. {@code start}/{@code end} are "HH:mm" (24h). */
     @Data
     @NoArgsConstructor
@@ -88,10 +114,13 @@ public class AiCallingSettingsPojo {
     }
 
     /**
-     * One configured AI campaign id and its direction. {@code direction} is
-     * "INBOUND" or "OUTBOUND" (case-insensitive); {@code name} is a friendly label
-     * shown in the UI and used to map a campaignId on a call/recording back to a
-     * human name. Only INBOUND-tagged ids classify a webhook as an inbound call.
+     * One configured AI campaign and its direction. {@code name} is the
+     * provider-agnostic "agent" a workflow author picks (e.g. "Class Feedback");
+     * {@code campaignId} is the raw id THIS {@code provider} uses for that agent;
+     * {@code direction} is "INBOUND" / "OUTBOUND" (case-insensitive). The same
+     * {@code name} can appear once per provider, so switching provider resolves the
+     * same named agent to the right campaign id — that's how a call stays
+     * provider-agnostic. {@code provider} blank ⇒ applies to any provider.
      */
     @Data
     @NoArgsConstructor
@@ -101,5 +130,7 @@ public class AiCallingSettingsPojo {
         private String campaignId;
         private String name;
         private String direction;
+        /** Which provider this campaign id belongs to (e.g. AAVTAAR). Blank ⇒ any provider. */
+        private String provider;
     }
 }

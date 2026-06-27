@@ -11,12 +11,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { CaretRight, Megaphone } from '@phosphor-icons/react';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
     fetchSourcePerformance,
@@ -109,7 +104,18 @@ export function SourcesTab({
         const exportable = totals ? [...rows, totals] : rows;
         exportCsv(
             `source-performance_${fromDate}_${toDate}.csv`,
-            ['Source', 'Leads', 'Connected', 'Interested', 'Won', 'Conv %', 'Revenue', 'Spend', 'CPL', 'ROI'],
+            [
+                'Source',
+                'Leads',
+                'Connected',
+                'Interested',
+                'Won',
+                'Conv %',
+                'Revenue',
+                'Spend',
+                'CPL',
+                'ROI',
+            ],
             exportable.map((r) => [
                 r.source_type ?? 'TOTAL',
                 r.leads,

@@ -79,6 +79,17 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
     List<WorkflowExecutionState> findActiveAiCallStatesByResponseId(@Param("responseId") String responseId);
 
     /**
+     * Generic (subject-agnostic) variant of {@link #findActiveAiCallStatesByResponseId}:
+     * matches the paused CALL_AI states for ANY call subject by the node's subject key. We
+     * match {@code subjectId} OR {@code responseId} so it works for non-lead subjects
+     * (subjectId only) AND in-flight lead states paused before subjectId existed
+     * (responseId only); for leads the two are equal, so this is a superset that never
+     * misses. The outcome processor resumes these PAST the node carrying the call's output.
+     */
+    @Query(value = "SELECT * FROM workflow_execution_state WHERE status='WAITING' AND pause_reason IN ('AI_CALL_RETRY','AI_CALL_RECHECK') AND (serialized_context ->> 'subjectId' = :subject OR serialized_context ->> 'responseId' = :subject)", nativeQuery=true)
+    List<WorkflowExecutionState> findActiveAiCallStatesBySubject(@Param("subject") String subject);
+
+    /**
      * Resume a paused AI-call state with the terminal disposition injected — atomically and
      * ONLY if still WAITING. Status-guarded so it can never revert a row the resume job has
      * already claimed (RESUMED) back to WAITING (which would double-dial/assign). Returns 1

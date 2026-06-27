@@ -75,7 +75,9 @@ export const revenueQueryKey = (p: CrmReportParams) =>
     ['crm-reports-revenue', ...paramsKey(p)] as const;
 
 export async function fetchRevenue(p: CrmReportParams): Promise<RevenueReport> {
-    const { data } = await authenticatedAxiosInstance.get(REVENUE_URL, { params: toRequestParams(p) });
+    const { data } = await authenticatedAxiosInstance.get(REVENUE_URL, {
+        params: toRequestParams(p),
+    });
     return {
         currency: data?.currency ?? 'INR',
         totals: data?.totals ?? null,
@@ -103,10 +105,13 @@ export interface CohortAnalysisReport {
     cohorts: CohortRow[];
 }
 
-export const cohortQueryKey = (p: CrmReportParams) => ['crm-reports-cohort', ...paramsKey(p)] as const;
+export const cohortQueryKey = (p: CrmReportParams) =>
+    ['crm-reports-cohort', ...paramsKey(p)] as const;
 
 export async function fetchCohortAnalysis(p: CrmReportParams): Promise<CohortAnalysisReport> {
-    const { data } = await authenticatedAxiosInstance.get(COHORT_URL, { params: toRequestParams(p) });
+    const { data } = await authenticatedAxiosInstance.get(COHORT_URL, {
+        params: toRequestParams(p),
+    });
     return {
         currency: data?.currency ?? 'INR',
         cohorts: Array.isArray(data?.cohorts) ? data.cohorts : [],
@@ -143,7 +148,9 @@ export const forecastQueryKey = (p: CrmReportParams) =>
     ['crm-reports-forecast', ...paramsKey(p)] as const;
 
 export async function fetchRevenueForecast(p: CrmReportParams): Promise<RevenueForecast> {
-    const { data } = await authenticatedAxiosInstance.get(FORECAST_URL, { params: toRequestParams(p) });
+    const { data } = await authenticatedAxiosInstance.get(FORECAST_URL, {
+        params: toRequestParams(p),
+    });
     return {
         currency: data?.currency ?? 'INR',
         assumptions: data?.assumptions ?? null,

@@ -48,6 +48,18 @@ public class TelephonyCallLog implements Persistable<String> {
     @Column(name = "response_id")
     private String responseId;
 
+    /**
+     * What this call targeted: LEAD (or NULL = legacy lead) / PACKAGE_SESSION_STUDENT /
+     * LIVE_SESSION_PARTICIPANT. The outcome processor reads this to branch between lead
+     * assign/status and subject-specific handling (e.g. feedback capture).
+     */
+    @Column(name = "subject_type", length = 32)
+    private String subjectType;
+
+    /** Domain id of the subject (lead = audience_response.id; student = package_session_id; etc.). */
+    @Column(name = "subject_id", length = 64)
+    private String subjectId;
+
     @Column(name = "user_id", nullable = false)
     private String userId;
 
@@ -108,6 +120,24 @@ public class TelephonyCallLog implements Persistable<String> {
 
     @Column(name = "raw_payload_json", columnDefinition = "TEXT")
     private String rawPayloadJson;
+
+    // ── Manual disposition (V346): the human-set outcome for this call. The AI
+    // (Aavtaar) disposition stays in ai_call_result; the dashboard surfaces both.
+    @Column(name = "disposition_key", length = 64)
+    private String dispositionKey;
+
+    @Column(name = "disposition_notes", columnDefinition = "TEXT")
+    private String dispositionNotes;
+
+    @Column(name = "dispositioned_by", length = 36)
+    private String dispositionedBy;
+
+    @Column(name = "dispositioned_at")
+    private Timestamp dispositionedAt;
+
+    /** Promised call-back time for a "Callback" disposition; feeds the callbacks-due chip. */
+    @Column(name = "callback_at")
+    private Timestamp callbackAt;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;

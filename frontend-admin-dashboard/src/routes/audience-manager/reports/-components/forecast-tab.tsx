@@ -21,7 +21,13 @@ import {
     type ReportTabProps,
 } from './report-shared';
 
-export function ForecastTab({ instituteId, fromDate, toDate, teamId, counsellorUserId }: ReportTabProps) {
+export function ForecastTab({
+    instituteId,
+    fromDate,
+    toDate,
+    teamId,
+    counsellorUserId,
+}: ReportTabProps) {
     // fromDate/toDate are part of the shared key but the forecast endpoint ignores them.
     const params = { instituteId, fromDate, toDate, teamId, counsellorUserId };
     const query = useQuery({
@@ -33,7 +39,8 @@ export function ForecastTab({ instituteId, fromDate, toDate, teamId, counsellorU
     });
 
     if (query.isLoading) return <ReportTabSkeleton />;
-    if (query.isError) return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
+    if (query.isError)
+        return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
 
     const currency = query.data?.currency ?? 'INR';
     const horizons = query.data?.horizons ?? [];
@@ -81,20 +88,41 @@ export function ForecastTab({ instituteId, fromDate, toDate, teamId, counsellorU
             {a && (
                 <ReportSection title="How this is calculated" icon={<Info size={18} />}>
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                        <Assumption label={`Revenue (last ${a.trailing_days}d)`} value={fmtCurrency(a.trailing_revenue, currency)} />
-                        <Assumption label="Avg daily revenue" value={fmtCurrency(a.avg_daily_revenue, currency)} />
-                        <Assumption label={`Leads (last ${a.trailing_days}d)`} value={fmtNumber(a.trailing_leads)} />
-                        <Assumption label={`Conversions (last ${a.trailing_days}d)`} value={fmtNumber(a.trailing_conversions)} />
-                        <Assumption label="Historical conv. rate" value={fmtPct(a.historical_conversion_rate)} />
-                        <Assumption label="Avg deal value" value={fmtCurrency(a.avg_deal_value, currency)} />
-                        <Assumption label="Open pipeline leads" value={fmtNumber(a.open_pipeline_leads)} />
+                        <Assumption
+                            label={`Revenue (last ${a.trailing_days}d)`}
+                            value={fmtCurrency(a.trailing_revenue, currency)}
+                        />
+                        <Assumption
+                            label="Avg daily revenue"
+                            value={fmtCurrency(a.avg_daily_revenue, currency)}
+                        />
+                        <Assumption
+                            label={`Leads (last ${a.trailing_days}d)`}
+                            value={fmtNumber(a.trailing_leads)}
+                        />
+                        <Assumption
+                            label={`Conversions (last ${a.trailing_days}d)`}
+                            value={fmtNumber(a.trailing_conversions)}
+                        />
+                        <Assumption
+                            label="Historical conv. rate"
+                            value={fmtPct(a.historical_conversion_rate)}
+                        />
+                        <Assumption
+                            label="Avg deal value"
+                            value={fmtCurrency(a.avg_deal_value, currency)}
+                        />
+                        <Assumption
+                            label="Open pipeline leads"
+                            value={fmtNumber(a.open_pipeline_leads)}
+                        />
                     </div>
                     <p className="flex items-start gap-1.5 text-xs text-neutral-400">
                         <ChartLineUp size={13} className="mt-0.5 shrink-0" />
                         Run-rate = average daily revenue × horizon. Pipeline-weighted = open leads ×
-                        historical conversion rate × avg deal value, ramped in by horizon. Blended is
-                        the average of the two. The forecast uses a fixed trailing window, not the page
-                        date filter.
+                        historical conversion rate × avg deal value, ramped in by horizon. Blended
+                        is the average of the two. The forecast uses a fixed trailing window, not
+                        the page date filter.
                     </p>
                 </ReportSection>
             )}

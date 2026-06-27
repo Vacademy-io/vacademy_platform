@@ -265,7 +265,11 @@ export function LeadReportsPage() {
                     Reset
                 </Button>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <TeamPicker instituteId={instituteId} value={teamId} onChange={handleTeamChange} />
+                    <TeamPicker
+                        instituteId={instituteId}
+                        value={teamId}
+                        onChange={handleTeamChange}
+                    />
                     <CounsellorScopePicker
                         instituteId={instituteId}
                         teamId={teamId}

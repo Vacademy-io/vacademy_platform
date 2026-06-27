@@ -143,6 +143,41 @@ export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string)
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/recording?instituteId=${encodeURIComponent(instituteId)}`;
 export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
+
+// ── Call Intelligence (transcription + AI analysis of call recordings) ──
+/** Intelligence for a single call, keyed by the universal call_log id. */
+export const CALL_INTELLIGENCE_BY_CALL = (callLogId: string) =>
+    `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}`;
+/** All analyzed calls for a lead (by responseId). */
+export const CALL_INTELLIGENCE_BY_LEAD = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/call-intelligence/lead/${encodeURIComponent(responseId)}`;
+/** Per-counsellor roll-up. from/to are epoch millis (optional). */
+export const CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS = (
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams();
+    if (counsellorUserId) p.set('counsellorUserId', counsellorUserId);
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    const qs = p.toString();
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/counsellor${qs ? `?${qs}` : ''}`;
+};
+/** Acting user's whole-team roll-up (sales-head view). */
+export const CALL_INTELLIGENCE_TEAM_ANALYTICS = (
+    instituteId: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams({ instituteId });
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/team?${p.toString()}`;
+};
+/** Manual call-recording upload (multipart/form-data). */
+export const CALL_INTELLIGENCE_MANUAL_UPLOAD = `${BASE_URL}/admin-core-service/call-intelligence/manual-call/upload`;
+
 export const TELEPHONY_CONFIG = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/config/${instituteId}`;
 // Backend-driven provider catalogue: every provider with a registered adapter,
@@ -1066,8 +1101,7 @@ export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/va
 // =============================================================================
 export const ORG_TEAM_BASE = `${BASE_URL}/auth-service/v1/organization-team`;
 export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
-export const ORG_TEAM_LIST = (instituteId: string) =>
-    `${ORG_TEAM_BASE}?instituteId=${instituteId}`;
+export const ORG_TEAM_LIST = (instituteId: string) => `${ORG_TEAM_BASE}?instituteId=${instituteId}`;
 export const ORG_TEAM_CHART = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/chart`;
 export const ORG_TEAM_MEMBERS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/members`;
 export const ORG_TEAM_MEMBER_BY_ID = (teamId: string, mappingId: string) =>
@@ -1172,7 +1206,10 @@ export const COUNSELLOR_RATING_RECOMPUTE = (instituteId: string, counsellorUserI
 // Sales dashboard widgets.
 // =============================================================================
 export const SALES_DASHBOARD_BASE = `${BASE_URL}/admin-core-service/v1/sales-dashboard`;
-const buildSdQS = (instituteId: string, params: Record<string, string | number | undefined> = {}) => {
+const buildSdQS = (
+    instituteId: string,
+    params: Record<string, string | number | undefined> = {}
+) => {
     const qs = new URLSearchParams({ instituteId });
     Object.entries(params).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));

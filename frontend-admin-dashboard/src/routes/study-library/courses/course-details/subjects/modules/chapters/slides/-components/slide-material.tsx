@@ -120,7 +120,12 @@ function checkIsHtmlEmpty(data: string | null): boolean {
         ) ||
         /\b(data-yoopta-type|data-meta-align|data-meta-depth|data-tabs|data-front|data-back)\s*=/i.test(
             data
-        )
+        ) ||
+        // A Mermaid diagram block (<div class="mermaid">…</div>) is real,
+        // intentional content even before code is typed — never let an
+        // empty-but-present mermaid make the whole document read as blank
+        // (which would block Save/Publish for every other block too).
+        /class\s*=\s*"[^"]*\bmermaid\b/i.test(data)
     ) {
         return false;
     }
@@ -259,6 +264,47 @@ export const SlideMaterial = ({
         window.addEventListener('error', handler);
         return () => window.removeEventListener('error', handler);
     }, [editor]);
+
+    // Shift+Enter (soft line break) was scrolling the editor to the top. Yoopta's
+    // soft-break insert can momentarily drop the editor selection; combined with
+    // the selection-reset above, the editor/keyboard-sensor then refocuses the
+    // first block and yanks the viewport up. We can't cleanly intercept Yoopta's
+    // internal key handling, so we pin the scroll instead: snapshot the
+    // scrollable ancestors of the caret BEFORE the keypress is processed (capture
+    // phase) and restore them right after — queueMicrotask runs before the browser
+    // paints (so no flicker) and the rAF catches any async follow-up scroll.
+    useEffect(() => {
+        const onKeyDownCapture = (e: KeyboardEvent) => {
+            if (e.key !== 'Enter' || !e.shiftKey) return;
+            const target = e.target as HTMLElement | null;
+            if (!target?.closest?.('[contenteditable="true"]')) return;
+
+            const snaps: Array<{ el: HTMLElement; top: number }> = [];
+            let node: HTMLElement | null = target;
+            while (node) {
+                if (node.scrollHeight > node.clientHeight) {
+                    const oy = getComputedStyle(node).overflowY;
+                    if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
+                        snaps.push({ el: node, top: node.scrollTop });
+                    }
+                }
+                node = node.parentElement;
+            }
+            const winX = window.scrollX;
+            const winY = window.scrollY;
+
+            const restore = () => {
+                snaps.forEach(({ el, top }) => {
+                    if (Math.abs(el.scrollTop - top) > 1) el.scrollTop = top;
+                });
+                if (Math.abs(window.scrollY - winY) > 1) window.scrollTo(winX, winY);
+            };
+            queueMicrotask(restore);
+            requestAnimationFrame(restore);
+        };
+        document.addEventListener('keydown', onKeyDownCapture, true);
+        return () => document.removeEventListener('keydown', onKeyDownCapture, true);
+    }, []);
 
     const selectionRef = useRef<HTMLDivElement | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -700,8 +746,13 @@ export const SlideMaterial = ({
                             // empty text node, which Slate then merges —
                             // collapsing "Hello\n1.1\n1.2" into "Hello1.11.2"
                             // on Save Draft. Current denylist: lists (<li>),
-                            // callouts (<dl>).
-                            if ((parent as Element).closest?.('li, dl')) continue;
+                            // callouts (<dl>), the mermaid diagram (<div
+                            // class="mermaid">, whose multi-line code is read via
+                            // textContent — \n→<br> would collapse it to one line
+                            // and break the diagram on reload), and any Yoopta
+                            // custom block whose payload is load-bearing text/data
+                            // (math latex, etc.).
+                            if ((parent as Element).closest?.('li, dl, .mermaid, [data-yoopta-type]')) continue;
                             const parts = text.split('\n');
                             const frag = doc.createDocumentFragment();
                             parts.forEach((part, i) => {
@@ -989,7 +1040,39 @@ export const SlideMaterial = ({
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
         try {
-            const htmlString = html.serialize(editor, data);
+            let htmlString: string;
+            try {
+                htmlString = html.serialize(editor, data);
+            } catch (wholeErr) {
+                // A single block's serializer threw (e.g. timeline/columns with a
+                // missing field, or a built-in callout with an unknown theme).
+                // Whole-document serialize is all-or-nothing, so one bad block
+                // would otherwise abort the ENTIRE Save/Publish and lose every
+                // other block's content ("Could not read editor content" / a blank
+                // publish). Fall back to per-block serialization and skip ONLY the
+                // offending block, preserving everything else.
+                console.error('[Save] whole-document serialize threw; retrying per-block', wholeErr);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const blocks = Object.values((data || {}) as Record<string, any>)
+                    .filter((b) => b && b.id)
+                    .sort((a, b) => (a?.meta?.order ?? 0) - (b?.meta?.order ?? 0));
+                htmlString = blocks
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    .map((b: any) => {
+                        try {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            return html.serialize(editor, { [b.id]: b } as any);
+                        } catch (blockErr) {
+                            console.error(
+                                '[Save] skipping block that failed to serialize:',
+                                b?.type,
+                                blockErr
+                            );
+                            return '';
+                        }
+                    })
+                    .join('');
+            }
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
@@ -2825,25 +2908,30 @@ export const SlideMaterial = ({
         }
 
         if (items && items.length > 0) {
-            // Priority 1: Use slideId from URL if available (ALWAYS respect URL)
-            if (slideId) {
-                const targetSlide = items.find((slide) => slide.id === slideId);
-                if (targetSlide) {
-                    // Only update if it's different from current activeItem
-                    if (!activeItem || activeItem.id !== slideId) {
-                        setActiveItem(targetSlide);
-                    }
-                    return;
-                }
-            }
-
-            // Priority 2: Check if current active slide still exists in items
+            // Priority 1: keep the current active slide if it still exists.
+            // A slides refetch (e.g. after publishing a freshly-uploaded slide)
+            // must NOT yank selection back to the URL slideId: the URL is only
+            // updated on explicit sidebar clicks, not on new-slide creation, so
+            // right after an upload it still points at the previously-selected
+            // slide. Honoring it here flipped the sidebar highlight + header
+            // title to that stale "previous" slide while the content stayed on
+            // the new one. This mirrors the sidebar's own selection priority.
             const activeSlideStillExists =
                 activeItem && items.find((slide) => slide.id === activeItem.id);
 
             if (activeSlideStillExists) {
                 // Active slide still exists, keep it selected
                 return;
+            }
+
+            // Priority 2: fall back to the URL slideId (initial load, deep link,
+            // or after the active slide was deleted).
+            if (slideId) {
+                const targetSlide = items.find((slide) => slide.id === slideId);
+                if (targetSlide) {
+                    setActiveItem(targetSlide);
+                    return;
+                }
             }
 
             // Priority 3: Always set first available slide as active
@@ -2903,7 +2991,15 @@ export const SlideMaterial = ({
 
     return (
         <div
-            className="flex w-full flex-1 flex-col transition-all duration-300 ease-in-out"
+            // Bounded-height scroll container so the `sticky top-0` header below
+            // actually freezes. The LayoutContainer wraps page content in an
+            // `overflow-x-hidden` div, which makes `overflow-y` compute to `auto`
+            // — a scroll container that never scrolls (the body does), so a sticky
+            // child has nothing to stick to. Owning the scroll here fixes that:
+            // header stays put, editor content scrolls beneath it. Offsets ≈
+            // viewport − navbar (h-14 / md:h-[72px]) − the wrapper's padding/margin
+            // (p-2 / sm:p-3 / md:p-4 / lg:m-7).
+            className="flex h-[calc(100vh-76px)] w-full flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out sm:h-[calc(100vh-84px)] md:h-[calc(100vh-108px)] lg:h-[calc(100vh-132px)]"
             ref={selectionRef}
         >
             {activeItem && (

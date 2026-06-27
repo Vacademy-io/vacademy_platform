@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MyInput } from "@/components/design-system/input";
 import { loginSchema } from "@/schemas/login/login";
 import { z } from "zod";
@@ -36,6 +36,7 @@ interface UsernameLoginProps {
   allowPhoneAuth?: boolean;
   initialUsername?: string;
   initialPassword?: string;
+  autoSubmit?: boolean;
 }
 export function UsernameLogin({
   onSwitchToEmail,
@@ -45,6 +46,7 @@ export function UsernameLogin({
   allowPhoneAuth,
   initialUsername,
   initialPassword,
+  autoSubmit,
   onSwitchToPhone,
   onSwitchToSignup,
   onSwitchToForgotPassword,
@@ -290,6 +292,29 @@ export function UsernameLogin({
   function onSubmit(values: FormValues) {
     mutation.mutate(values);
   }
+
+  // Demo handoff: when creds are injected via the onboarding link, sign in automatically (once).
+  const autoSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (
+      autoSubmit &&
+      initialUsername &&
+      initialPassword &&
+      !autoSubmittedRef.current
+    ) {
+      autoSubmittedRef.current = true;
+      const timer = setTimeout(
+        () =>
+          mutation.mutate({
+            username: initialUsername,
+            password: initialPassword,
+          }),
+        200,
+      );
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmit, initialUsername, initialPassword]);
 
   return (
     <div className="w-full space-y-5">

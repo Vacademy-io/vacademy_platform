@@ -222,17 +222,56 @@ export async function runCode(
 }
 
 /**
- * Run a single test case and produce a pass/fail verdict by comparing trimmed
- * stdout to the expected output. Stderr is informational only.
+ * Normalize program output before comparison. This is the SINGLE source of
+ * truth for matching semantics: trim leading/trailing whitespace (incl. the
+ * trailing newline), then compare verbatim. Internal whitespace and case are
+ * significant. Do not change this without auditing every test case.
+ */
+function normalizeOutput(s: string): string {
+  return (s ?? "").trim();
+}
+
+/**
+ * Resolve the effective set of acceptable outputs. Old test cases that only
+ * carry a single `expectedStdout` (no `acceptedOutputs`) behave exactly as
+ * before — they collapse to a one-element set.
+ */
+export function effectiveAccepted(tc: {
+  expectedStdout: string;
+  acceptedOutputs?: string[];
+}): string[] {
+  return tc.acceptedOutputs && tc.acceptedOutputs.length > 0
+    ? tc.acceptedOutputs
+    : [tc.expectedStdout ?? ""];
+}
+
+/**
+ * Returns the index of the first accepted output that matches `actual`
+ * (after normalization), or -1 if none match.
+ */
+export function matchAccepted(actual: string, accepted: string[]): number {
+  const a = normalizeOutput(actual);
+  for (let i = 0; i < accepted.length; i++) {
+    if (normalizeOutput(accepted[i]) === a) return i;
+  }
+  return -1;
+}
+
+/**
+ * Run a single test case and produce a pass/fail verdict by comparing the
+ * program's stdout against the set of accepted outputs (pass if it matches
+ * ANY). Stderr is informational only; a runtime error always fails.
  */
 export async function runTestCase(
   code: string,
   language: LangId,
   testStdin: string,
-  expectedStdout: string,
+  accepted: string[],
   options: RunOptions = {},
 ): Promise<{
   passed: boolean;
+  matchedIndex: number;
+  acceptedCount: number;
   stdout: string;
   stderr: string;
   timeMs?: number;
@@ -243,10 +282,11 @@ export async function runTestCase(
 }> {
   try {
     const r = await runCode(code, language, { ...options, stdin: testStdin });
-    const actual = (r.stdout ?? "").trim();
-    const expected = (expectedStdout ?? "").trim();
+    const matchedIndex = r.hasError ? -1 : matchAccepted(r.stdout ?? "", accepted);
     return {
-      passed: !r.hasError && actual === expected,
+      passed: !r.hasError && matchedIndex >= 0,
+      matchedIndex,
+      acceptedCount: accepted.length,
       stdout: r.stdout,
       stderr: r.stderr,
       timeMs: r.timeMs,
@@ -257,6 +297,8 @@ export async function runTestCase(
   } catch (err) {
     return {
       passed: false,
+      matchedIndex: -1,
+      acceptedCount: accepted.length,
       stdout: "",
       stderr: "",
       error: err instanceof Error ? err.message : String(err),

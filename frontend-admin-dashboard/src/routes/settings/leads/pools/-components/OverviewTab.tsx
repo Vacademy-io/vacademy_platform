@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
     Select,
     SelectContent,
@@ -67,12 +68,15 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
     const [name, setName] = useState(pool?.name ?? '');
     const [description, setDescription] = useState(pool?.description ?? '');
     const [mode, setMode] = useState<AssignmentMode>(pool?.assignment_mode ?? 'ROUND_ROBIN');
+    // ROUND_ROBIN opt-in: only rotate among counsellors on shift right now.
+    const [shiftAware, setShiftAware] = useState(pool?.shift_aware ?? false);
 
     useEffect(() => {
         if (pool) {
             setName(pool.name);
             setDescription(pool.description ?? '');
             setMode(pool.assignment_mode);
+            setShiftAware(pool.shift_aware ?? false);
         }
     }, [pool]);
 
@@ -80,17 +84,22 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
     const { mutate: updatePool, isPending: updating } = useUpdatePool(pool?.id ?? '');
 
     const saving = creating || updating;
+    // shift_aware only means anything for ROUND_ROBIN; collapse it to false for
+    // any other mode so switching away from round-robin clears the gate.
+    const effectiveShiftAware = mode === 'ROUND_ROBIN' ? shiftAware : false;
     const dirty = !pool
         ? name.trim().length > 0
         : name !== pool.name ||
           description !== (pool.description ?? '') ||
-          mode !== pool.assignment_mode;
+          mode !== pool.assignment_mode ||
+          effectiveShiftAware !== (pool.shift_aware ?? false);
 
     const startEdit = () => {
         if (pool) {
             setName(pool.name);
             setDescription(pool.description ?? '');
             setMode(pool.assignment_mode);
+            setShiftAware(pool.shift_aware ?? false);
         }
         setEditing(true);
     };
@@ -100,6 +109,7 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
             setName(pool.name);
             setDescription(pool.description ?? '');
             setMode(pool.assignment_mode);
+            setShiftAware(pool.shift_aware ?? false);
         }
         setEditing(false);
     };
@@ -117,6 +127,7 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
                     name: name.trim(),
                     description: description.trim() || undefined,
                     assignment_mode: mode,
+                    shift_aware: effectiveShiftAware,
                 },
                 {
                     onSuccess: (created) => {
@@ -141,6 +152,7 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
                 name: name.trim(),
                 description: description.trim() || undefined,
                 assignment_mode: mode,
+                shift_aware: effectiveShiftAware,
             },
             {
                 onSuccess: () => {
@@ -188,6 +200,18 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
                                 </span>
                             </div>
                         </div>
+                        {pool.assignment_mode === 'ROUND_ROBIN' && (
+                            <div className="space-y-1">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    On-shift only
+                                </p>
+                                <p className="text-sm">
+                                    {pool.shift_aware
+                                        ? 'Yes — rotates only among counsellors on shift'
+                                        : 'No — rotates across all counsellors'}
+                                </p>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -250,6 +274,21 @@ export default function OverviewTab({ pool }: OverviewTabProps) {
                     <p className="text-xs text-muted-foreground">
                         {MODE_OPTIONS.find((o) => o.value === mode)?.description}
                     </p>
+                    {mode === 'ROUND_ROBIN' && (
+                        <div className="flex items-start justify-between gap-4 rounded border border-neutral-200 p-3">
+                            <div className="space-y-0.5">
+                                <p className="text-sm font-medium">
+                                    Only assign to counsellors on shift
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    When on, the rotation skips counsellors who aren&apos;t in an
+                                    active shift right now; if nobody is on shift the lead is left
+                                    unassigned. Define the shifts in the Schedule tab.
+                                </p>
+                            </div>
+                            <Switch checked={shiftAware} onCheckedChange={setShiftAware} />
+                        </div>
+                    )}
                     {isCreating && (
                         <p className="rounded border border-warning-200 bg-warning-50 p-3 text-xs text-warning-700">
                             After creating the pool, you'll be taken to the Audiences tab to

@@ -77,6 +77,7 @@ export const questionsFormSchema = z.object({
                         label: z.string().optional(),
                         stdin: z.string().default(''),
                         expectedStdout: z.string().default(''),
+                        acceptedOutputs: z.array(z.string()).optional(),
                         visible: z.boolean().default(true),
                     })
                 )

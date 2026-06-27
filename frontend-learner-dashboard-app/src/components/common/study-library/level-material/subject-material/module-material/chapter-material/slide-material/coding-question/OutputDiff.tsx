@@ -1,6 +1,11 @@
 interface Props {
   actual: string;
   expected: string;
+  // When the test case accepts more than one valid output, the diff is shown
+  // against the primary (acceptedOutputs[0]); this drives an explanatory banner
+  // so a learner isn't confused that a non-primary-but-valid-looking output
+  // "failed" — it failed because it matched none of the accepted answers.
+  acceptedCount?: number;
 }
 
 function firstDiffIndex(a: string, b: string): number {
@@ -16,7 +21,7 @@ function firstDiffIndex(a: string, b: string): number {
  * character so long near-match outputs (whitespace, off-by-one digit) are
  * easy to spot without squinting.
  */
-export function OutputDiff({ actual, expected }: Props) {
+export function OutputDiff({ actual, expected, acceptedCount }: Props) {
   const a = actual.replace(/\r\n/g, "\n");
   const e = expected.replace(/\r\n/g, "\n");
   const aLines = a.split("\n");
@@ -42,6 +47,12 @@ export function OutputDiff({ actual, expected }: Props) {
 
   return (
     <div className="space-y-1">
+      {(acceptedCount ?? 1) > 1 && (
+        <div className="text-2xs text-gray-500">
+          This test accepts {acceptedCount} valid outputs; showing the diff
+          against the primary one.
+        </div>
+      )}
       <div className="grid grid-cols-[auto,1fr,1fr] gap-x-2 rounded border bg-white p-1 font-mono text-2xs">
         <div className="col-span-1" />
         <div className="text-3xs font-semibold uppercase text-gray-500">

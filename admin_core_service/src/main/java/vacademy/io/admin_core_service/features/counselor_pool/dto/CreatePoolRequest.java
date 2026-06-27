@@ -41,6 +41,13 @@ public class CreatePoolRequest {
     @JsonProperty("schedule_pattern")
     private String schedulePattern;
 
+    /**
+     * Optional ROUND_ROBIN opt-in: gate the rotation to on-shift counsellors.
+     * Defaults to false when omitted. Ignored for MANUAL / TIME_BASED.
+     */
+    @JsonProperty("shift_aware")
+    private Boolean shiftAware;
+
     /** Optional: campaigns to link at creation. */
     @JsonProperty("audience_ids")
     private List<String> audienceIds;

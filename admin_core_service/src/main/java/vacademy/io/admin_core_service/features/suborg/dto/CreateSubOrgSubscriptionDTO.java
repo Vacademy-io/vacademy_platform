@@ -36,6 +36,18 @@ public class CreateSubOrgSubscriptionDTO {
     private String complexPaymentOptionId;
 
     /**
+     * For the non-CPO gateway/free types (ONE_TIME, SUBSCRIPTION, FREE), points at an
+     * existing institute-level PaymentOption (source=INSTITUTE, configured in Payment
+     * Settings) that the sub-org admin pays via. When present we REUSE that option +
+     * its PaymentPlan for the org-level invite's PSLIPO instead of minting a fresh
+     * option/plan from manually-typed prices — so the admin's payment runs on the same
+     * option/plan the institute already offers. The per-sub-org seat cap is carried on
+     * settingJson.MEMBER_COUNT (the shared plan can't hold it). Null → legacy fresh-option
+     * path using actualPrice/elevatedPrice.
+     */
+    private String paymentOptionId;
+
+    /**
      * Permissions the sub-org admin will hold on their FSPSSM rows (FULL,
      * CREATE_COURSE, …). Persisted to the org-level invite's settingJson under
      * ADMIN_PERMISSIONS so it is applied whenever an ADMIN/ROOT_ADMIN user is

@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,6 +24,18 @@ public class AiCallingSettingsPojo {
      */
     private String provider = "AAVTAAR";
     private String defaultCampaignId;
+
+    /**
+     * Campaign registry: every Aavtaar campaign id this institute uses, each tagged
+     * INBOUND (the lead dialed our AI line) or OUTBOUND (we dialed the lead). An
+     * incoming AI-call webhook is classified INBOUND when its {@code campaignId}
+     * matches one tagged INBOUND here — that's how inbound calls are labelled (there's
+     * no provider call id to correlate, so the lead is matched by phone instead). Also
+     * lets the call/recording view map a campaignId back to a friendly campaign name.
+     * Empty = no campaigns registered (every call stays outbound, current behaviour).
+     */
+    private List<CampaignConfig> campaigns = new ArrayList<>();
+
     private int connectThresholdSec = 20;
 
     /**
@@ -33,6 +46,11 @@ public class AiCallingSettingsPojo {
 
     private int maxRetries = 3;
     private int maxCallsPerDayPerLead = 3;
+
+    /** Minutes the CALL_AI node waits before re-dialing a no-answer lead (per pause/resume cycle). */
+    private int retryGapMinutes = 120;
+    /** Minutes before re-checking a lead deferred for being outside its calling shift / at the day cap. */
+    private int recheckMinutes = 30;
 
     /**
      * Time windows (institute timezone) the AI bot may (re)dial in — supports
@@ -67,5 +85,21 @@ public class AiCallingSettingsPojo {
     public static class Shift {
         private String start;
         private String end;
+    }
+
+    /**
+     * One configured AI campaign id and its direction. {@code direction} is
+     * "INBOUND" or "OUTBOUND" (case-insensitive); {@code name} is a friendly label
+     * shown in the UI and used to map a campaignId on a call/recording back to a
+     * human name. Only INBOUND-tagged ids classify a webhook as an inbound call.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CampaignConfig {
+        private String campaignId;
+        private String name;
+        private String direction;
     }
 }

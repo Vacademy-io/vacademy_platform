@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.telephony.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -10,9 +12,17 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.CallLogDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallOptionsResponseDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.ConnectCallResponseDTO;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Provider-agnostic REST surface for placing calls and listing call history.
@@ -23,11 +33,16 @@ import vacademy.io.common.exceptions.VacademyException;
 @RequestMapping("/admin-core-service/v1/telephony/calls")
 public class TelephonyCallController {
 
+    private static final Logger log = LoggerFactory.getLogger(TelephonyCallController.class);
+
     @Autowired
     private CallOrchestrator orchestrator;
 
     @Autowired
     private TelephonyCallLogRepository callLogRepo;
+
+    @Autowired
+    private AiCallResultRepository aiCallResultRepo;
 
     @PostMapping("/connect")
     public ResponseEntity<ConnectCallResponseDTO> connect(
@@ -85,6 +100,73 @@ public class TelephonyCallController {
         } else {
             throw new VacademyException("userId or counsellorUserId is required");
         }
+        // Best-effort enrichment: a failure here must never break the (shared) call list.
+        try {
+            enrichWithAiDisposition(result.getContent());
+            // Overlay the REAL attempt number for the lead view — our re-dial sequence,
+            // since the provider's call_retry resets to 0 on every fresh click-to-call.
+            if (userId != null && !userId.isBlank()) {
+                setAiCallAttempts(result.getContent(), userId, instituteId);
+            }
+        } catch (Exception e) {
+            log.warn("AI enrichment failed for call list; returning list without it", e);
+        }
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Read-time join: AI-call disposition lives in ai_call_result, not on the
+     * telephony_call_log row, so we batch-fetch it for this page of DTOs and set
+     * {@code aiDisposition} (one query, no N+1). Non-AI/Exotel rows have no match
+     * and keep a null disposition.
+     */
+    private void enrichWithAiDisposition(List<CallLogDTO> dtos) {
+        if (dtos == null || dtos.isEmpty()) {
+            return;
+        }
+        List<String> callLogIds = dtos.stream()
+                .map(CallLogDTO::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .collect(Collectors.toList());
+        if (callLogIds.isEmpty()) {
+            return;
+        }
+        // Newest result wins when a call has multiple results (webhook retries/dupes),
+        // so disposition + attempt number are deterministic, not arbitrary.
+        Map<String, AiCallResult> resultByCallLogId = aiCallResultRepo
+                .findByCallLogIdIn(callLogIds).stream()
+                .filter(r -> r.getCallLogId() != null)
+                .sorted(Comparator.comparing(AiCallResult::getReceivedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .collect(Collectors.toMap(
+                        AiCallResult::getCallLogId,
+                        r -> r,
+                        (a, b) -> a));
+        dtos.forEach(dto -> {
+            AiCallResult r = resultByCallLogId.get(dto.getId());
+            if (r != null) {
+                dto.setAiDisposition(r.getDisposition());
+            }
+        });
+    }
+
+    /**
+     * Overlay each AI call's REAL attempt number (1 = first dial, 2 = first retry, …)
+     * for the lead view — our own re-dial sequence (rank by created_at), NOT the
+     * provider's call_retry which is 0 on every fresh click-to-call. Stored on
+     * aiCallRetry so the UI's "Attempt {retry+1}" badge reads correctly.
+     */
+    private void setAiCallAttempts(List<CallLogDTO> dtos, String userId, String instituteId) {
+        if (dtos == null || dtos.isEmpty()) return;
+        Map<String, Integer> rankByLog = new HashMap<>();
+        for (Object[] row : callLogRepo.aiCallAttemptRanks(userId, instituteId)) {
+            if (row[0] != null && row[1] != null) {
+                rankByLog.put(String.valueOf(row[0]), ((Number) row[1]).intValue());
+            }
+        }
+        dtos.forEach(dto -> {
+            Integer rank = rankByLog.get(dto.getId());
+            if (rank != null) dto.setAiCallRetry(rank - 1); // badge: "Attempt {retry+1}" = rank
+        });
     }
 }

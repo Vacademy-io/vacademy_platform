@@ -25,17 +25,43 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
      * {@link #findRecentOutboundAttributionByLeadPhone}).
      */
     @Query(value = """
-            SELECT * FROM telephony_call_log
-            WHERE institute_id = :instituteId
-              AND direction = 'OUTBOUND'
-              AND RIGHT(regexp_replace(to_number, '[^0-9]', '', 'g'), 10)
+            SELECT * FROM telephony_call_log t
+            WHERE t.institute_id = :instituteId
+              AND t.direction = 'OUTBOUND'
+              AND t.provider_type = :providerType
+              AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
                 = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
-            ORDER BY created_at DESC
+              AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
+            ORDER BY t.created_at DESC
             LIMIT 1
             """, nativeQuery = true)
     Optional<TelephonyCallLog> findMostRecentOutboundByPhone(
             @Param("instituteId") String instituteId,
+            @Param("providerType") String providerType,
             @Param("phone") String phone);
+
+    /**
+     * Same as {@link #findMostRecentOutboundByPhone} but binds to the OUTBOUND call
+     * whose {@code created_at} is CLOSEST to the report's dial time ({@code anchor}).
+     * A late end-of-call webhook (it can arrive after the next retry dial) must bind
+     * to the attempt it actually describes, not whichever dial is most recent.
+     */
+    @Query(value = """
+            SELECT * FROM telephony_call_log t
+            WHERE t.institute_id = :instituteId
+              AND t.direction = 'OUTBOUND'
+              AND t.provider_type = :providerType
+              AND RIGHT(regexp_replace(t.to_number, '[^0-9]', '', 'g'), 10)
+                = RIGHT(regexp_replace(:phone, '[^0-9]', '', 'g'), 10)
+              AND NOT EXISTS (SELECT 1 FROM ai_call_result r WHERE r.call_log_id = t.id)
+            ORDER BY ABS(EXTRACT(EPOCH FROM (t.created_at - :anchor)))
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<TelephonyCallLog> findOutboundByPhoneNearest(
+            @Param("instituteId") String instituteId,
+            @Param("providerType") String providerType,
+            @Param("phone") String phone,
+            @Param("anchor") java.sql.Timestamp anchor);
 
     /**
      * Most-recent provider_number_id this lead saw — powers STICKY_PER_LEAD via
@@ -53,6 +79,20 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
 
     Page<TelephonyCallLog> findByUserIdAndInstituteIdOrderByCreatedAtDesc(
             String userId, String instituteId, Pageable pageable);
+
+    /**
+     * Real AI-call attempt rank per call log for a lead (1 = first dial, 2 = first
+     * retry, …) — our own re-dial sequence. The provider-reported {@code call_retry}
+     * resets to 0 on every fresh click-to-call, so it can't be used. Returns rows of
+     * {@code [id, attempt]}.
+     */
+    @Query(value = "SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) AS attempt " +
+            "FROM telephony_call_log " +
+            "WHERE user_id = :userId AND institute_id = :instituteId " +
+            "AND direction = 'OUTBOUND' AND provider_type = 'AAVTAAR'",
+            nativeQuery = true)
+    java.util.List<Object[]> aiCallAttemptRanks(@Param("userId") String userId,
+                                                @Param("instituteId") String instituteId);
 
     /**
      * All calls placed/received by one counsellor in an institute — powers the

@@ -293,8 +293,9 @@ export const StudentSidebar = ({
                 className
             )}
         >
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this panel's right edge. */}
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700`}
+                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white pr-14 font-app text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">

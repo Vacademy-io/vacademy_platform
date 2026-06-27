@@ -8,10 +8,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
+import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallNodeDispatcher;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallOutcomeProcessor;
-import vacademy.io.admin_core_service.features.telephony.core.AiCallRetryPlanner;
+import vacademy.io.admin_core_service.features.telephony.core.AiCallingSettingsService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
+import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecutionState;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
@@ -20,14 +23,18 @@ import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecu
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * CALL_AI workflow node — a re-entrant, phase-routed AI caller that IS the retry
- * loop. On each (re)entry it asks {@link AiCallRetryPlanner} what to do for the lead
- * (using the institute's AI_CALLING_SETTING caps + shifts), then:
+ * loop. On each (re)entry it decides what to do for the lead from the institute's
+ * AI_CALLING_SETTING (caps + shifts + timings), then:
  *   DIAL  → enqueue one paced AI call, bump the attempt counters, and PAUSE the
  *           workflow (persist {@code workflow_execution_state}) until the next window;
  *   DEFER → PAUSE for a re-check (outside the calling shifts / hit the per-day cap);
@@ -47,7 +54,8 @@ public class CallAiNodeHandler implements NodeHandler {
     private static final ZoneId IST = ZoneId.of("Asia/Kolkata");
 
     private final AiCallNodeDispatcher aiCallDispatcher;
-    private final AiCallRetryPlanner retryPlanner;
+    private final AiCallingSettingsService settingsService;
+    private final UserLeadProfileRepository userLeadProfileRepository;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -84,7 +92,26 @@ public class CallAiNodeHandler implements NodeHandler {
         int callsToday = asInt(context.get("aiCallsToday"));
         String callsDay = str(context.get("aiCallDay"));
 
-        AiCallRetryPlanner.Plan plan = retryPlanner.plan(instituteId, userId, attempts, callsToday, callsDay);
+        // Cancel→resume bridge: the outcome processor resumed this paused state with a
+        // terminal disposition injected (callOutcome). Short-circuit OUT of the node —
+        // route to the next node via normal traversal — without re-dialing or pausing.
+        // CONSUME the one-shot bridge keys immediately (remove from the live context) so
+        // they can NEVER persist into a later pause/resume: otherwise a re-entry (a
+        // downstream DELAY pause, or a graph that loops back to CALL_AI) would re-read the
+        // stale callOutcome and short-circuit again with no new call — silently killing
+        // the retry loop. remove() not null-put: a "null" round-trips to the String "null".
+        String callOutcome = str(context.get("callOutcome"));
+        context.remove("callOutcome");
+        context.remove("callDisposition");
+        context.remove("callConnected");
+        if ("ASSIGN".equals(callOutcome) || "STOP".equals(callOutcome)) {
+            out.put("aiCallDone", true);
+            out.put("aiCallStopReason", "disposition_terminal");
+            log.info("CALL_AI node: terminal disposition ({}) for lead {} — routing out without re-dial", callOutcome, userId);
+            return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
+        }
+
+        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay);
 
         switch (plan.action()) {
             case STOP -> {
@@ -189,5 +216,118 @@ public class CallAiNodeHandler implements NodeHandler {
             if (v != null && !v.isBlank() && !"null".equals(v)) return v;
         }
         return null;
+    }
+
+    // ── Retry decision ──────────────────────────────────────────────────────────
+    // The node owns this: given the institute's AI_CALLING_SETTING + the lead's
+    // counters, dial now (resume_at = now + retryGapMinutes), defer (recheck later),
+    // or stop. Nothing here runs on a schedule — it just computes the next-run time
+    // the resume job will honor. Everything is read from the settings; nothing hardcoded.
+
+    private enum Action { DIAL, DEFER, STOP }
+
+    /** {@code resumeAt} = next-run time after a DIAL (gap) or DEFER (recheck); null for STOP. */
+    private record Plan(Action action, Instant resumeAt, String reason) {}
+
+    private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay) {
+        AiCallingSettingsPojo s = settingsService.get(instituteId);
+        if (s == null || !s.isEnabled()) return new Plan(Action.STOP, null, "ai_calling_disabled");
+        if (leadAlreadyAssigned(userId, instituteId)) return new Plan(Action.STOP, null, "assigned");
+        if (attempts >= Math.max(1, s.getMaxRetries())) return new Plan(Action.STOP, null, "exhausted");
+
+        ZoneId tz = resolveZone(s.getTimezone());
+        Instant now = Instant.now();
+        Instant recheck = now.plus(Math.max(1, s.getRecheckMinutes()), ChronoUnit.MINUTES);
+
+        if (!withinAnyShift(now, s.getCallingShifts(), tz)) {
+            // Outside the calling shift: don't poll every recheckMinutes all night.
+            // Sleep until the NEXT shift-open instant (today if still ahead, else
+            // the first shift tomorrow) so the lead only wakes when dialing is allowed.
+            Instant nextOpen = nextShiftOpen(now, s.getCallingShifts(), tz);
+            Instant resumeAt = nextOpen != null ? nextOpen : recheck;
+            log.info("CALL_AI node: outside calling shift for lead {} — resuming at next shift-open {} (tz {}) instead of recheck +{}m",
+                    userId, resumeAt, tz, Math.max(1, s.getRecheckMinutes()));
+            return new Plan(Action.DEFER, resumeAt, "outside_shift");
+        }
+        LocalDate today = LocalDate.now(tz);
+        int effectiveToday = today.toString().equals(callsDay) ? callsToday : 0;
+        if (effectiveToday >= Math.max(1, s.getMaxCallsPerDayPerLead())) {
+            return new Plan(Action.DEFER, recheck, "day_cap");
+        }
+        return new Plan(Action.DIAL, now.plus(Math.max(1, s.getRetryGapMinutes()), ChronoUnit.MINUTES), "dial");
+    }
+
+    private boolean leadAlreadyAssigned(String userId, String instituteId) {
+        if (isBlank(userId) || isBlank(instituteId)) return false;
+        return userLeadProfileRepository.findByUserIdAndInstituteId(userId, instituteId)
+                .map(UserLeadProfile::getAssignedCounselorId)
+                .filter(id -> id != null && !id.isBlank())
+                .isPresent();
+    }
+
+    /** Inside any [start,end] shift (institute tz); handles windows wrapping midnight. */
+    private boolean withinAnyShift(Instant now, List<AiCallingSettingsPojo.Shift> shifts, ZoneId tz) {
+        if (shifts == null || shifts.isEmpty()) return true;
+        LocalTime t = LocalTime.ofInstant(now, tz);
+        for (AiCallingSettingsPojo.Shift sh : shifts) {
+            LocalTime start = parseTime(sh.getStart());
+            LocalTime end = parseTime(sh.getEnd());
+            if (start == null || end == null) continue;
+            if (start.equals(end)) return true; // 24h
+            boolean within = start.isBefore(end)
+                    ? (!t.isBefore(start) && !t.isAfter(end))
+                    : (!t.isBefore(start) || !t.isAfter(end));
+            if (within) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Earliest upcoming shift-open instant in the institute tz: the smallest shift
+     * start that is still ahead of {@code now} today; if none remain today, the
+     * smallest shift start tomorrow. Returns null if no usable shift starts (caller
+     * falls back to the recheck time). Uses the same parse/tz helpers as
+     * {@link #withinAnyShift}.
+     */
+    private Instant nextShiftOpen(Instant now, List<AiCallingSettingsPojo.Shift> shifts, ZoneId tz) {
+        if (shifts == null || shifts.isEmpty()) return null;
+        LocalDate today = LocalDate.now(tz);
+        LocalTime nowT = LocalTime.ofInstant(now, tz);
+
+        LocalTime earliestToday = null; // smallest start still ahead today
+        LocalTime earliestOverall = null; // smallest start of the day (for tomorrow)
+        for (AiCallingSettingsPojo.Shift sh : shifts) {
+            LocalTime start = parseTime(sh.getStart());
+            if (start == null) continue;
+            if (earliestOverall == null || start.isBefore(earliestOverall)) earliestOverall = start;
+            if (start.isAfter(nowT) && (earliestToday == null || start.isBefore(earliestToday))) {
+                earliestToday = start;
+            }
+        }
+        if (earliestToday != null) return today.atTime(earliestToday).atZone(tz).toInstant();
+        if (earliestOverall != null) return today.plusDays(1).atTime(earliestOverall).atZone(tz).toInstant();
+        return null;
+    }
+
+    private LocalTime parseTime(String hhmm) {
+        if (isBlank(hhmm)) return null;
+        try {
+            return LocalTime.parse(hhmm.trim());
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private ZoneId resolveZone(String tz) {
+        if (isBlank(tz)) return IST;
+        try {
+            return ZoneId.of(tz.trim());
+        } catch (Exception e) {
+            return IST;
+        }
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }

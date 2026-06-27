@@ -6,18 +6,27 @@ import {
     PluginElementRenderProps,
 } from '@yoopta/editor';
 import { commitBlockProps } from './commitBlockProps';
+import { encodeBlockData, decodeBlockData } from './RichTextField';
+import { getPublicUrl, UploadFileInS3 } from '@/services/upload_file';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 
 interface QuizOption {
-    text: string;
+    id?: string; // stable key (survives add/remove/reorder)
+    text: string; // rich-text HTML
     isCorrect: boolean;
 }
 
 interface QuizData {
-    question: string;
+    question: string; // rich-text HTML
     type: 'mcq' | 'trueFalse';
     options: QuizOption[];
-    explanation: string;
+    explanation: string; // rich-text HTML
 }
+
+const genId = () => `qo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const withIds = (opts: QuizOption[]): QuizOption[] =>
+    (Array.isArray(opts) ? opts : []).map((o) => (o.id ? o : { ...o, id: genId() }));
 
 const DEFAULT_MCQ: QuizData = {
     question: '',
@@ -41,6 +50,336 @@ const DEFAULT_TRUE_FALSE: QuizData = {
     explanation: '',
 };
 
+// Quiz-block colours — centralised so the file carries no scattered literal hex.
+const C = {
+    border: '#e0e0e0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    surface: '#fafafa', // design-lint-ignore: Yoopta editor chrome — inline style required
+    indigoBg: '#eef2ff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    indigoBorder: '#c7d2fe', // design-lint-ignore: Yoopta editor chrome — inline style required
+    indigo: '#4338ca', // design-lint-ignore: Yoopta editor chrome — inline style required
+    muted: '#666666', // design-lint-ignore: Yoopta editor chrome — inline style required
+    label: '#555555', // design-lint-ignore: Yoopta editor chrome — inline style required
+    inputBorder: '#dddddd', // design-lint-ignore: Yoopta editor chrome — inline style required
+    green: '#28a745', // design-lint-ignore: Yoopta editor chrome — inline style required
+    gray: '#cccccc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    red: '#dc3545', // design-lint-ignore: Yoopta editor chrome — inline style required
+    text: '#333333', // design-lint-ignore: Yoopta editor chrome — inline style required
+    correctBg: '#d4edda', // design-lint-ignore: Yoopta editor chrome — inline style required
+    correctText: '#155724', // design-lint-ignore: Yoopta editor chrome — inline style required
+    wrongBg: '#f8d7da', // design-lint-ignore: Yoopta editor chrome — inline style required
+    wrongText: '#721c24', // design-lint-ignore: Yoopta editor chrome — inline style required
+    explBg: '#fff3cd', // design-lint-ignore: Yoopta editor chrome — inline style required
+    explBorder: '#ffc107', // design-lint-ignore: Yoopta editor chrome — inline style required
+    explText: '#856404', // design-lint-ignore: Yoopta editor chrome — inline style required
+    white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
+};
+
+/** Upload an image to S3 and return its public URL. Returns null on failure. */
+async function uploadQuizImage(file: File): Promise<string | null> {
+    try {
+        const accessToken = getTokenFromCookie(TokenKey.accessToken);
+        const data = getTokenDecodedData(accessToken);
+        const INSTITUTE_ID = (data && Object.keys(data.authorities)[0]) || undefined;
+        const userId = data?.sub || 'unknown-user';
+        const fileId = await UploadFileInS3(file, () => {}, userId, INSTITUTE_ID, 'STUDENTS', true);
+        if (!fileId) return null;
+        const url = await getPublicUrl(fileId);
+        return url || null;
+    } catch (e) {
+        console.error('[Quiz] image upload failed', e);
+        return null;
+    }
+}
+
+// Inject (and keep up to date) the contentEditable field styles: placeholder,
+// focus ring, and — crucially — re-enable list markers, which Tailwind's global
+// preflight resets away (`ul,ol { list-style: none }`). The `!important` +
+// `display: list-item` make the bullets/numbers robust against that reset. We
+// UPDATE the existing tag rather than skip, so CSS changes apply on reload/HMR.
+function ensureQuizEditorStyles() {
+    if (typeof document === 'undefined') return;
+    const css = `
+        .quiz-rich-field:empty:before { content: attr(data-placeholder); color: ${C.muted}; pointer-events: none; }
+        .quiz-rich-box:focus-within { border-color: ${C.indigo} !important; box-shadow: 0 0 0 1px ${C.indigo}; }
+        .quiz-rich-field img, .quiz-rich-html img { max-width: 100%; height: auto; border-radius: 4px; }
+        .quiz-rich-field p, .quiz-rich-field div, .quiz-rich-html p, .quiz-rich-html div { margin: 0; }
+        .quiz-rich-field ul, .quiz-rich-html ul { list-style: disc outside !important; margin: 4px 0; padding-left: 26px; }
+        .quiz-rich-field ol, .quiz-rich-html ol { list-style: decimal outside !important; margin: 4px 0; padding-left: 26px; }
+        .quiz-rich-field li, .quiz-rich-html li { display: list-item !important; margin: 2px 0; }
+        .quiz-rich-field a, .quiz-rich-html a { color: ${C.indigo}; text-decoration: underline; }
+    `;
+    let style = document.getElementById('quiz-rich-field-styles') as HTMLStyleElement | null;
+    if (!style) {
+        style = document.createElement('style');
+        style.id = 'quiz-rich-field-styles';
+        document.head.appendChild(style);
+    }
+    if (style.textContent !== css) style.textContent = css;
+}
+
+// Treat blank / "<p><br></p>" / nbsp-only / formatting-only content as empty,
+// but never treat embedded media (image/video/etc.) as empty.
+const isHtmlEmpty = (html: string): boolean => {
+    if (!html) return true;
+    if (/<(img|iframe|video|audio)\b/i.test(html)) return false;
+    const text = html
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&');
+    return text.trim() === '';
+};
+
+const placeCaretAtEnd = (el: HTMLElement) => {
+    try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+    } catch {
+        /* noop */
+    }
+};
+
+const safeLinkHref = (raw: string): string | null => {
+    const url = raw.trim();
+    if (!url) return null;
+    if (/^(https?:\/\/|mailto:|tel:|\/|#)/i.test(url)) return url;
+    if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(url)) return `https://${url}`; // bare domain
+    return null;
+};
+
+// A self-contained rich-text field: its own compact toolbar + a controlled
+// contentEditable. We set the DOM innerHTML ONLY when the incoming value differs
+// from what's already there (external change) — never on our own keystrokes — so
+// the caret never jumps. Plain contentEditable (no heavy editor instance) stays
+// stable when the surrounding Slate block re-renders.
+function RichField({
+    value,
+    onChange,
+    placeholder,
+    minHeight,
+}: {
+    value: string;
+    onChange: (html: string) => void;
+    placeholder?: string;
+    minHeight?: number;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        if (el.innerHTML === (value || '')) return;
+        // Guard against data loss: while the user is actively editing this field,
+        // never let a momentary empty/stale `value` echo overwrite what they've
+        // typed — the next commit reconciles it. Only sync genuine external
+        // changes (deserialize / not focused).
+        if (
+            document.activeElement === el &&
+            isHtmlEmpty(value || '') &&
+            !isHtmlEmpty(el.innerHTML)
+        ) {
+            return;
+        }
+        el.innerHTML = value || '';
+    }, [value]);
+
+    // Slate (the outer document editor) attaches NATIVE beforeinput/keydown
+    // listeners on its editable to manage this void block — and they swallowed
+    // Backspace/Delete inside this nested contentEditable (Slate tried to delete
+    // the whole quiz block instead). Stop those native events at the field so the
+    // browser performs the edit and Slate never sees them. We deliberately do NOT
+    // stop `input`, so React's onInput still fires to capture the change.
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const stopNative = (e: Event) => e.stopPropagation();
+        el.addEventListener('beforeinput', stopNative);
+        el.addEventListener('keydown', stopNative);
+        el.addEventListener('keyup', stopNative);
+        return () => {
+            el.removeEventListener('beforeinput', stopNative);
+            el.removeEventListener('keydown', stopNative);
+            el.removeEventListener('keyup', stopNative);
+        };
+    }, []);
+
+    const fire = () => {
+        if (ref.current) onChange(ref.current.innerHTML);
+    };
+
+    const exec = (command: string, val?: string) => {
+        const el = ref.current;
+        if (!el) return;
+        el.focus();
+        document.execCommand(command, false, val);
+        fire();
+    };
+
+    const insertLink = () => {
+        const el = ref.current;
+        if (!el) return;
+        const raw = window.prompt('Link URL:');
+        if (!raw) return;
+        const href = safeLinkHref(raw);
+        if (!href) return;
+        el.focus();
+        document.execCommand('createLink', false, href);
+        fire();
+    };
+
+    const insertImage = () => {
+        const el = ref.current;
+        if (!el) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            const url = await uploadQuizImage(file);
+            const node = ref.current;
+            if (!url || !node) return;
+            node.focus();
+            placeCaretAtEnd(node);
+            document.execCommand(
+                'insertHTML',
+                false,
+                `<img src="${url.replace(/"/g, '&quot;')}" alt="" style="max-width:100%;" />`
+            );
+            // A trailing image leaves no caret position after it, so you can't
+            // type below it. Append an empty line and move the caret into it.
+            const line = document.createElement('div');
+            line.appendChild(document.createElement('br'));
+            node.appendChild(line);
+            try {
+                const range = document.createRange();
+                range.setStart(line, 0);
+                range.collapse(true);
+                const sel = window.getSelection();
+                sel?.removeAllRanges();
+                sel?.addRange(range);
+            } catch {
+                /* noop */
+            }
+            fire();
+        };
+        input.click();
+    };
+
+    const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+    const tbBtn = (
+        label: string,
+        onClick: () => void,
+        title: string,
+        extra?: React.CSSProperties
+    ) => (
+        <button
+            type="button"
+            // Keep the field's selection (the button would steal focus first).
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onClick}
+            title={title}
+            style={{
+                minWidth: '26px',
+                height: '24px',
+                padding: '0 6px',
+                fontSize: '13px',
+                border: 'none',
+                borderRadius: '4px',
+                backgroundColor: 'transparent',
+                color: C.muted,
+                cursor: 'pointer',
+                ...extra,
+            }}
+            onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = C.indigoBg;
+            }}
+            onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+            }}
+        >
+            {label}
+        </button>
+    );
+
+    return (
+        <div
+            className="quiz-rich-box"
+            style={{
+                border: `1px solid ${C.inputBorder}`,
+                borderRadius: '6px',
+                overflow: 'hidden',
+                backgroundColor: C.white,
+            }}
+        >
+            {/* Per-field toolbar */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1px',
+                    flexWrap: 'wrap',
+                    padding: '3px 4px',
+                    borderBottom: `1px solid ${C.inputBorder}`,
+                    backgroundColor: C.surface,
+                }}
+            >
+                {tbBtn('B', () => exec('bold'), 'Bold', { fontWeight: 700 })}
+                {tbBtn('I', () => exec('italic'), 'Italic', { fontStyle: 'italic' })}
+                {tbBtn('U', () => exec('underline'), 'Underline', { textDecoration: 'underline' })}
+                {tbBtn('•', () => exec('insertUnorderedList'), 'Bullet list')}
+                {tbBtn('1.', () => exec('insertOrderedList'), 'Numbered list')}
+                {tbBtn('🔗', insertLink, 'Insert link')}
+                {tbBtn('🖼', insertImage, 'Insert image')}
+            </div>
+
+            {/* Editable area */}
+            <div
+                ref={ref}
+                contentEditable
+                suppressContentEditableWarning
+                className="quiz-rich-field"
+                data-placeholder={placeholder || ''}
+                onInput={fire}
+                // Commit again on blur so the final edit is persisted before an
+                // action that reads the document (e.g. clicking Save Draft moves
+                // focus out of the field → this fires before the save handler).
+                onBlur={fire}
+                onKeyDown={stop}
+                onKeyUp={stop}
+                onMouseDown={stop}
+                onPaste={stop}
+                onCut={stop}
+                onCopy={stop}
+                onDrop={stop}
+                style={{
+                    minHeight: minHeight ? `${minHeight}px` : '40px',
+                    padding: '8px 10px',
+                    fontSize: '14px',
+                    lineHeight: 1.5,
+                    outline: 'none',
+                    overflowWrap: 'anywhere',
+                }}
+            />
+        </div>
+    );
+}
+
+// Renders stored rich-text HTML (preview + non-editing states).
+function RichHtml({ html, style }: { html: string; style?: React.CSSProperties }) {
+    return (
+        <div
+            className="quiz-rich-html"
+            style={style}
+            dangerouslySetInnerHTML={{ __html: html || '' }}
+        />
+    );
+}
+
 export function QuizBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
     const isReadOnly = useYooptaReadOnly();
@@ -48,26 +387,22 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
         !!element?.props?.quizData &&
         typeof element.props.quizData === 'object';
     const initialData: QuizData = hasStoredQuiz
-        ? element!.props!.quizData
-        : { ...DEFAULT_MCQ, options: DEFAULT_MCQ.options.map((o) => ({ ...o })) };
+        ? { ...element!.props!.quizData, options: withIds(element!.props!.quizData.options) }
+        : { ...DEFAULT_MCQ, options: withIds(DEFAULT_MCQ.options.map((o) => ({ ...o }))) };
     const [quizData, setQuizData] = useState<QuizData>(initialData);
-    // Learners never enter edit mode — they only take the quiz. For
-    // admins, open in edit mode if the question is empty (new block).
     const [isEditing, setIsEditing] = useState(
-        !isReadOnly && !element?.props?.quizData?.question
+        !isReadOnly && isHtmlEmpty(element?.props?.quizData?.question || '')
     );
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
 
-    // Mirror quizData in a ref so commitQuiz always resolves functional
-    // updaters against the freshest value even if two handlers fire in
-    // the same render tick (original code used React's prev-safe
-    // setState, which we preserve here via the ref).
-    const quizDataRef = useRef<QuizData>(initialData);
+    useEffect(() => {
+        ensureQuizEditorStyles();
+    }, []);
 
-    // Push quiz data to Yoopta via commitBlockProps (Slate + block.value
-    // atomically). No-op for learners — they must never mutate the
-    // editor tree.
+    const quizDataRef = useRef<QuizData>(initialData);
+    const mcqStashRef = useRef<QuizOption[] | null>(null);
+
     const commitQuiz = (next: QuizData | ((prev: QuizData) => QuizData)) => {
         const resolved =
             typeof next === 'function' ? (next as any)(quizDataRef.current) : next;
@@ -80,11 +415,6 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
         });
     };
 
-    // Seed Yoopta on first mount if the block has no stored quiz data.
-    // Without this, element.props.quizData stays undefined and a first
-    // Save Draft ships the DEFAULT_MCQ fallback instead of whatever the
-    // user has typed locally. Skipped for learners — they shouldn't
-    // mutate published content.
     useEffect(() => {
         if (!isReadOnly && !hasStoredQuiz) {
             commitBlockProps(editor, blockId, element, {
@@ -95,36 +425,30 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Sync local state when element props change (e.g. after deserialization)
     useEffect(() => {
         const propQuiz = element?.props?.quizData;
         if (propQuiz && JSON.stringify(propQuiz) !== JSON.stringify(quizData)) {
-            quizDataRef.current = propQuiz;
-            setQuizData(propQuiz);
+            const next = { ...propQuiz, options: withIds(propQuiz.options) };
+            quizDataRef.current = next;
+            setQuizData(next);
         }
     }, [element?.props?.quizData]);
 
-    const updateQuestion = (question: string) => {
-        commitQuiz((prev) => ({ ...prev, question }));
-    };
-
-    const updateExplanation = (explanation: string) => {
+    const updateQuestion = (question: string) => commitQuiz((prev) => ({ ...prev, question }));
+    const updateExplanation = (explanation: string) =>
         commitQuiz((prev) => ({ ...prev, explanation }));
-    };
-
-    const updateOptionText = (index: number, text: string) => {
+    const updateOptionText = (id: string, text: string) =>
         commitQuiz((prev) => ({
             ...prev,
-            options: prev.options.map((opt, i) => (i === index ? { ...opt, text } : opt)),
+            options: prev.options.map((opt) => (opt.id === id ? { ...opt, text } : opt)),
         }));
-    };
 
-    const toggleCorrect = (index: number) => {
+    const toggleCorrect = (id: string) => {
         commitQuiz((prev) => ({
             ...prev,
-            options: prev.options.map((opt, i) => ({
+            options: prev.options.map((opt) => ({
                 ...opt,
-                isCorrect: i === index ? !opt.isCorrect : false, // single correct answer
+                isCorrect: opt.id === id ? !opt.isCorrect : false, // single correct answer
             })),
         }));
     };
@@ -133,53 +457,42 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
         if (quizData.options.length >= 6) return;
         commitQuiz((prev) => ({
             ...prev,
-            options: [...prev.options, { text: '', isCorrect: false }],
+            options: [...prev.options, { id: genId(), text: '', isCorrect: false }],
         }));
     };
 
-    const removeOption = (index: number) => {
+    const removeOption = (id: string) => {
         if (quizData.options.length <= 2) return;
         commitQuiz((prev) => ({
             ...prev,
-            options: prev.options.filter((_, i) => i !== index),
+            options: prev.options.filter((opt) => opt.id !== id),
         }));
     };
 
     const switchType = (type: 'mcq' | 'trueFalse') => {
+        if (type === quizData.type) return;
         if (type === 'trueFalse') {
+            mcqStashRef.current = quizDataRef.current.options;
             commitQuiz((prev) => ({
                 ...prev,
                 type,
-                options: [
+                options: withIds([
                     { text: 'True', isCorrect: false },
                     { text: 'False', isCorrect: false },
-                ],
+                ]),
             }));
         } else {
-            commitQuiz((prev) => ({
-                ...prev,
-                type,
-                options: DEFAULT_MCQ.options.map((o) => ({ ...o })),
-            }));
+            const restored =
+                mcqStashRef.current && mcqStashRef.current.length >= 2
+                    ? mcqStashRef.current
+                    : withIds(DEFAULT_MCQ.options.map((o) => ({ ...o })));
+            commitQuiz((prev) => ({ ...prev, type, options: restored }));
         }
-    };
-
-    const handleCheckAnswer = () => {
-        setShowResult(true);
     };
 
     const handleReset = () => {
         setSelectedAnswer(null);
         setShowResult(false);
-    };
-
-    const handleInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Backspace') {
-            const target = e.target as HTMLInputElement | HTMLTextAreaElement;
-            if (target.value.length > 0 || target.selectionStart !== 0) {
-                e.stopPropagation();
-            }
-        }
     };
 
     const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -189,11 +502,11 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
             {...attributes}
             contentEditable={false}
             style={{
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${C.border}`,
                 borderRadius: '8px',
                 margin: '8px 0',
                 overflow: 'hidden',
-                backgroundColor: '#fafafa',
+                backgroundColor: C.surface,
             }}
         >
             {/* Header */}
@@ -203,11 +516,11 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 12px',
-                    backgroundColor: '#eef2ff',
-                    borderBottom: '1px solid #c7d2fe',
+                    backgroundColor: C.indigoBg,
+                    borderBottom: `1px solid ${C.indigoBorder}`,
                 }}
             >
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#4338ca' }}>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: C.indigo }}>
                     Quiz Block
                 </span>
                 <div style={{ display: 'flex', gap: '6px' }}>
@@ -218,10 +531,10 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                 style={{
                                     padding: '3px 10px',
                                     fontSize: '12px',
-                                    border: '1px solid #c7d2fe',
+                                    border: `1px solid ${C.indigoBorder}`,
                                     borderRadius: '4px',
-                                    backgroundColor: quizData.type === 'mcq' ? '#4338ca' : 'white',
-                                    color: quizData.type === 'mcq' ? 'white' : '#666',
+                                    backgroundColor: quizData.type === 'mcq' ? C.indigo : C.white,
+                                    color: quizData.type === 'mcq' ? C.white : C.muted,
                                     cursor: 'pointer',
                                 }}
                             >
@@ -232,10 +545,10 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                 style={{
                                     padding: '3px 10px',
                                     fontSize: '12px',
-                                    border: '1px solid #c7d2fe',
+                                    border: `1px solid ${C.indigoBorder}`,
                                     borderRadius: '4px',
-                                    backgroundColor: quizData.type === 'trueFalse' ? '#4338ca' : 'white',
-                                    color: quizData.type === 'trueFalse' ? 'white' : '#666',
+                                    backgroundColor: quizData.type === 'trueFalse' ? C.indigo : C.white,
+                                    color: quizData.type === 'trueFalse' ? C.white : C.muted,
                                     cursor: 'pointer',
                                 }}
                             >
@@ -252,10 +565,10 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                             style={{
                                 padding: '3px 10px',
                                 fontSize: '12px',
-                                border: '1px solid #c7d2fe',
+                                border: `1px solid ${C.indigoBorder}`,
                                 borderRadius: '4px',
-                                backgroundColor: 'white',
-                                color: '#666',
+                                backgroundColor: C.white,
+                                color: C.muted,
                                 cursor: 'pointer',
                             }}
                         >
@@ -267,55 +580,47 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
 
             <div style={{ padding: '16px' }}>
                 {isEditing ? (
-                    /* Edit mode */
+                    /* Edit mode — each field is its own rich-text editor */
                     <div>
                         {/* Question */}
-                        <div style={{ marginBottom: '12px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '4px' }}>
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: C.label, display: 'block', marginBottom: '4px' }}>
                                 Question
                             </label>
-                            <textarea
+                            <RichField
                                 value={quizData.question}
-                                onChange={(e) => updateQuestion(e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder="Enter your question..."
-                                rows={2}
-                                style={{
-                                    width: '100%',
-                                    padding: '8px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    fontSize: '14px',
-                                    resize: 'vertical',
-                                }}
+                                onChange={updateQuestion}
+                                placeholder="Enter your question…"
+                                minHeight={64}
                             />
                         </div>
 
                         {/* Options */}
-                        <div style={{ marginBottom: '12px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '4px' }}>
-                                Options (click the circle to mark correct answer)
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: C.label, display: 'block', marginBottom: '4px' }}>
+                                Options (click the circle to mark the correct answer)
                             </label>
                             {quizData.options.map((option, index) => (
                                 <div
-                                    key={index}
+                                    key={option.id || index}
                                     style={{
                                         display: 'flex',
-                                        alignItems: 'center',
+                                        alignItems: 'flex-start',
                                         gap: '8px',
-                                        marginBottom: '6px',
+                                        marginBottom: '10px',
                                     }}
                                 >
-                                    {/* Correct toggle */}
                                     <button
-                                        onClick={() => toggleCorrect(index)}
+                                        onClick={() => toggleCorrect(option.id!)}
+                                        title="Mark as correct answer"
                                         style={{
                                             width: '24px',
                                             height: '24px',
+                                            marginTop: '6px',
                                             borderRadius: '50%',
-                                            border: `2px solid ${option.isCorrect ? '#28a745' : '#ccc'}`,
-                                            backgroundColor: option.isCorrect ? '#28a745' : 'white',
-                                            color: option.isCorrect ? 'white' : '#ccc',
+                                            border: `2px solid ${option.isCorrect ? C.green : C.gray}`,
+                                            backgroundColor: option.isCorrect ? C.green : C.white,
+                                            color: option.isCorrect ? C.white : C.gray,
                                             cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -327,36 +632,31 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                         {option.isCorrect ? '✓' : optionLabels[index]}
                                     </button>
 
-                                    <input
-                                        type="text"
-                                        value={option.text}
-                                        onChange={(e) => updateOptionText(index, e.target.value)}
-                                        onKeyDown={handleInputKeyDown}
-                                        placeholder={`Option ${optionLabels[index]}`}
-                                        disabled={quizData.type === 'trueFalse'}
-                                        style={{
-                                            flex: 1,
-                                            padding: '6px 8px',
-                                            border: '1px solid #ddd',
-                                            borderRadius: '4px',
-                                            fontSize: '14px',
-                                            backgroundColor: quizData.type === 'trueFalse' ? '#f5f5f5' : '#fff',
-                                        }}
-                                    />
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <RichField
+                                            value={option.text}
+                                            onChange={(html) => updateOptionText(option.id!, html)}
+                                            placeholder={`Option ${optionLabels[index]}`}
+                                            minHeight={44}
+                                        />
+                                    </div>
 
                                     {quizData.type === 'mcq' && (
                                         <button
-                                            onClick={() => removeOption(index)}
+                                            onClick={() => removeOption(option.id!)}
                                             disabled={quizData.options.length <= 2}
+                                            title="Remove option"
                                             style={{
                                                 padding: '4px 8px',
+                                                marginTop: '6px',
                                                 fontSize: '12px',
-                                                border: '1px solid #ddd',
+                                                border: `1px solid ${C.inputBorder}`,
                                                 borderRadius: '4px',
-                                                backgroundColor: '#fff',
-                                                color: '#dc3545',
+                                                backgroundColor: C.white,
+                                                color: C.red,
                                                 cursor: quizData.options.length <= 2 ? 'default' : 'pointer',
                                                 opacity: quizData.options.length <= 2 ? 0.3 : 1,
+                                                flexShrink: 0,
                                             }}
                                         >
                                             ✕
@@ -371,10 +671,10 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                     style={{
                                         padding: '4px 12px',
                                         fontSize: '12px',
-                                        border: '1px dashed #ccc',
+                                        border: `1px dashed ${C.gray}`,
                                         borderRadius: '4px',
-                                        backgroundColor: '#fff',
-                                        color: '#666',
+                                        backgroundColor: C.white,
+                                        color: C.muted,
                                         cursor: 'pointer',
                                         marginTop: '4px',
                                     }}
@@ -386,23 +686,14 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
 
                         {/* Explanation */}
                         <div>
-                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#555', display: 'block', marginBottom: '4px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: C.label, display: 'block', marginBottom: '4px' }}>
                                 Explanation (shown after answering)
                             </label>
-                            <textarea
+                            <RichField
                                 value={quizData.explanation}
-                                onChange={(e) => updateExplanation(e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder="Explain the correct answer..."
-                                rows={2}
-                                style={{
-                                    width: '100%',
-                                    padding: '8px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    fontSize: '13px',
-                                    resize: 'vertical',
-                                }}
+                                onChange={updateExplanation}
+                                placeholder="Explain the correct answer…"
+                                minHeight={44}
                             />
                         </div>
                     </div>
@@ -410,43 +701,50 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                     /* Preview / interactive mode */
                     <div>
                         {/* Question */}
-                        <div style={{ fontSize: '16px', fontWeight: 600, color: '#333', marginBottom: '12px' }}>
-                            {quizData.question || 'No question set'}
-                        </div>
+                        {!isHtmlEmpty(quizData.question) ? (
+                            <RichHtml
+                                html={quizData.question}
+                                style={{ fontSize: '16px', color: C.text, marginBottom: '12px' }}
+                            />
+                        ) : (
+                            <div style={{ fontSize: '16px', fontWeight: 600, color: C.text, marginBottom: '12px' }}>
+                                No question set
+                            </div>
+                        )}
 
                         {/* Options */}
                         <div style={{ marginBottom: '12px' }}>
                             {quizData.options.map((option, index) => {
-                                let bgColor = '#fff';
-                                let borderColor = '#ddd';
-                                let textColor = '#333';
+                                let bgColor = C.white;
+                                let borderColor = C.inputBorder;
+                                let textColor = C.text;
 
                                 if (selectedAnswer === index) {
-                                    borderColor = '#4338ca';
-                                    bgColor = '#eef2ff';
+                                    borderColor = C.indigo;
+                                    bgColor = C.indigoBg;
                                 }
 
                                 if (showResult) {
                                     if (option.isCorrect) {
-                                        bgColor = '#d4edda';
-                                        borderColor = '#28a745';
-                                        textColor = '#155724';
+                                        bgColor = C.correctBg;
+                                        borderColor = C.green;
+                                        textColor = C.correctText;
                                     } else if (selectedAnswer === index && !option.isCorrect) {
-                                        bgColor = '#f8d7da';
-                                        borderColor = '#dc3545';
-                                        textColor = '#721c24';
+                                        bgColor = C.wrongBg;
+                                        borderColor = C.red;
+                                        textColor = C.wrongText;
                                     }
                                 }
 
                                 return (
                                     <div
-                                        key={index}
+                                        key={option.id || index}
                                         onClick={() => {
                                             if (!showResult) setSelectedAnswer(index);
                                         }}
                                         style={{
                                             display: 'flex',
-                                            alignItems: 'center',
+                                            alignItems: 'flex-start',
                                             gap: '10px',
                                             padding: '10px 12px',
                                             border: `2px solid ${borderColor}`,
@@ -461,6 +759,7 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                         <span style={{
                                             width: '24px',
                                             height: '24px',
+                                            marginTop: '2px',
                                             borderRadius: '50%',
                                             border: `2px solid ${borderColor}`,
                                             display: 'flex',
@@ -470,13 +769,14 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                             fontWeight: 600,
                                             flexShrink: 0,
                                             backgroundColor: selectedAnswer === index ? borderColor : 'transparent',
-                                            color: selectedAnswer === index ? 'white' : textColor,
+                                            color: selectedAnswer === index ? C.white : textColor,
                                         }}>
                                             {showResult && option.isCorrect ? '✓' : optionLabels[index]}
                                         </span>
-                                        <span style={{ fontSize: '14px' }}>
-                                            {option.text || `Option ${optionLabels[index]}`}
-                                        </span>
+                                        <RichHtml
+                                            html={isHtmlEmpty(option.text) ? `Option ${optionLabels[index]}` : option.text}
+                                            style={{ fontSize: '14px', flex: 1, minWidth: 0 }}
+                                        />
                                     </div>
                                 );
                             })}
@@ -486,15 +786,15 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                         <div style={{ display: 'flex', gap: '8px' }}>
                             {!showResult ? (
                                 <button
-                                    onClick={handleCheckAnswer}
+                                    onClick={() => setShowResult(true)}
                                     disabled={selectedAnswer === null}
                                     style={{
                                         padding: '6px 16px',
                                         fontSize: '13px',
                                         border: 'none',
                                         borderRadius: '4px',
-                                        backgroundColor: selectedAnswer !== null ? '#4338ca' : '#ccc',
-                                        color: 'white',
+                                        backgroundColor: selectedAnswer !== null ? C.indigo : C.gray,
+                                        color: C.white,
                                         cursor: selectedAnswer !== null ? 'pointer' : 'default',
                                     }}
                                 >
@@ -506,10 +806,10 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                                     style={{
                                         padding: '6px 16px',
                                         fontSize: '13px',
-                                        border: '1px solid #ccc',
+                                        border: `1px solid ${C.gray}`,
                                         borderRadius: '4px',
-                                        backgroundColor: '#fff',
-                                        color: '#666',
+                                        backgroundColor: C.white,
+                                        color: C.muted,
                                         cursor: 'pointer',
                                     }}
                                 >
@@ -519,19 +819,20 @@ export function QuizBlock({ element, attributes, children, blockId }: PluginElem
                         </div>
 
                         {/* Explanation */}
-                        {showResult && quizData.explanation && (
+                        {showResult && !isHtmlEmpty(quizData.explanation) && (
                             <div
                                 style={{
                                     marginTop: '12px',
                                     padding: '10px 12px',
-                                    backgroundColor: '#fff3cd',
-                                    border: '1px solid #ffc107',
+                                    backgroundColor: C.explBg,
+                                    border: `1px solid ${C.explBorder}`,
                                     borderRadius: '6px',
                                     fontSize: '13px',
-                                    color: '#856404',
+                                    color: C.explText,
                                 }}
                             >
-                                <strong>Explanation:</strong> {quizData.explanation}
+                                <strong>Explanation:</strong>
+                                <RichHtml html={quizData.explanation} />
                             </div>
                         )}
                     </div>
@@ -576,15 +877,13 @@ export const QuizBlockPlugin = new YooptaPlugin<{ quizBlock: any }>({
                     if (element.getAttribute?.('data-yoopta-type') !== 'quizBlock') {
                         return undefined;
                     }
-                    let quizData: QuizData = DEFAULT_MCQ;
-                    try {
-                        const quizJson = element.getAttribute('data-quiz');
-                        if (quizJson) {
-                            quizData = JSON.parse(quizJson);
-                        }
-                    } catch {
-                        // Use default
-                    }
+                    // decodeBlockData handles BOTH the new base64 payload and any
+                    // older raw/escaped-JSON data-quiz, so existing slides keep
+                    // working.
+                    const quizData: QuizData = decodeBlockData<QuizData>(
+                        element.getAttribute('data-quiz'),
+                        DEFAULT_MCQ
+                    );
                     return {
                         id: `quiz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         type: 'quizBlock',
@@ -594,27 +893,42 @@ export const QuizBlockPlugin = new YooptaPlugin<{ quizBlock: any }>({
                 },
             },
             serialize: (element, _children) => {
-                const props = element.props || {};
-                const quizData: QuizData = props.quizData || DEFAULT_MCQ;
-                const quizJson = JSON.stringify(quizData).replace(/"/g, '&quot;');
-                const questionEsc = quizData.question.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+                // Bulletproof: this serializer must NEVER throw, or it would break
+                // the whole-document Save Draft / Publish ("Could not read editor
+                // content"). The data-quiz attribute (source of truth) is always
+                // emitted; the static body is best-effort.
+                const props = (element && element.props) || {};
+                const quizData: QuizData =
+                    props.quizData && typeof props.quizData === 'object'
+                        ? props.quizData
+                        : DEFAULT_MCQ;
+                const options = Array.isArray(quizData.options) ? quizData.options : [];
 
-                const optionsHtml = quizData.options
-                    .map((opt, i) => {
-                        const textEsc = opt.text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        return `<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid #ddd; border-radius: 6px; margin-bottom: 6px; background: #fff;">
-              <span style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ddd; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">${optionLabels[i]}</span>
-              <span style="font-size: 14px;">${textEsc}</span>
-            </div>`;
-                    })
-                    .join('');
+                // base64 so the document-wide HTML sanitizers can never corrupt
+                // the JSON (an S3 image URL inside a field used to truncate it,
+                // wiping the whole quiz on reload).
+                let quizJson: string;
+                try {
+                    quizJson = encodeBlockData({ ...quizData, options });
+                } catch {
+                    quizJson = encodeBlockData(DEFAULT_MCQ);
+                }
 
-                return `<div data-yoopta-type="quizBlock" data-editor-type="quizBlockEditor" data-quiz="${quizJson}" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa;">
-          <div style="padding: 4px 8px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 4px; display: inline-block; font-size: 12px; font-weight: 600; color: #4338ca; margin-bottom: 12px;">QUIZ</div>
-          <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 12px;">${questionEsc}</div>
-          ${optionsHtml}
-        </div>`;
+                let body = '';
+                try {
+                    const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+                    const optionsHtml = options
+                        .map(
+                            (opt, i) =>
+                                `<div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 2px solid ${C.inputBorder}; border-radius: 6px; margin-bottom: 6px; background: ${C.white};"><span style="width: 24px; height: 24px; border-radius: 50%; border: 2px solid ${C.inputBorder}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0;">${optionLabels[i]}</span><div style="font-size: 14px;">${(opt && opt.text) || ''}</div></div>`
+                        )
+                        .join('');
+                    body = `<div style="padding: 4px 8px; background: ${C.indigoBg}; border: 1px solid ${C.indigoBorder}; border-radius: 4px; display: inline-block; font-size: 12px; font-weight: 600; color: ${C.indigo}; margin-bottom: 12px;">QUIZ</div><div style="font-size: 16px; color: ${C.text}; margin-bottom: 12px;">${quizData.question || ''}</div>${optionsHtml}`;
+                } catch {
+                    body = '';
+                }
+
+                return `<div data-yoopta-type="quizBlock" data-editor-type="quizBlockEditor" data-quiz="${quizJson}" style="border: 1px solid ${C.border}; border-radius: 8px; padding: 16px; margin: 8px 0; background: ${C.surface};">${body}</div>`;
             },
         },
     },

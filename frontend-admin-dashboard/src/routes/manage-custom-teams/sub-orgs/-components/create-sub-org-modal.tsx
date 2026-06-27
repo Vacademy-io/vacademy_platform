@@ -41,6 +41,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
+import { getPaymentOptions } from '@/services/payment-options';
+import type { PaymentOptionApi } from '@/types/payment';
 
 // Local sub-org helpers — kept inline so the rest of the dashboard's package-service
 // calls don't accidentally pick up the same lookup logic.
@@ -92,6 +94,9 @@ const step3Schema = z.object({
     vendorId: z.string().optional(),
     // Required when paymentType=CPO — picked from the institute's existing CPO list.
     complexPaymentOptionId: z.string().optional(),
+    // Required for ONE_TIME / SUBSCRIPTION / FREE — picked from the institute's existing
+    // payment options (Payment Settings). The admin pays via this option + its plan.
+    paymentOptionId: z.string().optional(),
 });
 
 type Step1Values = z.infer<typeof step1Schema>;
@@ -219,6 +224,28 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     });
     const cpoList = (cpoListResponse?.content || []).filter(
         (cpo) => cpo.status === 'ACTIVE'
+    );
+
+    // Fetch the institute's existing payment options (Payment Settings) — the sub-org
+    // admin pays via one of these instead of a freshly-typed price. CPO stays on its own
+    // picker above; this covers ONE_TIME / SUBSCRIPTION / FREE.
+    const { data: institutePaymentOptions = [], isLoading: isLoadingPaymentOptions } = useQuery<
+        PaymentOptionApi[]
+    >({
+        queryKey: ['sub-org-institute-payment-options', instituteId],
+        queryFn: () =>
+            getPaymentOptions({
+                types: ['ONE_TIME', 'SUBSCRIPTION', 'FREE'],
+                source: 'INSTITUTE',
+                source_id: instituteId || '',
+                require_approval: true,
+                not_require_approval: true,
+            }),
+        enabled: open && step === 3 && !!instituteId,
+        staleTime: 30000,
+    });
+    const optionsForType = institutePaymentOptions.filter(
+        (o) => o.status === 'ACTIVE' && o.type === step3Form.watch('paymentType')
     );
 
     // Auto-select vendor when there's exactly one
@@ -369,6 +396,16 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             return;
         }
 
+        // ONE_TIME / SUBSCRIPTION / FREE reuse an existing institute payment option.
+        const reusesOption =
+            data.paymentType === 'ONE_TIME' ||
+            data.paymentType === 'SUBSCRIPTION' ||
+            data.paymentType === 'FREE';
+        if (reusesOption && !data.paymentOptionId) {
+            toast.error('Please select a payment option for the sub-org admin');
+            return;
+        }
+
         const isGatewayBacked = data.paymentType === 'ONE_TIME' || data.paymentType === 'SUBSCRIPTION';
 
         const request: CreateSubOrgSubscriptionRequest = {
@@ -378,8 +415,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             },
             package_session_ids: selectedPackageSessionIds,
             payment_type: data.paymentType,
-            actual_price: isGatewayBacked ? data.actualPrice : undefined,
-            elevated_price: isGatewayBacked ? data.elevatedPrice : undefined,
+            // Price comes from the reused option's plan — not sent.
             currency: isGatewayBacked ? data.currency : undefined,
             member_count: data.memberCount,
             validity_in_days: data.validityInDays,
@@ -391,6 +427,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                 selectedAdminPermissions.length > 0 ? selectedAdminPermissions : undefined,
             complex_payment_option_id:
                 data.paymentType === 'CPO' ? data.complexPaymentOptionId : undefined,
+            payment_option_id: reusesOption ? data.paymentOptionId : undefined,
         };
         subscriptionMutation.mutate(request);
     };
@@ -629,12 +666,16 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     <Label>Payment Type</Label>
                                     <Select
                                         value={paymentType}
-                                        onValueChange={(v) =>
+                                        onValueChange={(v) => {
                                             step3Form.setValue(
                                                 'paymentType',
                                                 v as 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE' | 'CPO'
-                                            )
-                                        }
+                                            );
+                                            // Selections are type-scoped — clear so a stale
+                                            // pick from another type can't leak into the request.
+                                            step3Form.setValue('paymentOptionId', undefined);
+                                            step3Form.setValue('complexPaymentOptionId', undefined);
+                                        }}
                                     >
                                         <SelectTrigger>
                                             <SelectValue />
@@ -689,49 +730,68 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     </div>
                                 )}
 
+                                {(paymentType === 'ONE_TIME' ||
+                                    paymentType === 'SUBSCRIPTION' ||
+                                    paymentType === 'FREE') && (
+                                    <div className="space-y-2 sm:col-span-2">
+                                        <Label>Payment Option *</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            The sub-org admin pays via this existing institute
+                                            payment option. Price &amp; currency come from the
+                                            option&apos;s plan.
+                                        </p>
+                                        <Select
+                                            value={step3Form.watch('paymentOptionId') || ''}
+                                            onValueChange={(v) => {
+                                                step3Form.setValue('paymentOptionId', v);
+                                                const opt = optionsForType.find((o) => o.id === v);
+                                                const cur = opt?.payment_plans?.[0]?.currency;
+                                                if (cur) step3Form.setValue('currency', cur);
+                                            }}
+                                            disabled={isLoadingPaymentOptions}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue
+                                                    placeholder={
+                                                        isLoadingPaymentOptions
+                                                            ? 'Loading payment options...'
+                                                            : optionsForType.length === 0
+                                                              ? 'No active option found'
+                                                              : 'Select a payment option'
+                                                    }
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {optionsForType.map((o) => {
+                                                    const plan = o.payment_plans?.[0];
+                                                    const priceLabel =
+                                                        o.type === 'FREE' || !plan
+                                                            ? ''
+                                                            : ` — ${plan.actual_price} ${plan.currency || ''}`;
+                                                    return (
+                                                        <SelectItem key={o.id} value={o.id}>
+                                                            {o.name}
+                                                            {priceLabel}
+                                                        </SelectItem>
+                                                    );
+                                                })}
+                                            </SelectContent>
+                                        </Select>
+                                        {!isLoadingPaymentOptions &&
+                                            optionsForType.length === 0 && (
+                                                <p className="text-sm text-amber-600">
+                                                    No active{' '}
+                                                    {paymentType.replace('_', '-').toLowerCase()}{' '}
+                                                    payment option found. Create one in Payment
+                                                    Settings first.
+                                                </p>
+                                            )}
+                                    </div>
+                                )}
+
                                 {(paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION') && (
                                     <>
-                                        <div className="space-y-2">
-                                            <Label>Actual Price</Label>
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                {...step3Form.register('actualPrice', {
-                                                    valueAsNumber: true,
-                                                })}
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Elevated Price (MRP)</Label>
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                {...step3Form.register('elevatedPrice', {
-                                                    valueAsNumber: true,
-                                                })}
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Currency</Label>
-                                            <Select
-                                                value={step3Form.watch('currency') || 'INR'}
-                                                onValueChange={(v) =>
-                                                    step3Form.setValue('currency', v)
-                                                }
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="INR">INR</SelectItem>
-                                                    <SelectItem value="USD">USD</SelectItem>
-                                                    <SelectItem value="AUD">AUD</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
+                                        <div className="space-y-2 sm:col-span-2">
                                             <Label>Payment Vendor</Label>
                                             {vendorsList.length === 0 ? (
                                                 <p className="text-sm text-amber-600">

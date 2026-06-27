@@ -25,10 +25,15 @@ import {
     ArrowsLeftRight,
     CalendarCheck,
     ChartLineUp,
+    CurrencyCircleDollar,
     Funnel,
     ListChecks,
     Megaphone,
     Phone,
+    PhoneCall,
+    Stack,
+    Table,
+    TrendUp,
     User,
     Users,
     UsersThree,
@@ -61,11 +66,16 @@ import { ManagerTab } from './manager-tab';
 import { ActivityTab } from './activity-tab';
 import { FollowupsTab } from './followups-tab';
 import { CounsellorsTab } from './counsellors-tab';
+import { RevenueTab } from './revenue-tab';
+import { CohortTab } from './cohort-tab';
+import { ForecastTab } from './forecast-tab';
+import { CustomReportTab } from './custom-report-tab';
 import { ReportTabSkeleton, type ReportTabProps } from './report-shared';
 
 // Inter-agent contract: the Calling tab module lives at exactly this path and
 // default-exports CallingTab(props: ReportTabProps). Built by a sibling agent.
 const CallingTab = lazy(() => import('./calling/CallingTab'));
+const CallLogTab = lazy(() => import('./call-log/CallLogTab'));
 
 // ── Date helpers ───────────────────────────────────────────────────────
 
@@ -272,7 +282,7 @@ export function LeadReportsPage() {
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
-                <TabsList className="grid h-auto w-full max-w-5xl grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
+                <TabsList className="grid h-auto w-full max-w-6xl grid-cols-3 sm:grid-cols-5 lg:grid-cols-7">
                     <TabsTrigger value="overview" className="gap-1.5">
                         <ChartLineUp size={14} weight="bold" />
                         Overview
@@ -293,6 +303,10 @@ export function LeadReportsPage() {
                         <Phone size={14} weight="bold" />
                         Calling
                     </TabsTrigger>
+                    <TabsTrigger value="call-log" className="gap-1.5">
+                        <PhoneCall size={14} weight="bold" />
+                        Call Log
+                    </TabsTrigger>
                     <TabsTrigger value="activity" className="gap-1.5">
                         <ListChecks size={14} weight="bold" />
                         Activity
@@ -309,6 +323,22 @@ export function LeadReportsPage() {
                         <UsersThree size={14} weight="bold" />
                         Manager
                     </TabsTrigger>
+                    <TabsTrigger value="revenue" className="gap-1.5">
+                        <CurrencyCircleDollar size={14} weight="bold" />
+                        Revenue
+                    </TabsTrigger>
+                    <TabsTrigger value="cohort" className="gap-1.5">
+                        <Stack size={14} weight="bold" />
+                        Cohort
+                    </TabsTrigger>
+                    <TabsTrigger value="forecast" className="gap-1.5">
+                        <TrendUp size={14} weight="bold" />
+                        Forecast
+                    </TabsTrigger>
+                    <TabsTrigger value="custom" className="gap-1.5">
+                        <Table size={14} weight="bold" />
+                        Builder
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -320,6 +350,11 @@ export function LeadReportsPage() {
                 <TabsContent value="calling">
                     <Suspense fallback={<ReportTabSkeleton />}>
                         <CallingTab {...tabProps} />
+                    </Suspense>
+                </TabsContent>
+                <TabsContent value="call-log">
+                    <Suspense fallback={<ReportTabSkeleton />}>
+                        <CallLogTab {...tabProps} />
                     </Suspense>
                 </TabsContent>
                 <TabsContent value="funnel">
@@ -339,6 +374,18 @@ export function LeadReportsPage() {
                 </TabsContent>
                 <TabsContent value="manager">
                     <ManagerTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="revenue">
+                    <RevenueTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="cohort">
+                    <CohortTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="forecast">
+                    <ForecastTab {...tabProps} />
+                </TabsContent>
+                <TabsContent value="custom">
+                    <CustomReportTab {...tabProps} />
                 </TabsContent>
             </Tabs>
         </div>

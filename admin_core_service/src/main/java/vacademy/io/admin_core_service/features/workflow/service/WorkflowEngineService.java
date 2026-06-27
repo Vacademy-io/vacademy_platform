@@ -33,6 +33,12 @@ public class WorkflowEngineService {
     private final ObjectMapper objectMapper;
     private final InstituteRepository instituteRepository;
 
+    // Context key under which the engine mirrors the set of notification nodes (SEND_EMAIL /
+    // SEND_WHATSAPP) already executed in this logical run. It is persisted as part of the
+    // serialized context on pause (DelayNodeHandler) and restored on resume so notifications
+    // upstream of a long DELAY are not re-sent when the workflow is resumed from __resumed_at_node.
+    private static final String EXECUTED_NOTIFICATION_NODES_KEY = "__executed_notification_nodes";
+
     public Map<String, Object> run(String workflowId, Map<String, Object> seedContext) {
         try {
             // Check for dry-run mode from seedContext
@@ -105,12 +111,45 @@ public class WorkflowEngineService {
             int maxVisitsPerNode = 3; // Allow re-execution in diamond DAGs, but cap to prevent infinite loops
 
             // Track notification nodes that have already sent messages to prevent duplicates
-            // in diamond DAG patterns where multiple paths converge on the same notification node
+            // in diamond DAG patterns where multiple paths converge on the same notification node.
+            // This set is mirrored into ctx under EXECUTED_NOTIFICATION_NODES_KEY so it survives a
+            // pause/resume cycle (DelayNodeHandler serializes ctx), preventing re-fires across resumes.
             Set<String> executedNotificationNodes = new HashSet<>();
 
-            // Push start node to stack
-            nodeExecutionStack.push(startNode.getNodeTemplateId());
-            log.info("Starting workflow execution with start node: {}", startNode.getNodeTemplateId());
+            // H1 FIX: detect a resume. When WorkflowResumeJob restores a paused execution it seeds
+            // ctx with __resumed_at_node (the node to continue from). If present & non-blank we must
+            // (a) start the stack at THAT node, not startNode, and (b) restore the set of notification
+            // nodes already fired before the pause, so SEND_EMAIL/SEND_WHATSAPP nodes upstream of the
+            // delay are NOT re-sent. If absent/blank, behavior is exactly as before (start from startNode).
+            Object resumedAtNodeObj = ctx.get("__resumed_at_node");
+            String resumedAtNode = (resumedAtNodeObj == null) ? null : String.valueOf(resumedAtNodeObj).trim();
+            boolean isResume = resumedAtNode != null && !resumedAtNode.isBlank();
+
+            if (isResume) {
+                // Restore previously-executed notification nodes from the persisted context.
+                Object prevExecuted = ctx.get(EXECUTED_NOTIFICATION_NODES_KEY);
+                if (prevExecuted instanceof Collection<?> col) {
+                    for (Object n : col) {
+                        if (n != null) {
+                            executedNotificationNodes.add(String.valueOf(n));
+                        }
+                    }
+                }
+                // Pre-populate visit counts for those nodes so dedup-by-visit also treats them as seen.
+                executedNotificationNodes.forEach(n -> nodeVisitCount.put(n, 1));
+                log.info("Resuming workflow at node {} with {} previously-executed notification nodes restored: {}",
+                        resumedAtNode, executedNotificationNodes.size(), executedNotificationNodes);
+            }
+
+            // Consume the resume marker so it does not leak into child traversal / handlers.
+            ctx.remove("__resumed_at_node");
+            // Keep ctx's executed-notification mirror in sync from the very start.
+            ctx.put(EXECUTED_NOTIFICATION_NODES_KEY, new ArrayList<>(executedNotificationNodes));
+
+            // Push the entry node: resumed node on resume, else the start node.
+            String entryNodeId = isResume ? resumedAtNode : startNode.getNodeTemplateId();
+            nodeExecutionStack.push(entryNodeId);
+            log.info("Starting workflow execution with entry node: {} (resume={})", entryNodeId, isResume);
 
             int guard = 0; // prevent infinite loops
             while (!nodeExecutionStack.isEmpty() && guard++ < 100) {
@@ -155,19 +194,24 @@ public class WorkflowEngineService {
                 // Prevent duplicate notification sends in diamond DAG patterns:
                 // If multiple paths converge on the same SEND_EMAIL or SEND_WHATSAPP node,
                 // only execute it once per workflow run.
-                if (("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType))
-                        && !executedNotificationNodes.add(currentNodeId)) {
-                    log.info("Skipping duplicate notification node {} (type: {}) - already executed in this workflow run",
-                            currentNodeId, nodeType);
+                if ("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType)) {
+                    if (!executedNotificationNodes.add(currentNodeId)) {
+                        log.info("Skipping duplicate notification node {} (type: {}) - already executed in this workflow run",
+                                currentNodeId, nodeType);
 
-                    SentryLogger.logWarning("Duplicate notification node skipped in workflow", Map.of(
-                            "workflow.id", workflowId,
-                            "node.id", currentNodeId,
-                            "node.type", nodeType,
-                            "institute.id", String.valueOf(ctx.get("instituteId")),
-                            "operation", "WorkflowEngine.duplicateNodeSkipped"
-                    ));
-                    continue;
+                        SentryLogger.logWarning("Duplicate notification node skipped in workflow", Map.of(
+                                "workflow.id", workflowId,
+                                "node.id", currentNodeId,
+                                "node.type", nodeType,
+                                "institute.id", String.valueOf(ctx.get("instituteId")),
+                                "operation", "WorkflowEngine.duplicateNodeSkipped"
+                        ));
+                        continue;
+                    }
+                    // Mirror the freshly-recorded notification node into ctx so that if a later
+                    // DELAY node pauses the workflow, the persisted context remembers this send
+                    // and the resume pass will not re-fire it.
+                    ctx.put(EXECUTED_NOTIFICATION_NODES_KEY, new ArrayList<>(executedNotificationNodes));
                 }
 
                 // Use registry for O(1) lookup
@@ -201,7 +245,18 @@ public class WorkflowEngineService {
                                 Thread.sleep(sleepMs);
                             }
                             ctx.put("currentNodeId", currentNodeId);
+                            // On resume, the entry node IS the node we paused at (e.g. the long DELAY
+                            // whose wait has now elapsed). Signal its handler to not re-wait/re-pause for
+                            // this single execution; the flag is scoped to the entry node only and cleared
+                            // immediately after so downstream delays behave normally.
+                            boolean skipDelayThisNode = isResume && currentNodeId.equals(entryNodeId);
+                            if (skipDelayThisNode) {
+                                ctx.put("__skip_delay_once", true);
+                            }
                             Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
+                            if (skipDelayThisNode) {
+                                ctx.remove("__skip_delay_once");
+                            }
                             if (changes != null && !changes.isEmpty()) {
                                 ctx.putAll(changes);
                                 log.info("Node {} updated context with: {}", current.getId(), changes.keySet());

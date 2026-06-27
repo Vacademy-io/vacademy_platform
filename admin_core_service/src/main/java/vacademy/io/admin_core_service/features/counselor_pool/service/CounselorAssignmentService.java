@@ -212,11 +212,18 @@ public class CounselorAssignmentService {
         List<CounselorPoolMember> allMembers = poolMemberRepository
                 .findByPoolIdAndAudienceIdOrderByDisplayOrderAsc(pool.getId(), audienceId);
 
-        if (mode == AssignmentMode.ROUND_ROBIN) {
+        // Shift-gating applies to TIME_BASED always, and to ROUND_ROBIN only when
+        // the pool opted in via shift_aware. A plain ROUND_ROBIN pool
+        // (shift_aware = false) keeps every member as a candidate.
+        boolean shiftGated = mode == AssignmentMode.TIME_BASED
+                || (mode == AssignmentMode.ROUND_ROBIN && Boolean.TRUE.equals(pool.getShiftAware()));
+        if (!shiftGated) {
             return allMembers;
         }
 
-        // TIME_BASED: filter to counselors currently on shift
+        // Filter to counselors currently on shift. When nobody is on shift the
+        // candidate set is empty, so the caller leaves the lead unassigned and
+        // alerts the pool admin — same behaviour as TIME_BASED.
         LocalDateTime nowInInstituteTz = LocalDateTime.now(INSTITUTE_TIMEZONE);
         String todayDayOfWeek = ShiftDayOfWeek.fromJavaDay(nowInInstituteTz.getDayOfWeek()).name();
         Time nowTime = Time.valueOf(nowInInstituteTz.toLocalTime().withNano(0));

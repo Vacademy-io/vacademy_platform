@@ -27,7 +27,24 @@
                 if (!raw) {
                     raw = localStorage.getItem('current_domain_branding');
                 }
-                if (!raw) return;
+                if (!raw) {
+                    // Cold cache (no branding yet): the static /favicon.ico is the
+                    // Vacademy mark. Keep it only on Vacademy-owned hosts; on a
+                    // white-labelled domain blank it so the Vacademy "V" never
+                    // flashes in the tab before React resolves the institute icon.
+                    var h = location.hostname;
+                    var isVacademyHost =
+                        /(^|\.)vacademy\.io$/.test(h) || h === 'localhost' || h === '127.0.0.1';
+                    if (!isVacademyHost) {
+                        var blank = 'data:image/svg+xml,' + encodeURIComponent(
+                            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>'
+                        );
+                        document.querySelectorAll('link[rel*="icon"]').forEach(function (lnk) {
+                            lnk.setAttribute('href', blank);
+                        });
+                    }
+                    return;
+                }
                 var branding = JSON.parse(raw);
                 if (branding.tabIconUrl) {
                     var href = branding.tabIconUrl;

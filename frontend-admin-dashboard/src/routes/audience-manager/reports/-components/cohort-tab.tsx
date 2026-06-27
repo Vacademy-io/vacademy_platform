@@ -1,0 +1,127 @@
+/**
+ * Reports Center — Cohort Analysis tab.
+ *
+ * Leads grouped by ACQUISITION MONTH (GET /v1/reports/cohort-analysis), showing how each cohort
+ * matured: how many converted, the revenue they produced, revenue per acquired lead, and how long
+ * conversion took. Pick a wider date range (90d / custom) to see more cohorts.
+ */
+import { useQuery } from '@tanstack/react-query';
+import { ChartLineUp, Stack } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { fetchCohortAnalysis, cohortQueryKey } from '../-services/get-revenue-reports';
+import { exportCsv } from '../-utils/export-csv';
+import {
+    EmptyHint,
+    ExportCsvButton,
+    ReportErrorState,
+    ReportSection,
+    ReportTabSkeleton,
+    convRateClass,
+    fmtCurrency,
+    fmtDays,
+    fmtNumber,
+    fmtPct,
+    type ReportTabProps,
+} from './report-shared';
+
+/** "2026-06" → "Jun 2026". */
+function fmtCohortLabel(cohort: string): string {
+    const [y, m] = cohort.split('-').map(Number);
+    if (!y || !m) return cohort;
+    const d = new Date(Date.UTC(y, m - 1, 1));
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+export function CohortTab({ instituteId, fromDate, toDate, teamId, counsellorUserId }: ReportTabProps) {
+    const params = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const query = useQuery({
+        queryKey: cohortQueryKey(params),
+        queryFn: () => fetchCohortAnalysis(params),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+        retry: false,
+    });
+
+    if (query.isLoading) return <ReportTabSkeleton />;
+    if (query.isError) return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
+
+    const currency = query.data?.currency ?? 'INR';
+    const cohorts = query.data?.cohorts ?? [];
+    const peakRevenue = Math.max(1, ...cohorts.map((c) => c.revenue));
+
+    const exportRows = () =>
+        exportCsv(
+            `cohort-analysis_${fromDate}_${toDate}.csv`,
+            ['Cohort', 'Leads', 'Converted', 'Conv %', 'Revenue', 'Avg deal value', 'Revenue / lead', 'Median days to convert'],
+            cohorts.map((c) => [
+                c.cohort,
+                c.leads,
+                c.converted,
+                c.conversion_rate,
+                c.revenue,
+                c.avg_deal_value,
+                c.revenue_per_lead,
+                c.median_days_to_convert,
+            ])
+        );
+
+    return (
+        <ReportSection
+            title="Cohort analysis"
+            icon={<Stack size={18} />}
+            actions={<ExportCsvButton onClick={exportRows} disabled={cohorts.length === 0} />}
+        >
+            {cohorts.length === 0 ? (
+                <EmptyHint message="No acquisition cohorts in this range. Try a wider date range." />
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                                <th className="py-2 pr-3">Cohort</th>
+                                <th className="py-2 pr-3 text-right">Leads</th>
+                                <th className="py-2 pr-3 text-right">Converted</th>
+                                <th className="py-2 pr-3 text-right">Conv %</th>
+                                <th className="py-2 pr-3 text-right">Revenue</th>
+                                <th className="py-2 pr-3 text-right">Avg deal</th>
+                                <th className="py-2 pr-3 text-right">Rev / lead</th>
+                                <th className="py-2 pr-3 text-right">Median days</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {cohorts.map((c) => (
+                                <tr key={c.cohort} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
+                                    <td className="py-2.5 pr-3 font-medium text-neutral-900">{fmtCohortLabel(c.cohort)}</td>
+                                    <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(c.leads)}</td>
+                                    <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtNumber(c.converted)}</td>
+                                    <td className={cn('py-2.5 pr-3 text-right', convRateClass(c.conversion_rate))}>
+                                        {fmtPct(c.conversion_rate)}
+                                    </td>
+                                    <td className="py-2.5 pr-3 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-neutral-100 sm:block">
+                                                <div
+                                                    className="h-full rounded-full bg-green-500"
+                                                    style={{ width: `${(c.revenue / peakRevenue) * 100}%` }}
+                                                />
+                                            </div>
+                                            <span className="font-semibold text-green-700">{fmtCurrency(c.revenue, currency)}</span>
+                                        </div>
+                                    </td>
+                                    <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtCurrency(c.avg_deal_value, currency)}</td>
+                                    <td className="py-2.5 pr-3 text-right text-neutral-800">{fmtCurrency(c.revenue_per_lead, currency)}</td>
+                                    <td className="py-2.5 pr-3 text-right text-neutral-600">{fmtDays(c.median_days_to_convert)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            <p className="flex items-center gap-1.5 text-xs text-neutral-400">
+                <ChartLineUp size={13} />
+                Each cohort is the leads acquired that month; revenue is that cohort's lifetime collected
+                revenue from converted leads.
+            </p>
+        </ReportSection>
+    );
+}

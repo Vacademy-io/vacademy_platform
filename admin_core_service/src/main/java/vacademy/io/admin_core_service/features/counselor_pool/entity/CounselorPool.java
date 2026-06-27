@@ -45,6 +45,16 @@ public class CounselorPool {
     @Column(name = "schedule_pattern", length = 50)
     private String schedulePattern; // SchedulePattern enum value, or null
 
+    /**
+     * ROUND_ROBIN opt-in: when true, the rotation is additionally gated to
+     * counsellors who are on shift right now (same shift schedule TIME_BASED
+     * uses). When false (default), ROUND_ROBIN considers every member. Ignored
+     * for MANUAL; TIME_BASED is always shift-gated regardless of this flag.
+     */
+    @Builder.Default
+    @Column(name = "shift_aware", nullable = false)
+    private Boolean shiftAware = false;
+
     @Column(name = "created_by")
     private String createdBy;
 

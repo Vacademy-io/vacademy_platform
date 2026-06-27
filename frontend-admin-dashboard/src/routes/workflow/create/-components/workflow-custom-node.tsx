@@ -63,6 +63,9 @@ export function getNodeIssues(nodeType: string, config: Record<string, unknown>)
         case 'SCHEDULE_TASK':
             if (!has('delayDuration')) issues.push('Set delay duration');
             break;
+        case 'SET_LEAD_STATUS':
+            if (!has('statusKey')) issues.push('Select a lead status');
+            break;
         // MERGE, ACTION, TRANSFORM, ROUTER — no strict required fields
         default:
             break;
@@ -155,6 +158,11 @@ const nodeColorMap: Record<string, { border: string; bg: string; badge: string }
         border: 'border-fuchsia-400',
         bg: 'bg-fuchsia-50',
         badge: 'bg-fuchsia-100 text-fuchsia-800',
+    },
+    SET_LEAD_STATUS: {
+        border: 'border-purple-400',
+        bg: 'bg-purple-50',
+        badge: 'bg-purple-100 text-purple-800',
     },
     ROUTER: {
         border: 'border-yellow-400',

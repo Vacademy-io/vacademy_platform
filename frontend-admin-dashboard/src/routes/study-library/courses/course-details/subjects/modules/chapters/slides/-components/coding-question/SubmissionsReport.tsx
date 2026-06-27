@@ -238,6 +238,15 @@ export function SubmissionsReport({ slideId }: Props) {
                                                                 </span>
                                                             )}
                                                         </div>
+                                                        {(r.acceptedCount ?? 1) > 1 && (
+                                                            <div className="mt-0.5 text-xs text-gray-500">
+                                                                Accepts {r.acceptedCount} outputs —{' '}
+                                                                {r.matchedIndex != null &&
+                                                                r.matchedIndex >= 0
+                                                                    ? `learner matched #${r.matchedIndex + 1}`
+                                                                    : 'matched none'}
+                                                            </div>
+                                                        )}
                                                         {!r.passed && (
                                                             <div className="mt-1 grid grid-cols-2 gap-2">
                                                                 <div>

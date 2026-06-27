@@ -21,6 +21,13 @@ export interface CallLogItem {
     counsellorUserId: string | null;
     responseId?: string | null;
     userId: string;
+    // AI-call disposition (e.g. "Interested", "No_Response", "Callback") for
+    // calls placed by the AI voice agent; null/absent for human-dialed calls.
+    aiDisposition?: string | null;
+    // Row creation time — fallback call time for AI calls, which don't set startTime.
+    createdAt?: string | null;
+    // AI-call attempt number (0 = first dial, 1+ = retries); null for human-dialed calls.
+    aiCallRetry?: number | null;
 }
 
 export interface PagedCallLog {

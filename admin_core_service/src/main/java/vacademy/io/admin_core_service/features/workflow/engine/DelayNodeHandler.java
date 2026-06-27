@@ -50,6 +50,17 @@ public class DelayNodeHandler implements NodeHandler {
                 default -> TimeUnit.SECONDS.toMillis(value);
             };
 
+            // H1 FIX: when the engine resumes a paused execution it re-enters at THIS delay node
+            // (the one we paused on) and sets __skip_delay_once for this single execution. The wait
+            // has already elapsed via WorkflowResumeJob's scheduling, so do not re-wait/re-pause —
+            // just complete the node and let routing carry the workflow forward.
+            if (Boolean.TRUE.equals(context.get("__skip_delay_once"))) {
+                log.info("DELAY node: resumed after persistent delay ({} {}). Skipping wait and continuing.", value, unit);
+                result.put("delayed", true);
+                result.put("delaySkippedOnResume", true);
+                return result;
+            }
+
             Boolean dryRun = (Boolean) context.getOrDefault("dryRun", false);
             if (Boolean.TRUE.equals(dryRun)) {
                 log.info("[DRY RUN] DELAY node - would wait {} {} ({} ms)", value, unit, delayMs);

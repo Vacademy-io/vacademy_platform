@@ -281,11 +281,14 @@ export function WorkbenchPage() {
         if (!instituteId) return;
         setPendingMarkInactiveId(userId);
         try {
-            // Reassign-first needs ALL open leads (so each gets routed in one
-            // batch). Bumping size to 500 is the existing safety cap — beyond
-            // that we'd want a multi-page accumulator; flag if a counsellor
-            // routinely sits on more than ~500 open leads.
-            const leads = await fetchCounsellorLeads(instituteId, userId, 'OPEN', 0, 500);
+            // Reassign-first needs ALL of the counsellor's leads (so each gets
+            // routed in one batch) — pass no status filter rather than 'OPEN',
+            // which the backend matched against conversion_status exactly and so
+            // never returned anything, leaving the dialog empty. Bumping size to
+            // 500 is the existing safety cap — beyond that we'd want a multi-page
+            // accumulator; flag if a counsellor routinely sits on more than ~500
+            // leads.
+            const leads = await fetchCounsellorLeads(instituteId, userId, undefined, 0, 500);
             setReassignFromUserId(userId);
             setReassignFromName(displayName);
             setReassignLeads(leads?.content ?? []);

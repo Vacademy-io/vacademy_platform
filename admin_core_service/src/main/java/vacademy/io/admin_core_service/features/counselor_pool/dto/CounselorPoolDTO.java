@@ -38,6 +38,10 @@ public class CounselorPoolDTO {
     @JsonProperty("schedule_pattern")
     private String schedulePattern;
 
+    /** ROUND_ROBIN opt-in: rotation gated to on-shift counsellors. */
+    @JsonProperty("shift_aware")
+    private Boolean shiftAware;
+
     @JsonProperty("created_by")
     private String createdBy;
 

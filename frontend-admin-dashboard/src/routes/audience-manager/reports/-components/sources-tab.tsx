@@ -32,6 +32,7 @@ import {
     ReportTabSkeleton,
     SortableHeader,
     convRateClass,
+    fmtCurrency,
     fmtNumber,
     fmtPct,
     type ReportTabProps,
@@ -40,7 +41,14 @@ import {
 /** Where the row drill-through lands. */
 const RECENT_LEADS_ROUTE = '/audience-manager/recent-leads' as const;
 
-type SortKey = 'source_type' | 'leads' | 'connected_leads' | 'interested' | 'won' | 'conversion_rate';
+type SortKey =
+    | 'source_type'
+    | 'leads'
+    | 'connected_leads'
+    | 'interested'
+    | 'won'
+    | 'conversion_rate'
+    | 'revenue';
 
 export function SourcesTab({
     instituteId,
@@ -101,7 +109,7 @@ export function SourcesTab({
         const exportable = totals ? [...rows, totals] : rows;
         exportCsv(
             `source-performance_${fromDate}_${toDate}.csv`,
-            ['Source', 'Leads', 'Connected', 'Interested', 'Won', 'Conv %', 'Spend', 'CPL', 'ROI'],
+            ['Source', 'Leads', 'Connected', 'Interested', 'Won', 'Conv %', 'Revenue', 'Spend', 'CPL', 'ROI'],
             exportable.map((r) => [
                 r.source_type ?? 'TOTAL',
                 r.leads,
@@ -109,6 +117,7 @@ export function SourcesTab({
                 r.interested,
                 r.won,
                 r.conversion_rate,
+                r.revenue,
                 r.spend,
                 r.cpl,
                 r.roi,
@@ -173,6 +182,13 @@ export function SourcesTab({
                                         dir={sortDir}
                                         onClick={toggleSort}
                                     />
+                                    <SortableHeader
+                                        label="Revenue"
+                                        sortKey="revenue"
+                                        current={sortKey}
+                                        dir={sortDir}
+                                        onClick={toggleSort}
+                                    />
                                     <th className="py-2 pr-3 text-right">Spend</th>
                                     <th className="py-2 pr-3 text-right">CPL</th>
                                     <th className="py-2 pr-3 text-right">ROI</th>
@@ -219,6 +235,9 @@ export function SourcesTab({
                                         >
                                             {fmtPct(r.conversion_rate)}
                                         </td>
+                                        <td className="py-2.5 pr-3 text-right font-medium text-green-700">
+                                            {r.revenue ? fmtCurrency(r.revenue) : '—'}
+                                        </td>
                                         <WaveTwoCell value={r.spend} />
                                         <WaveTwoCell value={r.cpl} />
                                         <WaveTwoCell value={r.roi} />
@@ -248,6 +267,9 @@ export function SourcesTab({
                                             )}
                                         >
                                             {fmtPct(totals.conversion_rate)}
+                                        </td>
+                                        <td className="py-2.5 pr-3 text-right text-green-700">
+                                            {totals.revenue ? fmtCurrency(totals.revenue) : '—'}
                                         </td>
                                         <WaveTwoCell value={totals.spend} />
                                         <WaveTwoCell value={totals.cpl} />

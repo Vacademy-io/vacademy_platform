@@ -31,9 +31,16 @@ public class CallLogDTO {
     private String counsellorUserId;
     private String responseId;
     private String userId;
+    /** AI-call disposition, joined in at read time from ai_call_result; null for non-AI/Exotel calls. */
+    private String aiDisposition;
+    /** Row creation time — used as the call-time fallback for AI calls, which don't populate start_time. */
+    private Timestamp createdAt;
+    /** AI-call attempt number from ai_call_result (0 = first dial, 1+ = retries); null for non-AI calls. */
+    private Integer aiCallRetry;
 
     public static CallLogDTO from(TelephonyCallLog r) {
         return CallLogDTO.builder()
+                .createdAt(r.getCreatedAt())
                 .id(r.getId())
                 .providerType(r.getProviderType())
                 .direction(r.getDirection())

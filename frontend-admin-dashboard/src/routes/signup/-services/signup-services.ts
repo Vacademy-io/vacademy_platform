@@ -35,6 +35,15 @@ export const UploadFileInS3Public = async (
                 method: 'PUT',
                 url: signedURLData.url,
                 data: file,
+                headers: {
+                    // S3 stores whatever Content-Type the PUT sends. Without
+                    // this, axios uses its PUT default
+                    // (application/x-www-form-urlencoded), so the file is stored
+                    // with the wrong type — e.g. an institute logo then fails to
+                    // render in social/link previews. Use the file's real MIME
+                    // type (same value passed to getSignedURLPublic above).
+                    'Content-Type': file.type || 'application/octet-stream',
+                },
             });
 
             setIsUploadingFile(false);

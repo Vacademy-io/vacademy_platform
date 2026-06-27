@@ -78,6 +78,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     membershipTab: false,
     paymentHistoryTab: true,
     userTaggingTab: false,
+    badgesTab: true,
     fileTab: false,
     portalAccessTab: false,
     reportsTab: false,
@@ -128,6 +129,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'userTaggingTab',
         label: 'User Tagging Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.userTaggingTab,
+    },
+    {
+        key: 'badgesTab',
+        label: 'Badges Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.badgesTab,
     },
     { key: 'fileTab', label: 'File Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fileTab },
     {

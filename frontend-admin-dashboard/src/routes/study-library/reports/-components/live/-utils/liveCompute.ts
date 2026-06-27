@@ -175,6 +175,13 @@ export interface LeaderboardRow {
     total: number;
     avgDurationMinutes: number | null;
     engagementIndex: number;
+    /** 0–100 participation score (per-class, normalized to the batch's most active learner). */
+    engagementScore: number;
+}
+
+/** Per-class participation (raw weighted interactions ÷ classes attended). */
+export function perClassEngagement(index: number, attended: number): number {
+    return attended > 0 ? index / attended : 0;
 }
 
 export interface BatchLiveSummary {
@@ -183,6 +190,10 @@ export interface BatchLiveSummary {
     avgAttendancePct: number;
     avgDurationMinutes: number | null;
     avgEngagementIndex: number;
+    /** Highest per-class engagement in the batch — the 100-point reference. */
+    maxEngagementPerClass: number;
+    /** Batch-average 0–100 engagement score. */
+    avgEngagementScore: number;
     avgEngagement: Engagement;
     timeline: AttendancePoint[];
     perClass: PerClassStats[];
@@ -260,6 +271,17 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
     perClass.sort(byDate);
     timeline.sort(byDate);
 
+    // 0–100 engagement score: per-class participation normalized to the batch's
+    // most-active learner (so it's fair regardless of how many classes attended).
+    const maxEngagementPerClass = Math.max(
+        0,
+        ...learnerStats.map((s) => perClassEngagement(s.engagementIndex, s.attended))
+    );
+    const scoreFor = (s: LearnerLiveStats) =>
+        maxEngagementPerClass > 0
+            ? Math.round((perClassEngagement(s.engagementIndex, s.attended) / maxEngagementPerClass) * 100)
+            : 0;
+
     // Leaderboard: attendance desc, engagement index as tiebreaker, dense rank.
     const ranked = [...learnerStats].sort(
         (a, b) =>
@@ -284,6 +306,7 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
             total: s.total,
             avgDurationMinutes: s.avgDurationMinutes,
             engagementIndex: s.engagementIndex,
+            engagementScore: scoreFor(s),
         });
     });
 
@@ -308,6 +331,10 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
         avgAttendancePct: mean(learnerStats.map((s) => s.attendancePercentage)),
         avgDurationMinutes: learnerDurations.length ? mean(learnerDurations) : null,
         avgEngagementIndex: Math.round(mean(learnerStats.map((s) => s.engagementIndex))),
+        maxEngagementPerClass,
+        avgEngagementScore: learnerStats.length
+            ? Math.round(mean(learnerStats.map((s) => scoreFor(s))))
+            : 0,
         avgEngagement,
         timeline,
         perClass,

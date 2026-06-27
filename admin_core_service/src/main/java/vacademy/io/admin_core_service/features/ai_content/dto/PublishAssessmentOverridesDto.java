@@ -3,6 +3,8 @@ package vacademy.io.admin_core_service.features.ai_content.dto;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Optional overrides sent at publish time by the new
  * "Configure → Publish" flow on the recording preview.
@@ -48,4 +50,22 @@ public class PublishAssessmentOverridesDto {
      * timer starts. Null = leave at the column default on assessment-service.
      */
     private Integer previewTime;
+
+    /**
+     * Extra package_session (batch) ids to register the assessment to, on top
+     * of the live class's own batches. Sent by the "Add to course → Assessment
+     * slide" flow so the assessment is takeable in every destination course the
+     * slide is added to (not just the live class's batches). Only honoured on
+     * the FIRST publish (publish is idempotent once the artifact is PUBLISHED).
+     */
+    private List<String> packageSessionIds;
+
+    /**
+     * When TRUE, publish the assessment WITHOUT registering it to any batch —
+     * it lands unassigned in the Assessment Center and an admin can attach
+     * batches later. Overrides both the live class's batches and
+     * {@link #packageSessionIds}. Used by "Assessment only" when the teacher
+     * doesn't want it linked to a batch yet.
+     */
+    private Boolean skipBatchRegistration;
 }

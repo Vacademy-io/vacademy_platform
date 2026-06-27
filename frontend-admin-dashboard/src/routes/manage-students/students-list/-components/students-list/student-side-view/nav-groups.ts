@@ -104,6 +104,7 @@ export const SECTION_REGISTRY: readonly SectionMeta[] = [
     // Account — "Who has access? What do we have on file?"
     { id: 'portalAccess', label: 'Portal Access', icon: Key, group: 'Account' },
     { id: 'userTagging', label: 'User Tagging', icon: Tag, group: 'Account' },
+    { id: 'badges', label: 'Badges', icon: Trophy, group: 'Account' },
     { id: 'files', label: 'Files', icon: Folder, group: 'Account' },
     { id: 'subOrg', label: 'Sub-Org', icon: Buildings, group: 'Account' },
 

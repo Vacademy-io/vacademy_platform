@@ -61,7 +61,7 @@ const leaderColumns: ColumnDef<LeaderRow>[] = [
     { accessorKey: 'attendance', header: 'Attendance' },
     { accessorKey: 'classes', header: 'Classes Attended' },
     { accessorKey: 'duration', header: 'Avg Duration' },
-    { accessorKey: 'engagement', header: 'Engagement' },
+    { accessorKey: 'engagement', header: 'Engagement (0–100)' },
 ];
 
 export default function BatchLiveReport() {
@@ -111,7 +111,7 @@ export default function BatchLiveReport() {
                     attendance: `${r.attendancePercentage.toFixed(1)}%`,
                     classes: `${r.attended}/${r.total}`,
                     duration: formatDuration(r.avgDurationMinutes),
-                    engagement: r.engagementIndex,
+                    engagement: r.engagementScore,
                 })) ?? [],
         total_pages: lbTotalPages,
         page_no: lbPage,
@@ -233,10 +233,10 @@ export default function BatchLiveReport() {
                         />
                         <MetricCard
                             label="Avg Engagement"
-                            value={`${summary.avgEngagementIndex}`}
-                            sub="interactions / learner"
+                            value={`${summary.avgEngagementScore}`}
+                            sub="0–100 participation"
                             icon={<ChatsCircle className="size-5" />}
-                            info="A weighted activity index of in-class interactions (talk time, chats, polls, raise-hands). Higher means more participation — it's a count, not a percentage. Only available for provider-synced (Zoom/BBB) classes."
+                            info="Engagement score (0–100) based on in-class participation — talk time, chats, polls and raise-hands, measured per class. 100 = the most active learner in this batch. Only available for provider-synced (Zoom/BBB) classes."
                         />
                     </div>
 

@@ -18,6 +18,7 @@ import { cn, toTitleCase } from "@/lib/utils";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { useSystemFieldVisibility } from "@/hooks/use-system-field-visibility";
 import ProgressStats from "./progress-stats";
+import { BadgesRankCard } from "./badges-rank-card";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { formatDate } from "@/lib/format-date";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -488,6 +489,7 @@ export default function ProfilePage() {
                 </div>
               )}
               {studentData && <ProgressStats userId={studentData.user_id} />}
+              <BadgesRankCard />
             </div>
 
             {/* Right Column - Details */}

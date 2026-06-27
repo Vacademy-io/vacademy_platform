@@ -786,6 +786,18 @@ export interface PublishAssessmentOverrides {
     reattemptCount?: number;
     /** Minutes on the instructions/cover screen before the timer starts. */
     previewTime?: number;
+    /**
+     * Extra batch (package_session) ids to register the assessment to, beyond
+     * the live class's own batches — so it's takeable in every destination
+     * course an assessment slide is added to. Only applied on the first publish.
+     */
+    packageSessionIds?: string[];
+    /**
+     * When true, publish the assessment WITHOUT registering it to any batch —
+     * it lands unassigned in the Assessment Center (admin can attach batches
+     * later). Overrides the live class + destination batches.
+     */
+    skipBatchRegistration?: boolean;
 }
 
 export const publishAssessmentFromRecording = async (

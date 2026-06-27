@@ -325,7 +325,25 @@ public class RecordingAssessmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "Source row missing for artifact " + artifactId));
         String sessionId = extractSessionIdFromMetadata(source);
-        List<String> batchIds = resolveBatchIds(sessionId, null);
+        // Resolve which batches the assessment is registered to:
+        //   - the live class's own batches, UNLESS skipBatchRegistration is set
+        //     (the "Assessment only" batch picker drives the batches explicitly);
+        //   - PLUS any explicit packageSessionIds (destination course batches for
+        //     an Assessment slide, or the picker's selection).
+        // So: skip + picked ⇒ exactly the picked batches; skip + none ⇒ unassigned;
+        //     !skip + dest ⇒ live class + destination; !skip + none ⇒ live class.
+        java.util.LinkedHashSet<String> batchSet = new java.util.LinkedHashSet<>();
+        boolean skipBatches = overrides != null
+                && Boolean.TRUE.equals(overrides.getSkipBatchRegistration());
+        if (!skipBatches) {
+            batchSet.addAll(resolveBatchIds(sessionId, null));
+        }
+        if (overrides != null && overrides.getPackageSessionIds() != null) {
+            overrides.getPackageSessionIds().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .forEach(batchSet::add);
+        }
+        List<String> batchIds = new java.util.ArrayList<>(batchSet);
         String instituteId = source.getInstituteId();
 
         // 4. Build the assessment-service publish payload.

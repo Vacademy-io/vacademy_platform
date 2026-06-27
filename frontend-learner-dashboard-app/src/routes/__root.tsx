@@ -73,6 +73,7 @@ const PUBLIC_ROUTES = [
   "/m", // Public media hosting page
   "/admission/payment", // Public admission payment links shared by institutes
   "/pay/invoice", // Shareable invoice payment links
+  "/leaderboard", // Public shareable course leaderboard
 ];
 
 // Marketplace / external-payment route prefixes that are hidden when the app

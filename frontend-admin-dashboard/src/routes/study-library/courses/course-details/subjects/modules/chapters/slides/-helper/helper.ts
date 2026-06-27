@@ -32,7 +32,8 @@ const isoUtcToLocalDatetimeLocal = (iso: string | undefined | null): string => {
 
 
 export const convertHtmlToPdf = async (
-    htmlString: string
+    htmlString: string,
+    options?: { watermarkDataUrl?: string | null }
 ): Promise<{ pdfBlob: Blob; totalPages: number }> => {
     // Create temporary div to hold the HTML content. Tag it with the global
     // .rich-text-content class so the slide's tables/lists/headings/paragraph
@@ -155,6 +156,44 @@ export const convertHtmlToPdf = async (
             const sliceImgHeight = (sliceH * imgWidth) / canvas.width;
             if (i > 0) pdf.addPage();
             pdf.addImage(sliceImg, 'JPEG', 0, 0, imgWidth, sliceImgHeight, undefined, 'FAST');
+
+            // Optional centred, faint institute-logo watermark on every page.
+            // Best-effort: never block PDF generation if the stamp fails.
+            if (options?.watermarkDataUrl) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const anyPdf = pdf as any;
+                const GState = anyPdf.GState;
+                try {
+                    const props = anyPdf.getImageProperties(options.watermarkDataUrl);
+                    const wmWidth = pdfWidth * 0.5;
+                    const wmHeight = (props.height / props.width) * wmWidth;
+                    const wmX = (pdfWidth - wmWidth) / 2;
+                    const wmY = (pdfHeight - wmHeight) / 2;
+                    if (GState) anyPdf.setGState(new GState({ opacity: 0.08 }));
+                    pdf.addImage(
+                        options.watermarkDataUrl,
+                        'PNG',
+                        wmX,
+                        wmY,
+                        wmWidth,
+                        wmHeight,
+                        undefined,
+                        'FAST'
+                    );
+                } catch {
+                    // ignore — watermark is decorative
+                } finally {
+                    // Always restore full opacity so a mid-stamp failure can't
+                    // leave the NEXT page's content faint.
+                    if (GState) {
+                        try {
+                            anyPdf.setGState(new GState({ opacity: 1 }));
+                        } catch {
+                            /* ignore */
+                        }
+                    }
+                }
+            }
         }
         const totalPages = pages.length;
 

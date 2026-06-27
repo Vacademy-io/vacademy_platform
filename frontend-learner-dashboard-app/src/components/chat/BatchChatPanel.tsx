@@ -3,6 +3,7 @@ import axios from "axios";
 import { ChatSlash, WarningCircle, UsersThree } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { CourseLeaderboard } from "@/routes/study-library/courses/course-details/-components/CourseLeaderboard";
 import { toast } from "sonner";
 import { getChatUser } from "@/services/chat/getChatUser";
 import {
@@ -507,7 +508,7 @@ export function BatchChatPanel({
         >
           <UsersThree size={18} weight="duotone" />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-body font-semibold text-foreground">
             {conversation.title?.trim() || "Group messages"}
           </p>
@@ -515,6 +516,9 @@ export function BatchChatPanel({
             Group messages
           </p>
         </div>
+        {packageSessionId && (
+          <CourseLeaderboard packageSessionId={packageSessionId} variant="compact" />
+        )}
       </header>
 
       <ChatThread

@@ -10,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { CourseLeaderboard } from "@/routes/study-library/courses/course-details/-components/CourseLeaderboard";
 import { toast } from "sonner";
 import { getChatUser } from "@/services/chat/getChatUser";
 import {
@@ -739,7 +740,7 @@ export function ChatScreen({
                   initialsOf(headerTitle)
                 )}
               </span>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-body font-semibold text-foreground">
                   {headerTitle}
                 </p>
@@ -751,6 +752,12 @@ export function ChatScreen({
                       : "Direct message"}
                 </p>
               </div>
+              {selectedConv.type === "BATCH_GROUP" && selectedConv.referenceId && (
+                <CourseLeaderboard
+                  packageSessionId={selectedConv.referenceId}
+                  variant="compact"
+                />
+              )}
             </header>
 
             {selectedConv.type === "COMMUNITY" && rules && (

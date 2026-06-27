@@ -441,6 +441,60 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     List<NotificationLog> findByChannelIdAndNotificationTypeInOrderByNotificationDateAsc(
             String channelId, List<String> notificationTypes);
 
+    // ==================== LEAD-JOURNEY FUNNEL METHODS ====================
+
+    /**
+     * Fetch raw OUTGOING WhatsApp messages of a multi-day journey (matched by a
+     * template-name prefix on the body, e.g. {@code lead_journey_day_}) for an
+     * institute, optionally narrowed to one business channel and a date window.
+     *
+     * <p>Returns full rows so the service can parse the day number from the body
+     * and the center from the message payload. Keyed on institute_id (reliably
+     * stamped on these sends), so the caller need not know the channel id.
+     * Bounded by {@code :limit} to protect against unbounded result sets.</p>
+     */
+    @Query(value = """
+            SELECT * FROM notification_log nl
+            WHERE nl.institute_id = :instituteId
+              AND nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+              AND nl.body LIKE CONCAT('%', :templatePrefix, '%')
+              AND (COALESCE(:channelId, '') = '' OR nl.sender_business_channel_id = :channelId)
+              AND (COALESCE(:startDate, '') = '' OR nl.notification_date >= CAST(:startDate AS TIMESTAMP))
+              AND (COALESCE(:endDate, '') = '' OR nl.notification_date <= CAST(:endDate AS TIMESTAMP))
+              AND nl.channel_id IS NOT NULL
+            ORDER BY nl.notification_date ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<NotificationLog> findJourneyOutgoingLogs(
+            @Param("instituteId") String instituteId,
+            @Param("channelId") String channelId,
+            @Param("templatePrefix") String templatePrefix,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("limit") int limit
+    );
+
+    /**
+     * Of the given recipient phones, return those that sent at least one INCOMING
+     * WhatsApp message to the institute within the window (i.e. replied at all).
+     * Used to compute reply rates for the lead-journey funnel.
+     */
+    @Query(value = """
+            SELECT DISTINCT i.channel_id
+            FROM notification_log i
+            WHERE i.institute_id = :instituteId
+              AND i.notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND i.channel_id IN (:phones)
+              AND (COALESCE(:startDate, '') = '' OR i.notification_date >= CAST(:startDate AS TIMESTAMP))
+              AND (COALESCE(:endDate, '') = '' OR i.notification_date <= CAST(:endDate AS TIMESTAMP))
+            """, nativeQuery = true)
+    List<String> findRepliedPhones(
+            @Param("instituteId") String instituteId,
+            @Param("phones") List<String> phones,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate
+    );
+
     // ==================== COMMUNICATION TIMELINE METHODS ====================
 
     /**

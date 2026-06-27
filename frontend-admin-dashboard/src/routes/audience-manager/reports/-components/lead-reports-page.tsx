@@ -30,7 +30,6 @@ import {
     ListChecks,
     Megaphone,
     Phone,
-    PhoneCall,
     Stack,
     Table,
     TrendUp,
@@ -75,7 +74,6 @@ import { ReportTabSkeleton, type ReportTabProps } from './report-shared';
 // Inter-agent contract: the Calling tab module lives at exactly this path and
 // default-exports CallingTab(props: ReportTabProps). Built by a sibling agent.
 const CallingTab = lazy(() => import('./calling/CallingTab'));
-const CallLogTab = lazy(() => import('./call-log/CallLogTab'));
 
 // ── Date helpers ───────────────────────────────────────────────────────
 
@@ -307,10 +305,6 @@ export function LeadReportsPage() {
                         <Phone size={14} weight="bold" />
                         Calling
                     </TabsTrigger>
-                    <TabsTrigger value="call-log" className="gap-1.5">
-                        <PhoneCall size={14} weight="bold" />
-                        Call Log
-                    </TabsTrigger>
                     <TabsTrigger value="activity" className="gap-1.5">
                         <ListChecks size={14} weight="bold" />
                         Activity
@@ -354,11 +348,6 @@ export function LeadReportsPage() {
                 <TabsContent value="calling">
                     <Suspense fallback={<ReportTabSkeleton />}>
                         <CallingTab {...tabProps} />
-                    </Suspense>
-                </TabsContent>
-                <TabsContent value="call-log">
-                    <Suspense fallback={<ReportTabSkeleton />}>
-                        <CallLogTab {...tabProps} />
                     </Suspense>
                 </TabsContent>
                 <TabsContent value="funnel">

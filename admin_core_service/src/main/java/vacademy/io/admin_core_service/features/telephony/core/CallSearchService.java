@@ -203,22 +203,31 @@ public class CallSearchService {
         return m;
     }
 
-    /** COUNT(*) for one worklist chip over scope + date window only (ignores the table's other filters). */
+    /**
+     * COUNT(*) for one worklist chip over scope + date window only (ignores the table's other filters).
+     * Best-effort: a chip-query failure must never blank the whole KPI strip — the headline counts are
+     * the primary value, the chip badges are secondary. Returns 0 on error (logged).
+     */
     private long chipCount(CallSearchFilterDTO src, ZoneId tz, LeadReportSettingService.ReportSettings settings,
                            String scopeCsv, boolean missed, boolean callbacks) {
-        CallSearchFilterDTO chip = new CallSearchFilterDTO();
-        chip.setInstituteId(src.getInstituteId());
-        chip.setFromDate(src.getFromDate());
-        chip.setToDate(src.getToDate());
-        chip.setMissedInbound(missed);
-        chip.setCallbacksDue(callbacks);
-        MapSqlParameterSource p = new MapSqlParameterSource();
-        String where = buildWhere(chip, tz, settings, scopeCsv, p, true);
-        Long c = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM telephony_call_log tcl " + AI_LATERAL +
-                        " LEFT JOIN audience_response ar ON ar.id = tcl.response_id " + where,
-                p, Long.class);
-        return c == null ? 0 : c;
+        try {
+            CallSearchFilterDTO chip = new CallSearchFilterDTO();
+            chip.setInstituteId(src.getInstituteId());
+            chip.setFromDate(src.getFromDate());
+            chip.setToDate(src.getToDate());
+            chip.setMissedInbound(missed);
+            chip.setCallbacksDue(callbacks);
+            MapSqlParameterSource p = new MapSqlParameterSource();
+            String where = buildWhere(chip, tz, settings, scopeCsv, p, true);
+            Long c = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM telephony_call_log tcl " + AI_LATERAL +
+                            " LEFT JOIN audience_response ar ON ar.id = tcl.response_id " + where,
+                    p, Long.class);
+            return c == null ? 0 : c;
+        } catch (Exception e) {
+            log.warn("[CallSearch] chip count failed (missed={}, callbacks={}): {}", missed, callbacks, e.getMessage());
+            return 0;
+        }
     }
 
     private static final String ROW_SELECT = """

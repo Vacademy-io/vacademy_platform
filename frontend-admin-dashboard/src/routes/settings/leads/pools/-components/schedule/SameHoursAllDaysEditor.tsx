@@ -70,6 +70,14 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
         }));
     }, [pool.members, userNameById]);
 
+    // Same hours every day means every pool counsellor is on that one shift, so
+    // new blocks default to ALL pool counsellors — no manual selection needed.
+    // The admin can still deselect individuals for a narrower block.
+    const allCounselorIds = useMemo(
+        () => poolCounselorOptions.map((o) => o.id),
+        [poolCounselorOptions]
+    );
+
     /**
      * The single canonical 24h template. Each block applies to all 7 days.
      * Overnight blocks (start > end) are stored as one logical row here and
@@ -99,7 +107,9 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
                 localId: cryptoRandom(),
                 startTime: '09:00:00',
                 endTime: '12:00:00',
-                counselorUserIds: [],
+                // Default to all pool counsellors — same hours every day means
+                // everyone is on this shift; the admin can deselect if needed.
+                counselorUserIds: [...allCounselorIds],
             },
         ]);
 
@@ -206,7 +216,9 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
                     <div>
                         <CardTitle className="text-base">Daily Template</CardTitle>
-                        <CardDescription>Applied to all 7 days</CardDescription>
+                        <CardDescription>
+                            Applied to all 7 days · all pool counsellors added by default
+                        </CardDescription>
                     </div>
                     <MyButton buttonType="secondary" scale="small" onClick={addBlock}>
                         + Add Block
@@ -214,7 +226,16 @@ export default function SameHoursAllDaysEditor({ pool }: Props) {
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {template.length === 0 && (
-                        <ShiftCountPicker onPick={(generated) => setTemplate(generated)} />
+                        <ShiftCountPicker
+                            onPick={(generated) =>
+                                setTemplate(
+                                    generated.map((b) => ({
+                                        ...b,
+                                        counselorUserIds: [...allCounselorIds],
+                                    }))
+                                )
+                            }
+                        />
                     )}
                     {template.map((b, idx) => {
                         const shiftErr = validation.shiftErrors.find((e) => e.localId === b.localId);

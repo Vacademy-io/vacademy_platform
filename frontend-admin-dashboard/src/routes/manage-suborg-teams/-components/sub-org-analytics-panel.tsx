@@ -20,6 +20,12 @@ import {
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getInvoiceDownloadUrl } from '@/services/invoice-service';
+import { getPaymentOptions } from '@/services/payment-options';
+import type { PaymentOptionApi } from '@/types/payment';
+import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
+import { formatPlanPrice } from '@/utils/finance-utils';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 /**
  * Pick a working URL for an invoice — same pattern manage-students payment-history
@@ -111,6 +117,42 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         enabled: !!subOrgId,
     });
 
+    // The org-level SUB_ORG invite carries the configured admin payment option —
+    // i.e. the plan a *future* admin will pay via, even before anyone redeems the
+    // invite. Used to show the configured plan in the Admin payment tile instead of
+    // a bare "No plan" when no admin has enrolled yet.
+    const orgInvite = (scopedInvites as any[]).find((r) => r?.tag === 'SUB_ORG')
+        || (scopedInvites as any[])[0];
+
+    // Institute payment options (same source as the Edit Sub-Org modal) so we can
+    // resolve the configured option's name + price. Gated to the institute-admin
+    // (full) view — sub-org admins can't read the parent institute's options.
+    const { data: institutePaymentOptions = [] } = useQuery<PaymentOptionApi[]>({
+        queryKey: ['sub-org-institute-payment-options', instituteId],
+        queryFn: () =>
+            getPaymentOptions({
+                types: ['ONE_TIME', 'SUBSCRIPTION', 'FREE'],
+                source: 'INSTITUTE',
+                source_id: instituteId || '',
+                require_approval: true,
+                not_require_approval: true,
+            }),
+        enabled: !!instituteId && !restrictedView,
+        staleTime: 30000,
+    });
+    const configuredOption = institutePaymentOptions.find(
+        (o) => o.id === orgInvite?.payment_option_id
+    );
+    const configuredPlan = configuredOption?.payment_plans?.[0];
+    const configuredPriceLabel =
+        configuredOption?.type === 'FREE'
+            ? 'Free'
+            : configuredPlan
+              ? `${getCurrencySymbol(configuredPlan.currency || '')}${formatPlanPrice(
+                    configuredPlan.actual_price
+                )}`
+              : '';
+
     const adminUserId = finance?.admin_payment?.user_id;
     const { data: invoices = [] } = useQuery<InvoiceSummary[]>({
         queryKey: ['sub-org-admin-invoices', adminUserId],
@@ -137,10 +179,11 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         if (fromInvites) return fromInvites;
         const d = getDetailsFromPackageSessionId({ packageSessionId: psId });
         if (d) {
-            return (
-                [d.package_dto?.package_name, d.level?.level_name, d.session?.session_name]
-                    .filter(Boolean)
-                    .join(' · ') || psId
+            return buildPsLabel(
+                d.package_dto?.package_name,
+                d.level?.level_name,
+                d.session?.session_name,
+                psId
             );
         }
         return psId;
@@ -268,11 +311,25 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 <Tile
                     icon={<Wallet className="h-4 w-4 text-emerald-600" />}
                     label="Admin payment"
-                    primary={admin?.payment_type || 'No plan'}
+                    // When an admin has redeemed the invite, show their actual plan.
+                    // Otherwise surface the *configured* payment option (what a future
+                    // admin will pay via) instead of a confusing bare "No plan".
+                    primary={
+                        admin?.payment_type ||
+                        configuredOption?.name ||
+                        orgInvite?.payment_type ||
+                        'No plan'
+                    }
                     secondary={
-                        admin?.payment_type === 'CPO'
-                            ? `Outstanding ${fmtMoney(admin?.outstanding_amount)}`
-                            : admin?.user_plan_status || '—'
+                        admin?.payment_type
+                            ? admin.payment_type === 'CPO'
+                                ? `Outstanding ${fmtMoney(admin?.outstanding_amount)}`
+                                : admin?.user_plan_status || '—'
+                            : configuredOption || orgInvite?.payment_type
+                              ? `${
+                                    configuredPriceLabel ? `${configuredPriceLabel} · ` : ''
+                                }Awaiting admin`
+                              : '—'
                     }
                 />
                 {!restrictedView && (
@@ -306,7 +363,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                         />
                         <Tile
                             icon={<BookOpen className="h-4 w-4 text-amber-600" />}
-                            label="PS access"
+                            label={getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
                             primary={String(psList.length)}
                             secondary={`${scopedInvites.length} scoped invite${
                                 scopedInvites.length === 1 ? '' : 's'
@@ -523,7 +580,8 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     <section className="rounded-lg border bg-white p-4">
                         <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
                             <BookOpen className="h-4 w-4" />
-                            Package-session access ({psList.length})
+                            {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)} (
+                            {psList.length})
                         </h3>
                         {psList.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
@@ -534,12 +592,10 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                 {psList.map((ps) => (
                                     <li
                                         key={ps.id}
-                                        className="flex items-center justify-between rounded border px-3 py-2 text-xs"
+                                        className="flex items-center gap-2 rounded border px-3 py-2 text-xs"
                                     >
+                                        <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                                         <span className="truncate">{ps.label}</span>
-                                        <Badge variant="outline" className="shrink-0 text-[10px]">
-                                            PS
-                                        </Badge>
                                     </li>
                                 ))}
                             </ul>
@@ -938,6 +994,24 @@ function Metric({ label, value }: { label: string; value: string }) {
     );
 }
 
+/**
+ * Builds a human label for a package session, dropping the implicit "DEFAULT"
+ * placeholder level/session that carry no meaning for the admin — so a course
+ * reads as "Functional Literacy" instead of "Functional Literacy · default · DEFAULT".
+ * Falls back to the raw id when nothing meaningful remains.
+ */
+function buildPsLabel(
+    packageName?: string | null,
+    levelName?: string | null,
+    sessionName?: string | null,
+    fallback?: string
+): string {
+    const parts = [packageName, levelName, sessionName]
+        .filter(Boolean)
+        .filter((s) => String(s).trim().toLowerCase() !== 'default');
+    return parts.join(' · ') || fallback || '';
+}
+
 function collectPackageSessions(invites: any[]): { id: string; label: string }[] {
     const seen = new Set<string>();
     const out: { id: string; label: string }[] = [];
@@ -949,10 +1023,12 @@ function collectPackageSessions(invites: any[]): { id: string; label: string }[]
         for (const ps of enriched) {
             if (!ps?.id || seen.has(ps.id)) continue;
             seen.add(ps.id);
-            const label =
-                [ps.package_name, ps.level_name, ps.session_name]
-                    .filter(Boolean)
-                    .join(' · ') || ps.id;
+            const label = buildPsLabel(
+                ps.package_name,
+                ps.level_name,
+                ps.session_name,
+                ps.id
+            );
             out.push({ id: ps.id, label });
         }
 

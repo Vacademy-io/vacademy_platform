@@ -7,6 +7,8 @@ import { MyPagination } from '@/components/design-system/pagination';
 import {
     CallStatusPill,
     CallRecordingPlayButton,
+    CallIntelligencePanel,
+    CallIntelligenceSummary,
     formatCallDuration,
     type CallLogItem,
 } from '@/components/shared/leads';
@@ -76,6 +78,11 @@ export function CounsellorCallsTab({ instituteId, counsellorUserId }: Props) {
 
     return (
         <div className="flex flex-col gap-2">
+            <CallIntelligenceSummary
+                mode="counsellor"
+                counsellorUserId={counsellorUserId}
+                className="mb-1"
+            />
             <ul className="space-y-1.5">
                 {calls.map((c) => (
                     <CallRow
@@ -158,6 +165,9 @@ function CallRow({
                         className="max-w-xs"
                     />
                 )}
+            </div>
+            <div className="mt-2">
+                <CallIntelligencePanel callLogId={call.id} />
             </div>
         </li>
     );

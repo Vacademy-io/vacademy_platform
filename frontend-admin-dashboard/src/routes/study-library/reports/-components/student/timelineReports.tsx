@@ -13,13 +13,13 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { MyButton } from '@/components/design-system/button';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
+import { MetricInfo, METRIC_INFO } from '../metricInfo';
 import ReportRecipientsDialogBox from './reportRecipientsDialogBox';
 import { useMutation } from '@tanstack/react-query';
-import {
-    fetchLearnersReport,
-    fetchSlideWiseProgress,
-    exportLearnersReport,
-} from '../../-services/utils';
+import { fetchLearnersReport, fetchSlideWiseProgress } from '../../-services/utils';
+import { resolveInstituteLogoUrl } from '../live/-utils/instituteLogo';
+import { exportLearnerLearningPdf } from '../../-utils/exportLearningPdf';
 import { useLearnerDetails, UserResponse } from '../../-store/useLearnersDetails';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -90,6 +90,8 @@ export default function TimelineReports() {
     const [reportData, setReportData] = useState<LearnersReportResponse>();
     const [slideData, setSlideData] = useState<SlideData[]>();
     const [appliedDateRange, setAppliedDateRange] = useState<{ start: string, end: string } | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const [searchTerm, setSearchTerm] = useState('');
     const filteredStudents = studentList.filter((student) =>
         student.full_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -124,8 +126,10 @@ export default function TimelineReports() {
 
     useEffect(() => {
         if (selectedCourse) {
-            setSessionList(getSessionFromPackage({ courseId: selectedCourse }));
-            setValue('session', '');
+            const sessions = getSessionFromPackage({ courseId: selectedCourse });
+            setSessionList(sessions);
+            // Auto-select when the course has exactly one session.
+            setValue('session', sessions.length === 1 && sessions[0] ? sessions[0].id : '');
         } else {
             setSessionList([]);
             setStudentList([]);
@@ -138,9 +142,15 @@ export default function TimelineReports() {
             setLevelList([]);
             setStudentList([]);
         } else if (selectedCourse && selectedSession) {
-            setLevelList(
-                getLevelsFromPackage2({ courseId: selectedCourse, sessionId: selectedSession })
-            );
+            const levels = getLevelsFromPackage2({
+                courseId: selectedCourse,
+                sessionId: selectedSession,
+            });
+            setLevelList(levels);
+            // Auto-select when the session exposes exactly one level.
+            if (levels.length === 1 && levels[0]) {
+                setValue('level', levels[0].id);
+            }
         }
     }, [selectedSession]);
 
@@ -245,37 +255,29 @@ export default function TimelineReports() {
         // api call
     };
 
-    const getBatchReportDataPDF = useMutation({
-        mutationFn: () =>
-            exportLearnersReport({
-                startDate: appliedDateRange?.start || startDate || '',
-                endDate: appliedDateRange?.end || endDate || '',
-                packageSessionId:
-                    getPackageSessionId({
-                        courseId: selectedCourse || '',
-                        sessionId: selectedSession || '',
-                        levelId: selectedLevel || '',
-                    }) || '',
-                userId: selectedStudent || '',
-            }),
-        onSuccess: async (response) => {
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `learners_report.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Learners Report PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getBatchReportDataPDF.mutate();
+    const handleExportPDF = async () => {
+        if (!reportData) return;
+        setIsExporting(true);
+        try {
+            const logoUrl = await resolveInstituteLogoUrl(instituteDetails?.institute_logo_file_id);
+            await exportLearnerLearningPdf(
+                {
+                    instituteName: instituteDetails?.institute_name || 'Vacademy',
+                    logoUrl,
+                    courseName: courseList.find((c) => c.id === selectedCourse)?.name || '',
+                    dateRange: `${dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')} — ${dayjs(
+                        appliedDateRange?.end || endDate
+                    ).format('DD MMM YYYY')}`,
+                    learnerName: studentList.find((s) => s.user_id === selectedStudent)?.full_name,
+                },
+                reportData
+            );
+            toast.success('Learner report exported');
+        } catch {
+            toast.error('Failed to export PDF');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const tableData = {
@@ -289,7 +291,6 @@ export default function TimelineReports() {
     const generateReportMutation = useMutation({ mutationFn: fetchLearnersReport });
     const generateSlideMutation = useMutation({ mutationFn: fetchSlideWiseProgress });
     const { isPending, error } = generateReportMutation;
-    const isExporting = getBatchReportDataPDF.isPending;
 
     return (
         <div className="space-y-6">
@@ -303,27 +304,23 @@ export default function TimelineReports() {
                                 {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                 <span className="text-red-500 ml-1">*</span>
                             </label>
-                            <Select
-                                onValueChange={(value) => setValue('course', value)}
-                                {...register('course')}
-                                defaultValue={search.studentReport ? search.studentReport.courseId : ''}
-                            >
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        )}`}
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {courseList?.map((course) => (
-                                        <SelectItem key={course.id} value={course.id}>
-                                            {course.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                options={(courseList ?? []).map((course) => ({
+                                    label: course.name,
+                                    value: course.id,
+                                }))}
+                                value={selectedCourse}
+                                onChange={(value) => setValue('course', value)}
+                                placeholder={`Select a ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}`}
+                                searchPlaceholder={`Search ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}...`}
+                                triggerClassName="h-9 text-sm"
+                            />
                         </div>
 
                         <div>
@@ -530,9 +527,12 @@ export default function TimelineReports() {
                         <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        {getTerminology(ContentTerms.Course, SystemTerms.Course)} Completed
-                                    </h4>
+                                    <div className="flex items-center gap-1.5">
+                                        <h4 className="text-sm font-medium text-neutral-600">
+                                            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Completed
+                                        </h4>
+                                        <MetricInfo text={METRIC_INFO.courseCompleted} />
+                                    </div>
                                     <p className="text-2xl font-bold text-primary-600">
                                         {`${formatToTwoDecimalPlaces(
                                             reportData?.learner_progress_report?.percentage_course_completed
@@ -550,9 +550,12 @@ export default function TimelineReports() {
                         <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        Daily Time Spent (Avg)
-                                    </h4>
+                                    <div className="flex items-center gap-1.5">
+                                        <h4 className="text-sm font-medium text-neutral-600">
+                                            Daily Time Spent (Avg)
+                                        </h4>
+                                        <MetricInfo text={METRIC_INFO.timeSpentAvg} />
+                                    </div>
                                     <p className="text-2xl font-bold text-primary-600">
                                         {convertMinutesToTimeFormat(
                                             reportData?.learner_progress_report?.avg_time_spent_in_minutes
@@ -570,9 +573,12 @@ export default function TimelineReports() {
                         <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm sm:col-span-2 lg:col-span-1">
                             <div className="flex items-center justify-between">
                                 <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        Concentration Score (Avg)
-                                    </h4>
+                                    <div className="flex items-center gap-1.5">
+                                        <h4 className="text-sm font-medium text-neutral-600">
+                                            Concentration Score (Avg)
+                                        </h4>
+                                        <MetricInfo text={METRIC_INFO.concentration} />
+                                    </div>
                                     <p className="text-2xl font-bold text-primary-600">
                                         {`${formatToTwoDecimalPlaces(
                                             reportData?.learner_progress_report

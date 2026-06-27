@@ -61,8 +61,7 @@ const paramsKey = (p: CrmReportParams) =>
  */
 export function isReportEndpointMissing(error: unknown): boolean {
     return (
-        isAxiosError(error) &&
-        (error.response?.status === 404 || error.response?.status === 403)
+        isAxiosError(error) && (error.response?.status === 404 || error.response?.status === 403)
     );
 }
 
@@ -96,9 +95,7 @@ export interface SourcePerformanceReport {
 export const sourcePerformanceQueryKey = (p: CrmReportParams) =>
     ['crm-reports-source-performance', ...paramsKey(p)] as const;
 
-export async function fetchSourcePerformance(
-    p: CrmReportParams
-): Promise<SourcePerformanceReport> {
+export async function fetchSourcePerformance(p: CrmReportParams): Promise<SourcePerformanceReport> {
     const { data } = await authenticatedAxiosInstance.get(SOURCE_PERFORMANCE_URL, {
         params: toRequestParams(p),
     });

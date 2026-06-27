@@ -281,14 +281,14 @@ export function WorkbenchPage() {
         if (!instituteId) return;
         setPendingMarkInactiveId(userId);
         try {
-            // Reassign-first needs ALL of the counsellor's leads (so each gets
-            // routed in one batch) — pass no status filter rather than 'OPEN',
-            // which the backend matched against conversion_status exactly and so
-            // never returned anything, leaving the dialog empty. Bumping size to
-            // 500 is the existing safety cap — beyond that we'd want a multi-page
-            // accumulator; flag if a counsellor routinely sits on more than ~500
-            // leads.
-            const leads = await fetchCounsellorLeads(instituteId, userId, undefined, 0, 500);
+            // Reassign-first needs the counsellor's ASSIGNED-but-not-yet-
+            // converted leads (the same set the card's "Assigned leads" count
+            // reflects). 'OPEN' is the backend's virtual filter for that
+            // (conversion_status NULL OR != 'CONVERTED') — converted leads are
+            // done and shouldn't be moved. Bumping size to 500 is the existing
+            // safety cap — beyond that we'd want a multi-page accumulator; flag
+            // if a counsellor routinely sits on more than ~500 open leads.
+            const leads = await fetchCounsellorLeads(instituteId, userId, 'OPEN', 0, 500);
             setReassignFromUserId(userId);
             setReassignFromName(displayName);
             setReassignLeads(leads?.content ?? []);
@@ -328,6 +328,28 @@ export function WorkbenchPage() {
             queryKey: ['workbench-counsellors-candidates', instituteId],
         });
         queryClient.invalidateQueries({ queryKey: ['workbench-leads', instituteId] });
+    }
+
+    /**
+     * "Mark inactive without reassigning" — the manager chooses to take the
+     * counsellor offline but leave their leads assigned to them as-is (no
+     * round-robin / target). Uses the dedicated status endpoint, which flips
+     * pool memberships INACTIVE without touching any lead assignment. The
+     * leads simply stay with the (now inactive) counsellor until someone
+     * reassigns them later.
+     */
+    async function handleMarkInactiveWithoutReassign() {
+        if (!instituteId || !reassignFromUserId) return;
+        try {
+            await setCounsellorStatus(reassignFromUserId, instituteId, 'INACTIVE');
+            toast.success('Marked inactive');
+            handleReassignComplete();
+            setReassignOpen(false);
+            setReassignMarkInactive(false);
+        } catch (e) {
+            const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
+            toast.error(msg ?? 'Could not mark inactive');
+        }
     }
 
     function handleReassignDialogOpenChange(next: boolean) {
@@ -385,7 +407,7 @@ export function WorkbenchPage() {
                     <StatChip icon={Crown} label="Active" value={activeCount} tone="success" />
                     <StatChip
                         icon={ChatCircleText}
-                        label="Open leads"
+                        label="Assigned leads"
                         value={totalOpenLeads}
                         tone="primary"
                     />
@@ -549,6 +571,7 @@ export function WorkbenchPage() {
                 candidates={candidates}
                 markInactive={reassignMarkInactive}
                 onComplete={handleReassignComplete}
+                onMarkInactiveWithoutReassign={handleMarkInactiveWithoutReassign}
             />
         </LayoutContainer>
     );
@@ -638,7 +661,7 @@ function CounsellorCard({
 
             <div className="grid grid-cols-2 gap-3 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 text-caption">
                 <div>
-                    <div className="text-neutral-500">Open leads</div>
+                    <div className="text-neutral-500">Assigned leads</div>
                     <div className="text-body font-semibold text-neutral-900">
                         {counsellor.open_leads_count}
                     </div>
@@ -721,7 +744,7 @@ function CounsellorTable({
                         <th className="px-3 py-2.5 text-left">Counsellor</th>
                         <th className="px-3 py-2.5 text-left">Team</th>
                         <th className="px-3 py-2.5 text-right">Rating</th>
-                        <th className="px-3 py-2.5 text-right">Open leads</th>
+                        <th className="px-3 py-2.5 text-right">Assigned leads</th>
                         <th className="px-3 py-2.5 text-left">Status</th>
                         <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>

@@ -12,6 +12,7 @@ import { StudentTable } from '@/types/student-table-types';
 import { useEffect, useRef, useState } from 'react';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
+import { formatPlanPrice } from '@/utils/finance-utils';
 import { MyDropdown } from '../dropdownForPackageItems';
 import { DropdownValueType } from '../dropdownTypesForPackageItems';
 
@@ -164,7 +165,7 @@ export const StepFourForm = ({
 
                                         return {
                                             id: plan.id,
-                                            name: `${planName} - ${currency} ${planPrice}${plan.validity_in_days ? ` (${plan.validity_in_days} days)` : ''}`,
+                                            name: `${planName} - ${currency} ${formatPlanPrice(planPrice)}${plan.validity_in_days ? ` (${plan.validity_in_days} days)` : ''}`,
                                         };
                                     });
 

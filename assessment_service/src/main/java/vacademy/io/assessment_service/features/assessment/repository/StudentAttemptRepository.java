@@ -10,10 +10,12 @@ import vacademy.io.assessment_service.features.assessment.dto.LeaderBoardDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.AssessmentOverviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.MarksRankDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentAttemptHistoryProjection;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
+import java.util.Date;
 import java.util.Optional;
 
 import java.util.List;
@@ -599,6 +601,52 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
     List<StudentAttempt> findByStatusNotIn(List<String> name);
 
     Optional<StudentAttempt> findTopByRegistrationOrderByCreatedAtDesc(vacademy.io.assessment_service.features.assessment.entity.AssessmentUserRegistration registration);
+
+    /**
+     * List the most-recent attempt per assessment for a student within an institute and optional
+     * date range, ordered newest first.  Used by the internal student-analysis endpoint.
+     *
+     * Dates are inclusive bounds on sa.created_at (attempt creation date).  Pass null to skip
+     * either bound.
+     */
+    @Query(value = """
+            SELECT
+                a.id              AS assessmentId,
+                a.name            AS assessmentName,
+                sa.id             AS attemptId,
+                sa.created_at     AS attemptDate,
+                sa.total_marks    AS totalMarks,
+                sa.total_time_in_seconds AS durationInSeconds,
+                sa.result_status  AS resultStatus
+            FROM public.assessment a
+            JOIN public.assessment_institute_mapping aim
+                ON aim.assessment_id = a.id
+                AND aim.institute_id = :instituteId
+            JOIN public.assessment_user_registration aur
+                ON aur.assessment_id = a.id
+                AND aur.user_id = :userId
+            JOIN public.student_attempt sa
+                ON sa.registration_id = aur.id
+                AND sa.id = (
+                    SELECT sa_inner.id
+                    FROM public.student_attempt sa_inner
+                    WHERE sa_inner.registration_id = aur.id
+                      AND sa_inner.status = 'ENDED'
+                    ORDER BY sa_inner.created_at DESC
+                    LIMIT 1
+                )
+            WHERE a.status = 'PUBLISHED'
+              AND sa.status = 'ENDED'
+              AND (CAST(:startDate AS timestamp) IS NULL OR sa.created_at >= CAST(:startDate AS timestamp))
+              AND (CAST(:endDate   AS timestamp) IS NULL OR sa.created_at <= CAST(:endDate AS timestamp))
+            ORDER BY sa.created_at DESC
+            """, nativeQuery = true)
+    List<StudentAttemptHistoryProjection> findAssessmentHistoryForUserInDateRange(
+            @Param("userId") String userId,
+            @Param("instituteId") String instituteId,
+            @Param("startDate") Date startDate,
+            @Param("endDate") Date endDate,
+            Pageable pageable);
 
     @Query(value = """
             SELECT sa.* FROM student_attempt sa

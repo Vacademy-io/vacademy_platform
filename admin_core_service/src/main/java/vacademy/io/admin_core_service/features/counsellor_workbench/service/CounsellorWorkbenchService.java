@@ -81,6 +81,24 @@ public class CounsellorWorkbenchService {
     public Page<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
                                                      String conversionStatus, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+
+        // "OPEN" is a VIRTUAL filter, not a real conversion_status value: it
+        // means "assigned but not converted yet" (conversion_status NULL OR
+        // != 'CONVERTED') — the same predicate the counsellor-card "Assigned
+        // leads" count uses (countOpenLeadsForCounsellor). The reassign-on-
+        // inactive dialog requests it so the leads it offers to move match the
+        // card. Routing it through the exact-match path below would compare
+        // conversion_status = 'OPEN', which never matches, leaving the dialog
+        // empty.
+        if ("OPEN".equalsIgnoreCase(conversionStatus)) {
+            long openTotal = leadRepo.countOpenLeadsForCounsellor(instituteId, counsellorUserId);
+            if (openTotal == 0) return new PageImpl<>(List.of(), pageable, 0);
+            List<WorkbenchLeadDTO> openContent = hydrateLeadIdentities(leadRepo.findOpenLeadsForCounsellor(
+                    instituteId, counsellorUserId,
+                    (int) pageable.getOffset(), pageable.getPageSize()));
+            return new PageImpl<>(openContent, pageable, openTotal);
+        }
+
         List<String> ids = Collections.singletonList(counsellorUserId);
         long total = leadRepo.countLeadsForCounsellors(instituteId, ids, conversionStatus);
         if (total == 0) return new PageImpl<>(List.of(), pageable, 0);

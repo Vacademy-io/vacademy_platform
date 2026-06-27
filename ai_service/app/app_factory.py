@@ -86,6 +86,14 @@ async def _lifespan(app: FastAPI):
         start_reels_reaper()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("reels reaper startup skipped: %s", exc)
+    # CRM Call Intelligence: drains the call_intelligence work queue (transcribe +
+    # LLM analysis of call recordings) every tick. FOR UPDATE SKIP LOCKED makes it
+    # safe across replicas. Lazy import so a module issue can't block app boot.
+    try:
+        from .services.call_intelligence_poller import start_call_intelligence_poller
+        start_call_intelligence_poller()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("call-intelligence poller startup skipped: %s", exc)
     # Vacademy Assistant help corpus: keep the deployed pgvector corpus in sync
     # with app/data/help_knowledge.jsonl. Change-detected, so an unchanged corpus
     # is a no-op. Lazy import + background task so it can't block app boot.

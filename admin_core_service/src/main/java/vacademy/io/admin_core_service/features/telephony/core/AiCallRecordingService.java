@@ -47,6 +47,7 @@ public class AiCallRecordingService {
     private final TelephonyProviderRegistry registry;
     private final MediaService mediaService;
     private final TelephonyCallLogRepository callLogRepo;
+    private final vacademy.io.admin_core_service.features.call_intelligence.core.CallIntelligenceEnqueueService callIntelligenceEnqueueService;
 
     private enum Step { DONE, STOP, RETRY }
 
@@ -117,6 +118,11 @@ public class AiCallRecordingService {
             callLogRepo.save(fresh);
             log.info("ai-call recording: callLog {} uploaded → storageKey {} (attempt {}/{})",
                     callLogId, uploaded.getId(), attempt, maxAttempts);
+
+            // Recording copied — enqueue our own transcription + analysis pass. AI calls
+            // are re-analyzed uniformly (not trusting provider fields) for cross-source
+            // comparability. Best-effort, never throws.
+            callIntelligenceEnqueueService.enqueueIfEligible(fresh);
             return Step.DONE;
 
         } catch (Exception e) {

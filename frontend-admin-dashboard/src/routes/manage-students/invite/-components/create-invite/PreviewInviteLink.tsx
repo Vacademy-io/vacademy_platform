@@ -21,6 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo } from 'react';
 import { getCurrencySymbol, getPaymentPlanIcon } from './PaymentPlansDialog';
 import { getAllUniqueFeatures } from './-components/PaymentPlanCard';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 export interface PreviewInviteLinkProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -362,7 +363,7 @@ const PreviewInviteLink = ({ form, levelName, instituteLogo }: PreviewInviteLink
                                                                                     'selectedPlan'
                                                                                 )?.currency || ''
                                                                             )}
-                                                                            {payment.price}&nbsp;
+                                                                            {formatPlanPrice(payment.price)}&nbsp;
                                                                             {payment.value &&
                                                                                 payment.unit && (
                                                                                     <span className="text-sm font-normal text-gray-500">
@@ -449,7 +450,7 @@ const PreviewInviteLink = ({ form, levelName, instituteLogo }: PreviewInviteLink
                                                                         form.watch('selectedPlan')
                                                                             ?.currency || ''
                                                                     )}
-                                                                    {payment.price}&nbsp;
+                                                                    {formatPlanPrice(payment.price)}&nbsp;
                                                                     {payment.value &&
                                                                         payment.unit && (
                                                                             <span className="text-sm font-normal text-gray-500">

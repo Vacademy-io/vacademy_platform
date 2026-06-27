@@ -64,52 +64,77 @@ public class RevenueReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Shared population: PAID payments from this institute's CONVERTED leads, in-window, scoped on
-     * the lead's assigned counsellor. payment_amount NOT NULL keeps COUNT(*) and SUM aligned.
+     * Converted-lead attribution shared by every money query. The lead's counsellor is resolved the
+     * SAME way the rest of the report suite resolves it: the enquiry counsellor on the lead's
+     * representative response (best_score_response_id → linked_users), falling back to the lead
+     * profile's assigned_counselor_id. assigned_counselor_id alone is almost never populated, so
+     * scoping on it would zero out every scoped (non-admin) caller. Source falls back
+     * best_source_type → representative-response source_type → 'UNKNOWN'.
      */
-    private static final String REVENUE_FROM = """
-            FROM payment_log pl
-            JOIN user_lead_profile ulp
-                ON ulp.user_id = pl.user_id AND ulp.institute_id = :instituteId
-            WHERE pl.payment_status = 'PAID'
-              AND pl.payment_amount IS NOT NULL
-              AND ulp.conversion_status = 'CONVERTED'
-              AND pl.created_at >= :fromTs AND pl.created_at < :toTs
-              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+    private static final String CONV_CTE = """
+            conv AS (
+                SELECT ulp.user_id,
+                       COALESCE(ulp.best_source_type, ar.source_type, 'UNKNOWN') AS source_type,
+                       COALESCE(lu.user_id, ulp.assigned_counselor_id)           AS counsellor_id
+                FROM user_lead_profile ulp
+                LEFT JOIN audience_response ar ON ar.id = ulp.best_score_response_id
+                LEFT JOIN LATERAL (
+                    SELECT lu2.user_id FROM linked_users lu2
+                    WHERE lu2.source = 'ENQUIRY' AND lu2.source_id = ar.enquiry_id
+                    ORDER BY lu2.created_at DESC LIMIT 1
+                ) lu ON true
+                WHERE ulp.institute_id = :instituteId
+                  AND ulp.conversion_status = 'CONVERTED'
+                  AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+            )
             """;
 
-    private static final String REVENUE_TOTALS_SQL = """
-            SELECT COALESCE(SUM(pl.payment_amount), 0) AS revenue,
-                   COUNT(DISTINCT pl.user_id)          AS paying_leads,
-                   COUNT(*)                            AS payments
-            """ + REVENUE_FROM;
+    /** PAID payments in-window from the scoped converted leads. payment_amount NOT NULL keeps SUM/COUNT aligned. */
+    private static final String PAID_CTE = """
+            paid AS (
+                SELECT c.user_id, c.source_type, c.counsellor_id,
+                       pl.payment_amount, pl.created_at
+                FROM payment_log pl
+                JOIN conv c ON c.user_id = pl.user_id
+                WHERE pl.payment_status = 'PAID'
+                  AND pl.payment_amount IS NOT NULL
+                  AND pl.created_at >= :fromTs AND pl.created_at < :toTs
+            )
+            """;
 
-    private static final String REVENUE_BY_SOURCE_SQL = """
-            SELECT COALESCE(ulp.best_source_type, 'UNKNOWN') AS source_type,
-                   COALESCE(SUM(pl.payment_amount), 0)       AS revenue,
-                   COUNT(DISTINCT pl.user_id)                AS paying_leads,
-                   COUNT(*)                                  AS payments
-            """ + REVENUE_FROM + """
-            GROUP BY 1
+    private static final String REVENUE_TOTALS_SQL = "WITH " + CONV_CTE + ", " + PAID_CTE + """
+            SELECT COALESCE(SUM(payment_amount), 0) AS revenue,
+                   COUNT(DISTINCT user_id)          AS paying_leads,
+                   COUNT(*)                         AS payments
+            FROM paid
+            """;
+
+    private static final String REVENUE_BY_SOURCE_SQL = "WITH " + CONV_CTE + ", " + PAID_CTE + """
+            SELECT source_type,
+                   COALESCE(SUM(payment_amount), 0) AS revenue,
+                   COUNT(DISTINCT user_id)          AS paying_leads,
+                   COUNT(*)                         AS payments
+            FROM paid
+            GROUP BY source_type
             ORDER BY revenue DESC, source_type
             """;
 
-    private static final String REVENUE_BY_COUNSELLOR_SQL = """
-            SELECT ulp.assigned_counselor_id           AS user_id,
-                   COALESCE(SUM(pl.payment_amount), 0) AS revenue,
-                   COUNT(DISTINCT pl.user_id)          AS paying_leads,
-                   COUNT(*)                            AS payments
-            """ + REVENUE_FROM + """
-              AND ulp.assigned_counselor_id IS NOT NULL
-            GROUP BY ulp.assigned_counselor_id
+    private static final String REVENUE_BY_COUNSELLOR_SQL = "WITH " + CONV_CTE + ", " + PAID_CTE + """
+            SELECT paid.counsellor_id              AS user_id,
+                   COALESCE(SUM(paid.payment_amount), 0) AS revenue,
+                   COUNT(DISTINCT paid.user_id)    AS paying_leads,
+                   COUNT(*)                        AS payments
+            FROM paid
+            WHERE paid.counsellor_id IS NOT NULL
+            GROUP BY paid.counsellor_id
             ORDER BY revenue DESC
             """;
 
-    private static final String REVENUE_TREND_SQL = """
-            SELECT (pl.created_at AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date AS day,
-                   COALESCE(SUM(pl.payment_amount), 0) AS revenue,
-                   COUNT(*)                            AS payments
-            """ + REVENUE_FROM + """
+    private static final String REVENUE_TREND_SQL = "WITH " + CONV_CTE + ", " + PAID_CTE + """
+            SELECT (created_at AT TIME ZONE 'UTC' AT TIME ZONE :tz)::date AS day,
+                   COALESCE(SUM(payment_amount), 0) AS revenue,
+                   COUNT(*)                         AS payments
+            FROM paid
             GROUP BY 1
             ORDER BY 1
             """;
@@ -205,17 +230,35 @@ public class RevenueReportService {
      * window selects which acquisition months appear. Revenue is the cohort's converted leads'
      * lifetime PAID revenue (NOT window-bound — a cohort's value accrues after acquisition).
      */
-    private static final String COHORT_SQL = """
-            WITH leads AS (
+    /**
+     * Lead-scope join for queries over ALL leads (not just converted) — resolves the same enquiry
+     * counsellor as {@link #CONV_CTE} so RBAC scoping doesn't collapse on the rarely-populated
+     * assigned_counselor_id. Pair with {@link #LEAD_SCOPE_PRED} in the WHERE.
+     */
+    private static final String LEAD_SCOPE_JOIN = """
+            FROM user_lead_profile ulp
+            LEFT JOIN audience_response ar ON ar.id = ulp.best_score_response_id
+            LEFT JOIN LATERAL (
+                SELECT lu2.user_id FROM linked_users lu2
+                WHERE lu2.source = 'ENQUIRY' AND lu2.source_id = ar.enquiry_id
+                ORDER BY lu2.created_at DESC LIMIT 1
+            ) lu ON true
+            """;
+
+    private static final String LEAD_SCOPE_PRED =
+            " AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))";
+
+    private static final String COHORT_SQL = "WITH leads AS ("
+            + """
                 SELECT ulp.user_id,
                        COALESCE(ulp.created_at, ulp.last_calculated_at) AS acq,
                        ulp.conversion_status,
                        ulp.converted_at
-                FROM user_lead_profile ulp
+            """ + LEAD_SCOPE_JOIN + """
                 WHERE ulp.institute_id = :instituteId
                   AND COALESCE(ulp.created_at, ulp.last_calculated_at) >= :fromTs
                   AND COALESCE(ulp.created_at, ulp.last_calculated_at) <  :toTs
-                  AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+            """ + LEAD_SCOPE_PRED + """
             ),
             rev AS (
                 SELECT pl.user_id, SUM(pl.payment_amount) AS revenue
@@ -273,10 +316,11 @@ public class RevenueReportService {
     // Revenue forecast
     // ─────────────────────────────────────────────────────────────────────
 
-    private static final String TRAILING_REVENUE_SQL = """
-            SELECT COALESCE(SUM(pl.payment_amount), 0) AS revenue,
-                   COUNT(DISTINCT pl.user_id)          AS paying_leads
-            """ + REVENUE_FROM;
+    private static final String TRAILING_REVENUE_SQL = "WITH " + CONV_CTE + ", " + PAID_CTE + """
+            SELECT COALESCE(SUM(payment_amount), 0) AS revenue,
+                   COUNT(DISTINCT user_id)          AS paying_leads
+            FROM paid
+            """;
 
     /** Leads acquired in the trailing window + those converted in it (velocity ratio inputs). */
     private static final String TRAILING_LEADS_SQL = """
@@ -285,19 +329,17 @@ public class RevenueReportService {
                          AND COALESCE(ulp.created_at, ulp.last_calculated_at) <  :toTs) AS leads,
                    COUNT(*) FILTER (
                        WHERE ulp.converted_at >= :fromTs AND ulp.converted_at < :toTs) AS conversions
-            FROM user_lead_profile ulp
+            """ + LEAD_SCOPE_JOIN + """
             WHERE ulp.institute_id = :instituteId
-              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
-            """;
+            """ + LEAD_SCOPE_PRED;
 
     /** Open pipeline right now: leads not yet won or lost, scoped. */
     private static final String OPEN_PIPELINE_SQL = """
             SELECT COUNT(*) AS open_leads
-            FROM user_lead_profile ulp
+            """ + LEAD_SCOPE_JOIN + """
             WHERE ulp.institute_id = :instituteId
               AND ulp.conversion_status = 'LEAD'
-              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
-            """;
+            """ + LEAD_SCOPE_PRED;
 
     @Transactional(readOnly = true)
     public RevenueForecastDTO getForecast(String instituteId, String teamId,

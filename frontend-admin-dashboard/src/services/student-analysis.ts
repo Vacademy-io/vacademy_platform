@@ -5,6 +5,7 @@ import {
     InitiateAnalysisResponse,
     ReportListResponse,
     StudentReport,
+    StudentReportFull,
 } from '@/types/student-analysis';
 
 /**
@@ -77,7 +78,7 @@ export const getStudentReports = async (
 };
 
 /**
- * Get report details by process ID
+ * Get report details by process ID (lightweight, used for status polling)
  * @param processId - Process ID of the report
  * @returns Report details including status and data
  */
@@ -92,3 +93,45 @@ export const getStudentReport = async (processId: string): Promise<StudentReport
         throw error;
     }
 };
+
+/**
+ * Get full report by process ID — returns report_version, v1 report, and v2 comprehensive_report
+ * @param processId - Process ID of the report
+ * @returns Full report response including version discriminator and both payload shapes
+ */
+export const getStudentReportFull = async (processId: string): Promise<StudentReportFull> => {
+    try {
+        const response = await authenticatedAxiosInstance.get(
+            `${STUDENT_ANALYSIS_BASE}/report/${processId}`
+        );
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching full student report:', error);
+        throw error;
+    }
+};
+
+/**
+ * Download report as PDF blob and trigger a browser download
+ * @param processId - Process ID of the report
+ */
+export const downloadReportPdf = async (processId: string): Promise<void> => {
+    try {
+        const response = await authenticatedAxiosInstance.get(
+            `${STUDENT_ANALYSIS_BASE}/report/${processId}/pdf`,
+            { responseType: 'blob' }
+        );
+        const url = URL.createObjectURL(response.data as Blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `report-${processId}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Error downloading report PDF:', error);
+        throw error;
+    }
+};
+

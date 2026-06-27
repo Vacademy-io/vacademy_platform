@@ -3289,15 +3289,23 @@ export const SlideMaterial = ({
             )}
 
             <div
-                className={`mx-auto mt-14 ${
-                    activeItem?.document_slide?.type === 'PDF' ||
-                    activeItem?.document_slide?.type === 'PPT_ANIM'
-                        ? 'h-[calc(100vh-200px)]'
-                        : 'h-full'
-                } relative z-20 w-full ${
-                    activeItem?.document_slide?.type === 'DOC'
-                        ? 'overflow-visible'
-                        : 'overflow-hidden'
+                className={`relative z-20 mx-auto mt-14 w-full ${
+                    assessmentCreateMode
+                        ? // Let the form grow to its natural height with bottom
+                          // padding so the parent scroll container reveals all of
+                          // it — pinning to h-full + overflow-hidden clips the
+                          // lower fields (attempts / create button).
+                          'h-auto overflow-visible pb-10'
+                        : `${
+                              activeItem?.document_slide?.type === 'PDF' ||
+                              activeItem?.document_slide?.type === 'PPT_ANIM'
+                                  ? 'h-[calc(100vh-200px)]'
+                                  : 'h-full'
+                          } ${
+                              activeItem?.document_slide?.type === 'DOC'
+                                  ? 'overflow-visible'
+                                  : 'overflow-hidden'
+                          }`
                 }`}
             >
                 {assessmentCreateMode ? <AssessmentCreateForm /> : content}

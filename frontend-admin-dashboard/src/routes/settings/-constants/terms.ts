@@ -122,6 +122,7 @@ export const enum SettingsTabs {
     PaymentGateways = 'paymentGateways',
     Lms = 'lms',
     AiCalling = 'aiCalling',
+    CrmIntelligence = 'crmIntelligence',
     AssistantTools = 'assistantTools',
 }
 

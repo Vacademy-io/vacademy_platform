@@ -54,6 +54,18 @@ export {
     type CallLogItem,
     type PagedCallLog,
 } from './services/call-history';
+export { CallIntelligencePanel } from './call-intelligence-panel';
+export { CallIntelligenceSummary } from './call-intelligence-summary';
+export { ManualCallUploadDialog } from './manual-call-upload-dialog';
+export {
+    fetchCallIntelligence,
+    fetchLeadCallIntelligence,
+    fetchCounsellorCallIntelligence,
+    fetchTeamCallIntelligence,
+    type CallIntelligenceDto,
+    type CallIntelligenceAnalyticsDto,
+    type CounsellorStat,
+} from './services/call-intelligence';
 export { CallPickerPopover } from './call-picker-popover';
 export {
     fetchCallOptions,

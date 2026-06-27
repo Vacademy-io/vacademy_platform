@@ -385,7 +385,11 @@ export function EmptyHint({ message = 'No data in this range.' }: { message?: st
 export function ReportTabSkeleton() {
     const id = useId();
     return (
-        <div className="flex animate-pulse flex-col gap-4" aria-busy="true" aria-label="Loading report">
+        <div
+            className="flex animate-pulse flex-col gap-4"
+            aria-busy="true"
+            aria-label="Loading report"
+        >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {[0, 1, 2, 3].map((i) => (
                     <div
@@ -452,7 +456,13 @@ export function ExportCsvButton({
     label?: string;
 }) {
     return (
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={onClick} disabled={disabled}>
+        <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={onClick}
+            disabled={disabled}
+        >
             <DownloadSimple size={14} />
             {label}
         </Button>

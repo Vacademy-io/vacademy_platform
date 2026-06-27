@@ -17,7 +17,7 @@ import { CourseSettingsProvider } from './providers/course-settings-provider';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import {
     resolveInstituteForCurrentHost,
-    resolveInstituteById,
+    resolveInstituteForDomain,
     getPublicUrl,
     cacheInstituteBranding,
     getCachedInstituteBranding,
@@ -29,13 +29,7 @@ import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { installChunkErrorHandler } from '@/lib/chunk-reload';
-import {
-    initNative,
-    isNative,
-    getPlatform,
-    shouldForceVimShell,
-    getFlavorInstituteId,
-} from '@/native';
+import { initNative, isNative, getPlatform, shouldForceVimShell, getFlavor } from '@/native';
 
 // Recover stale tabs whose cached chunk URLs 404 after a new deploy.
 // Must run before React renders so failures during the first lazy import
@@ -62,23 +56,12 @@ if (isNative()) {
         }
     }
 
-    // Flavors anchored to a fixed institute (e.g. Vacademy Admin) seed the
-    // selected institute id before branding resolves, so getCurrentInstituteId()
-    // and the index.html pre-paint branding script both pick it up immediately.
-    //
-    // Only seed PRE-LOGIN (no valid access token). A logged-in admin may belong
-    // to a different institute and have selected it; overwriting selectedInstituteId
-    // on every relaunch would silently re-scope all their API calls to the base
-    // institute. Branding/theme below still always anchors on the flavor institute
-    // (consistent with how the web build brands by host regardless of session).
-    const flavorInstituteId = getFlavorInstituteId();
-    if (flavorInstituteId && !getTokenFromCookie(TokenKey.accessToken)) {
-        try {
-            localStorage.setItem('selectedInstituteId', flavorInstituteId);
-        } catch {
-            // storage unavailable — branding still resolves below.
-        }
-    }
+    // NOTE: the flavor institute (e.g. ca3c… for Vacademy Admin) drives BRANDING /
+    // THEME only — see initializeBranding() below. We deliberately do NOT seed it
+    // as `selectedInstituteId`: that would scope login + all API calls to the base
+    // institute and lock out admins who belong to a different institute. Login must
+    // resolve the user's OWN institute(s) (the standard multi-institute flow), so
+    // any institute's admin can sign in while the app keeps the ca3c… look.
 }
 
 // Initialize Amplitude as early as possible on client
@@ -269,11 +252,13 @@ if (!rootElement.innerHTML) {
                 }
             }
 
-            // Native flavors anchored to a fixed institute resolve branding by
-            // that institute id; the web build resolves by request host.
-            const flavorInstituteId = getFlavorInstituteId();
-            const data = flavorInstituteId
-                ? await resolveInstituteById(flavorInstituteId)
+            // Native flavors resolve branding by a FIXED domain/subdomain (their
+            // institute_domain_routing row, e.g. vacademy.io/admin-app → ca3c…);
+            // the web build resolves by the request host.
+            const flavor = getFlavor();
+            const useFlavorBranding = !!(flavor.brandingDomain && flavor.brandingSubdomain);
+            const data = useFlavorBranding
+                ? await resolveInstituteForDomain(flavor.brandingDomain!, flavor.brandingSubdomain!)
                 : await resolveInstituteForCurrentHost();
             if (!data) {
                 // If no data from API, ensure we have a fallback title
@@ -286,11 +271,18 @@ if (!rootElement.innerHTML) {
                 getPublicUrl(data.tabIconFileId),
             ]);
 
-            cacheInstituteBranding(data.instituteId, {
-                ...data,
-                instituteLogoUrl: logoUrl || undefined,
-                tabIconUrl: iconUrl || undefined,
-            });
+            // For a fixed-institute flavor (e.g. Vacademy Admin → ca3c…) this is
+            // BRANDING ONLY: don't set it as selectedInstituteId, so login still
+            // resolves the signed-in user's own institute.
+            cacheInstituteBranding(
+                data.instituteId,
+                {
+                    ...data,
+                    instituteLogoUrl: logoUrl || undefined,
+                    tabIconUrl: iconUrl || undefined,
+                },
+                useFlavorBranding ? { setSelectedInstitute: false } : undefined
+            );
 
             // Set title from API response with fallback to "Admin Dashboard"
             const tabText = data.tabText;

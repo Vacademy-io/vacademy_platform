@@ -40,8 +40,10 @@ export function AssistDock() {
         <>
             {/* Thin fixed rail — a full-height column flush to the right edge. The
                 layout (LayoutContainer main content) reserves w-14 so content never
-                slides under it. pt-20 clears the top navbar. */}
-            <aside className="fixed inset-y-0 right-0 z-30 flex w-14 flex-col items-center gap-1 border-l border-neutral-200 bg-white pb-4 pt-20">
+                slides under it. pt-20 clears the top navbar. Hidden by default on
+                mobile (< md): a right rail wastes horizontal space on phones, and
+                the layout drops its right gutter to match. */}
+            <aside className="fixed inset-y-0 right-0 z-30 hidden w-14 flex-col items-center gap-1 border-l border-neutral-200 bg-white pb-4 pt-20 md:flex">
                 <RailButton
                     label="Guides"
                     active={panel === 'tutorials'}

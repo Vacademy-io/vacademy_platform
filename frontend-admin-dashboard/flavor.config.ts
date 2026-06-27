@@ -38,10 +38,17 @@ export interface AdminFlavor {
      */
     forceVimShell: boolean;
     /**
-     * Anchor institute for domain routing + initial theme. When set, the app
-     * resolves branding/theme by this institute id instead of the request host
-     * (a native WebView has no meaningful hostname). Undefined => host-based.
+     * Fixed branding/theme source. A native WebView has no meaningful hostname,
+     * so instead of host-based domain routing the app resolves branding via this
+     * fixed (domain, subdomain) against the EXISTING public domain-routing
+     * endpoint — i.e. the `institute_domain_routing` row that maps to this app's
+     * institute (theme, title, logo, auth toggles, role). This is BRANDING ONLY:
+     * login still resolves the signed-in user's own institute, so any institute's
+     * admin can sign in while the app keeps this flavor's look.
      */
+    brandingDomain?: string;
+    brandingSubdomain?: string;
+    /** Anchor institute id (reference; OTA/branding row maps to it). */
     instituteId?: string;
     /** OTA delivery mechanism for this flavor. */
     ota: OtaMode;
@@ -53,6 +60,10 @@ export const ADMIN_FLAVORS: Record<AdminFlavorKey, AdminFlavor> = {
         appId: 'io.vacademy.admin.app',
         appName: 'Vacademy Admin',
         forceVimShell: false,
+        // institute_domain_routing row "VACADEMY-ADMIN-APP" → institute ca3c…,
+        // role ADMIN, tab_text "Vacademy Platform". Drives the app's theme/title.
+        brandingDomain: 'vacademy.io',
+        brandingSubdomain: 'admin-app',
         instituteId: 'ca3c4734-7913-48a8-b116-f8f7e0c60eba',
         ota: 'self-hosted',
     },

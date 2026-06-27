@@ -134,10 +134,11 @@ export const LayoutContainer = ({
             )}
 
             {/* Main Content Area.
-                pr-14 reserves the right gutter for the Assist Dock rail (a fixed
-                w-14 column mounted globally in __root), so page content/navbar never
-                slide under it — the same way the left sidebar reserves its width. */}
-            <div className="flex w-full min-w-0 flex-1 flex-col pr-14 text-neutral-600">
+                md:pr-14 reserves the right gutter for the Assist Dock rail (a fixed
+                w-14 column mounted globally in __root) on desktop, so page content/
+                navbar never slide under it. On mobile the dock is hidden, so there's
+                no gutter — content uses the full width. */}
+            <div className="flex w-full min-w-0 flex-1 flex-col text-neutral-600 md:pr-14">
                 <Navbar showMobileBackButton={showMobileBackButton} />
                 <StudentSidebarProvider>
                     <div

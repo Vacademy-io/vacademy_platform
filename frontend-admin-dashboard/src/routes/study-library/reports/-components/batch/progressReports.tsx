@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { MyButton } from '@/components/design-system/button';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { fetchSubjectWiseProgress, exportBatchSubjectWiseReport } from '../../-services/utils';
 import {
     SubjectProgressResponse,
@@ -124,8 +125,10 @@ export default function ProgressReports() {
 
     useEffect(() => {
         if (selectedCourse) {
-            setSessionList(getSessionFromPackage({ courseId: selectedCourse }));
-            setValue('session', '');
+            const sessions = getSessionFromPackage({ courseId: selectedCourse });
+            setSessionList(sessions);
+            // Auto-select when the course has exactly one session.
+            setValue('session', sessions.length === 1 && sessions[0] ? sessions[0].id : '');
         } else {
             setSessionList([]);
         }
@@ -136,9 +139,15 @@ export default function ProgressReports() {
             setValue('level', '');
             setLevelList([]);
         } else if (selectedCourse && selectedSession) {
-            setLevelList(
-                getLevelsFromPackage2({ courseId: selectedCourse, sessionId: selectedSession })
-            );
+            const levels = getLevelsFromPackage2({
+                courseId: selectedCourse,
+                sessionId: selectedSession,
+            });
+            setLevelList(levels);
+            // Auto-select when the session exposes exactly one level.
+            if (levels.length === 1 && levels[0]) {
+                setValue('level', levels[0].id);
+            }
         }
     }, [selectedSession]);
 
@@ -186,27 +195,23 @@ export default function ProgressReports() {
                                 {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                 <span className="text-red-500 ml-1">*</span>
                             </label>
-                            <Select
-                                onValueChange={(value) => setValue('course', value)}
-                                {...register('course')}
-                                defaultValue=""
-                            >
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        )}`}
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {courseList.map((course) => (
-                                        <SelectItem key={course.id} value={course.id}>
-                                            {convertCapitalToTitleCase(course.name)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                options={courseList.map((course) => ({
+                                    label: convertCapitalToTitleCase(course.name),
+                                    value: course.id,
+                                }))}
+                                value={selectedCourse}
+                                onChange={(value) => setValue('course', value)}
+                                placeholder={`Select a ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}`}
+                                searchPlaceholder={`Search ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}...`}
+                                triggerClassName="h-9 text-sm"
+                            />
                         </div>
 
                         <div>

@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
@@ -56,6 +57,7 @@ public class SubOrgSubscriptionService {
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final PaymentOptionService paymentOptionService;
+    private final InstituteCustomFiledService instituteCustomFiledService;
 
     /**
      * Creates a sub-org with an org-level EnrollInvite that the sub-org admin
@@ -169,6 +171,13 @@ public class SubOrgSubscriptionService {
 
         invite = enrollInviteRepository.save(invite);
         log.info("Created org-level EnrollInvite id={} for sub-org={}", invite.getId(), subOrgId);
+
+        // Seed this invite with the institute's default custom fields — same
+        // institute-driven mechanism every other system-created invite uses
+        // (DefaultEnrollInviteService / BulkCourseService). Server-created sub-org
+        // invites have no admin UI to pick fields, so without this they end up with
+        // none and the learner form falls back to a duplicate-laden field set.
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(parentInstituteId, invite.getId());
 
         PaymentOption option;
         if (cpo != null) {
@@ -299,6 +308,7 @@ public class SubOrgSubscriptionService {
             scopedInvite.setLearnerAccessDays(
                     orgPlan != null ? orgPlan.getValidityInDays() : orgInvite.getLearnerAccessDays());
             scopedInvite = enrollInviteRepository.save(scopedInvite);
+            instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(instituteId, scopedInvite.getId());
 
             // Create FREE PaymentOption
             PaymentOption freeOption = new PaymentOption();
@@ -533,6 +543,7 @@ public class SubOrgSubscriptionService {
             learnerInvite.setLearnerAccessDays(request.getValidityInDays());
         }
         learnerInvite = enrollInviteRepository.save(learnerInvite);
+        instituteCustomFiledService.copyDefaultCustomFieldsToEnrollInvite(parentInstituteId, learnerInvite.getId());
 
         PackageSessionLearnerInvitationToPaymentOption link =
                 new PackageSessionLearnerInvitationToPaymentOption(

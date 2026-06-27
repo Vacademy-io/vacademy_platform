@@ -43,6 +43,7 @@ import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 // Local sub-org helpers — kept inline so the rest of the dashboard's package-service
 // calls don't accidentally pick up the same lookup logic.
@@ -767,7 +768,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                                     const priceLabel =
                                                         o.type === 'FREE' || !plan
                                                             ? ''
-                                                            : ` — ${plan.actual_price} ${plan.currency || ''}`;
+                                                            : ` — ${formatPlanPrice(plan.actual_price)} ${plan.currency || ''}`;
                                                     return (
                                                         <SelectItem key={o.id} value={o.id}>
                                                             {o.name}

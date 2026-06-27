@@ -1063,8 +1063,7 @@ export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/va
 // =============================================================================
 export const ORG_TEAM_BASE = `${BASE_URL}/auth-service/v1/organization-team`;
 export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
-export const ORG_TEAM_LIST = (instituteId: string) =>
-    `${ORG_TEAM_BASE}?instituteId=${instituteId}`;
+export const ORG_TEAM_LIST = (instituteId: string) => `${ORG_TEAM_BASE}?instituteId=${instituteId}`;
 export const ORG_TEAM_CHART = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/chart`;
 export const ORG_TEAM_MEMBERS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/members`;
 export const ORG_TEAM_MEMBER_BY_ID = (teamId: string, mappingId: string) =>
@@ -1169,7 +1168,10 @@ export const COUNSELLOR_RATING_RECOMPUTE = (instituteId: string, counsellorUserI
 // Sales dashboard widgets.
 // =============================================================================
 export const SALES_DASHBOARD_BASE = `${BASE_URL}/admin-core-service/v1/sales-dashboard`;
-const buildSdQS = (instituteId: string, params: Record<string, string | number | undefined> = {}) => {
+const buildSdQS = (
+    instituteId: string,
+    params: Record<string, string | number | undefined> = {}
+) => {
     const qs = new URLSearchParams({ instituteId });
     Object.entries(params).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));

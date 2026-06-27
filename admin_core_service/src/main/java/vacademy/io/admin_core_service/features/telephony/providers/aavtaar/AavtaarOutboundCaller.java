@@ -32,7 +32,7 @@ public class AavtaarOutboundCaller implements AiOutboundCaller {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("correlationId", spec.getCorrelationId());
         if (spec.getInstituteId() != null) metadata.put("instituteId", spec.getInstituteId());
-        if (spec.getLeadUserId() != null) metadata.put("leadUserId", spec.getLeadUserId());
+        if (spec.getUserId() != null) metadata.put("userId", spec.getUserId());
         if (spec.getResponseId() != null) metadata.put("responseId", spec.getResponseId());
         if (spec.getMetadata() != null) metadata.putAll(spec.getMetadata());
 

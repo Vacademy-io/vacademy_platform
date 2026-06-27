@@ -29,6 +29,7 @@ import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecu
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
 import java.util.List;
@@ -167,16 +168,51 @@ public class AiCallOutcomeProcessor {
             }
         }
 
+        // Subject routing. The node is generic: its OUTPUT (disposition + the extracted
+        // answers) is already persisted on this ai_call_result (subject-tagged → queryable),
+        // and below it is also delivered into the workflow context so downstream nodes can
+        // consume it. A non-lead subject gets ONLY that generic treatment — no lead
+        // assign/status. LEAD (or a legacy null subject_type) falls through to the built-in
+        // lead consumer pipeline, unchanged.
+        CallSubjectType subjectType = (existing != null)
+                ? CallSubjectType.fromString(existing.getSubjectType())
+                : CallSubjectType.LEAD;
+        if (subjectType != CallSubjectType.LEAD) {
+            String subjectInstitute = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
+            AiCallingSettingsPojo subjectSettings = settingsService.get(subjectInstitute);
+            int attempts = r.getCallRetry() == null ? 0 : r.getCallRetry();
+            // Generic terminality by CONNECTIVITY — NOT the lead-centric disposition lists
+            // (a connected sales call with a "neutral" disposition retries; a connected data
+            // call has already collected its data and is done). A call that connected →
+            // terminal; one that didn't connect retries within the institute's cap, else
+            // gives up. On terminal, resume the workflow PAST the node carrying the output.
+            boolean connected = isConnected(r, subjectSettings);
+            boolean terminal = connected || attempts >= Math.max(1, subjectSettings.getMaxRetries());
+            if (terminal) {
+                AiCallDecision outcome = new AiCallDecision(
+                        connected ? AiCallDecision.Action.ASSIGN : AiCallDecision.Action.STOP,
+                        connected ? "connected" : "exhausted");
+                resumeWorkflowWithOutput(existing != null ? existing.getSubjectId() : null, r, outcome, connected);
+            }
+            // else: not connected + retries remain → leave the CALL_AI state paused; it re-dials.
+            r.setProcessingStatus("PROCESSED");
+            aiCallResultRepo.save(r);
+            log.info("ai-call outcome: {} (non-lead) result={} -> {} (connected={})",
+                    subjectType, r.getId(), terminal ? "output exposed past node" : "left paused for retry", connected);
+            return;
+        }
+
         instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
         settings = settingsService.get(instituteId);
         int priorAttempts = r.getCallRetry() == null ? 0 : r.getCallRetry();
         AiCallDecision decision = classifier.classify(
                 r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings);
+        boolean connected = isConnected(r, settings);
 
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
                 r.getId(), lead.userId(), r.getDisposition(), r.getStatus(), decision.action(), decision.reason());
 
-        applyDecision(decision, lead, r);
+        applyDecision(decision, lead, r, connected);
 
         // Reflect the call disposition in the lead status for EVERY outcome (including
         // retry-worthy ones like Callback) by auto-matching the disposition to the
@@ -278,21 +314,21 @@ public class AiCallOutcomeProcessor {
 
     // ── actions ───────────────────────────────────────────────────────────────
 
-    private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r) {
+    private void applyDecision(AiCallDecision decision, Lead lead, AiCallResult r, boolean connected) {
         switch (decision.action()) {
             case ASSIGN -> {
                 assignCounsellor(lead);
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_QUALIFIED);
                 // Resume the paused CALL_AI state PAST the node (instead of cancelling it,
-                // which killed the graph at CALL_AI) — inject the terminal disposition so
-                // the node short-circuits out and the workflow continues to its next node.
-                resumeWorkflowWithDisposition(lead, r, decision);
+                // which killed the graph at CALL_AI) — inject the terminal disposition + the
+                // call's output so the node short-circuits out and downstream nodes get the data.
+                resumeWorkflowWithOutput(lead.responseId(), r, decision, connected);
             }
             case STOP -> {
                 setStatus(lead, decision.isExhausted() ? STATUS_NO_ANSWER : STATUS_NOT_INTERESTED);
                 // Terminal disposition (e.g. Not_Interested): resume PAST CALL_AI rather than
                 // cancel, so any downstream nodes still run.
-                resumeWorkflowWithDisposition(lead, r, decision);
+                resumeWorkflowWithOutput(lead.responseId(), r, decision, connected);
             }
             // RETRY: leave the paused CALL_AI workflow alone — it resumes itself and re-dials.
             case RETRY -> setStatus(lead, STATUS_RETRY_PENDING);
@@ -311,20 +347,25 @@ public class AiCallOutcomeProcessor {
      * Best-effort: a miss just means the loop runs one more cycle and self-stops on its
      * own assigned / max-retries gate (and stopRetryLoop remains as the fallback path).
      */
-    private void resumeWorkflowWithDisposition(Lead lead, AiCallResult r, AiCallDecision decision) {
-        if (lead.responseId() == null) return;
+    private void resumeWorkflowWithOutput(String resumeKey, AiCallResult r, AiCallDecision decision, boolean connected) {
+        if (resumeKey == null || resumeKey.isBlank()) return;
         try {
             List<WorkflowExecutionState> states =
-                    executionStateRepository.findActiveAiCallStatesByResponseId(lead.responseId());
-            boolean callConnected = decision.action() != AiCallDecision.Action.STOP
-                    || "completed".equalsIgnoreCase(r.getStatus());
+                    executionStateRepository.findActiveAiCallStatesBySubject(resumeKey);
             int resumed = 0;
             for (WorkflowExecutionState state : states) {
                 Map<String, Object> ctx = state.getSerializedContext();
                 if (ctx == null) continue;
                 ctx.put("callOutcome", decision.action().name());
                 ctx.put("callDisposition", r.getDisposition());
-                ctx.put("callConnected", callConnected);
+                // The TRUE connectivity (status completed AND past the connect threshold) — the
+                // same value the terminal decision used, so a downstream node reading
+                // ctx['callConnected'] never disagrees with what actually happened.
+                ctx.put("callConnected", connected);
+                // The node's OUTPUT: the structured answers the AI extracted, handed to the
+                // workflow so downstream nodes can read them (e.g. #ctx['callAnswers'][...]).
+                // This is what makes CALL_AI a generic "get the data" step for any subject.
+                if (r.getExtractedQa() != null) ctx.put("callAnswers", r.getExtractedQa());
                 // Atomic, status-guarded update (WHERE status='WAITING') rather than a JPA
                 // read-modify-save: if the resume job already claimed this row (RESUMED) in
                 // the meantime, this no-ops instead of reverting it to WAITING and causing a
@@ -333,12 +374,12 @@ public class AiCallOutcomeProcessor {
                 resumed += executionStateRepository.resumeWithContextIfWaiting(state.getId(), ctxJson);
             }
             if (resumed > 0) {
-                log.info("ai-call outcome: resumed {} paused CALL_AI state(s) past the node for lead {} (outcome={} disposition={} connected={})",
-                        resumed, lead.userId(), decision.action(), r.getDisposition(), callConnected);
+                log.info("ai-call outcome: resumed {} paused CALL_AI state(s) past the node for subject {} (outcome={} disposition={} connected={})",
+                        resumed, resumeKey, decision.action(), r.getDisposition(), connected);
             }
         } catch (Exception e) {
-            log.warn("ai-call outcome: could not resume CALL_AI state for response {}: {}",
-                    lead.responseId(), e.getMessage());
+            log.warn("ai-call outcome: could not resume CALL_AI state for subject {}: {}",
+                    resumeKey, e.getMessage());
         }
     }
 
@@ -438,6 +479,18 @@ public class AiCallOutcomeProcessor {
     /** Upper-case alphanumerics only, so "Call Back" / "CALL_BACK" / "Callback" all match. */
     private String normalizeKey(String s) {
         return s == null ? "" : s.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+    }
+
+    /**
+     * True if the call really connected: status "completed" AND past the institute's connect
+     * threshold (absent duration ⇒ trust "completed"). Same rule as {@link AiCallOutcomeClassifier}
+     * — kept consistent so the {@code callConnected} we hand the workflow matches the decision.
+     */
+    private boolean isConnected(AiCallResult r, AiCallingSettingsPojo s) {
+        String status = r.getStatus();
+        if (status == null || !status.trim().equalsIgnoreCase("completed")) return false;
+        Integer d = r.getDurationSeconds();
+        return d == null || d >= s.getConnectThresholdSec();
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

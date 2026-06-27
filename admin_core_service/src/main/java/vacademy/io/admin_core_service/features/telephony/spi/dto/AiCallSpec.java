@@ -13,7 +13,8 @@ import java.util.Map;
 @Builder
 public class AiCallSpec {
     String instituteId;
-    String leadUserId;
+    /** The user being called (generic — a lead, a student, a participant). */
+    String userId;
     String responseId;
     String phoneNumber;
     String campaignId;
@@ -21,5 +22,9 @@ public class AiCallSpec {
     String customerEmail;
     /** Our correlation id (= telephony_call_log.id) — must be echoed back on the report. */
     String correlationId;
+    /** Subject kind (LEAD default) — lets the outcome pipeline pick subject-specific actions. */
+    String subjectType;
+    /** Subject domain id; also carried in {@link #metadata} so it round-trips on the report. */
+    String subjectId;
     Map<String, Object> metadata;
 }

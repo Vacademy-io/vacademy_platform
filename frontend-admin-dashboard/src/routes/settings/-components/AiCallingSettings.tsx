@@ -37,14 +37,17 @@ export interface Shift {
 export type CampaignDirection = 'OUTBOUND' | 'INBOUND';
 
 /**
- * One registered provider campaign id and its direction. Inbound-tagged ids let the
- * backend classify an incoming AI-call webhook (matched to the lead by phone, since
- * inbound calls carry no call id); `name` is a friendly label for the call/recording view.
+ * One registered AI campaign. `name` is the provider-agnostic agent a workflow author
+ * picks (e.g. "Class Feedback"); `campaignId` is the raw id `provider` uses for it; the
+ * same `name` can repeat once per provider so switching provider resolves to the right id.
+ * Inbound-tagged ids also let the backend classify an incoming webhook (matched by phone).
  */
 export interface Campaign {
     campaignId: string;
     name: string;
     direction: CampaignDirection;
+    /** Provider this campaign id belongs to (e.g. AAVTAAR). Blank ⇒ any provider. */
+    provider?: string;
 }
 
 export interface AiCallingSettingsData {
@@ -374,7 +377,10 @@ export default function AiCallingSettings() {
     const addCampaign = () => {
         setSettings((prev) => ({
             ...prev,
-            campaigns: [...(prev.campaigns ?? []), { campaignId: '', name: '', direction: 'OUTBOUND' }],
+            campaigns: [
+                ...(prev.campaigns ?? []),
+                { campaignId: '', name: '', direction: 'OUTBOUND', provider: prev.provider },
+            ],
         }));
         setHasChanges(true);
     };
@@ -490,13 +496,13 @@ export default function AiCallingSettings() {
             {/* ── Campaigns (inbound / outbound) ── */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Campaigns</CardTitle>
+                    <CardTitle>Campaigns / Agents</CardTitle>
                     <CardDescription>
-                        Register every provider campaign id this institute uses and tag each as
-                        Outbound (you dial the lead) or Inbound (the lead dials your AI line). Inbound
-                        calls are detected by matching the webhook&apos;s campaign id here — they carry
-                        no call id, so the lead is matched by phone number. The name is shown on the
-                        call &amp; recording.
+                        Register each AI campaign id and give it an agent <b>name</b> (e.g. &ldquo;Class
+                        Feedback&rdquo;). Workflows reference the <b>name</b>, not the raw id — pick the
+                        same name once per provider and switching provider resolves to the right id
+                        automatically. Tag each Outbound (you dial) or Inbound (they dial your AI line);
+                        Inbound ids classify incoming webhooks (matched to the lead by phone).
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -504,24 +510,39 @@ export default function AiCallingSettings() {
                         {(settings.campaigns ?? []).map((c, i) => (
                             <div key={i} className="flex items-center gap-2">
                                 <Input
+                                    value={c.name}
+                                    placeholder="Agent name (e.g. Class Feedback)"
+                                    onChange={(e) => updateCampaign(i, { name: e.target.value })}
+                                    className="flex-1"
+                                />
+                                <Input
                                     value={c.campaignId}
                                     placeholder="Campaign ID"
                                     onChange={(e) => updateCampaign(i, { campaignId: e.target.value })}
                                     className="flex-1"
                                 />
-                                <Input
-                                    value={c.name}
-                                    placeholder="Name (e.g. Inbound line)"
-                                    onChange={(e) => updateCampaign(i, { name: e.target.value })}
-                                    className="flex-1"
-                                />
+                                <Select
+                                    value={c.provider || settings.provider}
+                                    onValueChange={(v) => updateCampaign(i, { provider: v })}
+                                >
+                                    <SelectTrigger className="w-32">
+                                        <SelectValue placeholder="Provider" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {providerCodes.map((code) => (
+                                            <SelectItem key={code} value={code}>
+                                                {metaFor(code).label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <Select
                                     value={c.direction}
                                     onValueChange={(v) =>
                                         updateCampaign(i, { direction: v as CampaignDirection })
                                     }
                                 >
-                                    <SelectTrigger className="w-36">
+                                    <SelectTrigger className="w-32">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>

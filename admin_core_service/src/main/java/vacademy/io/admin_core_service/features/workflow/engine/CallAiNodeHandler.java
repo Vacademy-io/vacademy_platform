@@ -86,7 +86,31 @@ public class CallAiNodeHandler implements NodeHandler {
         // The lead id (audience_response.id). NOTE: "eventId" is the AUDIENCE id, not
         // the lead, so it is deliberately NOT a fallback.
         String responseId = firstNonBlank(str(context.get("responseId")), str(context.get("leadId")));
+        // Campaign: prefer a provider-agnostic agent NAME (resolved per-provider from the
+        // campaigns registry downstream); a raw campaignId still works as an override.
+        String campaignName = firstNonBlank(readConfig(nodeConfigJson, "campaignName"), str(context.get("campaignName")));
         String campaignId = firstNonBlank(readConfig(nodeConfigJson, "campaignId"), str(context.get("campaignId")));
+        // Subject envelope: who we're calling. Blank ⇒ LEAD with subjectId = the lead's
+        // responseId, so existing lead workflows (which set neither) behave exactly as before.
+        // PACKAGE_SESSION_STUDENT / LIVE_SESSION_PARTICIPANT set these in their initial context.
+        String subjectType = firstNonBlank(str(context.get("subjectType")), "LEAD");
+        String subjectId = firstNonBlank(str(context.get("subjectId")), responseId);
+        // Provider per-node (node config wins, else workflow context, else AiCallService
+        // falls back to the institute's AI_CALLING_SETTING default). Lets one builder pick
+        // the provider for this node without touching global settings.
+        String provider = firstNonBlank(readConfig(nodeConfigJson, "provider"), str(context.get("provider")));
+        // Arbitrary call metadata handed to the AI agent (e.g. studentName, sessionName,
+        // courseName — whatever the conversation needs). Static keys come from the node
+        // config's "metadata" object; dynamic per-run values from the context's
+        // "aiCallMetadata" map (set by the trigger / an upstream node / the cohort scheduler).
+        // This is what makes the node reusable for ANY purpose — it carries whatever the agent
+        // needs, not a fixed lead/feedback shape. Round-trips on the webhook for correlation.
+        Map<String, Object> callMetadata = new HashMap<>();
+        Map<String, Object> cfgMeta = readConfigMap(nodeConfigJson, "metadata");
+        if (cfgMeta != null) callMetadata.putAll(cfgMeta);
+        if (context.get("aiCallMetadata") instanceof Map<?, ?> m) {
+            m.forEach((k, v) -> callMetadata.put(String.valueOf(k), v));
+        }
 
         int attempts = asInt(context.get("aiCallAttempts"));
         int callsToday = asInt(context.get("aiCallsToday"));
@@ -116,9 +140,11 @@ public class CallAiNodeHandler implements NodeHandler {
         switch (plan.action()) {
             case STOP -> {
                 log.info("CALL_AI node: stop ({}) for lead {} after {} attempt(s)", plan.reason(), userId, attempts);
-                // Gave up after maxRetries with no pickup → terminal handoff
-                // (assign-to-human per settings + stamp AI_NO_ANSWER).
-                if ("exhausted".equals(plan.reason())) {
+                // Gave up after maxRetries with no pickup → LEAD terminal handoff
+                // (assign-to-human per settings + stamp AI_NO_ANSWER). Lead-specific: a
+                // non-lead subject just completes the node (the workflow continues with the
+                // exhausted reason; no lead assignment / status).
+                if ("exhausted".equals(plan.reason()) && "LEAD".equalsIgnoreCase(subjectType)) {
                     aiCallOutcomeProcessor.giveUpAfterRetries(responseId, instituteId, userId);
                 }
                 out.put("aiCallDone", true);
@@ -134,7 +160,12 @@ public class CallAiNodeHandler implements NodeHandler {
                 req.setUserId(userId);
                 req.setPhoneNumber(phone);
                 req.setResponseId(responseId);
-                req.setCampaignId(campaignId);
+                req.setCampaignName(campaignName); // provider-agnostic agent; resolved downstream
+                req.setCampaignId(campaignId);     // raw override (back-compat)
+                req.setProvider(provider);         // null ⇒ AiCallService uses the settings default
+                req.setSubjectType(subjectType);
+                req.setSubjectId(subjectId);
+                if (!callMetadata.isEmpty()) req.setMetadata(callMetadata);
 
                 aiCallDispatcher.enqueue(req); // paced; placeCall guards already-assigned leads
 
@@ -146,7 +177,8 @@ public class CallAiNodeHandler implements NodeHandler {
                 pauseContext.put("aiCallAttempts", newAttempts);
                 pauseContext.put("aiCallsToday", newCallsToday);
                 pauseContext.put("aiCallDay", today);
-                if (responseId != null) pauseContext.put("responseId", responseId); // for outcome cancel lookup
+                if (responseId != null) pauseContext.put("responseId", responseId); // lead resume lookup
+                if (subjectId != null) pauseContext.put("subjectId", subjectId);     // generic subject resume lookup
 
                 pauseWorkflow(pauseContext, plan.resumeAt(), "AI_CALL_RETRY", out);
                 log.info("CALL_AI node: queued AI call for lead {} (attempt {}); pausing until {}",
@@ -194,6 +226,19 @@ public class CallAiNodeHandler implements NodeHandler {
         try {
             JsonNode v = mapper.readTree(json).get(key);
             return v == null || v.isNull() ? null : v.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Read a JSON object node from the node config as a Map (for the metadata bag). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readConfigMap(String json, String key) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode v = mapper.readTree(json).get(key);
+            if (v == null || !v.isObject()) return null;
+            return mapper.convertValue(v, Map.class);
         } catch (Exception e) {
             return null;
         }

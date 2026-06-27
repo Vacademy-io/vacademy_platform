@@ -1,8 +1,11 @@
 package vacademy.io.admin_core_service.features.telephony.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
@@ -14,12 +17,18 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSetti
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallHandle;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallSpec;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -49,6 +58,17 @@ public class AiCallService {
     private final AiCallingSettingsService settingsService;
     private final UserMobileResolver userMobileResolver;
     private final UserLeadProfileRepository userLeadProfileRepository;
+    private final AiCallResultRepository aiCallResultRepo;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * @Lazy field (not constructor) for the MOCK path only: AiCallService synthesizes a
+     * result and runs it through the outcome processor. Lazy keeps construction order
+     * flexible and avoids any future cycle if the processor grows a dependency back here.
+     */
+    @Autowired
+    @Lazy
+    private AiCallOutcomeProcessor aiCallOutcomeProcessor;
 
     public AiCallResponseDTO placeCall(AiCallRequestDTO req, String counsellorUserId) {
         if (req == null || isBlank(req.getInstituteId())) {
@@ -77,18 +97,35 @@ public class AiCallService {
             phone = userMobileResolver.findMobile(userId).orElse(null);
         }
 
-        String campaignId = isBlank(req.getCampaignId()) ? settings.getDefaultCampaignId() : req.getCampaignId();
+        // Campaign resolution (provider-agnostic): an explicit raw campaignId wins (back-
+        // compat), else resolve the named agent for THIS provider from the campaigns
+        // registry, else the institute default. So the node/scheduler can carry just a
+        // provider-neutral agent name and still reach the right provider campaign id.
+        String campaignId = isBlank(req.getCampaignId())
+                ? settings.resolveCampaignId(provider, req.getCampaignName())
+                : req.getCampaignId();
 
-        if (isBlank(userId)) throw new VacademyException("Could not resolve the lead's user id for the call.");
-        if (isBlank(phone)) throw new VacademyException("This lead has no phone number on file.");
-        if (isBlank(campaignId)) {
-            throw new VacademyException("No campaign configured — set a default Campaign ID in Settings → AI Calling.");
+        // Subject envelope (LEAD default → subjectId = responseId, preserving the lead flow).
+        String subjectType = isBlank(req.getSubjectType()) ? CallSubjectType.LEAD.name() : req.getSubjectType();
+        String subjectId = isBlank(req.getSubjectId()) ? req.getResponseId() : req.getSubjectId();
+        boolean isLead = CallSubjectType.fromString(subjectType) == CallSubjectType.LEAD;
+        boolean mock = ProviderType.MOCK.equalsIgnoreCase(provider);
+
+        if (isBlank(userId)) throw new VacademyException("Could not resolve the subject's user id for the call.");
+        // A real dial needs a phone + campaign; a MOCK call never leaves the box, so it only
+        // needs a user to attach the synthetic outcome to.
+        if (!mock) {
+            if (isBlank(phone)) throw new VacademyException("This subject has no phone number on file.");
+            if (isBlank(campaignId)) {
+                throw new VacademyException("No campaign configured — set a default Campaign ID in Settings → AI Calling.");
+            }
         }
 
-        // Don't re-call a lead that's already been handed to a counsellor (AI handoff
-        // or manual assignment). The bot's job ends once a human owns the lead — this
-        // single guard covers the manual button, bulk campaigns and the workflow node.
-        if (leadAlreadyAssigned(userId, req.getInstituteId())) {
+        // Don't re-call a LEAD that's already been handed to a counsellor (AI handoff or
+        // manual assignment) — the bot's job ends once a human owns the lead. This guard is
+        // lead-specific; non-lead subjects (e.g. student feedback) have their eligibility
+        // decided by the caller/scheduler.
+        if (isLead && leadAlreadyAssigned(userId, req.getInstituteId())) {
             log.info("AI call skipped: lead {} is already assigned to a counsellor", userId);
             return AiCallResponseDTO.builder()
                     .status("SKIPPED_ASSIGNED")
@@ -103,6 +140,8 @@ public class AiCallService {
                 .instituteId(req.getInstituteId())
                 .providerType(provider)
                 .responseId(req.getResponseId())
+                .subjectType(subjectType)
+                .subjectId(subjectId)
                 .userId(userId)
                 .counsellorUserId(counsellorUserId)
                 .direction(CallDirection.OUTBOUND.name())
@@ -114,16 +153,32 @@ public class AiCallService {
         row.markNew();
         callLogRepo.save(row);
 
+        // MOCK provider: don't dial. Fabricate a completed result (canned extracted Q&A) and
+        // run it through the SAME outcome pipeline a real webhook would, so the full
+        // cohort → call → outcome → action loop works with no provider credentials.
+        if (mock) {
+            return mockComplete(row, req, subjectType, campaignId, phone);
+        }
+
+        // Carry the subject in the metadata bag so it round-trips on the provider's
+        // webhook → report for subject-aware outcome handling.
+        Map<String, Object> metadata = new HashMap<>();
+        if (req.getMetadata() != null) metadata.putAll(req.getMetadata());
+        metadata.put("subjectType", subjectType);
+        if (subjectId != null) metadata.put("subjectId", subjectId);
+
         AiCallSpec spec = AiCallSpec.builder()
                 .instituteId(req.getInstituteId())
-                .leadUserId(userId)
+                .userId(userId)
                 .responseId(req.getResponseId())
                 .phoneNumber(phone)
                 .campaignId(campaignId)
                 .customerName(req.getCustomerName())
                 .customerEmail(req.getCustomerEmail())
                 .correlationId(callLogId)
-                .metadata(req.getMetadata())
+                .subjectType(subjectType)
+                .subjectId(subjectId)
+                .metadata(metadata)
                 .build();
 
         try {
@@ -155,6 +210,76 @@ public class AiCallService {
                 .map(UserLeadProfile::getAssignedCounselorId)
                 .filter(id -> id != null && !id.isBlank())
                 .isPresent();
+    }
+
+    /**
+     * MOCK provider path: fabricate a completed AiCallResult and run it through the real
+     * outcome pipeline (synchronously). The downstream processor branches on the call log's
+     * subject_type — lead subjects get the lead actions, package/live-session subjects get
+     * feedback capture — so this exercises the whole loop with no provider integration.
+     */
+    private AiCallResponseDTO mockComplete(TelephonyCallLog row, AiCallRequestDTO req,
+                                           String subjectType, String campaignId, String phone) {
+        Map<String, Object> qa = mockExtractedQa(subjectType, row.getUserId());
+        String raw;
+        try {
+            raw = objectMapper.writeValueAsString(Map.of(
+                    "mock", true, "subjectType", subjectType, "extractedQa", qa));
+        } catch (Exception e) {
+            raw = "{\"mock\":true}";
+        }
+        boolean isLead = CallSubjectType.fromString(subjectType) == CallSubjectType.LEAD;
+        AiCallResult result = AiCallResult.builder()
+                .provider(ProviderType.MOCK)
+                .callUuid("mock-" + row.getId())
+                .instituteId(req.getInstituteId())
+                .correlationId(row.getId())
+                .direction(CallDirection.OUTBOUND.name())
+                .campaignId(campaignId)
+                .phoneNumber(phone)
+                .customerName(req.getCustomerName())
+                .status("completed")
+                .disposition(isLead ? "Interested" : "Completed")
+                .durationSeconds(60 + Math.floorMod(row.getId().hashCode(), 120))
+                .callStart(Instant.now())
+                .extractedQa(qa)
+                .rawPayload(raw)
+                .processingStatus("RECEIVED")
+                .build();
+        aiCallResultRepo.save(result);
+        aiCallOutcomeProcessor.process(result.getId());
+        log.info("AI call (MOCK) synthesized + processed: callLog={} subject={}", row.getId(), subjectType);
+        return AiCallResponseDTO.builder()
+                .callLogId(row.getId())
+                .status("MOCK_PROCESSED")
+                .dispatched(true)
+                .providerMessage("Mock AI call synthesized and run through the outcome pipeline.")
+                .build();
+    }
+
+    /**
+     * Canned, deterministically-varied feedback Q&A — no provider, no data file. A cohort
+     * produces a spread of ratings/comments (seeded on the user id) so the downstream
+     * feedback capture has realistic-looking data. Lead mocks just carry an interest flag.
+     */
+    private Map<String, Object> mockExtractedQa(String subjectType, String seedKey) {
+        Map<String, Object> qa = new HashMap<>();
+        qa.put("mock", true);
+        if (CallSubjectType.fromString(subjectType) == CallSubjectType.LEAD) {
+            qa.put("interest", "Interested");
+            return qa;
+        }
+        int seed = seedKey == null ? 0 : Math.floorMod(seedKey.hashCode(), 1000);
+        String[] comments = {
+                "Found the session clear and well paced.",
+                "Good content; would like more practice problems.",
+                "Pacing was a bit fast in the second half.",
+                "Very helpful — the examples made it click.",
+        };
+        qa.put("feedbackRating", 3 + (seed % 3));        // 3..5
+        qa.put("comments", comments[seed % comments.length]);
+        qa.put("wouldRecommend", seed % 4 != 0);
+        return qa;
     }
 
     private boolean isBlank(String s) {

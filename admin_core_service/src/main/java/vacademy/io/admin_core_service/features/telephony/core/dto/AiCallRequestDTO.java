@@ -18,9 +18,26 @@ public class AiCallRequestDTO {
     private String instituteId;
     /** AI-voice provider type; defaults to AAVTAAR when blank. */
     private String provider;
+    /**
+     * What this call targets: LEAD (default), PACKAGE_SESSION_STUDENT,
+     * LIVE_SESSION_PARTICIPANT. Blank ⇒ LEAD (preserves the original lead flow).
+     */
+    private String subjectType;
+    /**
+     * Domain id of the subject (LEAD = audience_response.id; student = the package
+     * session membership id; etc.). Blank ⇒ falls back to {@link #responseId} for leads.
+     */
+    private String subjectId;
     private String userId;
     private String phoneNumber;
     private String responseId;
+    /**
+     * Provider-agnostic agent the author picks (e.g. "Class Feedback"); resolved to the
+     * active provider's raw campaign id via the AI_CALLING_SETTING campaigns registry.
+     * Preferred over {@link #campaignId}.
+     */
+    private String campaignName;
+    /** Raw provider campaign id — explicit override / back-compat. Wins over {@link #campaignName}. */
     private String campaignId;
     private String customerName;
     private String customerEmail;

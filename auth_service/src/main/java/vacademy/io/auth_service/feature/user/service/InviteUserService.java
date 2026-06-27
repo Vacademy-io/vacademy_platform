@@ -86,8 +86,8 @@ public class InviteUserService {
                 instituteName=instituteInfoDTO.getInstituteName();
             if(instituteInfoDTO.getInstituteThemeCode()!=null)
                 theme=instituteInfoDTO.getInstituteThemeCode();
-            if(instituteInfoDTO.getLearnerPortalUrl()!=null)
-                adminLoginUrl=instituteInfoDTO.getAdminPortalUrl();
+            if(StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl()))
+                adminLoginUrl=normalizeUrl(instituteInfoDTO.getAdminPortalUrl());
         }
         GenericEmailRequest emailRequest = createEmailRequest(
                 userDTO.getEmail(), "Invitation Mail",
@@ -102,13 +102,24 @@ public class InviteUserService {
         if (user.getRoles() != null && !user.getRoles().isEmpty()) {
             instituteId = user.getRoles().iterator().next().getInstituteId();
         }
-        
+
+        String adminLoginUrl = "https://dash.vacademy.io";
+        if (StringUtils.hasText(instituteId)) {
+            InstituteInfoDTO instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (instituteInfoDTO != null && StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl()))
+                adminLoginUrl = normalizeUrl(instituteInfoDTO.getAdminPortalUrl());
+        }
+
         GenericEmailRequest emailRequest = createEmailRequest(
                 user.getEmail(), "Invitation Reminder Mail",
                 InviteUserEmailBody.createReminderEmail(
-                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user))
+                        user.getFullName(), user.getUsername(), user.getPassword(), getUserRoleNames(user), adminLoginUrl)
         );
         notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
+    }
+
+    private String normalizeUrl(String url) {
+        return url.startsWith("http") ? url : "https://" + url;
     }
 
     private ModifyUserRolesDTO createModifyRolesDTO(String userId, String instituteId, List<String> roles) {

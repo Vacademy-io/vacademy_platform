@@ -164,8 +164,8 @@ public class StudentReportPdfService {
           .append(";border-radius:8px;padding:12px 14px;margin-bottom:12px;page-break-inside:avoid}\n")
           .append(".summ .sh{font-weight:700;margin-bottom:4px}\n")
           /* progress bar */
-          .append(".bar{height:8px;background:#eef0f3;border-radius:999px;overflow:hidden}\n")
-          .append(".bar i{display:block;height:100%;border-radius:999px;background:").append(accent).append("}\n")
+          .append(".bar{height:8px;background:#eef0f3;border-radius:2px;overflow:hidden}\n")
+          .append(".bar i{display:block;height:100%;border-radius:2px;background:").append(accent).append("}\n")
           .append(".bar.g i{background:#16a34a} .bar.w i{background:#d97706} .bar.b i{background:#dc2626}\n")
           /* bar-row as table */
           .append(".brow{width:100%;border-spacing:0;border-collapse:collapse;margin:5px 0}\n")

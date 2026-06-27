@@ -193,6 +193,7 @@ const AttendanceTab = ({ report }: { report: ComprehensiveStudentReport }) => {
         return <UnavailableCard />;
     }
 
+    const sessions = att.sessions ?? [];
     const pct = Math.round(att.overall_percentage);
     const tone =
         pct >= 75
@@ -228,10 +229,10 @@ const AttendanceTab = ({ report }: { report: ComprehensiveStudentReport }) => {
                 </div>
             </ProfileSectionCard>
 
-            {att.sessions.length > 0 && (
+            {sessions.length > 0 && (
                 <ProfileSectionCard heading="Recent Sessions">
                     <div className="mt-1 flex flex-col divide-y divide-border">
-                        {att.sessions.slice(0, 10).map((s, i) => (
+                        {sessions.slice(0, 10).map((s, i) => (
                             <div key={i} className="flex items-center justify-between gap-3 py-2">
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium text-neutral-800">
@@ -268,7 +269,8 @@ const AcademicsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
     const acs = report.academics;
     if (!acs?.available) return <UnavailableCard />;
 
-    const chartData = acs.assessments.slice(0, 12).map((a: AcademicsSectionItem) => ({
+    const assessments = acs.assessments ?? [];
+    const chartData = assessments.slice(0, 12).map((a: AcademicsSectionItem) => ({
         name: a.assessment_name?.slice(0, 12) ?? 'Assessment',
         marks: a.marks,
         total_marks: a.total_marks,
@@ -279,12 +281,12 @@ const AcademicsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
             {/* Summary tiles */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                    { label: 'Assessments', value: acs.averages.total_assessments },
-                    { label: 'Avg Score', value: `${Math.round(acs.averages.avg_percentage)}%` },
-                    { label: 'Best', value: acs.averages.best_assessment?.slice(0, 16) ?? '—' },
+                    { label: 'Assessments', value: acs.averages?.total_assessments ?? 0 },
+                    { label: 'Avg Score', value: `${Math.round(acs.averages?.avg_percentage ?? 0)}%` },
+                    { label: 'Best', value: acs.averages?.best_assessment?.slice(0, 16) ?? '—' },
                     {
                         label: 'Needs Work',
-                        value: acs.averages.weakest_assessment?.slice(0, 16) ?? '—',
+                        value: acs.averages?.weakest_assessment?.slice(0, 16) ?? '—',
                     },
                 ].map((s) => (
                     <div
@@ -341,7 +343,7 @@ const AcademicsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
             {/* Assessment list */}
             <ProfileSectionCard heading="All Assessments">
                 <div className="mt-1 flex flex-col divide-y divide-border">
-                    {acs.assessments.map((a) => (
+                    {assessments.map((a) => (
                         <div
                             key={a.attempt_id}
                             className="flex items-center justify-between gap-3 py-2"
@@ -493,6 +495,7 @@ const ProgressTab = ({ report }: { report: ComprehensiveStudentReport }) => {
     const prog = report.progress;
     if (!prog?.available) return <UnavailableCard />;
 
+    const subjects = prog.subjects ?? [];
     return (
         <div className="flex flex-col gap-4">
             <ProfileSectionCard heading="Course Completion" icon={BookOpen as PhosphorIcon}>
@@ -510,10 +513,10 @@ const ProgressTab = ({ report }: { report: ComprehensiveStudentReport }) => {
                 </div>
             </ProfileSectionCard>
 
-            {prog.subjects.length > 0 && (
+            {subjects.length > 0 && (
                 <ProfileSectionCard heading="Subject Progress">
                     <div className="mt-1 flex flex-col gap-3">
-                        {prog.subjects.map((s) => (
+                        {subjects.map((s) => (
                             <div key={s.subject_id} className="flex flex-col gap-1">
                                 <div className="flex justify-between text-xs">
                                     <span className="font-medium text-neutral-700">{s.name}</span>
@@ -604,6 +607,7 @@ const AssignmentsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
     const asgn = report.assignments;
     if (!asgn?.available) return <UnavailableCard />;
 
+    const items = asgn.items ?? [];
     return (
         <div className="flex flex-col gap-4">
             <div className="grid grid-cols-3 gap-3">
@@ -622,10 +626,10 @@ const AssignmentsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
                 ))}
             </div>
 
-            {asgn.items.length > 0 && (
+            {items.length > 0 && (
                 <ProfileSectionCard heading="Assignments" icon={ClipboardText as PhosphorIcon}>
                     <div className="mt-1 flex flex-col divide-y divide-border">
-                        {asgn.items.map((item) => (
+                        {items.map((item) => (
                             <div
                                 key={item.slide_id}
                                 className="flex items-center justify-between gap-3 py-2"
@@ -837,6 +841,13 @@ function getAdminWeeklyBarClass(pct: number): string {
 function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
     const { meta, student, institute, period, overview } = data;
     const accentColor = institute.theme_color ?? '#2563eb'; // design-lint-ignore: user-supplied institute theme color
+    // Coalesce all arrays that the backend may return as null for sparse reports.
+    const headlineMetrics = overview.headline_metrics ?? [];
+    const academicAssessments = data.academics?.assessments ?? [];
+    const academicSubjectPerf = data.academics?.subject_performance ?? [];
+    const courseProgressSubjects = data.course_progress?.subjects ?? [];
+    const aiCrossDomainInsights = data.ai_insights?.cross_domain_insights ?? [];
+    const aiRecommendations = data.ai_insights?.recommendations ?? [];
 
     return (
         <div className="flex flex-col gap-4">
@@ -882,10 +893,10 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
             </ProfileSectionCard>
 
             {/* KPI tiles */}
-            {overview.headline_metrics.length > 0 && (
+            {headlineMetrics.length > 0 && (
                 <ProfileSectionCard heading="At a Glance">
                     <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
-                        {overview.headline_metrics.map((m: V2HeadlineMetric) => {
+                        {headlineMetrics.map((m: V2HeadlineMetric) => {
                             const displayValue = m.unit
                                 ? `${m.value}${m.unit}`
                                 : String(m.value);
@@ -1004,9 +1015,9 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         {data.academics.best_subject && <> · Best: <span className="text-success-600">{data.academics.best_subject}</span></>}
                         {data.academics.weakest_subject && <> · Needs work: <span className="text-danger-600">{data.academics.weakest_subject}</span></>}
                     </p>
-                    {data.academics.assessments.length > 0 && (
+                    {academicAssessments.length > 0 && (
                         <div className="mt-1 flex flex-col divide-y divide-border mb-4">
-                            {data.academics.assessments.map((a: V2Assessment, i) => (
+                            {academicAssessments.map((a: V2Assessment, i) => (
                                 <div key={i} className="flex items-center justify-between gap-3 py-2">
                                     <div className="min-w-0 flex-1">
                                         <p className="truncate text-sm font-medium text-neutral-800">{a.name}</p>
@@ -1029,10 +1040,10 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                             ))}
                         </div>
                     )}
-                    {data.academics.subject_performance.length > 0 && (
+                    {academicSubjectPerf.length > 0 && (
                         <div className="space-y-2">
                             <p className="text-xs text-neutral-500 mb-2">Subject performance vs class</p>
-                            {data.academics.subject_performance.map((sp: V2SubjectPerformance) => (
+                            {academicSubjectPerf.map((sp: V2SubjectPerformance) => (
                                 <div key={sp.subject} className="flex items-center gap-3">
                                     <span className="text-xs font-medium text-neutral-700 w-20 shrink-0">{sp.subject}</span>
                                     <Progress
@@ -1155,9 +1166,9 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
 
                     <p className="text-xs text-neutral-500">
                         Content explored:{' '}
-                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement.videos_watched}</span> videos &middot;{' '}
-                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement.documents_read}</span> documents &middot;{' '}
-                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement.quizzes_attempted}</span> quizzes
+                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement?.videos_watched}</span> videos &middot;{' '}
+                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement?.documents_read}</span> documents &middot;{' '}
+                        <span className="font-semibold text-neutral-800">{data.study_habits.content_engagement?.quizzes_attempted}</span> quizzes
                     </p>
                 </ProfileSectionCard>
             )}
@@ -1169,7 +1180,7 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         Course Progress — {data.course_progress.overall_completion_percentage}% complete
                     </AdminSectionHeading>
                     <div className="space-y-2">
-                        {data.course_progress.subjects.map((s: V2CourseProgressSubject) => (
+                        {courseProgressSubjects.map((s: V2CourseProgressSubject) => (
                             <div key={s.subject} className="flex items-center gap-3">
                                 <span className="text-xs font-medium text-neutral-700 w-20 shrink-0">{s.subject}</span>
                                 <Progress
@@ -1195,9 +1206,9 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                                     { label: 'Attended', value: data.live_classes.attended, cls: 'text-success-600' },
                                     { label: 'Missed', value: data.live_classes.missed, cls: 'text-danger-600' },
                                     { label: 'Attendance', value: `${data.live_classes.attendance_percentage}%`, cls: undefined },
-                                    { label: 'Questions asked', value: data.live_classes.participation.questions_asked, cls: undefined },
-                                    { label: 'Polls answered', value: data.live_classes.participation.polls_answered, cls: undefined },
-                                    { label: 'Engagement', value: data.live_classes.participation.avg_engagement, cls: 'text-success-600' },
+                                    { label: 'Questions asked', value: data.live_classes.participation?.questions_asked ?? 0, cls: undefined },
+                                    { label: 'Polls answered', value: data.live_classes.participation?.polls_answered ?? 0, cls: undefined },
+                                    { label: 'Engagement', value: data.live_classes.participation?.avg_engagement ?? '—', cls: 'text-success-600' },
                                 ].map(({ label, value, cls }) => (
                                     <div key={label} className="flex justify-between items-center py-1.5">
                                         <span className="text-xs text-neutral-500">{label}</span>
@@ -1250,10 +1261,10 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
             {/* AI Insights */}
             {data.ai_insights && (
                 <>
-                    {data.ai_insights.cross_domain_insights.length > 0 && (
+                    {aiCrossDomainInsights.length > 0 && (
                         <ProfileSectionCard heading="What we noticed" icon={Lightbulb as PhosphorIcon}>
                             <ul className="mt-1 flex flex-col gap-2">
-                                {data.ai_insights.cross_domain_insights.map((insight, i) => (
+                                {aiCrossDomainInsights.map((insight, i) => (
                                     <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
                                         <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary-400" />
                                         {insight}
@@ -1263,10 +1274,10 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         </ProfileSectionCard>
                     )}
 
-                    {data.ai_insights.recommendations.length > 0 && (
+                    {aiRecommendations.length > 0 && (
                         <ProfileSectionCard heading="Recommended next steps">
                             <div className="mt-1 flex flex-col gap-3">
-                                {data.ai_insights.recommendations.map((rec: V2Recommendation, i) => (
+                                {aiRecommendations.map((rec: V2Recommendation, i) => (
                                     <div
                                         key={i}
                                         className="flex items-start gap-3 rounded-md border border-border bg-neutral-50 p-3"

@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.packages.repository.PackageSessio
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.InstituteSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.StudentIdentitySection;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.util.List;
 import java.util.Optional;
@@ -58,11 +59,14 @@ public class IdentityCollector {
                     enrollmentNo = mapping.getInstituteEnrolledNumber();
                     enrolledDate = mapping.getEnrolledDate() != null ? mapping.getEnrolledDate().toString() : null;
                     status = mapping.getStatus();
-                    // BUG-4: do NOT navigate the lazy @ManyToOne packageSession —
-                    // the collector runs in a CompletableFuture worker with no Hibernate session.
+                    // Human-readable batch name = "Level Package (Session)".
+                    // PackageSession.level/session/packageEntity are @ManyToOne EAGER, so findById
+                    // initializes them — safe to read in this worker thread. Never fall back to the
+                    // raw UUID (show nothing instead).
                     batch = packageSessionRepository.findById(packageSessionId)
-                            .map(ps -> ps.getName())
-                            .orElse(packageSessionId);
+                            .map(IdentityCollector::resolveBatchName)
+                            .filter(s -> s != null && !s.isBlank())
+                            .orElse(null);
                 }
             }
 
@@ -87,6 +91,25 @@ public class IdentityCollector {
             log.error("[IdentityCollector] Failed to collect identity for userId={}: {}", userId, e.getMessage());
             return StudentIdentitySection.builder().available(false).userId(userId).build();
         }
+    }
+
+    /** Builds "Level Package (Session)" from a package session; falls back to its own name. */
+    private static String resolveBatchName(PackageSession ps) {
+        String level = ps.getLevel() != null ? ps.getLevel().getLevelName() : null;
+        String pkg = ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null;
+        String session = ps.getSession() != null ? ps.getSession().getSessionName() : null;
+        StringBuilder sb = new StringBuilder();
+        if (level != null && !level.isBlank()) sb.append(level.trim());
+        if (pkg != null && !pkg.isBlank()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(pkg.trim());
+        }
+        if (session != null && !session.isBlank()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append("(").append(session.trim()).append(")");
+        }
+        if (sb.length() > 0) return sb.toString();
+        return (ps.getName() != null && !ps.getName().isBlank()) ? ps.getName() : null;
     }
 
     /**

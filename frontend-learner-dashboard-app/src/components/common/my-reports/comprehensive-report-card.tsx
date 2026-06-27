@@ -161,6 +161,8 @@ function V2AttendanceCard({ att }: { att: NonNullable<V2ReportData["attendance"]
 // ── V2 Academic Performance Card ──────────────────────────────────────────────
 
 function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> }) {
+  const assessments = acs.assessments ?? [];
+  const subjectPerf = acs.subject_performance ?? [];
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
       <V2SectionHeading>Academic Performance</V2SectionHeading>
@@ -172,7 +174,7 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
         {acs.weakest_subject && <> &middot; Needs work: <span className="text-danger-600 font-medium">{acs.weakest_subject}</span></>}
       </p>
 
-      {acs.assessments.length > 0 && (
+      {assessments.length > 0 && (
         <div className="overflow-x-auto mb-5">
           <table className="w-full text-sm">
             <thead>
@@ -185,7 +187,7 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
               </tr>
             </thead>
             <tbody>
-              {acs.assessments.map((a, i) => (
+              {assessments.map((a, i) => (
                 <tr key={i} className="border-b last:border-0">
                   <td className="py-2.5">
                     <p className="font-medium text-neutral-800">{a.name}</p>
@@ -217,11 +219,11 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
         </div>
       )}
 
-      {acs.subject_performance.length > 0 && (
+      {subjectPerf.length > 0 && (
         <>
           <p className="text-xs text-neutral-500 mb-3">Subject performance vs class</p>
           <div className="space-y-2.5">
-            {acs.subject_performance.map((sp) => (
+            {subjectPerf.map((sp) => (
               <div key={sp.subject} className="grid items-center gap-3" style={{ gridTemplateColumns: "100px 1fr 100px" }} /* design-lint-ignore: fixed grid column widths, no Tailwind equivalent */>
                 <span className="text-sm font-medium text-neutral-800">{sp.subject}</span>
                 <div className="h-2.5 rounded-full bg-neutral-100 overflow-hidden">
@@ -306,7 +308,8 @@ function V2StrengthsCard({
 // ── V2 Study Habits Card ──────────────────────────────────────────────────────
 
 function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"]> }) {
-  const maxMinutes = Math.max(...sh.daily_study_minutes.map((d) => d.minutes), 1);
+  const dailyStudyMinutes = sh.daily_study_minutes ?? [];
+  const maxMinutes = dailyStudyMinutes.length > 0 ? Math.max(...dailyStudyMinutes.map((d) => d.minutes), 1) : 1;
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
@@ -337,12 +340,12 @@ function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"
         </div>
       </div>
 
-      {sh.daily_study_minutes.length > 0 && (
+      {dailyStudyMinutes.length > 0 && (
         <>
-          <p className="text-xs text-neutral-500 mb-2">Daily study time (minutes) · {sh.daily_study_minutes.length} days</p>
+          <p className="text-xs text-neutral-500 mb-2">Daily study time (minutes) · {dailyStudyMinutes.length} days</p>
           <div className="flex items-end gap-px border-b border-neutral-200" style={{ height: 120 }} /* design-lint-ignore: pixel chart height, no Tailwind arbitrary-value in token scale */>
             {/* design-lint-ignore: dynamic bar chart height container */}
-            {sh.daily_study_minutes.map((d, i) => {
+            {dailyStudyMinutes.map((d, i) => {
               const pct = maxMinutes > 0 ? Math.round((d.minutes / maxMinutes) * 100) : 0;
               return (
                 <div key={i} className="flex-1 bg-primary-50 rounded-t-sm relative" style={{ height: "100%" }} /* design-lint-ignore: 100% fill needed for bar chart container, no Tailwind equivalent */>
@@ -357,17 +360,17 @@ function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"
           </div>
           <div className="flex justify-between text-xs text-neutral-400 mt-1">
             <span>Day 1</span>
-            <span>Day {Math.ceil(sh.daily_study_minutes.length / 2)}</span>
-            <span>Day {sh.daily_study_minutes.length}</span>
+            <span>Day {Math.ceil(dailyStudyMinutes.length / 2)}</span>
+            <span>Day {dailyStudyMinutes.length}</span>
           </div>
         </>
       )}
 
       <p className="text-sm text-neutral-500 mt-4">
         Content explored:{" "}
-        <span className="font-semibold text-neutral-800">{sh.content_engagement.videos_watched}</span> videos &middot;{" "}
-        <span className="font-semibold text-neutral-800">{sh.content_engagement.documents_read}</span> documents &middot;{" "}
-        <span className="font-semibold text-neutral-800">{sh.content_engagement.quizzes_attempted}</span> quizzes
+        <span className="font-semibold text-neutral-800">{sh.content_engagement?.videos_watched}</span> videos &middot;{" "}
+        <span className="font-semibold text-neutral-800">{sh.content_engagement?.documents_read}</span> documents &middot;{" "}
+        <span className="font-semibold text-neutral-800">{sh.content_engagement?.quizzes_attempted}</span> quizzes
       </p>
     </div>
   );
@@ -376,12 +379,13 @@ function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"
 // ── V2 Course Progress Card ───────────────────────────────────────────────────
 
 function V2CourseProgressCard({ cp }: { cp: NonNullable<V2ReportData["course_progress"]> }) {
+  const subjects = cp.subjects ?? [];
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
       <V2SectionHeading>Course Progress — {cp.overall_completion_percentage}% complete</V2SectionHeading>
 
       <div className="space-y-2.5">
-        {cp.subjects.map((s) => (
+        {subjects.map((s) => (
           <div key={s.subject} className="grid items-center gap-3" style={{ gridTemplateColumns: "100px 1fr 80px" }} /* design-lint-ignore: fixed grid column widths, no Tailwind equivalent */>
             <span className="text-sm font-medium text-neutral-800">{s.subject}</span>
             <div className="h-2.5 rounded-full bg-neutral-100 overflow-hidden">
@@ -418,9 +422,9 @@ function V2LiveClassesAndAssignments({
             { label: "Attended", value: lc.attended, cls: "text-success-600" },
             { label: "Missed", value: lc.missed, cls: "text-danger-600" },
             { label: "Attendance", value: `${lc.attendance_percentage}%`, cls: undefined },
-            { label: "Questions asked", value: lc.participation.questions_asked, cls: undefined },
-            { label: "Polls answered", value: lc.participation.polls_answered, cls: undefined },
-            { label: "Engagement", value: lc.participation.avg_engagement, cls: "text-success-600" },
+            { label: "Questions asked", value: lc.participation?.questions_asked ?? 0, cls: undefined },
+            { label: "Polls answered", value: lc.participation?.polls_answered ?? 0, cls: undefined },
+            { label: "Engagement", value: lc.participation?.avg_engagement ?? "—", cls: "text-success-600" },
           ].map(({ label, value, cls }) => (
             <div key={label} className="flex justify-between items-center py-1.5">
               <span className="text-sm text-neutral-600">{label}</span>
@@ -540,6 +544,7 @@ export interface ComprehensiveReportCardProps {
 export function ComprehensiveReportCard({ data, processId }: ComprehensiveReportCardProps) {
   const { meta, student, institute, period, overview } = data;
   const [downloading, setDownloading] = useState(false);
+  const headlineMetrics = overview.headline_metrics ?? [];
 
   // Institute accent color is user-supplied — dynamic value used only in header gradient.
   const accentColor = institute.theme_color ?? "#2563eb"; // design-lint-ignore: user-supplied institute theme color
@@ -627,9 +632,9 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
         </div>
 
         {/* ── 2. KPI TILES ── */}
-        {overview.headline_metrics.length > 0 && (
+        {headlineMetrics.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-            {overview.headline_metrics.map((m) => (
+            {headlineMetrics.map((m) => (
               <V2KpiTile key={m.key} metric={m} />
             ))}
           </div>

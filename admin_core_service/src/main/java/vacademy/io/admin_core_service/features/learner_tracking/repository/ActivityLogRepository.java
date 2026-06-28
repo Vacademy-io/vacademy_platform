@@ -534,9 +534,6 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     AND status IN (:statusList)
                 ),
                 activity AS (
-                    -- Time aggregated from activity_log ONLY (never joined to
-                    -- concentration_score, which is 1-to-many and would multiply
-                    -- the session time once per concentration row).
                     SELECT
                         a.user_id,
                         SUM(
@@ -552,9 +549,6 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     GROUP BY a.user_id
                 ),
                 concentration AS (
-                    -- Average of genuinely measured focus only; documents/PDFs log
-                    -- a hardcoded 0 on the client, so excluding 0 keeps the score
-                    -- meaningful instead of dragging everyone toward zero.
                     SELECT
                         a.user_id,
                         AVG(LEAST(100, GREATEST(0, cs.concentration_score))) AS avg_concentration

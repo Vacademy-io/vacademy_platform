@@ -31,6 +31,7 @@ import LmsSettings from '../-components/Lms/LmsSettings';
 import AiCallingSettings from '../-components/AiCallingSettings';
 import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
+import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -196,6 +197,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.AssistantTools,
             value: 'Vacademy Assistant',
             component: AssistantToolsSettings,
+        },
+        {
+            tab: SettingsTabs.BadgesRewards,
+            value: 'Badges & Rewards',
+            component: BadgesRewardsSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

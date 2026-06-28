@@ -74,6 +74,7 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import type { StudentCourseDetailsTabId } from "@/types/student-display-settings";
 import { BatchChatPanel } from "@/components/chat/BatchChatPanel";
+import { CourseLeaderboard } from "./CourseLeaderboard";
 import { calculateOverallCompletion } from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { getFilePublicUrlQuery } from "@/services/file-url-cache";
 import { getLatestResume } from "@/services/resume-thread";
@@ -2740,7 +2741,10 @@ export const CourseStructureDetails = ({
     [TabType.COURSE_DISCUSSION]: (
       <div className="space-y-4">
         {packageSessionId ? (
-          <BatchChatPanel packageSessionId={packageSessionId} />
+          <>
+            <CourseLeaderboard packageSessionId={packageSessionId} />
+            <BatchChatPanel packageSessionId={packageSessionId} />
+          </>
         ) : (
           <div className="rounded-md bg-card border border-neutral-200 p-5 text-sm text-neutral-600">
             <div className="flex items-center gap-3 mb-3">

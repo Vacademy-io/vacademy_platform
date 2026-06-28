@@ -37,9 +37,11 @@ export const getBadgesRewardsConfig = async (): Promise<{
             params: { instituteId, settingKey: BADGES_REWARDS_SETTING_KEY },
         });
         // SettingDto blob can be nested a couple of ways depending on the axios wrapper.
-        const blob = (response.data?.data?.[BADGES_REWARDS_SETTING_KEY]?.data ??
-            response.data?.[BADGES_REWARDS_SETTING_KEY]?.data ??
-            response.data?.data?.data ??
+        // Probe the canonical shapes in the SAME order as services/display-settings.ts —
+        // the real one is the bare `response.data.data` (NOT `[settingKey].data`).
+        const blob = (response.data?.[BADGES_REWARDS_SETTING_KEY]?.data ??
+            response.data?.data?.[BADGES_REWARDS_SETTING_KEY]?.data ??
+            response.data?.data ??
             null) as BadgesRewardsConfig | null;
         const badges =
             Array.isArray(blob?.badges) && blob!.badges.length > 0

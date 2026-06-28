@@ -140,7 +140,15 @@ function PublicLeaderboardPage() {
   }, [instituteLogoFileId]);
 
   useEffect(() => {
-    if (!instituteId || !packageSessionId) return;
+    // Wait for domain routing to resolve before deciding.
+    if (brandingLoading) return;
+    // Branding resolved but no institute (unmapped domain / resolution failure):
+    // fall through to the error state instead of hanging on the skeleton.
+    if (!instituteId || !packageSessionId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
     setError(false);
@@ -155,7 +163,7 @@ function PublicLeaderboardPage() {
     return () => {
       active = false;
     };
-  }, [instituteId, packageSessionId]);
+  }, [instituteId, packageSessionId, brandingLoading]);
 
   const entries = data?.entries ?? [];
   const top3 = entries.slice(0, 3);

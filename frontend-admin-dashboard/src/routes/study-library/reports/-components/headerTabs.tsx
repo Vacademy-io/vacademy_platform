@@ -48,7 +48,9 @@ export default function HeaderTabs() {
         queryFn: getBadgesEnabled,
         staleTime: 5 * 60 * 1000,
     });
-    const showLeaderboard = badgesEnabled !== false;
+    // Default OFF: only show once the toggle is confirmed enabled (avoids a flicker
+    // for disabled institutes while the query resolves).
+    const showLeaderboard = badgesEnabled === true;
 
     useEffect(() => {
         if (!showLeaderboard && selectedTab === 'LEADERBOARD') setSelectedTab('BATCH');

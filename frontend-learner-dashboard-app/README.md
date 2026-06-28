@@ -2,6 +2,8 @@
 
 A modern, cross-platform learner dashboard application built with React, TypeScript, and Vite. This application supports web, mobile (Android/iOS via Capacitor), and desktop (Electron) platforms.
 
+
+
 ## Tech Stack
 
 - **Framework**: React 19 with TypeScript

@@ -363,6 +363,60 @@ class AiVideoRepository:
             if not self.session:
                 session.close()
 
+    def update_assist_state(
+        self,
+        video_id: str,
+        assist_block: Dict[str, Any],
+        status: Optional[str] = None,
+        current_stage: Optional[str] = None,
+    ) -> Optional[AiGenVideo]:
+        """Persist the assist-mode block into ``extra_metadata.assist``.
+
+        Used by the gate framework to store the pending decision, record answers,
+        and flip the video to ``AWAITING_INPUT`` while a gate waits on the user.
+        The caller computes ``assist_block`` (via ``decision_gates`` helpers) so
+        this method stays a dumb, robust writer. Mirrors ``update_stage``'s
+        stale-session retry so the /decision endpoint can rely on it.
+        """
+        def _do(session: Session) -> Optional[AiGenVideo]:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return None
+            meta = dict(video.extra_metadata or {})
+            meta["assist"] = assist_block
+            video.extra_metadata = meta
+            flag_modified(video, "extra_metadata")
+            if status is not None:
+                video.status = status
+            if current_stage is not None:
+                video.current_stage = current_stage
+            video.updated_at = datetime.utcnow()
+            session.commit()
+            session.refresh(video)
+            return video
+
+        session = self._get_session()
+        try:
+            return _do(session)
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do(fresh)
+                except Exception as e2:
+                    fresh.rollback()
+                    raise e2
+                finally:
+                    fresh.close()
+            raise e
+        finally:
+            if not self.session:
+                session.close()
+
     def update_thumbnails(self, video_id: str, thumbnails: Dict[str, Any]) -> None:
         """Replace the thumbnails JSONB blob for a video.
 

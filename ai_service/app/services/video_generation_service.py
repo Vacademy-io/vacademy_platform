@@ -276,7 +276,142 @@ class VideoGenerationService:
             nltk.download('cmudict', quiet=True)
         except Exception as e:
             logger.warning(f"[VideoGenService] Failed to pre-download NLTK data: {e}. Will download on first use.")
-    
+
+    # ── Assist mode (conversational decision gates) ──────────────────
+    # Phase 0 handles the SCRIPT-boundary gates (shot_plan, narration,
+    # creative_concept) entirely at this orchestration layer, reusing the
+    # existing "stop at SCRIPT" mechanism that review mode already uses. No
+    # surgery into automation_pipeline.py is required: the gate reads the
+    # shot_plan.json / script.txt the pipeline already wrote to S3, and the
+    # /decision endpoint overwrites those same artifacts (the script.txt-
+    # overwrite trick, generalised) so the resume leg picks up the user's edits.
+    # The mid-HTML visual_casting / shot_look gates are a later phase and are
+    # ignored here when present in enabled_gates.
+
+    def _decision_gates(self):
+        """Lazy-import the pure decision-gate framework from ai-video-gen-main.
+
+        Same sys.path trick the pipeline import uses — the module lives next to
+        automation_pipeline.py so the pipeline can import it directly too.
+        """
+        import sys as _sys
+        root = str(self.video_gen_root)
+        if root not in _sys.path:
+            _sys.path.insert(0, root)
+        import decision_gates as _dg  # type: ignore
+        return _dg
+
+    def _load_assist_state(self, video_record, assist_mode, assist_gates, assist_granularity):
+        """Read the persisted assist block, or build a fresh one on the first leg."""
+        dg = self._decision_gates()
+        existing = None
+        if video_record is not None:
+            meta = getattr(video_record, "extra_metadata", None) or {}
+            if isinstance(meta, dict):
+                existing = meta.get("assist")
+        if isinstance(existing, dict) and "enabled" in existing:
+            return dict(existing)
+        return dg.make_assist_state(bool(assist_mode), assist_gates, assist_granularity or "per_decision")
+
+    def _next_script_boundary_gate(self, assist, start_stage_idx):
+        """First enabled+unanswered SCRIPT-boundary gate, and whether SCRIPT must run.
+
+        Returns ``(gate_type | None, need_script_run)``. ``need_script_run`` is
+        True on a fresh run (the SCRIPT stage hasn't produced its artifacts yet);
+        on a resume leg where SCRIPT is already complete the artifacts exist in S3
+        and the gate is presented without running any stage.
+        """
+        dg = self._decision_gates()
+        if not assist or not assist.get("enabled"):
+            return None, False
+        script_idx = self.STAGES.index("SCRIPT")
+        for gate in dg.SCRIPT_BOUNDARY_GATES:
+            if not dg.is_gate_enabled(assist, gate):
+                continue
+            if dg.find_recorded_answer(assist, gate, None) is not None:
+                continue
+            return gate, (start_stage_idx <= script_idx)
+        return None, False
+
+    def _download_artifact_text(self, video_id, *candidate_keys):
+        """Download the first existing S3 artifact among the keys; return text or None."""
+        from ..config import get_settings as _gs
+        import tempfile as _tmp
+        _s = _gs()
+        bucket = _s.aws_bucket_name or _s.aws_s3_public_bucket
+        for key in candidate_keys:
+            url = f"https://{bucket}.s3.amazonaws.com/{key}"
+            tmp = Path(_tmp.gettempdir()) / f"assist_{video_id}_{Path(key).name}"
+            try:
+                if self.s3_service.download_file(url, tmp, expected_missing=True):
+                    text = tmp.read_text(encoding="utf-8")
+                    try:
+                        tmp.unlink()
+                    except Exception:
+                        pass
+                    return text
+            except Exception:
+                continue
+        return None
+
+    def _download_artifact_json(self, video_id, *candidate_keys):
+        text = self._download_artifact_text(video_id, *candidate_keys)
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception:
+            return None
+
+    async def _present_script_boundary_gate(self, video_id, institute_id, assist, gate_type):
+        """Build + persist + emit a SCRIPT-boundary decision; pause the leg.
+
+        Reads the shot plan / script the pipeline already wrote to S3, builds the
+        gate's ``decision_required`` payload, flips the video to AWAITING_INPUT,
+        and yields the event. The leg then ends — the user answers via /decision.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        dg = self._decision_gates()
+        shot_plan = self._download_artifact_json(
+            video_id,
+            f"ai-videos/{video_id}/script/shot_plan.json",
+            f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        ) or {}
+        shots = shot_plan.get("shots") if isinstance(shot_plan, dict) else None
+        shots = shots or []
+
+        if gate_type == dg.GateType.SHOT_PLAN.value:
+            decision = dg.build_shot_plan_decision(video_id, shots)
+        elif gate_type == dg.GateType.NARRATION.value:
+            per_shot = [
+                {
+                    "shot_index": (s.get("shot_index") if isinstance(s, dict) else None) or i,
+                    "narration_text": (s.get("narration_text") if isinstance(s, dict) else "") or "",
+                }
+                for i, s in enumerate(shots)
+            ]
+            full_script = self._download_artifact_text(
+                video_id, f"ai-videos/{video_id}/script/script.txt"
+            ) or dg.narration_full_script_from_shots(shots)
+            decision = dg.build_narration_decision(video_id, per_shot, full_script)
+        else:  # creative_concept
+            concept = shot_plan.get("creative_concept") if isinstance(shot_plan, dict) else {}
+            decision = dg.build_creative_concept_decision(video_id, concept or {})
+
+        dg.set_pending(assist, decision)
+        try:
+            self.repository.update_assist_state(
+                video_id, assist, status="AWAITING_INPUT", current_stage="SCRIPT"
+            )
+        except Exception as exc:
+            logger.error(f"[Assist] failed to persist pending decision for {video_id}: {exc}")
+        logger.info(
+            f"[Assist] paused {video_id} at gate={gate_type} "
+            f"decision_id={decision.get('decision_id')}"
+        )
+        yield {"type": "decision_required", **decision}
+
     async def generate_till_stage(
         self,
         video_id: str,
@@ -323,6 +458,14 @@ class VideoGenerationService:
         # Per-stage model overrides (V200 — DB-backed routing). Untyped here
         # (Any) to avoid a schemas → service circular import.
         model_overrides: Optional[Any] = None,
+        # Assist mode (conversational, human-in-the-loop). When enabled, the run
+        # pauses at SCRIPT-boundary decision gates (shot_plan / narration) — it
+        # emits a `decision_required` event and stops the leg cleanly until the
+        # user answers via /decision. Authoritative only on the first leg; resume
+        # legs read the persisted extra_metadata.assist block instead.
+        assist_mode: bool = False,
+        assist_gates: Optional[List[str]] = None,
+        assist_granularity: str = "per_decision",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -581,7 +724,32 @@ class VideoGenerationService:
             start_stage_idx = 1  # Start from SCRIPT
         
         target_stage_idx = self.STAGES.index(target_stage)
-        
+
+        # ── Assist mode: SCRIPT-boundary decision gates ─────────────────
+        # Gated entirely behind assist_mode so the Auto path is unchanged.
+        _assist = self._load_assist_state(video_record, assist_mode, assist_gates, assist_granularity)
+        _pending_gate = None
+        if _assist.get("enabled"):
+            # Persist the assist block (first leg seeds it; resume legs no-op-merge)
+            # so the /decision endpoint can read the gate set + answer ledger.
+            try:
+                self.repository.update_assist_state(video_id, _assist)
+            except Exception as _ae:
+                logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
+            _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
+            if _pending_gate and not _need_script_run:
+                # Script artifacts already exist (resume leg) — present the gate
+                # without running any stage, then end the leg.
+                async for _ev in self._present_script_boundary_gate(
+                    video_id, institute_id, _assist, _pending_gate
+                ):
+                    yield _ev
+                return
+            if _pending_gate and _need_script_run:
+                # Clamp this leg to SCRIPT; we present the gate after it runs.
+                target_stage = "SCRIPT"
+                target_stage_idx = self.STAGES.index("SCRIPT")
+
         # Create temporary working directory
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir) / video_id
@@ -653,7 +821,18 @@ class VideoGenerationService:
                         yield event
                         return
                     yield event
-                
+
+                # ── Assist mode: pause at the SCRIPT-boundary gate ──────
+                # The SCRIPT stage just produced shot_plan.json / script.txt;
+                # present the pending gate and end the leg cleanly (no completed
+                # event — the FE flips to the conversation card on this event).
+                if _assist.get("enabled") and _pending_gate:
+                    async for _ev in self._present_script_boundary_gate(
+                        video_id, institute_id, _assist, _pending_gate
+                    ):
+                        yield _ev
+                    return
+
                 # Final completion event
                 video_record = self.repository.get_by_video_id(video_id)
                 if video_record and video_record.status != "FAILED":
@@ -3282,6 +3461,14 @@ class VideoGenerationService:
             if db_status:
                 live["status"] = db_status
             result["live"] = live
+
+        # Assist mode: surface the pending decision as a convenience top-level
+        # field so polling clients can rehydrate the conversation card without
+        # digging into metadata.assist. Set only while paused (AWAITING_INPUT).
+        _meta = result.get("metadata") or {}
+        _assist = _meta.get("assist") if isinstance(_meta, dict) else None
+        if isinstance(_assist, dict) and _assist.get("pending_decision"):
+            result["pending_decision"] = _assist.get("pending_decision")
 
         return result
 

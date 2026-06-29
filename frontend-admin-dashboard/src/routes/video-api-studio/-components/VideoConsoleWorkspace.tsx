@@ -43,6 +43,7 @@ import { HistorySidebar } from './HistorySidebar';
 import { ScriptReview } from './ScriptReview';
 import { AssistChat } from './assist/AssistChat';
 import { buildTurnSummary, reconstructAssistTranscript } from './assist/-utils/decision-copy';
+import { buildStageRows } from './assist/-utils/stage-rows';
 import { AssistModeToggle } from '../console/-components/AssistModeToggle';
 import { PipelineLayout } from './pipeline/PipelineLayout';
 import {
@@ -990,6 +991,18 @@ export function VideoConsoleWorkspace({
         if (!currentGeneration?.pendingDecision) return;
         setConsoleState('assisting');
     }, [consoleState, currentGeneration?.pendingDecision]);
+
+    // Live production-schedule rows for the chat's status bubble — derived from
+    // the same PipelineState the diagram uses, so the two stay consistent.
+    const assistStageRows = useMemo(
+        () =>
+            currentGeneration
+                ? buildStageRows(
+                      derivePipelineFromLive(currentGeneration satisfies LiveCurrentGeneration)
+                  )
+                : undefined,
+        [currentGeneration]
+    );
 
     // Assist mode: rebuild the conversation transcript when a finished video
     // loads fresh (Recent / deep-link / reload) — the in-memory transcript is
@@ -2567,6 +2580,7 @@ export function VideoConsoleWorkspace({
                                     percentage={currentGeneration.percentage}
                                     shotsCompleted={currentGeneration.shotsCompleted}
                                     shotsTotal={currentGeneration.shotsTotal}
+                                    stages={assistStageRows}
                                     isComplete={consoleState === 'complete'}
                                     timelineUrl={currentGeneration.htmlUrl}
                                     audioUrl={currentGeneration.audioUrl}

@@ -971,10 +971,34 @@ async def decision_video_external(
                 )
             artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
         elif mode == "edit" and gate_type == dg.GateType.NARRATION.value:
+            edited_shots = answer.get("shots") or []
+            # v3 reads each shot's narration_text from shot_plan.json (NOT
+            # script.txt), so the per-shot edit MUST be written back there or it
+            # silently has no effect. Overlay the edited narration onto the plan.
+            if edited_shots:
+                plan = _read_s3_json(
+                    s3_svc, _bucket, video_id,
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ) or {}
+                if plan.get("shots"):
+                    plan["shots"] = dg.apply_narration_answer(plan.get("shots") or [], answer)
+                    _pbody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+                    for _k in (
+                        f"ai-videos/{video_id}/script/shot_plan.json",
+                        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                    ):
+                        s3_svc.upload_file_content(
+                            content=_pbody, filename="shot_plan.json", s3_key=_k,
+                            content_type="application/json",
+                        )
+                    artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+            # v2 + back-compat: also write the monolithic script.txt (the v2
+            # TTS path reads this). Derived from the per-shot edits when present.
             full_script = (answer.get("full_script") or "").strip()
-            if not full_script and answer.get("shots"):
+            if not full_script and edited_shots:
                 full_script = dg.narration_full_script_from_shots(
-                    [{"narration_text": r.get("narration_text", "")} for r in answer["shots"]]
+                    [{"narration_text": r.get("narration_text", "")} for r in edited_shots]
                 )
             if full_script:
                 s3_svc.upload_file_content(
@@ -982,7 +1006,8 @@ async def decision_video_external(
                     s3_key=f"ai-videos/{video_id}/script/script.txt",
                     content_type="text/plain; charset=utf-8",
                 )
-                artifact_key = f"ai-videos/{video_id}/script/script.txt"
+                if not artifact_key:
+                    artifact_key = f"ai-videos/{video_id}/script/script.txt"
         elif mode == "edit" and gate_type == dg.GateType.VISUAL_CASTING.value:
             # Persist the user's per-query media picks. The HTML stage reads this
             # on resume and forces the chosen URL for each query (keyed by the

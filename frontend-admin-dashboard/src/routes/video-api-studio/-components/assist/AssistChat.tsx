@@ -12,7 +12,10 @@ import {
     SidebarSimple,
     PencilSimple,
     Stop,
+    Clock,
+    WarningCircle,
 } from '@phosphor-icons/react';
+import type { StageRow } from './-utils/stage-rows';
 import { cn } from '@/lib/utils';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import type {
@@ -40,6 +43,8 @@ interface AssistChatProps {
     percentage?: number;
     shotsCompleted?: number;
     shotsTotal?: number;
+    /** Production-schedule rows (same as the diagram) shown live in the chat. */
+    stages?: StageRow[];
     /** True when the video is rendered — shows the completion card + player. */
     isComplete?: boolean;
     /** Completion player inputs. */
@@ -85,17 +90,47 @@ function Bubble({ side, children }: { side: 'agent' | 'user'; children: ReactNod
     );
 }
 
-/** Live "we're working on it" bubble with a progress bar + shot counter. */
+/** One production-schedule row in the live status bubble. */
+function StageLine({ row }: { row: StageRow }) {
+    const icon =
+        row.state === 'wrapped' ? (
+            <CheckCircle weight="fill" className="size-3.5 shrink-0 text-emerald-600" />
+        ) : row.state === 'in_production' ? (
+            <CircleNotch className="size-3.5 shrink-0 animate-spin text-violet-600" />
+        ) : row.state === 'cut' || row.state === 'reshoot' ? (
+            <WarningCircle
+                weight="fill"
+                className={cn('size-3.5 shrink-0', row.state === 'cut' ? 'text-rose-600' : 'text-amber-600')}
+            />
+        ) : (
+            <Clock className="size-3.5 shrink-0 text-muted-foreground/40" />
+        );
+    return (
+        <li className="flex items-center gap-2">
+            {icon}
+            <span className={row.state === 'scheduled' ? 'text-muted-foreground' : 'text-foreground'}>
+                {row.label}
+            </span>
+            {row.detail && (
+                <span className="ml-auto tabular-nums text-muted-foreground">{row.detail}</span>
+            )}
+        </li>
+    );
+}
+
+/** Live "we're working on it" bubble: sub-status + production schedule + bar. */
 function StatusBubble({
     message,
     percentage,
     shotsCompleted,
     shotsTotal,
+    stages,
 }: {
     message?: string;
     percentage?: number;
     shotsCompleted?: number;
     shotsTotal?: number;
+    stages?: StageRow[];
 }) {
     const pct = Math.max(0, Math.min(100, Math.round(percentage ?? 0)));
     return (
@@ -108,7 +143,16 @@ function StatusBubble({
                     <CircleNotch className="size-4 shrink-0 animate-spin text-violet-600" />
                     <span className="truncate">{message || 'Working on it…'}</span>
                 </div>
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/30">
+
+                {stages && stages.length > 0 && (
+                    <ul className="mt-2.5 space-y-1.5 border-t pt-2.5 text-xs">
+                        {stages.map((row) => (
+                            <StageLine key={row.id} row={row} />
+                        ))}
+                    </ul>
+                )}
+
+                <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/30">
                     {/* Dynamic width — sanctioned inline style for a live value. */}
                     <div
                         className="h-full rounded-full bg-violet-600 transition-all"
@@ -303,6 +347,7 @@ export function AssistChat({
     percentage,
     shotsCompleted,
     shotsTotal,
+    stages,
     isComplete,
     timelineUrl,
     audioUrl,
@@ -402,6 +447,7 @@ export function AssistChat({
                         percentage={percentage}
                         shotsCompleted={shotsCompleted}
                         shotsTotal={shotsTotal}
+                        stages={stages}
                     />
                 )}
 

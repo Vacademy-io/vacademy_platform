@@ -1,33 +1,43 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Check, Sparkle, Image as ImageIcon, PlayCircle } from '@phosphor-icons/react';
+import { Input } from '@/components/ui/input';
+import {
+    Check,
+    Sparkle,
+    Image as ImageIcon,
+    PlayCircle,
+    MagnifyingGlass,
+    UploadSimple,
+    CircleNotch,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import type {
-    DecisionAnswer,
-    DecisionRequest,
-    VisualCastingCandidate,
-    VisualCastingGroup,
+import { toast } from 'sonner';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getUserId } from '@/utils/userDetails';
+import {
+    searchStock,
+    type DecisionAnswer,
+    type DecisionRequest,
+    type VisualCastingCandidate,
+    type VisualCastingGroup,
 } from '../../../-services/video-generation';
 
 interface VisualCastingDecisionProps {
     decision: DecisionRequest;
     isSubmitting?: boolean;
     onSubmit: (answer: DecisionAnswer) => void;
+    apiKey?: string;
 }
 
 /**
- * Visual-casting gate — one candidate grid per media query in the video
- * ("review your visuals"). The user picks a candidate per query, leaves any to
- * the AI, or lets the AI pick everything ("auto_all"). Selections are keyed by
- * the query string (the backend forcing key).
- *
- * Accepts the batched `payload.groups` form; falls back to the single-shot
- * `payload.candidates` form for forward/back-compat.
+ * Visual-casting gate — one candidate grid per media query. Per shot the user
+ * can: pick a stock candidate, re-search stock with their own terms, upload
+ * their own image, or let the AI generate it (null pick). Selections are keyed
+ * by the query string (the backend forcing key); a null pick = "AI generates".
  */
-export function VisualCastingDecision({ decision, isSubmitting, onSubmit }: VisualCastingDecisionProps) {
+export function VisualCastingDecision({ decision, isSubmitting, onSubmit, apiKey }: VisualCastingDecisionProps) {
     const groups: VisualCastingGroup[] = useMemo(() => {
         if (decision.payload?.groups?.length) return decision.payload.groups;
-        // Single-shot fallback: wrap the legacy candidates array as one group.
         if (decision.payload?.candidates?.length) {
             return [
                 {
@@ -42,17 +52,72 @@ export function VisualCastingDecision({ decision, isSubmitting, onSubmit }: Visu
         return [];
     }, [decision]);
 
-    // Per-query selection: candidate_id (or null = let AI decide).
-    const [picks, setPicks] = useState<Record<string, string | null>>(() => {
-        const init: Record<string, string | null> = {};
-        for (const g of groups) init[g.query] = g.recommended_candidate_id ?? null;
-        return init;
+    // Mutable per-query candidate lists (replaced by search, appended by upload).
+    const [cands, setCands] = useState<Record<string, VisualCastingCandidate[]>>(() => {
+        const m: Record<string, VisualCastingCandidate[]> = {};
+        for (const g of groups) m[g.query] = g.candidates;
+        return m;
     });
+    // Per-query selected candidate_id (null = let AI generate).
+    const [picks, setPicks] = useState<Record<string, string | null>>(() => {
+        const m: Record<string, string | null> = {};
+        for (const g of groups) m[g.query] = g.recommended_candidate_id ?? null;
+        return m;
+    });
+    const [terms, setTerms] = useState<Record<string, string>>({});
+    const [busy, setBusy] = useState<Record<string, boolean>>({});
+    const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+    const { uploadFile, getPublicUrl } = useFileUpload();
+
+    const setBusyFor = (q: string, v: boolean) => setBusy((p) => ({ ...p, [q]: v }));
+
+    const runSearch = async (g: VisualCastingGroup) => {
+        const term = (terms[g.query] ?? '').trim();
+        if (!term || !apiKey) return;
+        setBusyFor(g.query, true);
+        const results = await searchStock(g.kind, term, apiKey);
+        setBusyFor(g.query, false);
+        if (results.length === 0) {
+            toast.info('No results — try different terms.');
+            return;
+        }
+        setCands((p) => ({ ...p, [g.query]: results }));
+    };
+
+    const runUpload = async (g: VisualCastingGroup, file: File) => {
+        setBusyFor(g.query, true);
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: () => {},
+                userId: getUserId(),
+                source: 'AI_INPUT_IMAGE',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            const url = fileId ? await getPublicUrl(fileId) : null;
+            if (!url) throw new Error('Upload failed');
+            const cand: VisualCastingCandidate = {
+                candidate_id: `upload:${url}`,
+                kind: 'image',
+                url,
+                thumb: url,
+                provider: 'upload',
+                is_recommended: false,
+            };
+            setCands((p) => ({ ...p, [g.query]: [cand, ...(p[g.query] ?? [])] }));
+            setPicks((p) => ({ ...p, [g.query]: cand.candidate_id }));
+        } catch {
+            toast.error('Upload failed. Try a smaller image.');
+        } finally {
+            setBusyFor(g.query, false);
+        }
+    };
 
     const apply = () => {
         const selections = groups.map((g) => {
             const cid = picks[g.query] ?? null;
-            const url = cid ? g.candidates.find((c) => c.candidate_id === cid)?.url : undefined;
+            const url = cid ? (cands[g.query] ?? []).find((c) => c.candidate_id === cid)?.url : undefined;
             return { query: g.query, candidate_id: cid, url, shot_index: g.shot_index };
         });
         onSubmit({ kind: 'edit', gate_type: 'visual_casting', selections });
@@ -80,66 +145,142 @@ export function VisualCastingDecision({ decision, isSubmitting, onSubmit }: Visu
                 Pick visuals ({groups.length} {groups.length === 1 ? 'shot' : 'shots'})
             </div>
 
-            <div className="max-h-96 space-y-4 overflow-y-auto p-3">
-                {groups.map((g, gi) => (
-                    <div key={`${g.query}-${gi}`} className="space-y-1.5">
-                        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-                            <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
-                                {(g.shot_index ?? gi) + 1}
-                            </span>
-                            <span className="truncate">{g.query || 'visual'}</span>
-                            <button
-                                type="button"
-                                disabled={isSubmitting}
-                                onClick={() => setPicks((p) => ({ ...p, [g.query]: null }))}
-                                className={cn(
-                                    'ml-auto rounded px-1.5 py-0.5 text-xs',
-                                    picks[g.query] == null
-                                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                )}
-                            >
-                                Let AI pick
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                            {g.candidates.map((c: VisualCastingCandidate) => {
-                                const isSel = picks[g.query] === c.candidate_id;
-                                return (
-                                    <button
-                                        key={c.candidate_id}
-                                        type="button"
-                                        disabled={isSubmitting}
-                                        onClick={() =>
-                                            setPicks((p) => ({ ...p, [g.query]: c.candidate_id }))
+            <div className="max-h-96 space-y-5 overflow-y-auto p-3">
+                {groups.map((g, gi) => {
+                    const list = cands[g.query] ?? [];
+                    const isBusy = !!busy[g.query];
+                    const aiPicked = picks[g.query] == null;
+                    return (
+                        <div key={`${g.query}-${gi}`} className="space-y-2">
+                            <div className="flex items-center gap-2 px-1 text-xs">
+                                <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground">
+                                    {(g.shot_index ?? gi) + 1}
+                                </span>
+                                <span className="truncate text-muted-foreground">{g.query || 'visual'}</span>
+                                <button
+                                    type="button"
+                                    disabled={isSubmitting}
+                                    onClick={() => setPicks((p) => ({ ...p, [g.query]: null }))}
+                                    className={cn(
+                                        'ml-auto flex items-center gap-1 rounded px-1.5 py-0.5',
+                                        aiPicked
+                                            ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <Sparkle className="size-3" />
+                                    Generate with AI
+                                </button>
+                            </div>
+
+                            {/* Search + upload controls */}
+                            <div className="flex items-center gap-2 px-1">
+                                <div className="relative flex-1">
+                                    <MagnifyingGlass className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        value={terms[g.query] ?? ''}
+                                        disabled={isSubmitting || isBusy}
+                                        onChange={(e) =>
+                                            setTerms((p) => ({ ...p, [g.query]: e.target.value }))
                                         }
-                                        className={cn(
-                                            'group relative aspect-video overflow-hidden rounded-lg border-2 bg-muted transition-colors',
-                                            isSel
-                                                ? 'border-violet-500 ring-2 ring-violet-500/30'
-                                                : 'border-transparent hover:border-border'
-                                        )}
-                                    >
-                                        <img
-                                            src={c.thumb || c.url}
-                                            alt={c.alt ?? ''}
-                                            className="size-full object-cover"
-                                            loading="lazy"
-                                        />
-                                        {c.kind === 'video' && (
-                                            <PlayCircle className="absolute bottom-1 right-1 size-4 text-white drop-shadow" />
-                                        )}
-                                        {isSel && (
-                                            <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-violet-600 text-white">
-                                                <Check className="size-2.5" />
-                                            </span>
-                                        )}
-                                    </button>
-                                );
-                            })}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                void runSearch(g);
+                                            }
+                                        }}
+                                        placeholder={`Search ${g.kind === 'video' ? 'clips' : 'photos'}…`}
+                                        className="h-8 pl-7 text-xs"
+                                    />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isSubmitting || isBusy || !(terms[g.query] ?? '').trim()}
+                                    onClick={() => void runSearch(g)}
+                                    className="h-8 gap-1"
+                                >
+                                    {isBusy ? (
+                                        <CircleNotch className="size-3.5 animate-spin" />
+                                    ) : (
+                                        'Search'
+                                    )}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={isSubmitting || isBusy}
+                                    onClick={() => fileInputs.current[g.query]?.click()}
+                                    className="h-8 gap-1"
+                                >
+                                    <UploadSimple className="size-3.5" />
+                                    Upload
+                                </Button>
+                                <input
+                                    ref={(el) => {
+                                        fileInputs.current[g.query] = el;
+                                    }}
+                                    type="file"
+                                    accept="image/*"
+                                    hidden
+                                    onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) void runUpload(g, f);
+                                        e.target.value = '';
+                                    }}
+                                />
+                            </div>
+
+                            {list.length === 0 ? (
+                                <div className="px-1 text-xs text-muted-foreground">
+                                    No candidates — search, upload, or let AI generate it.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                    {list.map((c) => {
+                                        const isSel = picks[g.query] === c.candidate_id;
+                                        return (
+                                            <button
+                                                key={c.candidate_id}
+                                                type="button"
+                                                disabled={isSubmitting}
+                                                onClick={() =>
+                                                    setPicks((p) => ({ ...p, [g.query]: c.candidate_id }))
+                                                }
+                                                className={cn(
+                                                    'group relative aspect-video overflow-hidden rounded-lg border-2 bg-muted transition-colors',
+                                                    isSel
+                                                        ? 'border-violet-500 ring-2 ring-violet-500/30'
+                                                        : 'border-transparent hover:border-border'
+                                                )}
+                                            >
+                                                <img
+                                                    src={c.thumb || c.url}
+                                                    alt={c.alt ?? ''}
+                                                    className="size-full object-cover"
+                                                    loading="lazy"
+                                                />
+                                                {c.kind === 'video' && (
+                                                    <PlayCircle className="absolute bottom-1 right-1 size-4 text-white drop-shadow" />
+                                                )}
+                                                {c.provider === 'upload' && (
+                                                    <span className="absolute left-1 top-1 rounded bg-emerald-600 px-1 py-0.5 text-xs font-semibold text-white">
+                                                        Yours
+                                                    </span>
+                                                )}
+                                                {isSel && (
+                                                    <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-violet-600 text-white">
+                                                        <Check className="size-2.5" />
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
@@ -151,7 +292,7 @@ export function VisualCastingDecision({ decision, isSubmitting, onSubmit }: Visu
                     className="gap-1.5 text-muted-foreground"
                 >
                     <Sparkle className="size-3.5" />
-                    Let AI pick all
+                    Let AI do all
                 </Button>
                 <Button
                     size="sm"

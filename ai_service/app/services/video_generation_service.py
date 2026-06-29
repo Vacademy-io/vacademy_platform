@@ -435,9 +435,26 @@ class VideoGenerationService:
                 _u = self.s3_service.upload_video_file(_words, video_id, "words")
                 if _u:
                     s3_updates["words"] = _u
+            # narration.words.csv — the HTML-resume REQUIRES this (separate from
+            # the .json); without it the resume dies "missing narration.words.csv".
+            _words_csv = run_dir / "narration.words.csv"
+            if _words_csv.exists():
+                self.s3_service.upload_video_file(_words_csv, video_id, "words")
             _raw = run_dir / "narration_raw.json"
             if _raw.exists():
                 self.s3_service.upload_video_file(_raw, video_id, "audio")
+            # per-shot TTS dir (v3) — the html-stage audio assembly may read it on
+            # resume. Best-effort per-file upload under per_shot_tts/.
+            _pst = run_dir / "per_shot_tts"
+            if _pst.exists() and _pst.is_dir():
+                for _f in _pst.glob("*"):
+                    if _f.is_file():
+                        try:
+                            self.s3_service.upload_file(
+                                _f, s3_key=f"ai-videos/{video_id}/per_shot_tts/{_f.name}"
+                            )
+                        except Exception:
+                            pass
             for _name in ("shot_plan.json", "style_guide.json", "director_plan.json"):
                 _f = run_dir / _name
                 if _f.exists():
@@ -1428,6 +1445,14 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
+                    # narration.words.csv — the html-resume REQUIRES this alongside
+                    # the .json (assist gate persists it to the same words/ prefix).
+                    # Derive its URL from the .json URL.
+                    words_csv_path = run_dir / "narration.words.csv"
+                    if not words_csv_path.exists():
+                        _csv_url = words_url.replace("narration.words.json", "narration.words.csv")
+                        if self.s3_service.download_file(_csv_url, words_csv_path, expected_missing=True):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.words.csv")
 
                 # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
                 try:

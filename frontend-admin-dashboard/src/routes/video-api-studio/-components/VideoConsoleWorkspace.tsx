@@ -2588,6 +2588,7 @@ export function VideoConsoleWorkspace({
                                     orientation={currentGeneration.orientation}
                                     onSubmit={handleSubmitDecision}
                                     onShowProgress={() => setShowAssistProgress(true)}
+                                    apiKey={activeApiKey ?? undefined}
                                     onAbort={
                                         consoleState !== 'complete' ? handleAbort : undefined
                                     }

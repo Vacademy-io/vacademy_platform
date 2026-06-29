@@ -1928,6 +1928,31 @@ export function submitDecision(
 }
 
 /**
+ * On-demand stock search for the visual-casting card — when the AI's candidates
+ * don't fit, the user can re-search with their own terms. Returns candidates in
+ * the same shape the gate emits.
+ */
+export async function searchStock(
+    kind: 'image' | 'video',
+    query: string,
+    apiKey: string,
+    orientation: 'landscape' | 'portrait' = 'landscape'
+): Promise<VisualCastingCandidate[]> {
+    try {
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/stock/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Institute-Key': apiKey },
+            body: JSON.stringify({ kind, query, orientation }),
+        });
+        if (!res.ok) return [];
+        const data = (await res.json()) as { candidates?: VisualCastingCandidate[] };
+        return data.candidates ?? [];
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Pull the pending decision out of a /status response (polling rehydration).
  * Reads the top-level convenience mirror first, then metadata.assist. Returns
  * null when the run isn't paused at a gate.

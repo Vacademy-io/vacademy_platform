@@ -59,6 +59,8 @@ interface AssistChatProps {
     onAbort?: () => void;
     /** Opens the full editor for the finished video. */
     onEdit?: () => void;
+    /** Institute API key — used by the visual-casting card's stock re-search. */
+    apiKey?: string;
     vimMode?: boolean;
 }
 
@@ -242,11 +244,13 @@ function DecisionCard({
     prompt,
     isSubmitting,
     onSubmit,
+    apiKey,
 }: {
     decision: DecisionRequest;
     prompt: string;
     isSubmitting?: boolean;
     onSubmit: (answer: DecisionAnswer) => void;
+    apiKey?: string;
 }) {
     switch (decision.gate_type) {
         case 'narration':
@@ -262,7 +266,12 @@ function DecisionCard({
             return <ShotPlanDecision decision={decision} isSubmitting={isSubmitting} onSubmit={onSubmit} />;
         case 'visual_casting':
             return (
-                <VisualCastingDecision decision={decision} isSubmitting={isSubmitting} onSubmit={onSubmit} />
+                <VisualCastingDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                    apiKey={apiKey}
+                />
             );
         default:
             return <GenericDecision decision={decision} isSubmitting={isSubmitting} onSubmit={onSubmit} />;
@@ -357,6 +366,7 @@ export function AssistChat({
     onShowProgress,
     onAbort,
     onEdit,
+    apiKey,
 }: AssistChatProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
     const [steer, setSteer] = useState('');
@@ -430,6 +440,7 @@ export function AssistChat({
                             prompt={prompt}
                             isSubmitting={isSubmitting}
                             onSubmit={onSubmit}
+                            apiKey={apiKey}
                         />
                     </div>
                 ) : isComplete ? (

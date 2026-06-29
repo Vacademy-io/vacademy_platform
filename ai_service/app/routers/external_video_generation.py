@@ -1148,6 +1148,50 @@ async def decision_video_external(
 
 
 # ---------------------------------------------------------------------------
+# Assist mode — on-demand stock search for the visual-casting card
+# ---------------------------------------------------------------------------
+
+class StockSearchRequest(BaseModel):
+    """Body for POST /external/video/v1/stock/search."""
+    kind: str = Field("image", description="image | video")
+    query: str = Field(..., description="Search terms")
+    orientation: str = Field("landscape", description="landscape | portrait")
+
+
+@router.post("/stock/search", summary="Search stock media for the assist visual-casting card (External)")
+async def stock_search_external(
+    payload: StockSearchRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    """Re-search stock images/videos when the AI's candidates don't fit.
+
+    Stateless — used by the visual-casting card's per-shot "Search" box. Returns
+    candidates in the same shape the gate emits, so the FE renders them inline.
+    """
+    dg = _load_decision_gates()
+    q = (payload.query or "").strip()
+    if not q:
+        return {"candidates": [], "kind": payload.kind}
+    orientation = "portrait" if (payload.orientation or "").lower() == "portrait" else "landscape"
+    results: List[Dict[str, Any]] = []
+    try:
+        from ..services.media_search_service import MediaSearchService
+        svc = MediaSearchService()
+        if (payload.kind or "image").lower() == "video":
+            results, _ = svc.search_videos(q, orientation=orientation, per_page=12)
+        else:
+            results, _ = svc.search_images(q, orientation=orientation, per_page=12)
+    except Exception as exc:
+        logger.error(f"[StockSearch] search failed for '{q[:40]}': {exc}")
+        results = []
+    cands = [
+        dg.to_casting_candidate(r, is_recommended=(i == 0))
+        for i, r in enumerate((results or [])[:12])
+    ]
+    return {"candidates": cands, "kind": payload.kind}
+
+
+# ---------------------------------------------------------------------------
 # Retry a failed generation — resumes from last checkpoint
 # ---------------------------------------------------------------------------
 

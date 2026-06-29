@@ -1029,6 +1029,33 @@ async def decision_video_external(
                 content_type="application/json",
             )
             artifact_key = f"ai-videos/{video_id}/checkpoints/asset_selections.json"
+        elif mode == "edit" and gate_type == dg.GateType.CREATIVE_CONCEPT.value:
+            # Overlay the edited creative direction into shot_plan.json. The
+            # per-shot HTML stage reads creative_concept from there, so VISUAL
+            # fields (visual_metaphor / signature_device) take effect; the shot
+            # structure + narration were already authored against the original.
+            concept = answer.get("concept") or {}
+            concept = {k: v for k, v in concept.items() if v not in (None, "")}
+            if concept:
+                plan = _read_s3_json(
+                    s3_svc, _bucket, video_id,
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ) or {}
+                existing = plan.get("creative_concept") or {}
+                if isinstance(existing, dict):
+                    existing.update(concept)
+                    plan["creative_concept"] = existing
+                    _cbody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+                    for _k in (
+                        f"ai-videos/{video_id}/script/shot_plan.json",
+                        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                    ):
+                        s3_svc.upload_file_content(
+                            content=_cbody, filename="shot_plan.json", s3_key=_k,
+                            content_type="application/json",
+                        )
+                    artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
     except Exception as _werr:
         logger.error(f"[Decision] failed to write sidecar for {video_id} gate={gate_type}: {_werr}")
 

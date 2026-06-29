@@ -65,6 +65,7 @@ class GateType(str, Enum):
 # an explicit subset. The preview-generation gates are intentionally excluded
 # from the default set until phase 2 ships their candidate generation.
 DEFAULT_ASSIST_GATES: List[str] = [
+    GateType.CREATIVE_CONCEPT.value,
     GateType.SHOT_PLAN.value,
     GateType.NARRATION.value,
     GateType.VISUAL_CASTING.value,
@@ -306,6 +307,8 @@ _SHOT_PLAN_FIELDS = (
     "duration_estimate_s",
     "background_treatment",
     "transition_in",
+    "pacing_role",
+    "audio_policy",
     "narration_brief",
 )
 

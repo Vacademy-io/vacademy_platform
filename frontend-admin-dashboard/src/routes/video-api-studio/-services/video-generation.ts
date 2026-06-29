@@ -622,6 +622,7 @@ export type DecisionAnswer =
     | { kind: 'auto' }
     | { kind: 'auto_all' }
     | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
+    | { kind: 'edit'; gate_type: 'creative_concept'; concept: Record<string, string> }
     | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
     | {
           kind: 'edit';
@@ -1838,6 +1839,8 @@ export function decisionAnswerToBody(
                 payload = { shots: answer.shots };
             } else if (answer.gate_type === 'narration') {
                 payload = { full_script: answer.modified_script, shots: answer.shots };
+            } else if (answer.gate_type === 'creative_concept') {
+                payload = { concept: answer.concept };
             } else {
                 payload = { selections: answer.selections };
             }

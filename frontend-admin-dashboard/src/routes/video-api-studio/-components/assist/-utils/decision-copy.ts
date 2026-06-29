@@ -125,6 +125,7 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
         case 'edit':
             if (answer.gate_type === 'shot_plan') return `Edited the shot plan (${answer.shots.length} shots)`;
             if (answer.gate_type === 'narration') return 'Edited the narration script';
+            if (answer.gate_type === 'creative_concept') return 'Edited the creative direction';
             return `Picked visuals for ${answer.selections.length} shot(s)`;
         default:
             return `Resolved ${label.toLowerCase()}`;

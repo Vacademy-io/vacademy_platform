@@ -27,6 +27,7 @@ import { GATE_META, gateTitle } from './-utils/decision-copy';
 import { NarrationDecision } from './gates/NarrationDecision';
 import { ShotPlanDecision } from './gates/ShotPlanDecision';
 import { VisualCastingDecision } from './gates/VisualCastingDecision';
+import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
 
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
@@ -253,6 +254,14 @@ function DecisionCard({
     apiKey?: string;
 }) {
     switch (decision.gate_type) {
+        case 'creative_concept':
+            return (
+                <CreativeConceptDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
         case 'narration':
             return (
                 <NarrationDecision

@@ -3445,6 +3445,21 @@ class VideoGenerationPipeline:
             except Exception as _csv_err:
                 print(f"⚠️ assist: could not load asset_selections.json: {_csv_err}")
 
+        # Will the visual_casting gate fire on THIS leg? (assist on, gate enabled,
+        # unanswered). When True we suppress the pipelined early-image resolution
+        # so the data-img-prompt tags survive for the gate to gather + the user
+        # to pick — otherwise an AI image would be generated before they choose.
+        self._assist_casting_pending = False
+        if self._assist_state:
+            try:
+                _dgm = self._load_decision_gates_module()
+                _oc, _ = _dgm.resolve_gate_outcome(
+                    self._assist_state, _dgm.GateType.VISUAL_CASTING.value, None
+                )
+                self._assist_casting_pending = (_oc == _dgm.GateOutcome.EMIT_AND_STOP)
+            except Exception:
+                self._assist_casting_pending = False
+
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
         # run wrote to `host-assets/run/host_audio_NNN.mp3` and silently
@@ -4735,11 +4750,17 @@ class VideoGenerationPipeline:
                                 "reference_url": _reference_url_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
-                            with _early_image_lock:
-                                _early_image_segments.append(entry)
-                            fut = _img_executor.submit(
-                                self._process_image_task_simple, task_e, _images_dir_early)
-                            _early_futures.append(fut)
+                            # Assist mode: when the visual_casting gate will pause
+                            # this leg, DON'T resolve images early — keep the
+                            # data-img-prompt tags intact so the gate can gather
+                            # candidates and the user can pick. _process_generated_images
+                            # resolves them (forced) on the resume leg.
+                            if not getattr(self, "_assist_casting_pending", False):
+                                with _early_image_lock:
+                                    _early_image_segments.append(entry)
+                                fut = _img_executor.submit(
+                                    self._process_image_task_simple, task_e, _images_dir_early)
+                                _early_futures.append(fut)
 
                 # ── Director Stage (premium/ultra) ─────────────────────────
                 # If enabled, run a Director LLM call to plan shots, then
@@ -5416,17 +5437,19 @@ class VideoGenerationPipeline:
                 # Fall back to full _process_generated_images for any segments whose
                 # images weren't submitted early (e.g. segments that finished after
                 # the executor was already done, or images with no early result).
+                # Assist mode: pause HERE — BEFORE image gen + stock video — so
+                # the data-img-prompt / data-video-query tags are still intact for
+                # the gate to gather candidates and the user to pick. Raises
+                # DecisionRequired (caught by the service) on the first leg; on the
+                # resume leg the resolvers below force the user's picks. No-op when
+                # assist / visual_casting is off.
+                self._maybe_visual_casting_gate(html_segments)
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
-                # Assist mode: pause here to let the user pick stock video clips
-                # before they're committed. Raises DecisionRequired (caught by the
-                # service) on the first leg; on resume the resolver forces the
-                # user's picks. No-op when assist / visual_casting is off.
-                self._maybe_visual_casting_gate(html_segments)
                 # Bug 1: see twin call site for run_dir rationale.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
@@ -20923,6 +20946,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
+        # Assist mode: the user already picked a stock image for this query on a
+        # prior leg — force it (skip search + AI gen entirely). Keyed by the RAW
+        # data-img-prompt (matches the gather pass). No-op when unforced.
+        _forced = (getattr(self, "_forced_casting", None) or {}).get(prompt)
+        if _forced and _forced.get("url"):
+            print(f"    👤 assist: forced user-picked image for '{prompt[:40]}'")
+            return {
+                "entry":       entry,
+                "full_tag":    full_tag,
+                "stock_url":   _forced["url"],
+                "image_bytes": None,
+                "filename":    None,
+                "usage":       {},
+            }
+
         # Lazy-init cultural context for the run if it wasn't computed during
         # Director / ShotPlanner (e.g. cached resume from `html` stage). All
         # downstream routing helpers depend on it being set.
@@ -22212,11 +22250,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         except Exception:
             return groups
         orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-        # v1: stock VIDEO queries only (one resolver, one tag type). The gate
-        # never offers a pick we can't honor. Stock-image (data-img-prompt) +
-        # AI-gen forcing is a fast-follow — it needs the force-check in the image
-        # resolver too, so it's intentionally out of scope here.
+        # Both stock VIDEO (data-video-query) and stock IMAGE (data-img-prompt)
+        # queries. Keyed by the RAW query/prompt string — the resolvers' force
+        # check (_process_stock_videos / _process_image_task_simple) uses the
+        # same key, so a user pick overrides the auto search/AI-gen.
         VID_RE = re.compile(r'<video[^>]+data-video-query=(["\'])(.*?)\1', re.DOTALL)
+        IMG_RE = re.compile(r'<img[^>]+data-img-prompt=(["\'])(.*?)\1', re.DOTALL)
         seen: set = set()
         for idx, entry in enumerate(html_segments):
             html = entry.get("html", "") or ""
@@ -22237,6 +22276,24 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if cands:
                     groups.append({
                         "query": q, "kind": "video", "shot_index": shot_index,
+                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                    })
+            for m in IMG_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("image", q) in seen:
+                    continue
+                seen.add(("image", q))
+                try:
+                    raw = pexels.search_photos_many(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "image", "id": c.get("url")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                if cands:
+                    groups.append({
+                        "query": q, "kind": "image", "shot_index": shot_index,
                         "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
                     })
         return groups
@@ -22743,6 +22800,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _ImageGenRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
+            # Assist mode: the user picked a stock image for this query on a prior
+            # leg — force it (skip search + AI gen). Keyed by the RAW data-img-prompt
+            # (matches the gather pass). No-op when unforced. This is the resume-leg
+            # batch resolver; the twin check lives in _process_image_task_simple.
+            _forced_img = (getattr(self, "_forced_casting", None) or {}).get(task.get("prompt", ""))
+            if _forced_img and _forced_img.get("url"):
+                print(f"    👤 assist: forced user-picked image for '{task.get('prompt', '')[:40]}'")
+                return {
+                    "entry":       task.get("entry"),
+                    "full_tag":    task.get("full_tag", ""),
+                    "stock_url":   _forced_img["url"],
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+
             img_source = task.get("img_source", "generate")
 
             # stock_only tier: treat every img_source=="generate" as "stock" — never

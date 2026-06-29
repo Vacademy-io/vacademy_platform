@@ -15,6 +15,10 @@ import type {
     CampaignListResponse,
     ReferralLeadsRequest,
     ReferralLeadsResponse,
+    AudienceLeadFilterRequest,
+    AudienceLeadsResponse,
+    FacebookLeadsBundle,
+    LeadJourneyFunnelResponse,
 } from '@/types/challenge-analytics';
 
 // Base URLs for services
@@ -221,6 +225,108 @@ export const getCampaigns = async (
     return response.data;
 };
 
+/**
+ * Facebook Leads: generic rich-lead fetch from POST /v1/audience/leads.
+ * Returns lifecycle status fields and custom field values per lead.
+ */
+export const getAudienceLeads = async (
+    req: AudienceLeadFilterRequest
+): Promise<AudienceLeadsResponse> => {
+    const page = req.page ?? 0;
+    const size = req.size ?? 50;
+    const response = await authenticatedAxiosInstance.post<AudienceLeadsResponse>(
+        `${ADMIN_CORE_BASE}/v1/audience/leads`,
+        { ...req, page, size },
+        { params: { pageNo: page, pageSize: size } }
+    );
+    return response.data;
+};
+
+/**
+ * Fetch every Facebook lead (active + opted-out) across the given SOCIAL MEDIA
+ * audiences and date window. Facebook leads all funnel into one (or few)
+ * audiences, so this fans out one active + one opted-out query per audience and
+ * merges the results client-side. The opted-out set is fetched separately
+ * because the leads endpoint excludes OPTED_OUT rows by default.
+ */
+export const getFacebookLeadsBundle = async (
+    audienceIds: string[],
+    fromLocal: string,
+    toLocal: string
+): Promise<FacebookLeadsBundle> => {
+    const SIZE = 500;
+    const bundle: FacebookLeadsBundle = { active: [], optedOut: [] };
+
+    // The /leads endpoint compares submitted_at (UTC) against the value as-is, so
+    // send a UTC instant — same convention as the Audience Manager leads pages.
+    // (The dashboard's date strings are local wall-clock; convert them to UTC.)
+    const toUtcIso = (local: string): string | undefined => {
+        if (!local) return undefined;
+        const d = new Date(local);
+        return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+    };
+    const fromUtc = toUtcIso(fromLocal);
+    const toUtc = toUtcIso(toLocal);
+
+    await Promise.all(
+        audienceIds.flatMap((audienceId) => [
+            getAudienceLeads({
+                audience_id: audienceId,
+                conversion_status_filter: 'ALL',
+                submitted_from_local: fromUtc,
+                submitted_to_local: toUtc,
+                page: 0,
+                size: SIZE,
+            }).then((r) => {
+                bundle.active.push(...(r.content || []));
+            }),
+            getAudienceLeads({
+                audience_id: audienceId,
+                conversion_status_filter: 'ALL',
+                overall_statuses: ['OPTED_OUT'],
+                submitted_from_local: fromUtc,
+                submitted_to_local: toUtc,
+                page: 0,
+                size: SIZE,
+            }).then((r) => {
+                bundle.optedOut.push(...(r.content || []));
+            }),
+        ])
+    );
+
+    return bundle;
+};
+
+/**
+ * Lead-Journey daily-message funnel: per-day send/recipient/reply metrics + a
+ * per-recipient roster for the multi-day WhatsApp drip (default template prefix
+ * 'lead_journey_day_'). Dates are passed as ISO-with-'T' (the endpoint binds a
+ * LocalDateTime), so — unlike the leaderboard/cohort APIs — no space conversion.
+ */
+export const getLeadJourneyFunnel = async (
+    startDate: string,
+    endDate: string,
+    templatePrefix?: string
+): Promise<LeadJourneyFunnelResponse> => {
+    const instituteId = getCurrentInstituteId();
+
+    if (!instituteId) {
+        throw new Error('Institute ID not found');
+    }
+
+    const response = await authenticatedAxiosInstance.post<LeadJourneyFunnelResponse>(
+        `${NOTIFICATION_BASE}/analytics/lead-journey-funnel`,
+        {
+            institute_id: instituteId,
+            start_date: startDate,
+            end_date: endDate,
+            ...(templatePrefix ? { template_prefix: templatePrefix } : {}),
+        }
+    );
+
+    return response.data;
+};
+
 // ============================================
 // React Query Keys
 // ============================================
@@ -268,6 +374,16 @@ export const challengeAnalyticsKeys = {
             endDate,
             page,
         ] as const,
+    facebookLeads: (audienceIds: string[], startDate: string, endDate: string) =>
+        [
+            ...challengeAnalyticsKeys.all,
+            'facebook-leads',
+            [...audienceIds].sort().join(','),
+            startDate,
+            endDate,
+        ] as const,
+    leadJourneyFunnel: (startDate: string, endDate: string) =>
+        [...challengeAnalyticsKeys.all, 'lead-journey-funnel', startDate, endDate] as const,
 };
 
 /**

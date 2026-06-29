@@ -19,7 +19,13 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { resolveInstituteLogoUrl } from './-utils/instituteLogo';
 import LiveReportFilterForm, { AppliedLiveFilters } from './liveReportFilterForm';
 import { useLiveBatchReport } from './-services/liveReportApi';
-import { computeBatchSummary, computeLearnerStats, formatDuration, parseEngagement } from './-utils/liveCompute';
+import {
+    computeBatchSummary,
+    computeLearnerStats,
+    formatDuration,
+    parseEngagement,
+    perClassEngagement,
+} from './-utils/liveCompute';
 import { exportLearnerLivePdf } from './-utils/exportLivePdf';
 import { MetricCard, SectionCard } from './liveUiBits';
 
@@ -79,6 +85,16 @@ export default function LearnerLiveReport() {
         () => (learnerStudent ? computeLearnerStats(learnerStudent) : null),
         [learnerStudent]
     );
+
+    // This learner's 0–100 engagement score, normalized to the batch's most active learner.
+    const learnerEngagementScore =
+        learner && batchSummary && batchSummary.maxEngagementPerClass > 0
+            ? Math.round(
+                  (perClassEngagement(learner.engagementIndex, learner.attended) /
+                      batchSummary.maxEngagementPerClass) *
+                      100
+              )
+            : 0;
 
     const fmtDate = (d: string | null) =>
         d && dayjs(d).isValid() ? dayjs(d).format('DD MMM YYYY') : '—';
@@ -215,10 +231,10 @@ export default function LearnerLiveReport() {
                         />
                         <MetricCard
                             label="Engagement"
-                            value={`${learner.engagementIndex}`}
-                            sub={`Batch ${batchSummary.avgEngagementIndex}`}
+                            value={`${learnerEngagementScore}`}
+                            sub={`Batch ${batchSummary.avgEngagementScore} · out of 100`}
                             icon={<ChatsCircle className="size-5" />}
-                            info="A weighted activity index of in-class interactions (talk time, chats, polls, raise-hands). Higher means more participation — it's a count, not a percentage. Only available for provider-synced (Zoom/BBB) classes."
+                            info="Engagement score (0–100) based on in-class participation — talk time, chats, polls and raise-hands, measured per class. 100 = the most active learner in this batch. Only available for provider-synced (Zoom/BBB) classes."
                         />
                     </div>
 

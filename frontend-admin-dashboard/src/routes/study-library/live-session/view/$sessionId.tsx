@@ -2074,6 +2074,7 @@ function RecordingTranscribeAction({
                 <TranscriptActionsDialog
                     open={transcriptModalOpen}
                     onOpenChange={setTranscriptModalOpen}
+                    linkedBatches={batches}
                     scheduleId={rec.scheduleId}
                     recordingId={rec.recordingId}
                     sourceTextUrl={sourceTextUrl}

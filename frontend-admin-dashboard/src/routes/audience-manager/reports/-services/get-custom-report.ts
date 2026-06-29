@@ -90,7 +90,23 @@ export interface CustomReportResult {
 }
 
 export async function runCustomReport(req: CustomReportRunRequest): Promise<CustomReportResult> {
-    const { data } = await authenticatedAxiosInstance.post(RUN_URL, req);
+    // The backend DTO (CustomReportRequest) is @JsonNaming(SnakeCaseStrategy), so the
+    // body MUST be snake_case — posting camelCase leaves institute_id null and the
+    // server rejects with "instituteId is required". (filters' field/values and sort's
+    // field/dir are single words, already snake-compatible.)
+    const body = {
+        institute_id: req.instituteId,
+        from_date: req.fromDate,
+        to_date: req.toDate,
+        team_id: req.teamId,
+        counsellor_user_id: req.counsellorUserId,
+        dimensions: req.dimensions,
+        measures: req.measures,
+        filters: req.filters,
+        sort: req.sort,
+        limit: req.limit,
+    };
+    const { data } = await authenticatedAxiosInstance.post(RUN_URL, body);
     return {
         columns: Array.isArray(data?.columns) ? data.columns : [],
         rows: Array.isArray(data?.rows) ? data.rows : [],

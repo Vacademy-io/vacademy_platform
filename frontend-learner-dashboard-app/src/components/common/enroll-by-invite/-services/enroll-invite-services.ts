@@ -633,6 +633,43 @@ export const handleGetPublicInstituteDetails = ({
   };
 };
 
+/**
+ * Same institute payload as getPublicInstituteDetails but hits `/details/{id}`
+ * (includeBatches=true) instead of `/details-non-batches/{id}` — so the response
+ * actually carries `batches_for_sessions`. The enroll form uses the lighter
+ * non-batches endpoint for branding/settings, which means bundled "What's
+ * Included" courses can't resolve their names from it (batches come back empty).
+ * Pass the HOST institute id (the invite's instituteId) — the bundled package
+ * sessions belong to it, even for "Sub-Org Subscription" invites where the
+ * sub-org is only a branding label backed by an empty institute shell.
+ */
+export const getPublicInstituteDetailsWithBatches = async ({
+  instituteId,
+}: {
+  instituteId: string;
+}) => {
+  const response = await axios({
+    method: "GET",
+    url: `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`,
+  });
+  return response?.data;
+};
+
+export const handleGetPublicInstituteDetailsWithBatches = ({
+  instituteId,
+  enabled = true,
+}: {
+  instituteId: string;
+  enabled?: boolean;
+}) => {
+  return {
+    queryKey: ["GET_PUBLIC_INSTITUTE_DETAILS_WITH_BATCHES", instituteId],
+    queryFn: () => getPublicInstituteDetailsWithBatches({ instituteId }),
+    staleTime: 60 * 60 * 1000,
+    enabled: enabled && !!instituteId,
+  };
+};
+
 // ─── CPO (Complex Payment Option) open enrollment helpers ────────────────────
 
 export interface CpoInstallmentDue {

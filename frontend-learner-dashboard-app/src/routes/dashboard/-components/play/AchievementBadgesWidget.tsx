@@ -1,22 +1,26 @@
 import React from "react";
-import { BookOpen, Fire, Lightning, Star, Trophy, Medal, Lock } from "@phosphor-icons/react";
+import { Trophy, Lock, Star } from "@phosphor-icons/react";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge } from "@/services/play-gamification";
 import { playIllustrations } from "@/assets/play-illustrations";
-
-const ICON_MAP: Record<string, React.ElementType> = { BookOpen, Fire, Lightning, Star, Trophy, Medal };
+import { BadgeVisual } from "../badge-icons";
 
 const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
-  const Icon = ICON_MAP[badge.icon] ?? Trophy;
   const unlocked = badge.unlocked;
+  const awarded = badge.isAdminAwarded;
+  const tooltip = awarded
+    ? `${badge.name} — Awarded by your institute${badge.awardReason ? `: ${badge.awardReason}` : ""}`
+    : `${badge.name}: ${badge.description}`;
   return (
-    <div className="flex flex-col items-center gap-1" title={`${badge.name}: ${badge.description}`}>
+    <div className="flex flex-col items-center gap-1" title={tooltip}>
       <div
         className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all ${
           unlocked ? "bg-white shadow-play-badge" : "bg-white/30 grayscale"
         }`}
       >
-        <Icon
+        <BadgeVisual
+          icon={badge.icon}
+          fill
           weight={unlocked ? "fill" : "regular"}
           size={22}
           className={unlocked ? "text-play-accent-deep" : "text-play-ink"}
@@ -28,11 +32,17 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
             className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white p-0.5 text-play-ink"
           />
         )}
-        {unlocked && badge.unlockedAt && isRecent(badge.unlockedAt) && (
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-play-gold opacity-75" />
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-play-gold text-play-badge text-play-ink font-black items-center justify-center">!</span>
+        {awarded ? (
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-play-gold ring-2 ring-white">
+            <Star weight="fill" size={10} className="text-play-ink" />
           </span>
+        ) : (
+          unlocked && badge.unlockedAt && isRecent(badge.unlockedAt) && (
+            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-play-gold opacity-75" />
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-play-gold text-play-badge text-play-ink font-black items-center justify-center">!</span>
+            </span>
+          )
         )}
       </div>
       <span className="text-3xs font-bold text-play-ink text-center leading-tight max-w-12">
@@ -48,6 +58,8 @@ function isRecent(dateStr: string): boolean {
 
 export const AchievementBadgesWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
+  // Master toggle off → the institute disabled badges; render nothing.
+  if (data?.badgesEnabled === false) return null;
   const badges = data?.badges ?? [];
   const unlockedCount = badges.filter((b) => b.unlocked).length;
 

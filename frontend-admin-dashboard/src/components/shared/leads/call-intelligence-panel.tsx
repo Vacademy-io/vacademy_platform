@@ -11,6 +11,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fetchCallIntelligence, type CallIntelligenceDto } from './services/call-intelligence';
+import { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 
 /**
  * Per-call AI analysis panel. Lazily fetches the call_intelligence row on first
@@ -244,13 +245,18 @@ export function CallIntelligencePanel({
     callLogId: string;
     className?: string;
 }) {
+    const featureEnabled = useCallIntelligenceEnabled();
     const [expanded, setExpanded] = useState(false);
     const query = useQuery({
         queryKey: ['call-intelligence', callLogId],
         queryFn: () => fetchCallIntelligence(callLogId),
-        enabled: expanded,
+        enabled: expanded && featureEnabled,
         staleTime: 60 * 1000,
     });
+
+    // Hide the whole affordance when Call Intelligence is off for the institute —
+    // showing it would just promise an analysis that never runs.
+    if (!featureEnabled) return null;
 
     if (!expanded) {
         return (
@@ -280,6 +286,11 @@ export function CallIntelligencePanel({
             </div>
             {query.isLoading ? (
                 <p className="text-body text-neutral-500">Loading analysis…</p>
+            ) : query.isError ? (
+                <p className="text-body text-danger-600">
+                    Couldn’t reach the analysis service. If you’re on a backend without Call
+                    Intelligence deployed, this endpoint won’t exist yet.
+                </p>
             ) : !ci ? (
                 <p className="text-body text-neutral-500">This call hasn’t been analyzed.</p>
             ) : ci.status === 'COMPLETED' ? (

@@ -26,6 +26,7 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
                 JOIN activity_log al ON cs.activity_id = al.id
                 JOIN valid_users vu ON al.user_id = vu.user_id
                 WHERE al.created_at BETWEEN :startDate AND :endDate
+                  AND cs.concentration_score > 0
             )
             SELECT
                 CASE
@@ -51,6 +52,7 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
             WHERE
                 al.user_id = :userId
                 AND al.created_at BETWEEN :startDate AND :endDate
+                AND cs.concentration_score > 0
             """, nativeQuery = true)
     Double findAverageConcentrationScoreOfLearner(
             @Param("startDate") Date startDate,

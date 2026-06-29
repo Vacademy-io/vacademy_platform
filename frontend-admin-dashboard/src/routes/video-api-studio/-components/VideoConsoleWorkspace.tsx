@@ -2512,24 +2512,6 @@ export function VideoConsoleWorkspace({
                         </div>
                     )}
 
-                    {(consoleState === 'generating' || consoleState === 'complete') &&
-                        currentGeneration && (
-                            <PipelineLayout
-                                state={derivePipelineFromLive(
-                                    currentGeneration satisfies LiveCurrentGeneration
-                                )}
-                                apiKey={activeApiKey ?? undefined}
-                                eventLog={currentGeneration.eventLog}
-                                onAbort={consoleState === 'generating' ? handleAbort : undefined}
-                                onRetry={
-                                    currentGeneration?.videoId
-                                        ? () => handleRetry(currentGeneration.videoId)
-                                        : undefined
-                                }
-                                onEdit={onEdit}
-                            />
-                        )}
-
                     {consoleState === 'reviewing' && currentGeneration && (
                         <ScriptReview
                             script={reviewScript}
@@ -2540,22 +2522,54 @@ export function VideoConsoleWorkspace({
                         />
                     )}
 
-                    {/* Assist mode: chat-first conversation surface. The
-                        production diagram lives behind "Show progress". */}
-                    {consoleState === 'assisting' && currentGeneration && (
-                        <div className="h-full">
-                            <AssistChat
-                                prompt={currentGeneration.prompt}
-                                pending={currentGeneration.pendingDecision ?? null}
-                                transcript={currentGeneration.assistTranscript ?? []}
-                                isSubmitting={isSubmittingDecision}
-                                statusMessage={currentGeneration.message}
-                                onSubmit={handleSubmitDecision}
-                                onShowProgress={() => setShowAssistProgress(true)}
-                                vimMode={vimMode}
-                            />
-                        </div>
-                    )}
+                    {/* The conversation is the ONE surface for the whole
+                        lifecycle in both Auto and Assist — status while working,
+                        decision cards at gates (Assist only), the finished video
+                        at the end. The production diagram is an optional drawer
+                        behind "Show progress". */}
+                    {(consoleState === 'generating' ||
+                        consoleState === 'assisting' ||
+                        consoleState === 'complete') &&
+                        currentGeneration && (
+                            <div className="h-full">
+                                <AssistChat
+                                    prompt={currentGeneration.prompt}
+                                    pending={currentGeneration.pendingDecision ?? null}
+                                    transcript={currentGeneration.assistTranscript ?? []}
+                                    isSubmitting={isSubmittingDecision}
+                                    statusMessage={currentGeneration.message}
+                                    percentage={currentGeneration.percentage}
+                                    shotsCompleted={currentGeneration.shotsCompleted}
+                                    shotsTotal={currentGeneration.shotsTotal}
+                                    isComplete={consoleState === 'complete'}
+                                    timelineUrl={currentGeneration.htmlUrl}
+                                    audioUrl={currentGeneration.audioUrl}
+                                    wordsUrl={currentGeneration.wordsUrl}
+                                    orientation={currentGeneration.orientation}
+                                    onSubmit={handleSubmitDecision}
+                                    onShowProgress={() => setShowAssistProgress(true)}
+                                    onAbort={
+                                        consoleState !== 'complete' ? handleAbort : undefined
+                                    }
+                                    onEdit={
+                                        onEdit && currentGeneration.htmlUrl && activeApiKey
+                                            ? () =>
+                                                  onEdit({
+                                                      videoId: currentGeneration.videoId,
+                                                      htmlUrl: currentGeneration.htmlUrl!,
+                                                      audioUrl: currentGeneration.audioUrl ?? '',
+                                                      wordsUrl: currentGeneration.wordsUrl ?? '',
+                                                      apiKey: activeApiKey,
+                                                      orientation:
+                                                          currentGeneration.orientation ??
+                                                          'landscape',
+                                                  })
+                                            : undefined
+                                    }
+                                    vimMode={vimMode}
+                                />
+                            </div>
+                        )}
                 </div>
 
                 {/* No docked Composer at the bottom while a video is in

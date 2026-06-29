@@ -4,13 +4,17 @@ import { Input } from '@/components/ui/input';
 import {
     Sparkle,
     Check,
+    CheckCircle,
     PaperPlaneRight,
     Robot,
     User as UserIcon,
     CircleNotch,
     SidebarSimple,
+    PencilSimple,
+    Stop,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import type {
     AssistTurn,
     DecisionAnswer,
@@ -24,17 +28,32 @@ import { VisualCastingDecision } from './gates/VisualCastingDecision';
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
     prompt: string;
-    /** The decision currently awaiting the user, or null between gates. */
+    /** The decision currently awaiting the user, or null between gates / in Auto mode. */
     pending: DecisionRequest | null;
     /** Resolved turns, oldest → newest. */
     transcript: AssistTurn[];
     /** True while the next leg is opening (disables cards). */
     isSubmitting?: boolean;
-    /** Latest status line ("Planning your shots…") shown as an agent bubble. */
+    /** Latest status line ("Filming shot 3/8…") shown as a live agent bubble. */
     statusMessage?: string;
+    /** Live pipeline progress (drives the status bubble's bar + counter). */
+    percentage?: number;
+    shotsCompleted?: number;
+    shotsTotal?: number;
+    /** True when the video is rendered — shows the completion card + player. */
+    isComplete?: boolean;
+    /** Completion player inputs. */
+    timelineUrl?: string;
+    audioUrl?: string;
+    wordsUrl?: string;
+    orientation?: 'landscape' | 'portrait';
     onSubmit: (answer: DecisionAnswer) => void;
-    /** Opens the production-diagram drawer. */
+    /** Opens the production-diagram drawer (optional detail view). */
     onShowProgress?: () => void;
+    /** Stops an in-flight generation. */
+    onAbort?: () => void;
+    /** Opens the full editor for the finished video. */
+    onEdit?: () => void;
     vimMode?: boolean;
 }
 
@@ -62,6 +81,46 @@ function Bubble({ side, children }: { side: 'agent' | 'user'; children: ReactNod
                     <UserIcon className="size-4 text-violet-600" />
                 </span>
             )}
+        </div>
+    );
+}
+
+/** Live "we're working on it" bubble with a progress bar + shot counter. */
+function StatusBubble({
+    message,
+    percentage,
+    shotsCompleted,
+    shotsTotal,
+}: {
+    message?: string;
+    percentage?: number;
+    shotsCompleted?: number;
+    shotsTotal?: number;
+}) {
+    const pct = Math.max(0, Math.min(100, Math.round(percentage ?? 0)));
+    return (
+        <div className="flex gap-2.5">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/30">
+                <Robot className="size-4 text-violet-600" />
+            </span>
+            <div className="w-full max-w-md rounded-2xl rounded-tl-sm bg-muted px-3.5 py-2.5 text-sm">
+                <div className="flex items-center gap-2 text-foreground">
+                    <CircleNotch className="size-4 shrink-0 animate-spin text-violet-600" />
+                    <span className="truncate">{message || 'Working on it…'}</span>
+                </div>
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/30">
+                    {/* Dynamic width — sanctioned inline style for a live value. */}
+                    <div
+                        className="h-full rounded-full bg-violet-600 transition-all"
+                        style={{ width: `${pct}%` }}
+                    />
+                </div>
+                {typeof shotsTotal === 'number' && shotsTotal > 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                        Shot {Math.min(shotsCompleted ?? 0, shotsTotal)} / {shotsTotal}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -166,11 +225,74 @@ function DecisionCard({
     }
 }
 
+/** The finished video, shown inline as the final turn of the conversation. */
+function CompletionCard({
+    timelineUrl,
+    audioUrl,
+    wordsUrl,
+    orientation,
+    onEdit,
+    onShowProgress,
+}: {
+    timelineUrl?: string;
+    audioUrl?: string;
+    wordsUrl?: string;
+    orientation?: 'landscape' | 'portrait';
+    onEdit?: () => void;
+    onShowProgress?: () => void;
+}) {
+    const isPortrait = orientation === 'portrait';
+    return (
+        <div className="space-y-3">
+            <Bubble side="agent">
+                <span className="flex items-center gap-2 font-medium text-foreground">
+                    <CheckCircle weight="fill" className="size-4 text-emerald-600" />
+                    Your video is ready.
+                </span>
+            </Bubble>
+            <div className="overflow-hidden rounded-xl border bg-black shadow-sm">
+                {timelineUrl ? (
+                    <div className={cn('mx-auto', isPortrait ? 'max-w-xs' : 'w-full')}>
+                        <AIContentPlayer
+                            timelineUrl={timelineUrl}
+                            audioUrl={audioUrl}
+                            wordsUrl={wordsUrl}
+                            width={isPortrait ? 1080 : 1920}
+                            height={isPortrait ? 1920 : 1080}
+                        />
+                    </div>
+                ) : (
+                    <div className="p-8 text-center text-sm text-white/70">Preparing preview…</div>
+                )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+                {onEdit && (
+                    <Button
+                        size="sm"
+                        onClick={onEdit}
+                        className="gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
+                    >
+                        <PencilSimple className="size-4" />
+                        Edit video
+                    </Button>
+                )}
+                {onShowProgress && (
+                    <Button variant="outline" size="sm" onClick={onShowProgress} className="gap-1.5">
+                        <SidebarSimple className="size-3.5" />
+                        Details & download
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 /**
- * Chat-first assist surface — the primary view while the pipeline pauses for
- * the user. Renders the conversation transcript + the current decision card,
- * with a free-form steering input. The production diagram lives behind the
- * "Show progress" button (a secondary drawer).
+ * The single conversation surface for the studio — used in BOTH Auto and Assist
+ * modes for the entire generation lifecycle. While working it streams status
+ * bubbles; in Assist it adds decision cards at gates; when done it shows the
+ * finished video inline. The production diagram is an optional drawer behind
+ * "Show progress".
  */
 export function AssistChat({
     prompt,
@@ -178,15 +300,25 @@ export function AssistChat({
     transcript,
     isSubmitting,
     statusMessage,
+    percentage,
+    shotsCompleted,
+    shotsTotal,
+    isComplete,
+    timelineUrl,
+    audioUrl,
+    wordsUrl,
+    orientation,
     onSubmit,
     onShowProgress,
+    onAbort,
+    onEdit,
 }: AssistChatProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
     const [steer, setSteer] = useState('');
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [pending?.decision_id, transcript.length, isSubmitting]);
+    }, [pending?.decision_id, transcript.length, isSubmitting, statusMessage, isComplete]);
 
     const sendSteer = () => {
         const text = steer.trim();
@@ -194,6 +326,8 @@ export function AssistChat({
         setSteer('');
         onSubmit({ kind: 'freeform', text });
     };
+
+    const working = !pending && !isComplete;
 
     return (
         <div className="mx-auto flex size-full max-w-3xl flex-col">
@@ -205,12 +339,25 @@ export function AssistChat({
                     </span>
                     <div className="text-sm font-semibold text-foreground">Assist</div>
                 </div>
-                {onShowProgress && (
-                    <Button variant="outline" size="sm" onClick={onShowProgress} className="gap-1.5">
-                        <SidebarSimple className="size-3.5" />
-                        Show progress
-                    </Button>
-                )}
+                <div className="flex items-center gap-2">
+                    {working && onAbort && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onAbort}
+                            className="gap-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        >
+                            <Stop className="size-3.5" />
+                            Stop
+                        </Button>
+                    )}
+                    {onShowProgress && (
+                        <Button variant="outline" size="sm" onClick={onShowProgress} className="gap-1.5">
+                            <SidebarSimple className="size-3.5" />
+                            Show progress
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Conversation */}
@@ -240,48 +387,59 @@ export function AssistChat({
                             onSubmit={onSubmit}
                         />
                     </div>
+                ) : isComplete ? (
+                    <CompletionCard
+                        timelineUrl={timelineUrl}
+                        audioUrl={audioUrl}
+                        wordsUrl={wordsUrl}
+                        orientation={orientation}
+                        onEdit={onEdit}
+                        onShowProgress={onShowProgress}
+                    />
                 ) : (
-                    <Bubble side="agent">
-                        <span className="flex items-center gap-2 text-muted-foreground">
-                            <CircleNotch className="size-4 animate-spin" />
-                            {statusMessage || 'Working on it…'}
-                        </span>
-                    </Bubble>
+                    <StatusBubble
+                        message={statusMessage}
+                        percentage={percentage}
+                        shotsCompleted={shotsCompleted}
+                        shotsTotal={shotsTotal}
+                    />
                 )}
 
                 <div ref={bottomRef} />
             </div>
 
-            {/* Free-form steering input — enabled only while a decision is pending */}
-            <div className="border-t px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <Input
-                        value={steer}
-                        disabled={!pending || isSubmitting}
-                        onChange={(e) => setSteer(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                sendSteer();
+            {/* Free-form steering — enabled only while a decision is pending */}
+            {!isComplete && (
+                <div className="border-t px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <Input
+                            value={steer}
+                            disabled={!pending || isSubmitting}
+                            onChange={(e) => setSteer(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendSteer();
+                                }
+                            }}
+                            placeholder={
+                                pending
+                                    ? 'Steer it — e.g. “make shot 3 funnier and shorter”'
+                                    : 'Working…'
                             }
-                        }}
-                        placeholder={
-                            pending
-                                ? 'Steer it — e.g. “make shot 3 funnier and shorter”'
-                                : 'Working…'
-                        }
-                        className="h-9"
-                    />
-                    <Button
-                        size="sm"
-                        disabled={!pending || isSubmitting || !steer.trim()}
-                        onClick={sendSteer}
-                        className="gap-1.5"
-                    >
-                        <PaperPlaneRight className="size-4" />
-                    </Button>
+                            className="h-9"
+                        />
+                        <Button
+                            size="sm"
+                            disabled={!pending || isSubmitting || !steer.trim()}
+                            onClick={sendSteer}
+                            className="gap-1.5"
+                        >
+                            <PaperPlaneRight className="size-4" />
+                        </Button>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

@@ -412,6 +412,52 @@ class VideoGenerationService:
         )
         yield {"type": "decision_required", **decision}
 
+    def _persist_resume_artifacts(self, video_id, run_dir) -> None:
+        """Upload the artifacts a resumed HTML leg needs, so an assist pause
+        mid-HTML doesn't lose them when the temp dir is torn down.
+
+        The visual_casting gate pauses inside the HTML stage — AFTER per-shot TTS
+        produced narration.mp3 but BEFORE the service's normal end-of-stage S3
+        upload. Without this, resume can't recover the audio / shot cache. Best-
+        effort; mirrors the S3 layout the resume checkpoint-download reads.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            s3_updates: Dict[str, str] = {}
+            _audio = run_dir / "narration.mp3"
+            if _audio.exists():
+                _u = self.s3_service.upload_video_file(_audio, video_id, "audio")
+                if _u:
+                    s3_updates["audio"] = _u
+            _words = run_dir / "narration.words.json"
+            if _words.exists():
+                _u = self.s3_service.upload_video_file(_words, video_id, "words")
+                if _u:
+                    s3_updates["words"] = _u
+            _raw = run_dir / "narration_raw.json"
+            if _raw.exists():
+                self.s3_service.upload_video_file(_raw, video_id, "audio")
+            for _name in ("shot_plan.json", "style_guide.json", "director_plan.json"):
+                _f = run_dir / _name
+                if _f.exists():
+                    self.s3_service.upload_file(
+                        _f, s3_key=f"ai-videos/{video_id}/checkpoints/{_name}"
+                    )
+            _sc = run_dir / "shot_cache"
+            if _sc.exists() and _sc.is_dir():
+                for _f in _sc.glob("*.json"):
+                    self.s3_service.upload_file(
+                        _f, s3_key=f"ai-videos/{video_id}/checkpoints/shot_cache/{_f.name}"
+                    )
+            if s3_updates:
+                self.repository.update_files(video_id, s3_urls=s3_updates)
+            logger.info(f"[Assist] persisted resume artifacts for {video_id}: {list(s3_updates)}")
+        except Exception:
+            logger.error(
+                f"[Assist] failed to persist resume artifacts for {video_id}", exc_info=True
+            )
+
     async def generate_till_stage(
         self,
         video_id: str,
@@ -728,6 +774,14 @@ class VideoGenerationService:
         # ── Assist mode: SCRIPT-boundary decision gates ─────────────────
         # Gated entirely behind assist_mode so the Auto path is unchanged.
         _assist = self._load_assist_state(video_record, assist_mode, assist_gates, assist_granularity)
+        # Resolve the DecisionRequired sentinel class for the HTML-stage gate
+        # catch below. Always importable (pure module); fall back to a private
+        # placeholder so the `except` clause is always valid.
+        try:
+            _DecisionRequired = self._decision_gates().DecisionRequired
+        except Exception:
+            class _DecisionRequired(BaseException):  # noqa: N801 — placeholder, never raised
+                pass
         _pending_gate = None
         if _assist.get("enabled"):
             # Persist the assist block (first leg seeds it; resume legs no-op-merge)
@@ -798,6 +852,9 @@ class VideoGenerationService:
                     ai_video_enabled=ai_video_enabled,
                     ai_video_audio_enabled=ai_video_audio_enabled,
                     model_overrides=model_overrides,
+                    # Assist mode: the pipeline pauses at the HTML-stage
+                    # visual_casting gate when enabled. None ⇒ no HTML gate.
+                    assist_state=(_assist if _assist.get("enabled") else None),
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -845,7 +902,40 @@ class VideoGenerationService:
                         "file_ids": video_record.file_ids,
                         "percentage": 100
                     }
-            
+
+            except _DecisionRequired as _dr:
+                # Assist mode: a gate inside the HTML stage (visual_casting) asked
+                # for the user. The decision_required event was already emitted to
+                # the SSE stream; persist the pending decision + flip to
+                # AWAITING_INPUT and end the leg cleanly (NOT a failure — no
+                # refund). The /decision endpoint resumes from here.
+                try:
+                    # Persist the in-flight artifacts (narration.mp3, words, shot
+                    # cache) to S3 BEFORE the temp dir is torn down, so the resume
+                    # leg can recover them (the normal end-of-stage upload never
+                    # ran — we paused mid-HTML).
+                    self._persist_resume_artifacts(video_id, work_dir)
+                    _decision = dict(getattr(_dr, "decision", {}) or {})
+                    _decision["video_id"] = video_id
+                    _dg = self._decision_gates()
+                    _dg.set_pending(_assist, _decision)
+                    # current_stage stays at the stage BEFORE html ("WORDS") so the
+                    # resume leg RE-ENTERS the html stage (which skips cached shots,
+                    # forces the picked clips, then renders). HTML would skip it.
+                    self.repository.update_assist_state(
+                        video_id, _assist, status="AWAITING_INPUT", current_stage="WORDS"
+                    )
+                    logger.info(
+                        f"[Assist] HTML-stage gate paused {video_id} "
+                        f"decision_id={_decision.get('decision_id')}"
+                    )
+                except Exception:
+                    logger.error(
+                        f"[Assist] failed to persist HTML-stage pending decision for {video_id}",
+                        exc_info=True,
+                    )
+                return
+
             except Exception as e:
                 import traceback
                 error_traceback = traceback.format_exc()
@@ -927,6 +1017,9 @@ class VideoGenerationService:
         # schemas → service circular import; the field shape is the pydantic
         # `ModelOverrides` from app.schemas.video_generation.
         model_overrides: Optional[Any] = None,
+        # Assist mode: the extra_metadata.assist block, forwarded to pipeline.run
+        # so the HTML-stage visual_casting gate can fire. None ⇒ no HTML gate.
+        assist_state: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -1348,6 +1441,13 @@ class VideoGenerationService:
                     _sg_local = run_dir / "style_guide.json"
                     if not _sg_local.exists():
                         self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local, expected_missing=True)
+
+                    # asset_selections.json (assist mode) — the user's forced
+                    # stock-media picks. The pipeline reads run_dir/asset_selections.json
+                    # at run() entry and the resolver forces these clips. Always
+                    # re-download (the user may have just answered the gate).
+                    _as_local = run_dir / "asset_selections.json"
+                    self.s3_service.download_file(f"{_ckpt_base_url}/asset_selections.json", _as_local, expected_missing=True)
 
                     # director_plan.json
                     _dp_local = run_dir / "director_plan.json"
@@ -2208,6 +2308,9 @@ class VideoGenerationService:
                     institute_id=institute_id,
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
+                    # Assist mode: gate config + answer ledger. The HTML-stage
+                    # visual_casting gate reads this; None ⇒ fully autonomous.
+                    assist_state=assist_state,
                 )
 
                 # Release the request-scoped DB connection before the long

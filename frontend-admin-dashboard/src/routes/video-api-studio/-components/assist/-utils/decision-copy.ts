@@ -1,4 +1,10 @@
-import type { GateType, DecisionAnswer, DecisionRequest } from '../../../-services/video-generation';
+import type {
+    GateType,
+    DecisionAnswer,
+    DecisionRequest,
+    AssistTurn,
+    VideoStatusResponse,
+} from '../../../-services/video-generation';
 
 /**
  * Per-gate display copy for the assist conversation — parallels the pipeline's
@@ -38,6 +44,68 @@ export const GATE_META: Record<GateType, GateMeta> = {
 
 export function gateTitle(gate: GateType): string {
     return GATE_META[gate]?.title ?? gate;
+}
+
+/** Canonical agent question per gate — used when reconstructing past turns. */
+const GATE_PROMPT: Record<GateType, string> = {
+    creative_concept: "Here's the creative direction — approve or refine it.",
+    shot_plan: "Here's the shot plan — approve it, edit any shot, or let me decide.",
+    narration: "Here's the narration script — edit it, approve it, or let me decide.",
+    visual_casting: 'Which visual should we use for this shot?',
+    shot_look: 'Which look should we use for this shot?',
+    voice: 'Which voice should we use?',
+    music: 'Which background music fits?',
+    avatar: 'Which host should present?',
+};
+
+/** Summary of a recorded answer (from the backend ledger), for the transcript. */
+function summarizeLedger(gate: GateType, mode: string, answer: Record<string, unknown> | undefined): string {
+    const label = gateTitle(gate).toLowerCase();
+    switch (mode) {
+        case 'auto':
+            return `Let AI decide the ${label}`;
+        case 'auto_all':
+            return `Let AI handle all remaining ${label} choices`;
+        case 'select':
+            return `Approved the ${label}`;
+        case 'freeform':
+            return `Asked: “${String((answer as { text?: string })?.text ?? '').slice(0, 80)}”`;
+        case 'edit':
+            if (gate === 'shot_plan') return 'Edited the shot plan';
+            if (gate === 'narration') return 'Edited the narration script';
+            return 'Picked the visuals';
+        default:
+            return `Resolved the ${label}`;
+    }
+}
+
+/**
+ * Rebuild the conversation transcript from the backend's answered-decisions
+ * ledger. Used when a finished video loads fresh (Recent / deep-link / reload)
+ * and the in-memory transcript is gone.
+ */
+export function reconstructAssistTranscript(
+    status: VideoStatusResponse | null | undefined
+): AssistTurn[] {
+    const assist = (status?.metadata as { assist?: { answered_decisions?: unknown[] } } | null)
+        ?.assist;
+    const answered = (assist?.answered_decisions ?? []) as Array<{
+        decision_id?: string;
+        _key?: string;
+        gate_type?: GateType;
+        mode?: string;
+        answer?: Record<string, unknown>;
+        answered_at?: string;
+    }>;
+    return answered
+        .filter((r) => r && r.gate_type)
+        .map((r) => ({
+            decision_id: r.decision_id ?? `${r.gate_type}:${r._key ?? ''}`,
+            gate_type: r.gate_type as GateType,
+            prompt: GATE_PROMPT[r.gate_type as GateType] ?? gateTitle(r.gate_type as GateType),
+            answer_summary: summarizeLedger(r.gate_type as GateType, r.mode ?? 'select', r.answer),
+            answered_at: r.answered_at ? Date.parse(r.answered_at) || 0 : 0,
+        }));
 }
 
 /** Short human summary of what the user answered, for the transcript. */

@@ -93,12 +93,18 @@ class GateOutcome(str, Enum):
     AUTO_DECIDE = "auto_decide"       # assist off / gate disabled / user said "let AI decide"
 
 
-class DecisionRequired(Exception):
+class DecisionRequired(BaseException):
     """Sentinel raised to unwind a generation leg when a gate needs the user.
 
     Carries the full ``decision_required`` payload so the service can persist it
     and the SSE consumer can render the card. It is NOT an error — the service
     catches it, flips the video to ``AWAITING_INPUT``, and returns cleanly.
+
+    Subclasses ``BaseException`` (not ``Exception``) ON PURPOSE: the pipeline's
+    HTML stage is wrapped in many ``except Exception`` handlers, and this control-
+    flow signal must propagate straight through them to the service (verified: no
+    bare ``except:`` clauses exist in automation_pipeline.py). The ThreadPoolExecutor
+    that runs the pipeline captures BaseException and re-raises it on ``await``.
     """
 
     def __init__(self, decision: Dict[str, Any]):
@@ -390,6 +396,34 @@ def to_casting_candidate(raw: Dict[str, Any], *, is_recommended: bool = False) -
         "alt": raw.get("alt") or raw.get("description"),
         "is_recommended": bool(is_recommended),
     }
+
+
+def build_visual_casting_groups_decision(
+    video_id: str,
+    groups: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Batched casting decision — one candidate group per media query.
+
+    ``groups`` = [{query, kind, shot_index?, candidates[], recommended_candidate_id?}].
+    The user picks a candidate per query (or defers to AI); selections are keyed
+    by query string (the resolver's forcing key).
+    """
+    n = len(groups)
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.VISUAL_CASTING.value,
+        prompt=(
+            f"I gathered visual options for {n} shot{'s' if n != 1 else ''}. "
+            "Pick the ones you like, or let me choose."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=False,
+        allow_edit=True,
+        payload={"groups": groups},
+        seq=seq,
+    )
 
 
 def build_visual_casting_decision(

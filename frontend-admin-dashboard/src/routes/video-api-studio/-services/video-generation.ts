@@ -549,6 +549,17 @@ export interface VisualCastingCandidate {
     is_recommended?: boolean;
 }
 
+/** One media slot to cast — a media query (often one per shot). */
+export interface VisualCastingGroup {
+    /** The search query the pipeline emitted (the forcing key). */
+    query: string;
+    kind: 'image' | 'video';
+    /** Shot this query belongs to, when known (for display). */
+    shot_index?: number;
+    candidates: VisualCastingCandidate[];
+    recommended_candidate_id?: string;
+}
+
 /**
  * One editable shot row in the shot-plan / narration gates. Looser than
  * ShotPlanItem because the BE summary uses `duration_estimate_s` (planner
@@ -571,10 +582,12 @@ export interface DecisionPayload {
     full_script?: string;
     /** creative_concept: the drafted creative direction. */
     concept?: Record<string, unknown>;
-    /** visual_casting: candidate media for this shot. */
+    /** visual_casting: candidate media for this shot (single-shot form). */
     candidates?: VisualCastingCandidate[];
     query?: string;
     recommended_candidate_id?: string;
+    /** visual_casting (batched): one group per media query across the video. */
+    groups?: VisualCastingGroup[];
     [key: string]: unknown;
 }
 
@@ -610,7 +623,18 @@ export type DecisionAnswer =
     | { kind: 'auto_all' }
     | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
     | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
-    | { kind: 'edit'; gate_type: 'visual_casting'; selections: Array<{ shot_index: number; candidate_id: string | null }> };
+    | {
+          kind: 'edit';
+          gate_type: 'visual_casting';
+          // null candidate_id = "let AI decide" for that query. `query` is the
+          // backend forcing key; `url` is the chosen candidate's media URL.
+          selections: Array<{
+              query: string;
+              candidate_id: string | null;
+              url?: string;
+              shot_index?: number;
+          }>;
+      };
 
 /** One resolved turn in the assist conversation transcript (FE-only state). */
 export interface AssistTurn {

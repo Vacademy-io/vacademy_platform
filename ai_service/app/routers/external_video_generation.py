@@ -983,6 +983,27 @@ async def decision_video_external(
                     content_type="text/plain; charset=utf-8",
                 )
                 artifact_key = f"ai-videos/{video_id}/script/script.txt"
+        elif mode == "edit" and gate_type == dg.GateType.VISUAL_CASTING.value:
+            # Persist the user's per-query media picks. The HTML stage reads this
+            # on resume and forces the chosen URL for each query (keyed by the
+            # search query string); queries left null fall through to auto-pick.
+            selections = answer.get("selections") or []
+            forced = {
+                str(s.get("query")): {
+                    "url": s.get("url"),
+                    "candidate_id": s.get("candidate_id"),
+                    "shot_index": s.get("shot_index"),
+                }
+                for s in selections
+                if isinstance(s, dict) and s.get("query") and s.get("candidate_id") and s.get("url")
+            }
+            body = json.dumps({"forced": forced}, ensure_ascii=False).encode("utf-8")
+            s3_svc.upload_file_content(
+                content=body, filename="asset_selections.json",
+                s3_key=f"ai-videos/{video_id}/checkpoints/asset_selections.json",
+                content_type="application/json",
+            )
+            artifact_key = f"ai-videos/{video_id}/checkpoints/asset_selections.json"
     except Exception as _werr:
         logger.error(f"[Decision] failed to write sidecar for {video_id} gate={gate_type}: {_werr}")
 

@@ -42,7 +42,7 @@ import {
 import { HistorySidebar } from './HistorySidebar';
 import { ScriptReview } from './ScriptReview';
 import { AssistChat } from './assist/AssistChat';
-import { buildTurnSummary } from './assist/-utils/decision-copy';
+import { buildTurnSummary, reconstructAssistTranscript } from './assist/-utils/decision-copy';
 import { AssistModeToggle } from '../console/-components/AssistModeToggle';
 import { PipelineLayout } from './pipeline/PipelineLayout';
 import {
@@ -990,6 +990,32 @@ export function VideoConsoleWorkspace({
         if (!currentGeneration?.pendingDecision) return;
         setConsoleState('assisting');
     }, [consoleState, currentGeneration?.pendingDecision]);
+
+    // Assist mode: rebuild the conversation transcript when a finished video
+    // loads fresh (Recent / deep-link / reload) — the in-memory transcript is
+    // gone, but the backend's answered-decisions ledger has every turn. Covers
+    // all load paths in one place; no-op for non-assist runs (empty ledger).
+    useEffect(() => {
+        if (consoleState !== 'complete') return;
+        const cg = currentGenerationRef.current;
+        if (!cg || !activeApiKey) return;
+        if (cg.assistTranscript && cg.assistTranscript.length > 0) return;
+        const vid = cg.videoId;
+        let cancelled = false;
+        getVideoStatus(vid, activeApiKey)
+            .then((status) => {
+                if (cancelled) return;
+                const turns = reconstructAssistTranscript(status);
+                if (turns.length === 0) return;
+                setCurrentGeneration((prev) =>
+                    prev && prev.videoId === vid ? { ...prev, assistTranscript: turns } : prev
+                );
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [consoleState, currentGeneration?.videoId, activeApiKey]);
 
     /**
      * Single source of truth for the `generating → complete` transition.

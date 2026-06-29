@@ -2895,12 +2895,25 @@ class VideoGenerationPipeline:
         institute_id: Optional[str] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
+        # Assist mode (conversational, human-in-the-loop). When enabled and the
+        # `visual_casting` gate is on, the HTML stage pauses to let the user pick
+        # stock media. Dict shape mirrors extra_metadata.assist:
+        # {enabled, enabled_gates, answered_decisions, auto_all_gates}. None ⇒
+        # fully autonomous (every assist branch below is a no-op).
+        assist_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # Stash the cooperative stop signal on the instance so deeply-nested
         # methods (per-shot HTML, sound planner, etc.) can check it via
         # `self._check_stop()` without threading the parameter through every
         # call site. None disables checking entirely (legacy / tests).
         self._stop_event = stop_event
+
+        # Assist mode: gate config + the per-query forced media selections the
+        # user made on a previous leg (loaded from asset_selections.json once
+        # run_dir is resolved). Both default to "off" so non-assist runs are
+        # byte-for-byte unchanged.
+        self._assist_state = assist_state or None
+        self._forced_casting: Dict[str, Any] = {}
 
         # Pillar 1 — reset per-run cost-event log so successive run() calls on
         # the same pipeline instance don't cross-contaminate. The new tracker
@@ -3418,6 +3431,20 @@ class VideoGenerationPipeline:
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Assist mode: load the user's forced media picks from a prior leg so the
+        # HTML-stage casting gate doesn't re-prompt and the resolver forces the
+        # chosen URL per query. No-op when the file is absent (first leg / auto).
+        if self._assist_state:
+            try:
+                _sel_path = run_dir / "asset_selections.json"
+                if _sel_path.exists():
+                    _sel = json.loads(_sel_path.read_text())
+                    if isinstance(_sel, dict) and isinstance(_sel.get("forced"), dict):
+                        self._forced_casting = _sel["forced"]
+            except Exception as _csv_err:
+                print(f"⚠️ assist: could not load asset_selections.json: {_csv_err}")
+
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
         # run wrote to `host-assets/run/host_audio_NNN.mp3` and silently
@@ -5395,6 +5422,11 @@ class VideoGenerationPipeline:
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
+                # Assist mode: pause here to let the user pick stock video clips
+                # before they're committed. Raises DecisionRequired (caught by the
+                # service) on the first leg; on resume the resolver forces the
+                # user's picks. No-op when assist / visual_casting is off.
+                self._maybe_visual_casting_gate(html_segments)
                 # Bug 1: see twin call site for run_dir rationale.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
@@ -22152,6 +22184,91 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "_veo_cost_usd": result.cost_usd,
         }
 
+    def _load_decision_gates_module(self):
+        """Lazy-import the sibling decision-gate framework (assist mode)."""
+        import sys as _sys, pathlib as _pl
+        _root = str(_pl.Path(__file__).resolve().parent)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        import decision_gates as _dg  # type: ignore
+        return _dg
+
+    def _gather_casting_candidates(self, html_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Assist mode: collect stock candidates for every media query in the HTML.
+
+        Read-only — scans the generated (cached) HTML for ``data-video-query`` and
+        ``data-img-prompt`` tags and fetches candidates per unique query via the
+        same Pexels search the resolver uses. Returns groups keyed by the RAW
+        query string (the resolver's forcing key, applied BEFORE cultural
+        context). Never raises; an empty list means "nothing castable".
+        """
+        groups: List[Dict[str, Any]] = []
+        pexels = self._pexels_service if (self._pexels_service and self._pexels_service.is_available) else None
+        if pexels is None:
+            return groups
+        try:
+            _dg = self._load_decision_gates_module()
+            _to_cand = _dg.to_casting_candidate
+        except Exception:
+            return groups
+        orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+        # v1: stock VIDEO queries only (one resolver, one tag type). The gate
+        # never offers a pick we can't honor. Stock-image (data-img-prompt) +
+        # AI-gen forcing is a fast-follow — it needs the force-check in the image
+        # resolver too, so it's intentionally out of scope here.
+        VID_RE = re.compile(r'<video[^>]+data-video-query=(["\'])(.*?)\1', re.DOTALL)
+        seen: set = set()
+        for idx, entry in enumerate(html_segments):
+            html = entry.get("html", "") or ""
+            shot_index = entry.get("_shot_index", idx)
+            for m in VID_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("video", q) in seen:
+                    continue
+                seen.add(("video", q))
+                try:
+                    raw = pexels.search_video_candidates(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "video", "thumb": c.get("image")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                if cands:
+                    groups.append({
+                        "query": q, "kind": "video", "shot_index": shot_index,
+                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                    })
+        return groups
+
+    def _maybe_visual_casting_gate(self, html_segments: List[Dict[str, Any]]) -> None:
+        """Assist mode: pause for the user to pick stock media (visual_casting gate).
+
+        No-op unless assist is on and the gate is enabled-and-unanswered. When it
+        fires it emits a ``decision_required`` event (→ SSE → FE) and raises
+        ``DecisionRequired`` (a BaseException) to unwind the leg cleanly; the
+        service catches it and flips the video to AWAITING_INPUT. On the resume
+        leg the gate sees the recorded answer (USE_ANSWER → forced_casting is
+        already loaded, resolver forces the picks) or AUTO_DECIDE and returns.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.VISUAL_CASTING.value, None)
+        if outcome != _dg.GateOutcome.EMIT_AND_STOP:
+            return  # AUTO_DECIDE (off/auto) or USE_ANSWER (forced picks loaded) → proceed
+        groups = self._gather_casting_candidates(html_segments)
+        if not groups:
+            return  # nothing castable — proceed autonomously
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_visual_casting_groups_decision(video_id, groups)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
+
     def _process_stock_videos(
         self,
         html_segments: List[Dict[str, Any]],
@@ -22217,6 +22334,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             for match in VIDEO_TAG_RE.finditer(html):
                 full_tag = match.group(1)
                 query = match.group(3)
+                _raw_query = query  # assist forcing key (before cultural context)
+
+                # Assist mode: the user already picked this query's clip on a
+                # prior leg — force it and skip the search cascade entirely.
+                # Keyed by the RAW query (matches the gather pass). No-op when
+                # forced_casting is empty (auto runs / unforced queries).
+                _forced = (getattr(self, "_forced_casting", None) or {}).get(_raw_query)
+                if _forced and _forced.get("url"):
+                    poster_url = ""
+                    new_tag = full_tag
+                    if 'src=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' src="{_forced["url"]}">', 1)
+                    if poster_url and 'poster=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' poster="{poster_url}">', 1)
+                    html = html.replace(full_tag, new_tag)
+                    entry["html"] = html
+                    replacements_count += 1
+                    print(f"    👤 assist: forced user-picked clip for '{_raw_query[:40]}'")
+                    continue
 
                 # Apply cultural context — same pipeline as images. The LLM
                 # is taught to prefix queries with the region descriptor

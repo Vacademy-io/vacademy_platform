@@ -22809,6 +22809,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 print(f"    👤 assist: forced user-picked image for '{task.get('prompt', '')[:40]}'")
                 return {
                     "entry":       task.get("entry"),
+                    # The _process_generated_images consumer keys replacements by
+                    # entry_id (= id(entry)); without it this dict KeyErrors.
+                    "entry_id":    id(task.get("entry")),
                     "full_tag":    task.get("full_tag", ""),
                     "stock_url":   _forced_img["url"],
                     "image_bytes": None,

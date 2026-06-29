@@ -1,5 +1,13 @@
+import { Capacitor } from '@capacitor/core';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, type Messaging, type MessagePayload } from 'firebase/messaging';
+import {
+    getMessaging,
+    getToken,
+    onMessage,
+    isSupported,
+    type Messaging,
+    type MessagePayload,
+} from 'firebase/messaging';
 
 type EnvMap = { [key: string]: string | undefined };
 const ENV: EnvMap = (import.meta as unknown as { env: EnvMap }).env || {};
@@ -24,14 +32,20 @@ export const VAPID_KEY =
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 let messaging: Messaging | null = null;
-try {
-    if (typeof window !== 'undefined') {
-        messaging = getMessaging(app);
-    }
-} catch (e) {
-    // Messaging init can throw in unsupported browsers; fine to keep null.
-    // eslint-disable-next-line no-console
-    console.warn('Firebase messaging unavailable in this environment:', e);
+// Web push only. In the native app push is handled by the @capacitor-firebase/messaging
+// NATIVE plugin (see src/native/pushNotifications.ts); the Firebase *web* SDK throws
+// "messaging/unsupported-browser" inside the Capacitor WebView (no SW/Push API), which
+// surfaced as an unhandled rejection on every native launch. So: never init web messaging
+// on native, and gate it behind Firebase's async isSupported() check on the web.
+if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
+    isSupported()
+        .then((supported) => {
+            if (supported) messaging = getMessaging(app);
+        })
+        .catch((e) => {
+            // eslint-disable-next-line no-console
+            console.warn('Firebase messaging unavailable in this environment:', e);
+        });
 }
 
 /**

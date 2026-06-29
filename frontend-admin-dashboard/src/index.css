@@ -114,6 +114,27 @@ html {
 .pr-safe { padding-right: var(--safe-area-inset-right); }
 .pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
 .pl-safe { padding-left: var(--safe-area-inset-left); }
+/* App-SHELL safe-area utilities (navbar / sidebars). SCOPED to `.platform-native`
+ * so they apply ONLY inside the Capacitor Android/iOS app — never the web portal.
+ * (`.platform-native` is added to <html> only when isNative(); on the web, even a
+ * mobile browser with viewport-fit=cover would otherwise pick up env() insets and
+ * shift the layout.) Base Tailwind classes (top-0 / h-screen) stay the default
+ * everywhere; these override only in the native app. */
+.platform-native .top-safe-native { top: var(--safe-area-inset-top); }
+.platform-native .pt-safe-native { padding-top: var(--safe-area-inset-top); }
+.platform-native .pb-safe-native { padding-bottom: var(--safe-area-inset-bottom); }
+.platform-native .h-screen-safe-native {
+    height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+}
+/* For a close (X) button pinned to the top of a FULL-HEIGHT overlay (sheets,
+ * side-views, full-screen panels). Keeps its 1rem gap but pushes it below the
+ * status-bar/notch inset on native so it isn't tucked under the camera. Pair with
+ * the base `top-4` (which stays the value on web / centered dialogs). */
+.platform-native .top-safe-offset { top: calc(var(--safe-area-inset-top) + 1rem); }
+/* Top padding for a full-height overlay's CONTENT (sheets w/ p-4..p-8): the
+ * notch inset PLUS a 1.5rem gap, so the sheet title/content clears the status
+ * bar instead of rendering under the clock/icons. Native-only. */
+.platform-native .pt-safe-6 { padding-top: calc(var(--safe-area-inset-top) + 1.5rem); }
 .px-safe {
     padding-left: var(--safe-area-inset-left);
     padding-right: var(--safe-area-inset-right);
@@ -164,6 +185,54 @@ html {
     padding-bottom: var(--safe-area-inset-bottom);
     padding-left: var(--safe-area-inset-left);
     padding-right: var(--safe-area-inset-right);
+}
+/* Android 15 (targetSDK 35) ENFORCES edge-to-edge: the WebView draws under the
+ * status bar and StatusBar.setOverlaysWebView(false) no longer reserves space,
+ * so content overlaps the status bar. Pad the top by the status-bar inset here.
+ * Scoped to Android on purpose — iOS handles the top natively via
+ * contentInset:'always' and would otherwise be double-padded. Resolves to 0 on
+ * devices/older Android where the WebView already starts below the status bar. */
+.platform-android body {
+    padding-top: var(--safe-area-inset-top);
+    /* Colour for the status-bar + nav-bar cover strips. Follows the DEVICE/OS
+     * theme (not the app theme) so it matches the system bars and keeps the OS
+     * status-bar icons readable: white under the dark icons of light mode, black
+     * under the light icons of dark mode. */
+    --system-bar-cover: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+    .platform-android body {
+        --system-bar-cover: #000000;
+    }
+}
+/* Android 15 edge-to-edge: the status-bar/notch strip is transparent and the
+ * WebView draws under it, so scrolled content appears in the camera/status-bar
+ * area above the sticky header. Paint an opaque strip over that inset (coloured
+ * to the device theme) so nothing scrolls into the notch. Sits above page content
+ * but below the sticky navbar (z-50) and modals, so it never hides them.
+ * Android-only — iOS uses contentInset:'always', which already keeps content out
+ * of the notch. */
+.platform-android body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: var(--safe-area-inset-top);
+    background: var(--system-bar-cover);
+    z-index: 40;
+    pointer-events: none;
+}
+/* Bottom counterpart for the Android navigation area. Uses env(safe-area-inset-
+ * bottom), which the system sizes per nav mode: small for gesture nav (thin pill
+ * → fuller UI) and tall for 3-button nav (content clears the buttons). Re-adapts
+ * live when the nav mode changes (safeArea.ts re-measures on resize). */
+.platform-android body::after {
+    content: '';
+    position: fixed;
+    inset: auto 0 0 0;
+    height: var(--safe-area-inset-bottom);
+    background: var(--system-bar-cover);
+    z-index: 40;
+    pointer-events: none;
 }
 .platform-ios body {
     -webkit-tap-highlight-color: transparent;

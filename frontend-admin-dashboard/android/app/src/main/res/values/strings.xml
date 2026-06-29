@@ -1,7 +1,10 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Vacademy Admin</string>
-    <string name="title_activity_main">Vacademy Admin</string>
+    <!-- app_name + title_activity_main are generated per product flavor in
+         app/build.gradle (resValue) from mobile-flavors.json, so they are not
+         defined here. package_name / custom_url_scheme default to the Vacademy
+         Admin bundle; a white-label flavor on a different bundle id should
+         override them in its own src/<flavor>/res/values/strings.xml. -->
     <string name="package_name">io.vacademy.admin.app</string>
     <string name="custom_url_scheme">io.vacademy.admin.app</string>
 </resources>

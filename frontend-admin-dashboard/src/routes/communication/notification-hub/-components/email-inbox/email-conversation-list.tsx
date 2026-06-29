@@ -57,7 +57,12 @@ export function EmailConversationList({
     }, [hasMore, onLoadMore]);
 
     return (
-        <aside className="w-80 shrink-0 border-r flex flex-col bg-card">
+        <aside
+            className={cn(
+                'w-full md:w-80 shrink-0 border-r flex-col bg-card',
+                selectedEmail ? 'hidden md:flex' : 'flex'
+            )}
+        >
             <div className="p-3 border-b">
                 <div className="relative">
                     <MagnifyingGlass

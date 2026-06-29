@@ -999,7 +999,7 @@ function CreateAnnouncementPage() {
                     />
 
                     <Label>Content</Label>
-                    <div className="flex items-center gap-2 self-end">
+                    <div className="flex flex-wrap items-center gap-2 sm:self-end">
                         <Button
                             variant="outline"
                             size="sm"
@@ -1060,7 +1060,7 @@ function CreateAnnouncementPage() {
                             <DialogHeader>
                                 <DialogTitle>Email Preview</DialogTitle>
                                 <p className="text-xs text-gray-500">This is how the email will appear in the recipient's inbox.</p>
-                                <div className="mt-2 flex items-center gap-2">
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <Button
                                         variant={previewDevice === 'mobile' ? 'default' : 'outline'}
                                         size="sm"
@@ -1136,9 +1136,9 @@ function CreateAnnouncementPage() {
 
                 {/* Recipients */}
                 <section className="grid gap-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <h3 className="text-lg font-medium">Recipients</h3>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             <Button
                                 variant="secondary"
                                 onClick={() => addRecipientPreset('ALL_STUDENTS')}
@@ -1779,7 +1779,7 @@ function CreateAnnouncementPage() {
                                         <div className="space-y-3 rounded-md border p-3">
                                             {/* Exclusions Section */}
                                             <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
                                                     <label className="text-sm font-medium">
                                                         Exclusions
                                                     </label>
@@ -1801,7 +1801,7 @@ function CreateAnnouncementPage() {
                                                             (exclusion) => (
                                                                 <div
                                                                     key={exclusion.id}
-                                                                    className="flex items-center gap-2 rounded-md border p-2"
+                                                                    className="flex flex-wrap items-center gap-2 rounded-md border p-2"
                                                                 >
                                                                     <Select
                                                                         value={
@@ -2023,7 +2023,7 @@ function CreateAnnouncementPage() {
                                             {customFieldOptions.length > 0 &&
                                                 r.recipientType !== 'CUSTOM_FIELD_FILTER' && (
                                                     <div className="space-y-2 border-t pt-3">
-                                                        <div className="flex items-center justify-between">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
                                                             <label className="text-sm font-medium">
                                                                 Custom Field Filters
                                                             </label>
@@ -2939,8 +2939,9 @@ function CreateAnnouncementPage() {
 
                 <Separator />
 
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                     <Button
+                        className="w-full sm:w-auto"
                         disabled={
                             isSubmitting || !title || !htmlContent || selectedModes.length === 0
                         }
@@ -3412,6 +3413,7 @@ function CreateAnnouncementPage() {
                         {isSubmitting ? 'Submitting…' : 'Create Announcement'}
                     </Button>
                     <Button
+                        className="w-full sm:w-auto"
                         variant="outline"
                         onClick={() => setIsReviewOpen(true)}
                         disabled={isSubmitting}

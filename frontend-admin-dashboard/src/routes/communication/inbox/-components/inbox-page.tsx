@@ -131,7 +131,8 @@ export function InboxPage() {
                 </button>
             </div>
 
-            {/* Main content: conversation list + chat panel */}
+            {/* Main content: conversation list + chat panel.
+                On mobile only one pane is visible at a time (driven by selectedPhone). */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 <ConversationList
                     onLoadMore={handleLoadMore}

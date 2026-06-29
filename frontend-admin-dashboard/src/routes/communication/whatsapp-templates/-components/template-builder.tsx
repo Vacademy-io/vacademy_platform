@@ -132,12 +132,12 @@ export function TemplateBuilder({ template, onClose }: Props) {
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-white shrink-0">
-                <div className="flex items-center gap-3">
-                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><ArrowLeft size={20} /></button>
-                    <h2 className="text-lg font-semibold">{isEditing ? 'Edit Template' : 'Create Template'}</h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b bg-white shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 shrink-0"><ArrowLeft size={20} /></button>
+                    <h2 className="text-lg font-semibold truncate">{isEditing ? 'Edit Template' : 'Create Template'}</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                     <button onClick={handleSaveDraft} disabled={saving}
                         className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">
                         Save Draft
@@ -149,12 +149,12 @@ export function TemplateBuilder({ template, onClose }: Props) {
                 </div>
             </div>
 
-            {/* Builder + Preview split */}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* Builder + Preview split. Stacks vertically on mobile. */}
+            <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-y-auto md:overflow-hidden">
                 {/* Builder (left) */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+                <div className="flex-1 md:overflow-y-auto p-4 space-y-4 bg-gray-50">
                     {/* Meta info */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                             <label className="text-xs font-medium text-gray-600">Template Name</label>
                             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -223,24 +223,26 @@ export function TemplateBuilder({ template, onClose }: Props) {
                             <div className="mt-2 space-y-1">
                                 <p className="text-xs text-gray-500">Variable configuration:</p>
                                 {adjustedSamples.map((val, i) => (
-                                    <div key={i} className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-400 w-10 shrink-0">{`{{${i + 1}}}`}</span>
-                                        <input type="text" value={adjustedVarNames[i] || ''}
-                                            onChange={(e) => {
-                                                const arr = [...adjustedVarNames];
-                                                arr[i] = e.target.value;
-                                                setBodyVariableNames(arr);
-                                            }}
-                                            placeholder="Variable name (e.g. name, course)"
-                                            className="flex-1 px-2 py-1 text-xs border rounded" />
-                                        <input type="text" value={val}
-                                            onChange={(e) => {
-                                                const arr = [...adjustedSamples];
-                                                arr[i] = e.target.value;
-                                                setBodySampleValues(arr);
-                                            }}
-                                            placeholder="Sample value (e.g. John)"
-                                            className="flex-1 px-2 py-1 text-xs border rounded" />
+                                    <div key={i} className="flex items-start gap-2">
+                                        <span className="text-xs text-gray-400 w-10 shrink-0 pt-1.5">{`{{${i + 1}}}`}</span>
+                                        <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
+                                            <input type="text" value={adjustedVarNames[i] || ''}
+                                                onChange={(e) => {
+                                                    const arr = [...adjustedVarNames];
+                                                    arr[i] = e.target.value;
+                                                    setBodyVariableNames(arr);
+                                                }}
+                                                placeholder="Variable name (e.g. name, course)"
+                                                className="flex-1 min-w-0 px-2 py-1 text-xs border rounded" />
+                                            <input type="text" value={val}
+                                                onChange={(e) => {
+                                                    const arr = [...adjustedSamples];
+                                                    arr[i] = e.target.value;
+                                                    setBodySampleValues(arr);
+                                                }}
+                                                placeholder="Sample value (e.g. John)"
+                                                className="flex-1 min-w-0 px-2 py-1 text-xs border rounded" />
+                                        </div>
                                     </div>
                                 ))}
                                 <p className="text-[10px] text-gray-400 mt-1">
@@ -286,7 +288,7 @@ export function TemplateBuilder({ template, onClose }: Props) {
                             ))}
                         </div>
                         {buttons.length < 3 && (
-                            <div className="flex gap-2 mt-2">
+                            <div className="flex flex-wrap gap-2 mt-2">
                                 <button onClick={() => addButton('QUICK_REPLY')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ Quick Reply</button>
                                 <button onClick={() => addButton('URL')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ URL Button</button>
                                 <button onClick={() => addButton('PHONE_NUMBER')} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">+ Phone</button>
@@ -296,8 +298,8 @@ export function TemplateBuilder({ template, onClose }: Props) {
                 </div>
 
                 {/* Preview (right) */}
-                <div className="w-96 shrink-0 border-l bg-[#e5ddd5] p-6 overflow-y-auto flex items-start justify-center">
-                    <div className="w-72">
+                <div className="w-full md:w-96 shrink-0 border-t md:border-t-0 md:border-l bg-[#e5ddd5] p-6 md:overflow-y-auto flex items-start justify-center">
+                    <div className="w-72 max-w-full">
                         <p className="text-xs text-center text-gray-500 mb-3">WhatsApp Preview</p>
                         <div className="bg-white rounded-lg shadow-md overflow-hidden">
                             {/* Header preview */}

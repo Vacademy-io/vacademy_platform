@@ -116,7 +116,7 @@ export const LayoutContainer = ({
                     className={cn(
                         isMobile || isTablet
                             ? 'w-0 overflow-visible'
-                            : 'sticky top-0 h-screen flex-shrink-0',
+                            : 'sticky top-0 top-safe-native h-screen h-screen-safe-native flex-shrink-0',
                         isTablet && 'lg:hidden xl:block'
                     )}
                 >

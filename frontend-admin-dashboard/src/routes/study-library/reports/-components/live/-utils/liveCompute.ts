@@ -61,16 +61,21 @@ function addEngagement(a: Engagement, b: Engagement): Engagement {
 
 /**
  * A single transparent "engagement index" — a weighted count of interactions,
- * NOT a percentage (so it can never read as >100%). Talk time dominates,
- * structured participation (talks, polls) weighs more than passive signals.
+ * NOT a percentage (so it can never read as >100%).
+ *
+ * Deliberately driven by ACTUAL talk time (minutes spoken) and structured
+ * participation (chats, polls, raise-hands). We do NOT use the provider's raw
+ * `talks` segment-count: it counts every micro-unmute/audio blip (hundreds per
+ * learner over a term) and, when weighted, completely dominated the score —
+ * turning "engagement" into "who unmuted most often". Talk time already
+ * captures meaningful speaking, so the segment count is dropped.
  */
 export function engagementIndex(e: Engagement): number {
     return Math.round(
-        e.talkTimeSeconds / 60 +
+        (e.talkTimeSeconds / 60) * 3 +
             e.chats +
-            e.talks * 2 +
-            e.raiseHand +
             e.pollVotes * 2 +
+            e.raiseHand +
             e.emojis * 0.5
     );
 }
@@ -177,6 +182,8 @@ export interface LeaderboardRow {
     engagementIndex: number;
     /** 0–100 participation score (per-class, normalized to the batch's most active learner). */
     engagementScore: number;
+    /** Raw interaction totals behind the score (talk time, chats, polls, raise-hands…). */
+    engagement: Engagement;
 }
 
 /** Per-class participation (raw weighted interactions ÷ classes attended). */
@@ -307,6 +314,7 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
             avgDurationMinutes: s.avgDurationMinutes,
             engagementIndex: s.engagementIndex,
             engagementScore: scoreFor(s),
+            engagement: s.engagement,
         });
     });
 

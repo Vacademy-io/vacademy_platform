@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useInboxStore } from '../-stores/inbox-store';
 import { ReplyBox } from './reply-box';
-import { ChatCircle, User, Robot, ArrowUp } from '@phosphor-icons/react';
+import { ChatCircle, User, Robot, ArrowUp, ArrowLeft } from '@phosphor-icons/react';
 
 interface Props {
     onLoadOlder: () => void;
@@ -9,6 +9,7 @@ interface Props {
 
 export function ChatPanel({ onLoadOlder }: Props) {
     const selectedPhone = useInboxStore((s) => s.selectedPhone);
+    const selectPhone = useInboxStore((s) => s.selectPhone);
     const messages = useInboxStore((s) => s.messages);
     const conversations = useInboxStore((s) => s.conversations);
     const isLoading = useInboxStore((s) => s.isLoadingMessages);
@@ -25,7 +26,7 @@ export function ChatPanel({ onLoadOlder }: Props) {
 
     if (!selectedPhone) {
         return (
-            <div className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="flex-1 hidden md:flex items-center justify-center bg-gray-50">
                 <div className="text-center text-gray-400">
                     <ChatCircle size={56} className="mx-auto mb-3 opacity-40" />
                     <p className="text-sm font-medium">Select a conversation</p>
@@ -36,17 +37,24 @@ export function ChatPanel({ onLoadOlder }: Props) {
     }
 
     return (
-        <div className="flex-1 flex flex-col bg-[#e5ddd5]">
+        <div className="flex-1 flex flex-col bg-[#e5ddd5] min-w-0">
             {/* Chat header */}
             <div className="px-4 py-2.5 bg-white border-b flex items-center gap-3 shrink-0">
-                <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
+                <button
+                    onClick={() => selectPhone(null)}
+                    className="md:hidden p-1 -ml-1 rounded hover:bg-gray-100 text-gray-500 shrink-0"
+                    title="Back to conversations"
+                >
+                    <ArrowLeft size={20} />
+                </button>
+                <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                     <User size={18} className="text-green-700" />
                 </div>
-                <div>
-                    <p className="text-sm font-semibold text-gray-800">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">
                         {selectedConvo?.senderName || selectedPhone}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-400 truncate">
                         {selectedConvo?.senderName ? selectedPhone : ''}
                         {selectedConvo?.userId && (
                             <span className="ml-2 text-blue-500">ID: {selectedConvo.userId}</span>

@@ -1,0 +1,8 @@
+{
+  "_comment": "White-label admin app flavors (data-driven). build.gradle reads this to generate one Android product flavor per entry. To add an institute: add an entry here (key = kebab-case slug, also the GoogleServiceConfigs/<key>/ folder name), drop its google-services.json into android/app/GoogleServiceConfigs/<key>/, add per-flavor icons under android/app/src/<camelCaseKey>/res/, and add a matching entry to ../../flavor.config.ts. Keys starting with _ are ignored.",
+  "vacademy-admin": {
+    "applicationId": "io.vacademy.admin.app",
+    "appName": "Vacademy Admin",
+    "deepLinkHost": "dash.vacademy.io"
+  }
+}

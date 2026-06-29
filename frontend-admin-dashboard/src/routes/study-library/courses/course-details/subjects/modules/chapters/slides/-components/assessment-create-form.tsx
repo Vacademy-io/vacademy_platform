@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { ListChecks } from '@phosphor-icons/react';
@@ -23,6 +23,7 @@ import {
     type Slide,
 } from '../-hooks/use-slides';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
+import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store';
 import { getSlideStatusForUser } from '../non-admin/hooks/useNonAdminSlides';
 import {
     buildAppendReorderPayload,
@@ -42,6 +43,7 @@ const AssessmentCreateForm = () => {
         router.state.location.search;
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { items, setActiveItem, setAssessmentCreateMode } = useContentStore();
+    const { modulesWithChaptersData } = useModulesWithChaptersStore();
     const instituteId = getInstituteId();
 
     const packageSessionId =
@@ -50,6 +52,21 @@ const AssessmentCreateForm = () => {
             levelId: levelId || '',
             sessionId: sessionId || '',
         }) || '';
+
+    // A chapter can be shared across many batches (package_sessions), so the
+    // assessment must be registered to ALL of them — otherwise learners in the
+    // other batches see the slide but the assessment never shows in their
+    // assessment list. `chapter_in_package_sessions` carries every (non-deleted)
+    // batch the chapter is mapped to; fall back to the current batch if the
+    // study-library mapping hasn't loaded.
+    const chapterBatchIds = useMemo(() => {
+        const mapped = modulesWithChaptersData
+            ?.flatMap((m) => m.chapters)
+            .find((c) => c.chapter.id === chapterId)?.chapter_in_package_sessions;
+        const ids = new Set<string>(mapped ?? []);
+        if (packageSessionId) ids.add(packageSessionId);
+        return Array.from(ids);
+    }, [modulesWithChaptersData, chapterId, packageSessionId]);
 
     const { addUpdateAssessmentSlide, updateSlideOrder } = useSlidesMutations(
         chapterId || '',
@@ -269,7 +286,7 @@ const AssessmentCreateForm = () => {
                 },
             });
 
-            // Step 3 — scope to this slide's batch (closed / PRIVATE)
+            // Step 3 — scope to every batch that shares this chapter (closed / PRIVATE)
             await authenticatedAxiosInstance({
                 method: 'POST',
                 url: STEP3_ASSESSMENT_URL,
@@ -277,9 +294,7 @@ const AssessmentCreateForm = () => {
                 data: {
                     closed_test: true,
                     open_test_details: {},
-                    added_pre_register_batches_details: packageSessionId
-                        ? [packageSessionId]
-                        : [],
+                    added_pre_register_batches_details: chapterBatchIds,
                     deleted_pre_register_batches_details: [],
                     added_pre_register_students_details: [],
                     deleted_pre_register_students_details: [],
@@ -337,7 +352,8 @@ const AssessmentCreateForm = () => {
                     </h3>
                     <p className="text-sm text-neutral-500">
                         Learners download the question paper, then upload a PDF answer sheet which
-                        you evaluate. Creates a draft scoped to this batch — publish it when ready.
+                        you evaluate. Available to every batch that shares this chapter — publish it
+                        when ready.
                     </p>
                 </div>
             </div>

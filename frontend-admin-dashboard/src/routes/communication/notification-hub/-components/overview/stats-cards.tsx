@@ -118,7 +118,7 @@ function Section({
 }) {
     return (
         <div className={muted ? 'opacity-70' : ''}>
-            <div className="flex items-baseline justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 mb-2">
                 <h3 className="text-sm font-semibold text-gray-700">{title}</h3>
                 <p className="text-xs text-gray-400">{subtitle}</p>
             </div>

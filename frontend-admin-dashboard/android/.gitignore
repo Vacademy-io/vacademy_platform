@@ -62,7 +62,11 @@ captures/
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+# Generated at build time by copying from
+# app/GoogleServiceConfigs/<key>/google-services.json (the committed source) into
+# each flavor's source set. Ignore only the generated copies, not the registry.
+/app/google-services.json
+/app/src/*/google-services.json
 
 # Freeline
 freeline.py

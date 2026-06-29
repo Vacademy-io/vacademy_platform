@@ -3,6 +3,7 @@ import {
     EnvelopeSimple,
     ArrowUp,
     ArrowBendUpLeft,
+    ArrowLeft,
     PaperPlaneTilt,
     ArrowFatDown,
 } from '@phosphor-icons/react';
@@ -29,6 +30,8 @@ interface Props {
     onLoadOlder: () => void;
     /** Triggers the reply dialog. Hidden when not provided. */
     onReply?: () => void;
+    /** Mobile-only: returns to the conversation list. */
+    onBack?: () => void;
 }
 
 export function EmailThread({
@@ -39,6 +42,7 @@ export function EmailThread({
     hasMore,
     onLoadOlder,
     onReply,
+    onBack,
 }: Props) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -59,6 +63,7 @@ export function EmailThread({
                 email={selectedEmail}
                 hasName={!!counterpartyName}
                 onReply={onReply}
+                onBack={onBack}
             />
 
             <ScrollArea className="flex-1">
@@ -102,15 +107,28 @@ function ThreadHeader({
     email,
     hasName,
     onReply,
+    onBack,
 }: {
     display: string;
     email: string;
     hasName: boolean;
     onReply?: () => void;
+    onBack?: () => void;
 }) {
     return (
         <header className="px-4 py-3 border-b bg-background shrink-0 flex items-center gap-3">
-            <Avatar className="h-9 w-9">
+            {onBack && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onBack}
+                    className="md:hidden h-8 w-8 -ml-1 shrink-0"
+                    title="Back to conversations"
+                >
+                    <ArrowLeft size={18} />
+                </Button>
+            )}
+            <Avatar className="h-9 w-9 shrink-0">
                 <AvatarFallback className="text-xs font-medium bg-muted text-muted-foreground">
                     {getInitials(display)}
                 </AvatarFallback>

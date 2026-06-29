@@ -324,7 +324,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     return (
         <div
             className={cn(
-                'sticky top-0 z-50 flex items-center justify-between border-b border-neutral-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60',
+                'sticky top-0 top-safe-native z-50 flex items-center justify-between border-b border-neutral-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60',
                 isCompact ? 'h-12 px-4 py-2' : 'h-14 px-4 py-2 md:h-[72px] md:px-8 md:py-4'
             )}
         >
@@ -853,7 +853,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     </SheetTrigger>
                                     <SheetContent
                                         className={cn(
-                                            'max-h-screen overflow-y-auto !border-l border-gray-200 bg-primary-50 p-4 shadow-none md:p-8 [&>button>svg]:size-6 [&>button>svg]:font-thin [&>button>svg]:text-neutral-600 [&>button]:mt-[19px]',
+                                            'pt-safe-6 max-h-screen overflow-y-auto !border-l border-gray-200 bg-primary-50 p-4 shadow-none md:p-8 [&>button>svg]:size-6 [&>button>svg]:font-thin [&>button>svg]:text-neutral-600 [&>button]:mt-[19px]',
                                             isMobile ? '!w-full !min-w-full' : '!min-w-[565px]'
                                         )}
                                     >
@@ -940,7 +940,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     </SheetTrigger>
                                     <SheetContent
                                         className={cn(
-                                            'max-h-screen overflow-y-auto !border-l border-gray-200 bg-primary-50 p-4 shadow-none md:p-8 [&>button>svg]:size-6 [&>button>svg]:font-thin [&>button>svg]:text-neutral-600 [&>button]:mt-[19px]',
+                                            'pt-safe-6 max-h-screen overflow-y-auto !border-l border-gray-200 bg-primary-50 p-4 shadow-none md:p-8 [&>button>svg]:size-6 [&>button>svg]:font-thin [&>button>svg]:text-neutral-600 [&>button]:mt-[19px]',
                                             isMobile ? '!w-full !min-w-full' : '!min-w-[565px]'
                                         )}
                                     >

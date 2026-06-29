@@ -22,7 +22,11 @@ export function ConversationList({ onLoadMore }: Props) {
     };
 
     return (
-        <div className="w-80 shrink-0 border-r flex flex-col bg-white">
+        <div
+            className={`w-full md:w-80 shrink-0 border-r flex-col bg-white ${
+                selectedPhone ? 'hidden md:flex' : 'flex'
+            }`}
+        >
             {/* Search */}
             <div className="p-3 border-b">
                 <div className="relative">

@@ -136,6 +136,9 @@ const CampaignUsersContent = ({
     const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
     // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
     const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
+    // Sentinel for the "Unassigned" dropdown entry → leads no counsellor owns
+    // (sent to the backend as is_unassigned: true, assigned_counselor_id omitted).
+    const UNASSIGNED_COUNSELLOR_VALUE = '__UNASSIGNED__';
     const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
     // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
     // the institute-wide list. See useLeadCounsellorOptions.
@@ -293,7 +296,11 @@ const CampaignUsersContent = ({
                 : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL',
             sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
             assigned_counselor_id:
-                counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                    ? undefined
+                    : counsellorFilter,
+            is_unassigned: counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
@@ -493,7 +500,9 @@ const CampaignUsersContent = ({
         });
     if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
         const cName =
-            counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected';
+            counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                ? 'Unassigned'
+                : (counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected');
         chips.push({
             label: `Counsellor: ${cName}`,
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
@@ -747,6 +756,7 @@ const CampaignUsersContent = ({
                             value={counsellorFilter}
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
+                            unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
                             options={counsellorOptions}
                             isLoading={counsellorOptionsLoading}
                         />

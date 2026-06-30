@@ -20,6 +20,10 @@ export const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted (def
 export const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status
 export const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage
 export const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
+// Sentinel for the counsellor dropdown's "Unassigned" entry — narrows to leads
+// with no owner on either linked_users (ENQUIRY) or user_lead_profile. Sent to
+// the backend as `is_unassigned: true` (assigned_counselor_id omitted).
+export const UNASSIGNED_COUNSELLOR_VALUE = '__UNASSIGNED__';
 
 // Date-range presets. `range` holds a preset day-count ('1' | '7' | '15' |
 // '30'), 'ALL' (no date filter) or 'CUSTOM' (read `from` / `to`).

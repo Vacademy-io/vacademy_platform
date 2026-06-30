@@ -18,7 +18,7 @@ interface CounsellorOption {
 }
 
 interface CounsellorFilterProps {
-    /** Currently selected counsellor userId, or the sentinel value meaning "all". */
+    /** Currently selected counsellor userId, or one of the sentinel values. */
     value: string;
     onChange: (value: string) => void;
     /** Sentinel value used when no counsellor filter is active. */
@@ -26,6 +26,9 @@ interface CounsellorFilterProps {
     /** Counsellor list — usually from `fetchCounselors`. */
     options: CounsellorOption[];
     isLoading?: boolean;
+    /** When provided, renders an "Unassigned" entry that selects this sentinel —
+     *  for narrowing to leads no counsellor owns. Omit to hide the option. */
+    unassignedValue?: string;
 }
 
 /** Searchable + scrollable counsellor combobox used in the leads filter bar.
@@ -37,12 +40,15 @@ export function CounsellorFilter({
     allValue,
     options,
     isLoading,
+    unassignedValue,
 }: CounsellorFilterProps) {
     const [open, setOpen] = useState(false);
     const selectedLabel =
         value === allValue
             ? 'All counsellors'
-            : (options.find((c) => c.id === value)?.full_name ?? 'Selected counsellor');
+            : unassignedValue && value === unassignedValue
+              ? 'Unassigned'
+              : (options.find((c) => c.id === value)?.full_name ?? 'Selected counsellor');
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -87,6 +93,24 @@ export function CounsellorFilter({
                                 />
                                 All counsellors
                             </CommandItem>
+                            {unassignedValue && (
+                                <CommandItem
+                                    value="Unassigned"
+                                    onSelect={() => {
+                                        onChange(unassignedValue);
+                                        setOpen(false);
+                                    }}
+                                    className="cursor-pointer"
+                                >
+                                    <Check
+                                        className={cn(
+                                            'mr-2 size-4',
+                                            value === unassignedValue ? 'opacity-100' : 'opacity-0'
+                                        )}
+                                    />
+                                    Unassigned
+                                </CommandItem>
+                            )}
                             {options.map((c) => (
                                 <CommandItem
                                     key={c.id}

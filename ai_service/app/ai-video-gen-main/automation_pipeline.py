@@ -2549,6 +2549,26 @@ class VideoGenerationPipeline:
             print(f"aesthetic directive skipped: {_aerr}")
         return system_prompt
 
+    def _shot_templates_active(self) -> bool:
+        """Whether deterministic full-shot templates may be used this run.
+
+        Templates render fixed Python HTML and BYPASS the per-shot LLM, so they
+        ignore the premium aesthetic / icon / keywords-only / creativity
+        directives entirely — that is exactly why marketing videos still come
+        out looking templated and repetitive. They are fine for educational
+        consistency (and cheaper), but for the creative marketing/bold modes we
+        want the LLM to compose EVERY shot. So: the tier flag must be on AND the
+        resolved visual mode must not be a creative marketing mode.
+
+        At shot-planning time `subject_domain` may not be known yet, so the mode
+        can resolve to "educational" there — but the authoritative gate is the
+        per-shot bypass in `_shot_task` (which runs after the plan, when the mode
+        is fully resolved), so a marketing run never actually renders a template.
+        """
+        if not self._tier_config.get("shot_templates_enabled"):
+            return False
+        return self._resolve_visual_style_mode() not in ("marketing", "bold")
+
     def _snap_cues_to_beat(
         self,
         entries: List[Dict[str, Any]],
@@ -11311,16 +11331,19 @@ class VideoGenerationPipeline:
         # is also used post-LLM to scrub any survivors.
         _tmpl_catalog_md = ""
         _tmpl_valid_ids: Optional[List[str]] = None
-        try:
-            from shot_template_registry import (
-                build_catalog_for_director,
-                get_registry as _tmpl_get_registry,
-            )
-            _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
-            _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
-            _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
-        except Exception as _cat_err:
-            print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
+        # Skip advertising templates to the planner for creative marketing/bold
+        # modes — we want every shot LLM-composed, not bypassed by a fixed layout.
+        if self._shot_templates_active():
+            try:
+                from shot_template_registry import (
+                    build_catalog_for_director,
+                    get_registry as _tmpl_get_registry,
+                )
+                _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
+                _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
+                _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
+            except Exception as _cat_err:
+                print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
 
         sp_result = plan_shots(
             prompt=base_prompt,
@@ -12035,7 +12058,7 @@ class VideoGenerationPipeline:
         # Surfaces the available `template_id` values + their required
         # `template_params` schemas so the Director can opt into deterministic
         # compositions when content cleanly fits one.
-        if self._tier_config.get("shot_templates_enabled"):
+        if self._shot_templates_active():
             try:
                 from shot_template_registry import build_catalog_for_director  # type: ignore
                 _canvas = "portrait" if _h > _w else "landscape"
@@ -15323,7 +15346,10 @@ class VideoGenerationPipeline:
         # Shot templates (premium / ultra / super_ultra) — deterministic full-shot
         # compositions invoked by the Director via `template_id` on a shot. When a
         # template renders successfully, the per-shot LLM call is SKIPPED entirely.
-        _template_enabled = bool(self._tier_config.get("shot_templates_enabled"))
+        # Disabled for the creative marketing/bold modes so EVERY shot is composed
+        # by the LLM with the premium aesthetic + icon directives (templates would
+        # otherwise bypass all of that and render flat, repeating layouts).
+        _template_enabled = self._shot_templates_active()
         _template_compose_fn = None
         if _template_enabled:
             try:

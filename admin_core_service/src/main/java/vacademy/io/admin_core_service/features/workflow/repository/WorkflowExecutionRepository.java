@@ -45,6 +45,25 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
         Optional<WorkflowExecution> findByIdempotencyKeyAndStatusIn(@Param("idempotencyKey") String idempotencyKey,
                         @Param("statuses") List<WorkflowExecutionStatus> statuses);
 
+        /**
+         * Fetch workflow executions for an enrollment-related event by matching the
+         * {@code eventId} encoded inside the idempotency key (see
+         * {@code EventBasedKeyGenerator}: key format
+         * {@code trigger_<triggerId>_eventType_<eventName>_eventId_<eventId>}). For
+         * {@code LEARNER_BATCH_ENROLLMENT} (and sibling enrollment events) the eventId
+         * is the package session id, so callers pass a pattern like
+         * {@code "%eventId_<packageSessionId>%"}. Scoped to the institute via the
+         * owning workflow. The workflow is fetched eagerly so the caller can read its
+         * name/event outside the persistence context.
+         */
+        @Query("SELECT we FROM WorkflowExecution we JOIN FETCH we.workflow w " +
+                        "WHERE w.instituteId = :instituteId " +
+                        "AND we.idempotencyKey LIKE :keyPattern " +
+                        "ORDER BY we.startedAt DESC")
+        List<WorkflowExecution> findEnrollmentRunsByEventIdPattern(
+                        @Param("instituteId") String instituteId,
+                        @Param("keyPattern") String keyPattern);
+
         List<WorkflowExecution> findByWorkflowIdOrderByStartedAtDesc(String workflowId);
 
         List<WorkflowExecution> findByWorkflowScheduleIdOrderByStartedAtDesc(String workflowScheduleId);

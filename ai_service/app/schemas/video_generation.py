@@ -329,6 +329,17 @@ class VisualPreferences(BaseModel):
             "On minimal/low, KINETIC_TEXT is forbidden by the Director."
         ),
     )
+    visual_style_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Overall visual aesthetic for the whole video (overrides auto-detection). "
+            "'educational' = clean flat 'whiteboard' look (the default for lectures). "
+            "'marketing' = premium modern brand-film look — depth, choreographed motion, "
+            "finishing, imagery-forward, keywords-only on-screen text. "
+            "'bold' = marketing + high-energy social-ad styling. "
+            "None = auto-detect from content (marketing/product/ad → marketing, else educational)."
+        ),
+    )
 
 
 # Content types supported by the generation pipeline

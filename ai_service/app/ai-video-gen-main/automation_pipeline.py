@@ -2494,6 +2494,61 @@ class VideoGenerationPipeline:
         # entry is (model_id, source) tuple
         return entry[0] if isinstance(entry, tuple) else entry
 
+    def _resolve_visual_style_mode(self) -> str:
+        """Resolve the visual aesthetic mode for this run (cached once known).
+
+        Precedence: explicit user override (`self._visual_style_override`) >
+        auto-detect from video_type / subject_domain. Marketing/product/ad
+        content gets the premium-modern look; everything else stays on the
+        clean educational (whiteboard) aesthetic — the safe default that keeps
+        lecture-style videos identical to today.
+        """
+        cached = getattr(self, "_visual_style_mode", None)
+        if cached:
+            return cached
+        # User override travels on visual_preferences.visual_style_mode (it is
+        # already threaded into the pipeline and persisted across resume legs).
+        override = getattr(self, "_visual_style_override", None)
+        if not override:
+            _vp = getattr(self, "_visual_preferences", None) or {}
+            try:
+                override = _vp.get("visual_style_mode")
+            except AttributeError:
+                override = None
+        try:
+            from director_prompts import resolve_visual_style_mode
+            mode = resolve_visual_style_mode(
+                override=override,
+                video_type=getattr(self, "_video_type", None),
+                subject_domain=getattr(self, "_current_subject_domain", None),
+            )
+        except Exception:
+            mode = "educational"
+        # Only cache once subject_domain is known (it is set during the run); a
+        # pre-plan call resolving "educational" must not stick if the domain
+        # later turns out to be marketing.
+        if getattr(self, "_current_subject_domain", None) or override:
+            self._visual_style_mode = mode
+        return mode
+
+    def _append_aesthetic_directive(self, system_prompt: str) -> str:
+        """Append the content-aware aesthetic override to a per-shot HTML system
+        prompt. No-op (returns the prompt unchanged) for educational mode, so
+        the base flat/whiteboard aesthetic is preserved for lecture content.
+        """
+        try:
+            from director_prompts import build_aesthetic_directive
+            mode = self._resolve_visual_style_mode()
+            block = build_aesthetic_directive(mode)
+            if block:
+                if not getattr(self, "_logged_visual_mode", False):
+                    print(f"🎨 Visual aesthetic mode: {mode}")
+                    self._logged_visual_mode = True
+                return system_prompt + block
+        except Exception as _aerr:
+            print(f"aesthetic directive skipped: {_aerr}")
+        return system_prompt
+
     def _snap_cues_to_beat(
         self,
         entries: List[Dict[str, Any]],
@@ -15814,6 +15869,11 @@ class VideoGenerationPipeline:
                 except Exception:
                     pass
 
+            # Content-aware visual aesthetic. Appended LAST so for marketing/bold
+            # it authoritatively overrides the base flat/whiteboard rules; for
+            # educational it returns "" and the base aesthetic is untouched.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
+
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
             # and can optionally drop <skill> tags into its HTML. The composer
@@ -18264,6 +18324,10 @@ class VideoGenerationPipeline:
                     system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
                 except Exception:
                     pass
+
+            # Content-aware visual aesthetic (premium override for marketing/bold;
+            # no-op for educational). Same injection as the Director path.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
 
             # Build topic-aware guidance based on subject domain
             subject_domain = getattr(self, '_current_subject_domain', 'general')

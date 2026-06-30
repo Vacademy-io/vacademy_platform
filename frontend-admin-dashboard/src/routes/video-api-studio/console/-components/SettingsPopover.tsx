@@ -76,6 +76,7 @@ import {
     VisualPreferences,
     FamilyBias,
     TextDensity,
+    VisualStyleMode,
     VISUAL_PREFERENCE_FAMILIES,
     hasActiveVisualPreferences,
     AI_VIDEO_MODELS,
@@ -1261,6 +1262,17 @@ const TEXT_DENSITY_OPTIONS: ReadonlyArray<{
     { value: 'rich', label: 'Rich', desc: 'Full headlines + supporting labels.' },
 ];
 
+const VISUAL_STYLE_OPTIONS: ReadonlyArray<{
+    value: VisualStyleMode;
+    label: string;
+    desc: string;
+}> = [
+    { value: 'auto', label: 'Auto', desc: 'Detect from topic — marketing looks premium, lessons stay clean.' },
+    { value: 'educational', label: 'Clean', desc: 'Flat whiteboard look. Best for lessons & explainers.' },
+    { value: 'marketing', label: 'Premium', desc: 'Modern brand-film look: depth, motion, finishing, minimal text.' },
+    { value: 'bold', label: 'Bold', desc: 'Premium + high-energy social-ad styling.' },
+];
+
 function VisualPreferencesPanel({
     prefs,
     qualityTier,
@@ -1277,10 +1289,24 @@ function VisualPreferencesPanel({
     const directorRuns =
         qualityTier === 'premium' || qualityTier === 'ultra' || qualityTier === 'super_ultra';
     const textDensity: TextDensity = (current.text_density ?? 'auto') as TextDensity;
+    const styleMode: VisualStyleMode = (current.visual_style_mode ?? 'auto') as VisualStyleMode;
     const showCaptionsHint =
         (textDensity === 'minimal' || textDensity === 'low') && !captionsEnabled;
 
-    function setBias(family: keyof Omit<VisualPreferences, 'text_density'>, value: FamilyBias) {
+    function setStyleMode(value: VisualStyleMode) {
+        const next: VisualPreferences = { ...current };
+        if (value === 'auto') {
+            delete next.visual_style_mode;
+        } else {
+            next.visual_style_mode = value;
+        }
+        onChange(hasActiveVisualPreferences(next) ? next : undefined);
+    }
+
+    function setBias(
+        family: keyof Omit<VisualPreferences, 'text_density' | 'visual_style_mode'>,
+        value: FamilyBias,
+    ) {
         const next: VisualPreferences = { ...current };
         // Drop the field entirely on "auto" so the persisted slider state stays
         // small and the BE distinguishes "explicitly auto" from "untouched"
@@ -1373,6 +1399,37 @@ function VisualPreferencesPanel({
                         </div>
                     );
                 })}
+            </div>
+
+            {/* Visual style — overall aesthetic for the whole video */}
+            <div className="space-y-1 pt-1.5">
+                <Label className="flex items-center gap-1.5 text-[11px]">
+                    <SparklesIcon className="size-3.5 text-muted-foreground" />
+                    Visual style
+                </Label>
+                <div className="flex w-full rounded-md border bg-muted p-0.5">
+                    {VISUAL_STYLE_OPTIONS.map((opt) => {
+                        const active = styleMode === opt.value;
+                        return (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setStyleMode(opt.value)}
+                                title={opt.desc}
+                                className={`flex-1 rounded-sm px-2 py-1 text-[10px] transition-colors ${
+                                    active
+                                        ? 'bg-background text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                    {VISUAL_STYLE_OPTIONS.find((o) => o.value === styleMode)?.desc}
+                </p>
             </div>
 
             {/* Text density slider */}

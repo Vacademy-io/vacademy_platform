@@ -206,7 +206,18 @@ export interface VisualPreferences {
      * forbids KINETIC_TEXT and the per-shot HTML caps headline word count.
      */
     text_density?: TextDensity | null;
+    /**
+     * Overall visual aesthetic for the whole video (overrides auto-detection).
+     * `educational` = clean flat "whiteboard" look; `marketing` = premium
+     * modern brand-film look (depth, motion, finishing, keywords-only text);
+     * `bold` = marketing + high-energy social-ad styling. `null`/`auto` =
+     * auto-detect from content (marketing/product → marketing, else educational).
+     */
+    visual_style_mode?: VisualStyleMode | null;
 }
+
+/** Overall video aesthetic — see `visual_style_mode`. */
+export type VisualStyleMode = 'auto' | 'educational' | 'marketing' | 'bold';
 
 /** Ordered list of family slider keys — drives the Advanced Settings UI. */
 export const VISUAL_PREFERENCE_FAMILIES = [
@@ -217,7 +228,7 @@ export const VISUAL_PREFERENCE_FAMILIES = [
     { key: 'app_ui_mockup', label: 'App / device UI mockups' },
     { key: 'ai_video', label: 'AI-generated video (Veo)' },
 ] as const satisfies ReadonlyArray<{
-    key: keyof Omit<VisualPreferences, 'text_density'>;
+    key: keyof Omit<VisualPreferences, 'text_density' | 'visual_style_mode'>;
     label: string;
 }>;
 

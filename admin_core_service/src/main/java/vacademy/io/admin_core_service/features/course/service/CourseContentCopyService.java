@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMa
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.slide.service.AssessmentSlideBatchRegistrationService;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.admin_core_service.features.subject.entity.SubjectPackageSession;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
@@ -68,6 +69,7 @@ public class CourseContentCopyService {
     private final ChapterToSlidesRepository chapterToSlidesRepository;
     private final SlideService slideService;
     private final DripConditionRemapper dripConditionRemapper;
+    private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
 
     /**
      * Mode dispatcher.
@@ -343,58 +345,41 @@ public class CourseContentCopyService {
         List<Subject> sourceSubjects = subjectPackageSessionRepository
                 .findDistinctSubjectsByPackageSessionId(sourcePs.getId());
 
-        Integer baseSubjectOrder = subjectPackageSessionRepository
-                .findMaxSubjectOrderByPackageSessionId(tgtPs.getId());
-        int subjectOrder = baseSubjectOrder == null ? 0 : baseSubjectOrder + 1;
+        // Courses that hide the subject level (course_depth < 5: depths 2, 3, 4)
+        // must carry EXACTLY ONE subject (the wizard "DEFAULT"). If we minted a
+        // fresh subject per source subject here, a target that already has
+        // content (so cleanupEmptyDefaultStructure left its DEFAULT in place)
+        // would end up with two subjects. On the outline that surfaces as
+        // duplicate "Add Module"/"Add Chapter" buttons, and it breaks drag
+        // because each subject is its own dnd-kit Sortable context (children
+        // can't be dragged across subjects, and a lone one has nothing to
+        // reorder against). So for these depths we clone every source module
+        // into the target's single subject instead of creating another one.
+        if (isSingleSubjectStructure(tgtPs)) {
+            cloneIntoSingleSubject(sourcePs, tgtPs, sourceSubjects, userId,
+                    chapterIdMap, slideIdMap, response);
+        } else {
+            Integer baseSubjectOrder = subjectPackageSessionRepository
+                    .findMaxSubjectOrderByPackageSessionId(tgtPs.getId());
+            int subjectOrder = baseSubjectOrder == null ? 0 : baseSubjectOrder + 1;
 
-        for (Subject sourceSubject : sourceSubjects) {
-            // 1. New subject row (lineage via parent_id)
-            Subject newSubject = subjectRepository.save(cloneSubjectEntity(sourceSubject, userId));
-            response.incrementSubjects();
+            for (Subject sourceSubject : sourceSubjects) {
+                // 1. New subject row (lineage via parent_id)
+                Subject newSubject = subjectRepository.save(cloneSubjectEntity(sourceSubject, userId));
+                response.incrementSubjects();
 
-            // 2. Subject -> target package_session mapping
-            subjectPackageSessionRepository.save(
-                    new SubjectPackageSession(newSubject, tgtPs, subjectOrder++));
+                // 2. Subject -> target package_session mapping
+                subjectPackageSessionRepository.save(
+                        new SubjectPackageSession(newSubject, tgtPs, subjectOrder++));
 
-            // 3. Modules under this subject in the source batch
-            List<Module> sourceModules = subjectModuleMappingRepository
-                    .findModulesBySubjectIdAndPackageSessionId(sourceSubject.getId(), sourcePs.getId());
+                // 3. Modules under this subject in the source batch
+                List<Module> sourceModules = subjectModuleMappingRepository
+                        .findModulesBySubjectIdAndPackageSessionId(sourceSubject.getId(), sourcePs.getId());
 
-            int moduleOrder = 0;
-            for (Module sourceModule : sourceModules) {
-                Module newModule = moduleRepository.save(cloneModuleEntity(sourceModule, userId));
-                response.incrementModules();
-
-                subjectModuleMappingRepository.save(
-                        new SubjectModuleMapping(newSubject, newModule, moduleOrder++));
-
-                // 4. Chapters under this module in the source batch
-                List<Chapter> sourceChapters = moduleChapterMappingRepository
-                        .findChaptersByModuleIdAndStatusNotDeleted(sourceModule.getId(), sourcePs.getId());
-
-                for (Chapter sourceChapter : sourceChapters) {
-                    Chapter newChapter = chapterRepository.save(cloneChapterEntity(sourceChapter, userId));
-                    response.incrementChapters();
-                    chapterIdMap.put(sourceChapter.getId(), newChapter.getId());
-
-                    moduleChapterMappingRepository.save(
-                            new ModuleChapterMapping(newChapter, newModule));
-
-                    // 5. Chapter -> target package_session mapping (preserve order if known)
-                    Optional<ChapterPackageSessionMapping> srcMapping = chapterPackageSessionMappingRepository
-                            .findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
-                                    sourceChapter.getId(), sourcePs.getId());
-                    Integer chapterOrder = srcMapping.map(ChapterPackageSessionMapping::getChapterOrder).orElse(null);
-                    if (chapterOrder == null) {
-                        Integer max = chapterPackageSessionMappingRepository
-                                .findMaxChapterOrderByPackageSessionId(tgtPs.getId());
-                        chapterOrder = (max == null) ? 1 : max + 1;
-                    }
-                    chapterPackageSessionMappingRepository.save(
-                            new ChapterPackageSessionMapping(newChapter, tgtPs, chapterOrder));
-
-                    // 6. Slides + slide source content
-                    cloneSlidesOfChapter(sourceChapter, newChapter, userId, slideIdMap, response);
+                int moduleOrder = 0;
+                for (Module sourceModule : sourceModules) {
+                    cloneModuleInto(sourceModule, sourcePs, tgtPs, newSubject, moduleOrder++,
+                            userId, chapterIdMap, slideIdMap, response);
                 }
             }
         }
@@ -402,6 +387,127 @@ public class CourseContentCopyService {
         // After the full subtree is in place, rewrite drip-condition prerequisite ids.
         List<String> remapWarnings = dripConditionRemapper.remap(chapterIdMap, slideIdMap);
         response.addWarnings(remapWarnings);
+    }
+
+    /**
+     * Depth-4 (subject level hidden) variant of {@link #cloneInto}: clone every
+     * source module into the target's single subject rather than creating a new
+     * subject per source subject.
+     *
+     * Destination subject resolution:
+     *  - reuse the target's existing subject if one is mapped (the DEFAULT that
+     *    {@code cleanupEmptyDefaultStructure} left in place because it already
+     *    holds user content);
+     *  - otherwise create exactly one subject (cloned from the first source
+     *    subject) and map it to the target.
+     *
+     * New modules are appended after any the destination subject already has, so
+     * imported content lands below the user's existing modules.
+     */
+    private void cloneIntoSingleSubject(PackageSession sourcePs,
+                                        PackageSession tgtPs,
+                                        List<Subject> sourceSubjects,
+                                        String userId,
+                                        Map<String, String> chapterIdMap,
+                                        Map<String, String> slideIdMap,
+                                        CopyCourseContentResponse response) {
+        Subject destSubject = subjectPackageSessionRepository
+                .findDistinctSubjectsByPackageSessionId(tgtPs.getId())
+                .stream().findFirst().orElse(null);
+
+        if (destSubject == null) {
+            if (sourceSubjects.isEmpty()) {
+                return; // nothing to copy
+            }
+            // No subject mapped on the target (empty DEFAULT was cleaned up, or a
+            // fresh batch): create exactly one and reuse it for every module.
+            destSubject = subjectRepository.save(cloneSubjectEntity(sourceSubjects.get(0), userId));
+            Integer baseSubjectOrder = subjectPackageSessionRepository
+                    .findMaxSubjectOrderByPackageSessionId(tgtPs.getId());
+            int subjectOrder = baseSubjectOrder == null ? 0 : baseSubjectOrder + 1;
+            subjectPackageSessionRepository.save(
+                    new SubjectPackageSession(destSubject, tgtPs, subjectOrder));
+            response.incrementSubjects();
+        }
+
+        // Append after the destination subject's existing modules.
+        Integer maxModuleOrder = subjectModuleMappingRepository
+                .findMaxModuleOrderBySubjectId(destSubject.getId());
+        int moduleOrder = maxModuleOrder == null ? 0 : maxModuleOrder + 1;
+
+        for (Subject sourceSubject : sourceSubjects) {
+            List<Module> sourceModules = subjectModuleMappingRepository
+                    .findModulesBySubjectIdAndPackageSessionId(sourceSubject.getId(), sourcePs.getId());
+            for (Module sourceModule : sourceModules) {
+                cloneModuleInto(sourceModule, sourcePs, tgtPs, destSubject, moduleOrder++,
+                        userId, chapterIdMap, slideIdMap, response);
+            }
+        }
+    }
+
+    /**
+     * Clone a single source module (with its chapters, slides and slide source
+     * rows) under {@code destSubject} in {@code tgtPs}. Shared by the normal
+     * multi-subject path and the depth-4 single-subject path.
+     */
+    private void cloneModuleInto(Module sourceModule,
+                                 PackageSession sourcePs,
+                                 PackageSession tgtPs,
+                                 Subject destSubject,
+                                 int moduleOrder,
+                                 String userId,
+                                 Map<String, String> chapterIdMap,
+                                 Map<String, String> slideIdMap,
+                                 CopyCourseContentResponse response) {
+        Module newModule = moduleRepository.save(cloneModuleEntity(sourceModule, userId));
+        response.incrementModules();
+
+        subjectModuleMappingRepository.save(
+                new SubjectModuleMapping(destSubject, newModule, moduleOrder));
+
+        // Chapters under this module in the source batch
+        List<Chapter> sourceChapters = moduleChapterMappingRepository
+                .findChaptersByModuleIdAndStatusNotDeleted(sourceModule.getId(), sourcePs.getId());
+
+        for (Chapter sourceChapter : sourceChapters) {
+            Chapter newChapter = chapterRepository.save(cloneChapterEntity(sourceChapter, userId));
+            response.incrementChapters();
+            chapterIdMap.put(sourceChapter.getId(), newChapter.getId());
+
+            moduleChapterMappingRepository.save(
+                    new ModuleChapterMapping(newChapter, newModule));
+
+            // Chapter -> target package_session mapping (preserve order if known)
+            Optional<ChapterPackageSessionMapping> srcMapping = chapterPackageSessionMappingRepository
+                    .findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
+                            sourceChapter.getId(), sourcePs.getId());
+            Integer chapterOrder = srcMapping.map(ChapterPackageSessionMapping::getChapterOrder).orElse(null);
+            if (chapterOrder == null) {
+                Integer max = chapterPackageSessionMappingRepository
+                        .findMaxChapterOrderByPackageSessionId(tgtPs.getId());
+                chapterOrder = (max == null) ? 1 : max + 1;
+            }
+            chapterPackageSessionMappingRepository.save(
+                    new ChapterPackageSessionMapping(newChapter, tgtPs, chapterOrder));
+
+            // Slides + slide source content
+            cloneSlidesOfChapter(sourceChapter, newChapter, userId, slideIdMap, response);
+
+            // The cloned slides keep the same assessmentId; register that
+            // assessment to the target batch so it shows for those learners.
+            assessmentSlideBatchRegistrationService
+                    .registerChapterAssessmentsToBatches(newChapter.getId(), List.of(tgtPs.getId()));
+        }
+    }
+
+    /**
+     * True when the target's course structure hides the subject level — course
+     * depth < 5 (depths 2, 3 and 4) — meaning it must carry exactly one subject.
+     * (Depth 5 shows the subject level and legitimately has many subjects.)
+     */
+    private boolean isSingleSubjectStructure(PackageSession tgtPs) {
+        Integer depth = depthOf(tgtPs);
+        return depth != null && depth < 5;
     }
 
     /**
@@ -476,6 +582,11 @@ public class CourseContentCopyService {
                             .findByChapterId(sourceChapter.getId())
                             .size();
                     response.incrementSlides(slideCount);
+
+                    // The shared chapter (and its assessment slides) is now also
+                    // visible to tgtPs — register its assessments to that batch.
+                    assessmentSlideBatchRegistrationService
+                            .registerChapterAssessmentsToBatches(sourceChapter.getId(), List.of(tgtPs.getId()));
                 }
             }
         }

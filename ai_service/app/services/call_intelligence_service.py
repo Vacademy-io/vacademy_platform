@@ -32,7 +32,7 @@ from ..schemas.credits import CreditCheckRequest, CreditDeductRequest
 from . import llm_json
 from .call_intelligence_prompt import PROMPT_VERSION, SCHEMA_VERSION, build_prompt
 from .credit_service import CreditService
-from .media_file_client import get_file_url
+from .media_file_client import get_public_file_url
 from .transcription_service import TranscriptionService
 
 logger = logging.getLogger(__name__)
@@ -280,7 +280,9 @@ async def process_one(claimed: Dict[str, Any]) -> None:
         if not storage_key:
             _mark(row_id, "SKIPPED", skip_reason="NO_RECORDING")
             return
-        source_url = await get_file_url(storage_key)
+        # Recordings are stored in the PUBLIC media bucket (same as lead-profile
+        # playback). The private resolver 404s for them → transcription fails.
+        source_url = await get_public_file_url(storage_key)
 
         # 2. Settings (rubric + credit override).
         cfg = await asyncio.to_thread(_read_call_settings, institute_id)

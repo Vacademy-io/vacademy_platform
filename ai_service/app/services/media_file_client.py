@@ -28,11 +28,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_EXPIRY_DAYS = 7
 
 
-async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> str:
-    """Resolve a media fileId to a presigned URL. Raises RuntimeError on failure."""
+async def _resolve(path: str, file_id: str, expiry_days: int) -> str:
     settings = get_settings()
     base = settings.media_server_base_url.rstrip("/")
-    url = f"{base}/media-service/internal/get-url/id"
+    url = f"{base}{path}"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
@@ -47,3 +46,19 @@ async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> 
             return file_url.strip().strip('"')
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Failed to resolve fileId={file_id} via media_service: {exc}") from exc
+
+
+async def get_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> str:
+    """Resolve a media fileId to a presigned URL (PRIVATE bucket). Raises on failure."""
+    return await _resolve("/media-service/internal/get-url/id", file_id, expiry_days)
+
+
+async def get_public_file_url(file_id: str, expiry_days: int = DEFAULT_EXPIRY_DAYS) -> str:
+    """Resolve a media fileId to a downloadable URL for a file in the PUBLIC bucket.
+
+    Call recordings are uploaded via media_service uploadFileV2 → the PUBLIC bucket
+    (same as the lead-profile "Play recording" playback, which resolves them through
+    this route). The private get-url/id route 404s for those files, which is why a
+    transcription job handed a private URL fails with "HTTP Error 404: Not Found".
+    """
+    return await _resolve("/media-service/internal/public-url", file_id, expiry_days)

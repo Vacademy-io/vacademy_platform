@@ -1,5 +1,6 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
+    CALL_INTELLIGENCE_ANALYZE,
     CALL_INTELLIGENCE_BY_CALL,
     CALL_INTELLIGENCE_BY_LEAD,
     CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS,
@@ -122,6 +123,12 @@ export const fetchCallIntelligence = async (
         if (status === 404) return null;
         throw err;
     }
+};
+
+/** Queue on-demand (re)analysis for a call. Resolves once accepted; the row then
+ *  progresses PENDING → COMPLETED, observed by polling fetchCallIntelligence. */
+export const triggerCallIntelligence = async (callLogId: string): Promise<void> => {
+    await authenticatedAxiosInstance.post(CALL_INTELLIGENCE_ANALYZE(callLogId));
 };
 
 export const fetchLeadCallIntelligence = async (

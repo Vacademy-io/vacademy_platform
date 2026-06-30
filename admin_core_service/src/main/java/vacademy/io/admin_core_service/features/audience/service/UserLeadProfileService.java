@@ -52,6 +52,7 @@ public class UserLeadProfileService {
 
     private final UserLeadProfileRepository userLeadProfileRepository;
     private final AudienceResponseRepository audienceResponseRepository;
+    private final PlaceholderEmailService placeholderEmailService;
     private final AudienceRepository audienceRepository;
     private final LeadScoreRepository leadScoreRepository;
     private final LeadStatusRepository leadStatusRepository;
@@ -465,7 +466,12 @@ public class UserLeadProfileService {
                 leadTriggerContextBuilder.put(ctx, "parentName", u.getFullName());
                 leadTriggerContextBuilder.put(ctx, "leadName", u.getFullName());
             }
-            if (!ctx.containsKey("parentEmail") && u.getEmail() != null && !u.getEmail().isBlank()) {
+            // Skip a synthesized placeholder address (emailless webhook leads — chiefly
+            // Meta/Facebook): it's non-deliverable, so a LEAD_STATUS_CHANGED / SLA workflow
+            // that emails {{leadEmail}} would bounce. Name + mobile still resolve below, so
+            // such leads remain reachable via WhatsApp / phone.
+            if (!ctx.containsKey("parentEmail") && u.getEmail() != null && !u.getEmail().isBlank()
+                    && !placeholderEmailService.isPlaceholder(u.getEmail())) {
                 leadTriggerContextBuilder.put(ctx, "parentEmail", u.getEmail());
                 leadTriggerContextBuilder.put(ctx, "leadEmail", u.getEmail());
             }

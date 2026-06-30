@@ -19,6 +19,7 @@ import {
     readEvalReturnUrl,
     clearEvalReturnUrl,
 } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
+import { UploadAnswerSheetDialog } from './-components/UploadAnswerSheetDialog';
 
 export const Route = createLazyFileRoute('/evaluation/evaluate/$assessmentId/$attemptId/$examType/')({
     component: () => (
@@ -50,6 +51,9 @@ const EvaluateAttemptComponent = () => {
     const { data: attemptDetails, isLoading: isAttemptLoading } = useSuspenseQuery(
         getAttemptDetails(attemptId)
     );
+    // The student's answer file id. Initialised from the attempt, but can be set
+    // by an admin uploading the answer sheet on the student's behalf.
+    const [fileId, setFileId] = useState<string | undefined>(attemptDetails);
     const { data: assessmentDetails, isLoading } = useSuspenseQuery(
         getAssessmentDetails({
             assessmentId: assessmentId,
@@ -73,10 +77,11 @@ const EvaluateAttemptComponent = () => {
     const { setNavHeading } = useNavHeadingStore();
 
     // Resolve the student's answer file id → public URL → File. Extracted so the
-    // error state can offer a retry instead of an indefinite spinner.
-    const loadFile = () => {
+    // error state can offer a retry instead of an indefinite spinner. Accepts an
+    // explicit id so a freshly admin-uploaded sheet loads without waiting on state.
+    const loadFile = (id: string | undefined = fileId) => {
         setFetchError(false);
-        getPublicUrl(attemptDetails)
+        getPublicUrl(id ?? '')
             .then((url) => {
                 if (!url) throw new Error('No answer file available for this attempt');
                 return fetch(url);
@@ -103,12 +108,19 @@ const EvaluateAttemptComponent = () => {
             </div>
         );
         if (!isAttemptLoading) {
-            const timer = setTimeout(loadFile, 100);
+            const timer = setTimeout(() => loadFile(), 100);
             return () => clearTimeout(timer);
         }
         return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAttemptLoading]);
+
+    // Load a sheet the admin just uploaded on the student's behalf, using the new
+    // id directly so we don't have to wait on the cached attempt query.
+    const handleAnswerSheetUploaded = (newFileId: string) => {
+        setFileId(newFileId);
+        loadFile(newFileId);
+    };
 
     if (fetchError && !file) {
         return (
@@ -118,15 +130,26 @@ const EvaluateAttemptComponent = () => {
                 </h1>
                 <p className="max-w-md text-sm text-neutral-500">
                     The student&apos;s uploaded response could not be loaded. It may not have been
-                    submitted yet, or the file is temporarily unavailable.
+                    submitted yet, or the file is temporarily unavailable. If the student shared their
+                    answer sheet another way, you can upload it on their behalf.
                 </p>
-                <div className="mt-1 flex gap-2">
+                <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
                     <MyButton buttonType="secondary" scale="medium" onClick={goBack}>
                         Back
                     </MyButton>
-                    <MyButton buttonType="primary" scale="medium" onClick={loadFile}>
+                    <MyButton buttonType="secondary" scale="medium" onClick={() => loadFile()}>
                         Retry
                     </MyButton>
+                    <UploadAnswerSheetDialog
+                        attemptId={attemptId}
+                        instituteId={instituteDetails?.id}
+                        onUploaded={handleAnswerSheetUploaded}
+                        trigger={
+                            <MyButton buttonType="primary" scale="medium">
+                                Upload Answer Sheet
+                            </MyButton>
+                        }
+                    />
                 </div>
             </div>
         );
@@ -153,7 +176,7 @@ const EvaluateAttemptComponent = () => {
                 <PDFEvaluator
                     isFreeTool={false}
                     file={file}
-                    fileId={attemptDetails}
+                    fileId={fileId}
                     questionData={questionData}
                     assessmentId={assessmentId}
                     attemptId={attemptId}

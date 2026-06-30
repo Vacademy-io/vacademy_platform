@@ -84,11 +84,18 @@ export const ADMIN_FLAVORS = {
 export type AdminFlavorKey = keyof typeof ADMIN_FLAVORS;
 
 /**
- * Default flavor when `VITE_CAP_FLAVOR` is unset. Kept as `vimotion` so that
- * any existing `cap sync` / build pipeline that does not set the env var keeps
- * producing exactly the app it produced before this multi-flavor change.
+ * Default flavor when `VITE_CAP_FLAVOR` is unset.
+ *
+ * This repo's native iOS/Android projects ARE the Vacademy Admin app (the iOS
+ * target bundle id is hardcoded to io.vacademy.admin.app), so the default must
+ * resolve to `vacademy-admin`. A flavorless `cap sync` / `build` was otherwise
+ * regenerating the native config as Vimotion (autoUpdate:true + Capgo URLs and
+ * launchAutoHide:false), which white-screens / hangs the admin app on the splash.
+ *
+ * Vimotion builds must set `VITE_CAP_FLAVOR=vimotion` explicitly (the
+ * `build:vimotion` / `cap:*:vimotion` scripts do this).
  */
-export const DEFAULT_FLAVOR_KEY: AdminFlavorKey = 'vimotion';
+export const DEFAULT_FLAVOR_KEY: AdminFlavorKey = 'vacademy-admin';
 
 export function isAdminFlavorKey(value: string | undefined | null): value is AdminFlavorKey {
     return value != null && Object.prototype.hasOwnProperty.call(ADMIN_FLAVORS, value);

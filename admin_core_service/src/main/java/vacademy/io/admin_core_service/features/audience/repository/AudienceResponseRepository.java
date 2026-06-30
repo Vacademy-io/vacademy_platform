@@ -163,7 +163,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
@@ -300,7 +301,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
@@ -471,6 +473,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              -- "Unassigned" filter (counsellor dropdown → Unassigned). TRUE keeps
+                              -- only leads with no owner on EITHER linked_users (ENQUIRY) or
+                              -- user_lead_profile; null/false = no narrowing.
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
@@ -592,6 +599,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              -- "Unassigned" filter (counsellor dropdown → Unassigned). TRUE keeps
+                              -- only leads with no owner on EITHER linked_users (ENQUIRY) or
+                              -- user_lead_profile; null/false = no narrowing.
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
@@ -681,6 +693,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("assignedCounselorId") String assignedCounselorId,
                         @Param("assignedCounselorIdsCsv") String assignedCounselorIdsCsv,
                         @Param("includeUnassigned") Boolean includeUnassigned,
+                        @Param("isUnassigned") Boolean isUnassigned,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("slaFilter") String slaFilter,

@@ -84,6 +84,10 @@ export interface RecentLeadsRequest {
      *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
      *  Omitted = all counsellors (and unassigned leads). */
     assigned_counselor_id?: string;
+    /** When true, returns ONLY leads with no owner on either linked_users or
+     *  user_lead_profile (the "Unassigned" entry in the counsellor dropdown).
+     *  Mutually exclusive with assigned_counselor_id. Omitted = no narrowing. */
+    is_unassigned?: boolean;
     /** Filter by lead source — WEBSITE / META / GOOGLE / ORGANIC / … Maps to
      *  LeadFilterDTO.sourceType. Omitted = all sources. */
     source_type?: string;

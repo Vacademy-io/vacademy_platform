@@ -2057,7 +2057,6 @@ export function VideoConsoleWorkspace({
                     } else if (event.type === 'progress') {
                         setIsSubmittingDecision(false);
                         const audioUrl = event.files?.audio?.s3_url;
-                        const timelineUrl = event.files?.timeline?.s3_url;
                         const wordsUrl = event.files?.words?.s3_url;
                         const scriptUrl = event.files?.script?.s3_url;
                         setCurrentGeneration((prev) =>
@@ -2067,7 +2066,11 @@ export function VideoConsoleWorkspace({
                                       stage: event.stage,
                                       percentage: event.percentage,
                                       message: event.message,
-                                      htmlUrl: timelineUrl || prev.htmlUrl,
+                                      // Do NOT set htmlUrl from a mid-leg progress event: the
+                                      // auto-complete effect flips to "ready" as soon as htmlUrl
+                                      // is present, so a progress-event timeline URL would mark a
+                                      // still-running (and possibly about-to-fail) leg complete.
+                                      // Only the terminal `completed` event sets the final timeline.
                                       audioUrl: audioUrl || prev.audioUrl,
                                       wordsUrl: wordsUrl || prev.wordsUrl,
                                       scriptUrl: scriptUrl || prev.scriptUrl,
@@ -2120,6 +2123,9 @@ export function VideoConsoleWorkspace({
                         toast.error(event.message || 'Generation failed');
                         setConsoleState('idle');
                         setCurrentGeneration(null);
+                        // A failed leg must never linger as a "complete" video — clear
+                        // any persisted completion so it can't resurrect on reload.
+                        localStorage.removeItem(COMPLETE_GENERATION_KEY);
                     }
                 },
                 (error) => {

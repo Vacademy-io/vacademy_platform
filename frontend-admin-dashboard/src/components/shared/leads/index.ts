@@ -60,6 +60,7 @@ export { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 export { ManualCallUploadDialog } from './manual-call-upload-dialog';
 export {
     fetchCallIntelligence,
+    triggerCallIntelligence,
     fetchLeadCallIntelligence,
     fetchCounsellorCallIntelligence,
     fetchTeamCallIntelligence,

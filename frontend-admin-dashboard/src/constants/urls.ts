@@ -145,6 +145,9 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
 /** Intelligence for a single call, keyed by the universal call_log id. */
 export const CALL_INTELLIGENCE_BY_CALL = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}`;
+/** Trigger on-demand (re)analysis for a single call. */
+export const CALL_INTELLIGENCE_ANALYZE = (callLogId: string) =>
+    `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}/analyze`;
 /** All analyzed calls for a lead (by responseId). */
 export const CALL_INTELLIGENCE_BY_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/lead/${encodeURIComponent(responseId)}`;

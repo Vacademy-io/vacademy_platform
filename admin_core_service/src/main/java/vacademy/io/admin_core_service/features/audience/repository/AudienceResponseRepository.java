@@ -473,9 +473,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              -- "Unassigned" filter (counsellor dropdown → Unassigned). TRUE keeps
-                              -- only leads with no owner on EITHER linked_users (ENQUIRY) or
-                              -- user_lead_profile; null/false = no narrowing.
+                              -- isUnassigned = TRUE narrows to leads with no owner at all
+                              -- (both the ENQUIRY-linked counsellor and the profile owner are null).
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
@@ -599,9 +598,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
                                    OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              -- "Unassigned" filter (counsellor dropdown → Unassigned). TRUE keeps
-                              -- only leads with no owner on EITHER linked_users (ENQUIRY) or
-                              -- user_lead_profile; null/false = no narrowing.
+                              -- isUnassigned = TRUE narrows to leads with no owner at all
+                              -- (both the ENQUIRY-linked counsellor and the profile owner are null).
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
                                    OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))

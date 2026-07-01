@@ -28,9 +28,11 @@ import java.util.Set;
 /**
  * "Connect Google Workspace" onboarding (per-tenant authorization-code OAuth).
  *
- *   POST /initiate  → admin-authed; returns the Google consent URL + a CSRF state key.
- *   GET  /callback  → PUBLIC (browser redirect from Google, no JWT); exchanges the code,
- *                     stores the encrypted refresh token, then bounces back to the admin UI.
+ * POST /initiate → admin-authed; returns the Google consent URL + a CSRF state
+ * key.
+ * GET /callback → PUBLIC (browser redirect from Google, no JWT); exchanges the
+ * code,
+ * stores the encrypted refresh token, then bounces back to the admin UI.
  *
  * The /callback path MUST be in ApplicationSecurityConfig's permitAll list.
  * Mirrors {@code ZoomOAuthController}.
@@ -48,7 +50,7 @@ public class GoogleOAuthController {
     private final OAuthConnectStateRepository stateRepository;
     private final InstituteAccessValidator instituteAccessValidator;
 
-    @Value("${google.oauth.frontend.callback.url:https://admin.vacademy.io/settings}")
+    @Value("${google.oauth.frontend.callback.url:https://dash.vacademy.io/settings}")
     private String frontendCallbackUrl;
 
     /** Step 1 — return the Google consent URL the admin's browser should open. */
@@ -71,14 +73,19 @@ public class GoogleOAuthController {
                 "session_key", state.getId()));
     }
 
-    /** Step 2 — Google redirects the browser here (PUBLIC). All token work is server-side. */
+    /**
+     * Step 2 — Google redirects the browser here (PUBLIC). All token work is
+     * server-side.
+     */
     @GetMapping("/callback")
     public ResponseEntity<Void> callback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String error) {
-        if (error != null) return redirect("google_error=" + error);
-        if (state == null || code == null) return redirect("google_error=missing_params");
+        if (error != null)
+            return redirect("google_error=" + error);
+        if (state == null || code == null)
+            return redirect("google_error=missing_params");
 
         OAuthConnectState st = stateRepository.findValidById(state, LocalDateTime.now()).orElse(null);
         if (st == null || !VENDOR.equals(st.getVendor())) {
@@ -86,8 +93,10 @@ public class GoogleOAuthController {
         }
         try {
             googleOAuthService.completeConnection(code, st.getInstituteId());
-            // Single-shot flow: mark CONSUMED so the same ?state= can't be replayed within its TTL
-            // (findValidById only accepts PENDING/AUTHORIZED). Unlike Meta's multi-connector flow,
+            // Single-shot flow: mark CONSUMED so the same ?state= can't be replayed within
+            // its TTL
+            // (findValidById only accepts PENDING/AUTHORIZED). Unlike Meta's
+            // multi-connector flow,
             // Google connects once per callback.
             st.setSessionStatus("CONSUMED");
             stateRepository.save(st);
@@ -111,7 +120,8 @@ public class GoogleOAuthController {
     }
 
     private void requireAdminRole(CustomUserDetails user) {
-        if (user.isRootUser()) return;
+        if (user.isRootUser())
+            return;
         boolean hasAdmin = user.getAuthorities() != null && user.getAuthorities().stream()
                 .map(a -> a.getAuthority().toUpperCase())
                 .anyMatch(ADMIN_ROLES::contains);

@@ -40,15 +40,16 @@ public class WhiteLabelService {
     private static final String ROLE_ADMIN = "ADMIN";
     private static final String ROLE_TEACHER = "TEACHER";
 
-    // Role names are simple uppercase tokens (system roles like LEARNER/ADMIN/TEACHER
-    // and institute custom roles like MANAGE_LEAD). Used to sanity-check request tokens.
-    private static final java.util.regex.Pattern ROLE_TOKEN_PATTERN =
-            java.util.regex.Pattern.compile("[A-Z0-9_]+");
+    // Role names are simple uppercase tokens (system roles like
+    // LEARNER/ADMIN/TEACHER
+    // and institute custom roles like MANAGE_LEAD). Used to sanity-check request
+    // tokens.
+    private static final java.util.regex.Pattern ROLE_TOKEN_PATTERN = java.util.regex.Pattern.compile("[A-Z0-9_]+");
 
     @Value("${cloudflare.learner.target:learner.vacademy.io}")
     private String learnerCnameTarget;
 
-    @Value("${cloudflare.admin.target:admin.vacademy.io}")
+    @Value("${cloudflare.admin.target:dash.vacademy.io}")
     private String adminCnameTarget;
 
     @Value("${cloudflare.teacher.target:teacher.vacademy.io}")
@@ -87,7 +88,8 @@ public class WhiteLabelService {
             throw new VacademyException("At least one domain entry is required");
         }
 
-        // Validate domains and validate+canonicalize role strings (comma-separated lists).
+        // Validate domains and validate+canonicalize role strings (comma-separated
+        // lists).
         // After this loop, each entry.role is a canonical "ROLE1,ROLE2" string with
         // unique, sorted, upper-cased tokens.
         for (WhiteLabelSetupRequest.DomainEntry e : entries) {
@@ -143,7 +145,8 @@ public class WhiteLabelService {
         // matching portal URL columns. Custom-role tokens don't have dedicated columns,
         // so they're silently skipped — their branding lives on the routing row only.
         for (WhiteLabelSetupRequest.DomainEntry entry : entries) {
-            if (!entry.isPrimary()) continue;
+            if (!entry.isPrimary())
+                continue;
             String url = "https://" + entry.getDomain();
             for (String token : splitRoleTokens(entry.getRole())) {
                 switch (token) {
@@ -159,7 +162,8 @@ public class WhiteLabelService {
                         institute.setTeacherPortalBaseUrl(url);
                         teacherUrl = url;
                     }
-                    default -> { /* custom role: no institute column to update */ }
+                    default -> {
+                        /* custom role: no institute column to update */ }
                 }
             }
         }
@@ -274,23 +278,24 @@ public class WhiteLabelService {
         }
 
         // 1) Root users bypass all institute membership checks. Matches the convention
-        //    used elsewhere in the codebase (e.g. StudentListManager#applyFacultyAccessFilter).
+        // used elsewhere in the codebase (e.g.
+        // StudentListManager#applyFacultyAccessFilter).
         if (user.isRootUser()) {
             return;
         }
 
         // 2) Users with an active ADMIN role on the *specific* target institute are
-        //    allowed. This uses the canonical user_role table (the same source the
-        //    auth service builds the JWT's per-institute authorities from), so it
-        //    correctly authorizes admins regardless of how they were provisioned —
-        //    including admins who don't have a row in the `staff` table.
+        // allowed. This uses the canonical user_role table (the same source the
+        // auth service builds the JWT's per-institute authorities from), so it
+        // correctly authorizes admins regardless of how they were provisioned —
+        // including admins who don't have a row in the `staff` table.
         if (userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(
                 user.getUserId(), instituteId, ROLE_NAME_ADMIN)) {
             return;
         }
 
         // 3) Fallback: legacy staff-table membership check, preserved for backward
-        //    compatibility with users who were granted access via that path.
+        // compatibility with users who were granted access via that path.
         boolean isStaff = instituteRepository.findInstitutesByUserId(user.getUserId())
                 .stream()
                 .anyMatch(i -> i.getId().equals(instituteId));
@@ -312,9 +317,12 @@ public class WhiteLabelService {
      */
     private String cnameTargetForRole(String role) {
         List<String> tokens = splitRoleTokens(role);
-        if (tokens.contains(ROLE_LEARNER)) return learnerCnameTarget;
-        if (tokens.contains(ROLE_ADMIN))   return adminCnameTarget;
-        if (tokens.contains(ROLE_TEACHER)) return teacherCnameTarget;
+        if (tokens.contains(ROLE_LEARNER))
+            return learnerCnameTarget;
+        if (tokens.contains(ROLE_ADMIN))
+            return adminCnameTarget;
+        if (tokens.contains(ROLE_TEACHER))
+            return teacherCnameTarget;
         // Custom-role-only entry: admin infra serves it.
         return adminCnameTarget;
     }
@@ -372,7 +380,8 @@ public class WhiteLabelService {
         Set<String> tokens = new TreeSet<>();
         for (String raw : roleStr.split(",")) {
             String token = raw == null ? "" : raw.trim().toUpperCase();
-            if (token.isEmpty()) continue;
+            if (token.isEmpty())
+                continue;
             if (!ROLE_TOKEN_PATTERN.matcher(token).matches()) {
                 throw new VacademyException("Invalid role '" + token + "'. "
                         + "Role names may contain only letters, digits and underscores.");
@@ -391,11 +400,13 @@ public class WhiteLabelService {
      * that need to inspect individual roles.
      */
     private List<String> splitRoleTokens(String roleStr) {
-        if (!StringUtils.hasText(roleStr)) return List.of();
+        if (!StringUtils.hasText(roleStr))
+            return List.of();
         List<String> tokens = new ArrayList<>();
         for (String raw : roleStr.split(",")) {
             String t = raw == null ? "" : raw.trim().toUpperCase();
-            if (!t.isEmpty()) tokens.add(t);
+            if (!t.isEmpty())
+                tokens.add(t);
         }
         return tokens;
     }

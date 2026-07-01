@@ -2189,6 +2189,7 @@ public class AudienceService {
                     filterDTO.getAssignedCounselorId(),
                     assignedCounselorIdsCsv,
                     includeUnassigned,
+                    filterDTO.getIsUnassigned(),
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),

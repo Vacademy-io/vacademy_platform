@@ -6,6 +6,8 @@ import { TelephonyCounsellorMapCard } from './telephony-counsellor-map-card';
 import { TelephonyNumbersCard } from './telephony-numbers-card';
 import { InboundSetupGuideCard } from './inbound-setup-guide-card';
 import { TelephonyCreditsCard } from './telephony-credits-card';
+import { IvrBuilderCard } from './ivr-builder-card';
+import { VacademyVoiceConfigCard } from './vacademy-voice-config-card';
 
 /**
  * Provider-aware Calling settings stack. The provider Config card is ALWAYS
@@ -42,18 +44,25 @@ export function TelephonyProviderCards() {
     const has = (capability: string) => capabilities.includes(capability);
 
     const showWallet = has('BALANCE');
-    const showInboundApplet = has('SYNC_INBOUND_APPLET');
     const showNumberPool = has('NUMBER_POOL');
     // No-pool outbound providers (Airtel) dial from a per-counsellor extension.
     const showCounsellorMap = has('OUTBOUND_CALL') && !has('NUMBER_POOL');
+    // Vacademy Voice (Plivo) routes inbound through an institute-authored IVR tree
+    // and carries its own product-config + inbound guide, so the Exotel-shaped
+    // App-Bazaar inbound guide is suppressed for it.
+    const isManagedVoice = has('MANAGED_VOICE');
+    const showInboundApplet = has('SYNC_INBOUND_APPLET') && !isManagedVoice;
+    const showIvrBuilder = has('IVR_BUILDER');
 
     return (
         <>
             {showWallet && <TelephonyCreditsCard />}
             <TelephonyConfigCard />
+            {isManagedVoice && <VacademyVoiceConfigCard />}
             {showCounsellorMap && <TelephonyCounsellorMapCard />}
             {showInboundApplet && <InboundSetupGuideCard />}
             {showNumberPool && <TelephonyNumbersCard />}
+            {showIvrBuilder && <IvrBuilderCard />}
         </>
     );
 }

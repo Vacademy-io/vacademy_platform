@@ -206,6 +206,15 @@ export const TELEPHONY_EXOTEL_EXOPHONES = (instituteId: string) =>
 // just to check credits.
 export const TELEPHONY_EXOTEL_BALANCE = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/exotel/balance?instituteId=${encodeURIComponent(instituteId)}`;
+// Vacademy Voice IVR menus — CRUD for the multi-level inbound call tree builder.
+export const TELEPHONY_IVR_MENUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus?instituteId=${encodeURIComponent(instituteId)}`;
+export const TELEPHONY_IVR_MENUS_BASE = `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus`;
+export const TELEPHONY_IVR_MENU_BY_ID = (menuId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus/${encodeURIComponent(menuId)}`;
+// Vacademy Voice product config (enable flag, caller-ID, recording, compliance, plan).
+export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/voice-config/${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
@@ -697,6 +706,16 @@ export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-
 // meeting failed to provision (silent async failure) and re-create it in one click.
 export const ZOOM_PROVISION_STATUS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-status`;
 export const ZOOM_PROVISION_NOW = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-now`;
+
+// ── Google Workspace (Google Meet) integration ──
+// Per-institute connected Google account (per-tenant OAuth, NOT domain-wide delegation).
+// Accounts are created via the "Connect Google Workspace" OAuth flow — no pasted secrets.
+// See docs/googlemeetintegration/google-meet-integration-plan.md.
+export const GOOGLE_ACCOUNTS_BASE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/accounts`;
+// "Connect Google Workspace" — returns the consent URL the browser is sent to.
+export const GOOGLE_OAUTH_INITIATE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/oauth/initiate`;
+// Authenticated learner/host join — resolves the meetingUri + records attendance.
+export const GOOGLE_MEET_JOIN = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-meet-join`;
 
 // "Process Recording" / "Transcript Ready" flow — kicks off Whisper
 // transcription for a specific BBB recording and polls for terminal state.

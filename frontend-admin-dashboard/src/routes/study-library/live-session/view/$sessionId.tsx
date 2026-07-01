@@ -196,6 +196,9 @@ function ViewLiveSession() {
         || sessionData?.schedule?.link_type === 'BBB_MEETING';
     const isZoomSession = sessionData?.schedule?.link_type === StreamingPlatform.ZOOM
         || sessionData?.schedule?.link_type === 'zoom';
+    const isMeetSession = sessionData?.schedule?.link_type === StreamingPlatform.MEET
+        || sessionData?.schedule?.link_type === 'google meet'
+        || sessionData?.schedule?.link_type === 'GOOGLE_MEET';
 
     // Zoom provisioning status — surfaces the otherwise-silent async provisioning
     // failures so the admin can re-create the meeting in one click.
@@ -307,6 +310,33 @@ function ViewLiveSession() {
             }
         } catch (err) {
             console.error('Failed to join as host:', err);
+            toast.error('Failed to start session. Please try again.');
+        }
+    }, []);
+
+    /**
+     * For Google Meet (URL-join, no SDK): resolve the link via the authenticated
+     * google-meet-join endpoint (so the host hits the authorization + telemetry chokepoint), then
+     * open Meet. Reminds the host to be signed into the organizer account so auto-recording fires.
+     */
+    const handleMeetStartAsHost = useCallback(async (scheduleId: string) => {
+        try {
+            const response = await authenticatedAxiosInstance.get(
+                `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-meet-join`,
+                { params: { scheduleId } }
+            );
+            const joinUrl = response.data?.joinUrl;
+            const organizerEmail = response.data?.organizerEmail;
+            if (joinUrl) {
+                if (organizerEmail) {
+                    toast.info(`Open Meet signed in to ${organizerEmail} so the session records.`);
+                }
+                window.open(joinUrl, '_blank', 'noopener,noreferrer');
+            } else {
+                toast.error('Failed to get the Google Meet link');
+            }
+        } catch (err) {
+            console.error('Failed to start Google Meet as host:', err);
             toast.error('Failed to start session. Please try again.');
         }
     }, []);
@@ -916,6 +946,39 @@ function ViewLiveSession() {
                                                 ))}
                                             </div>
                                         )}
+
+                                        {isMeetSession && !isRecurring && groupedSchedules.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                    <MonitorPlay className="size-3.5 text-primary" />
+                                                    Google Meet
+                                                </div>
+                                                {groupedSchedules.flatMap(day => day.sessions).map((session) => (
+                                                    <div key={session.id} className="flex items-center justify-between rounded-md border bg-muted/20 p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <Timer className="size-4 text-primary" />
+                                                                <span className="font-medium">{session.time}</span>
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {session.duration} mins
+                                                            </span>
+                                                            {session.status === 'live' && (
+                                                                <Badge variant="default" className="bg-green-500 text-white text-xs">
+                                                                    Live
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleMeetStartAsHost(session.id)}
+                                                            className="text-xs font-medium text-primary hover:underline"
+                                                        >
+                                                            Start as Host →
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </CardContent>
@@ -1493,6 +1556,13 @@ function ViewLiveSession() {
                                                                                         ) : ((session as any).linkType === 'zoom' || (session as any).linkType === 'ZOOM_MEETING') ? (
                                                                                             <button
                                                                                                 onClick={() => handleZoomStartAsHost(session.id)}
+                                                                                                className="text-xs font-medium text-primary hover:underline"
+                                                                                            >
+                                                                                                Start as Host →
+                                                                                            </button>
+                                                                                        ) : ((session as any).linkType === 'google meet' || (session as any).linkType === 'GOOGLE_MEET' || (session as any).linkType === 'googleMeet') ? (
+                                                                                            <button
+                                                                                                onClick={() => handleMeetStartAsHost(session.id)}
                                                                                                 className="text-xs font-medium text-primary hover:underline"
                                                                                             >
                                                                                                 Start as Host →

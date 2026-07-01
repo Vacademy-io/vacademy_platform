@@ -37,6 +37,7 @@ import {
 import { LIVE_SESSION_SETTINGS_QUERY_KEY } from '@/hooks/useLiveSessionSettings';
 import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
+import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -287,6 +288,9 @@ export default function LiveSessionSettings() {
                 Placed under the platform allow-list so the Zoom config sits right next
                 to the toggle that allows the Zoom platform itself. */}
             <ZoomIntegrationCard />
+
+            {/* Google Meet integration — per-tenant OAuth ("Connect Google Workspace"). */}
+            <GoogleMeetIntegrationCard />
 
             {/* Recurring */}
             <Card className="border-neutral-200 shadow-none">

@@ -118,6 +118,13 @@ public class TelephonyCallLog implements Persistable<String> {
     @Builder.Default
     private Boolean recordingLogged = false;
 
+    // V351: true ⇒ the recording lives in the PRIVATE encrypted bucket (Vacademy
+    // Voice / Plivo), so playback must presign via the private getter, not the
+    // public one. Null/false ⇒ legacy public-bucket recording (Exotel/Airtel/Aavtaar).
+    @Column(name = "recording_private")
+    @Builder.Default
+    private Boolean recordingPrivate = false;
+
     @Column(name = "raw_payload_json", columnDefinition = "TEXT")
     private String rawPayloadJson;
 

@@ -684,6 +684,52 @@ export default function ScheduleStep2() {
                 }
             }
 
+            // Handle Google Meet meeting creation — only when a connected account was selected in
+            // step 1 (integration on). Without an account the admin pasted a defaultLink instead.
+            // Mirrors the Zoom block; skipped in bulk for the same reason.
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.MEET &&
+                (step1Data as any)?.googleMeetAccountId &&
+                instituteDetails?.id
+            ) {
+                try {
+                    const s = step1Data as any;
+                    // Advisory double-booking check: warn (don't block) on overlap.
+                    try {
+                        const availability = await checkProviderAvailabilityForSession(
+                            sessionId,
+                            s.googleMeetAccountId
+                        );
+                        if (availability?.available === false) {
+                            const count = availability.conflicts?.length ?? 0;
+                            toast.warning(
+                                `Heads up: this Google account already has ${count} overlapping meeting${
+                                    count === 1 ? '' : 's'
+                                } at the selected time. Creating anyway.`
+                            );
+                        }
+                    } catch {
+                        // advisory only — never block meeting creation
+                    }
+
+                    const fallbackDuration =
+                        Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
+                    await createProviderMeetingsForSession({
+                        instituteId: instituteDetails.id,
+                        sessionId: sessionId,
+                        topic: step1Data.title || 'Live Class',
+                        agenda: step1Data.description || 'Live Subject Class',
+                        durationMinutes: fallbackDuration > 0 ? fallbackDuration : 30,
+                        timezone: step1Data.timeZone || 'Asia/Kolkata',
+                        provider: 'GOOGLE_MEET',
+                        providerAccountId: s.googleMeetAccountId,
+                    });
+                } catch (err) {
+                    console.error('Error creating Google Meet meetings for session:', err);
+                }
+            }
+
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['upcomingSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['pastSessions'] });

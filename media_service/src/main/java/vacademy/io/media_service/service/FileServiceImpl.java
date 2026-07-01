@@ -94,6 +94,46 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
+    public FileDetailsDTO uploadPrivateFileWithDetails(MultipartFile multipartFile)
+            throws FileUploadException, IOException {
+        String key = "PRIVATE_UPLOAD/" + UUID.randomUUID() + "_" + multipartFile.getOriginalFilename();
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentType(
+                multipartFile.getContentType() != null ? multipartFile.getContentType() : "application/octet-stream");
+        metadata.setContentLength(multipartFile.getSize());
+        // Server-side encryption at rest (SSE-S3, AES-256) — sensitive audio (PII / minors).
+        metadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
+        s3Client.putObject(bucketName, key, multipartFile.getInputStream(), metadata);
+
+        FileMetadata fileMetadata = new FileMetadata(multipartFile.getName(),
+                Objects.isNull(multipartFile.getContentType()) ? "unknown" : multipartFile.getContentType(), key,
+                "PRIVATE_UPLOAD", "PRIVATE_UPLOAD");
+        fileMetadata = fileMetadataRepository.save(fileMetadata);
+
+        // A presigned PRIVATE-bucket URL is a convenience for direct callers; the id is
+        // the contract (recordings are fetched later via getUrlWithExpiryAndId). Never
+        // fail the upload if presigning hiccups.
+        String url = null;
+        try {
+            url = getUrlWithExpiryAndId(fileMetadata.getId(), 1);
+        } catch (Exception ignored) {
+            // best-effort
+        }
+
+        return FileDetailsDTO.builder()
+                .expiry(addTime(1))
+                .fileName(fileMetadata.getFileName())
+                .fileType(fileMetadata.getFileType())
+                .id(fileMetadata.getId())
+                .source(fileMetadata.getSource())
+                .sourceId(fileMetadata.getSourceId())
+                .url(url)
+                .createdOn(fileMetadata.getCreatedOn())
+                .updatedOn(fileMetadata.getUpdatedOn())
+                .build();
+    }
+
+    @Override
     public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key)
             throws FileUploadException, IOException {
         ObjectMetadata metadata = new ObjectMetadata();

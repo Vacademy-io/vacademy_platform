@@ -40,5 +40,14 @@ public enum ProviderCapability {
     BALANCE,
     /** The provider reports the call's outcome ONCE at the end (AI-calling),
      *  rather than via incremental per-state events. */
-    SINGLE_FINAL_EVENT
+    SINGLE_FINAL_EVENT,
+    /** Inbound calls are routed through an institute-authored multi-level IVR tree
+     *  (ivr_menu/ivr_node) rendered as the provider's answer applet. Gates the IVR
+     *  tree-builder UI. Plivo (Vacademy Voice) declares it. */
+    IVR_BUILDER,
+    /** A Vacademy-managed first-party voice product (own Plivo subaccount per
+     *  institute) with a settings-driven product-config surface (enable flag,
+     *  caller-ID, recording, timezone, compliance status, plan/channels). Gates the
+     *  "Vacademy Voice" settings card. Plivo declares it. */
+    MANAGED_VOICE
 }

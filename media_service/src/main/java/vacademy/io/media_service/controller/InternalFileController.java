@@ -140,6 +140,16 @@ public class InternalFileController {
         return ResponseEntity.ok(Map.of("id", response.getId(), "url", response.getUrl()));
     }
 
+    @PostMapping("/upload-file-private")
+    public ResponseEntity<FileDetailsDTO> uploadPrivateFileToAws(@RequestParam("file") MultipartFile file) {
+        try {
+            return ResponseEntity.ok(fileService.uploadPrivateFileWithDetails(file));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new FileDetailsDTO());
+        }
+    }
+
     @PostMapping("/upload-file-custom-key")
     public ResponseEntity<FileDetailsDTO> uploadFileToAwsCustomKey(@RequestParam("file") MultipartFile file,
             @RequestParam("key") String key) {

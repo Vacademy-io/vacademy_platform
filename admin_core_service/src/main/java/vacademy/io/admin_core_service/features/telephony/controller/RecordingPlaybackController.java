@@ -41,12 +41,15 @@ public class RecordingPlaybackController {
         if (row.getRecordingStorageKey() == null) {
             return ResponseEntity.noContent().build();
         }
-        // Use the PUBLIC-bucket URL endpoint because RecordingTxOps.persist
-        // uploads via MediaService.uploadFileV2 which writes to
-        // vacademy-media-storage-public. getFileUrlById would resolve to the
-        // private bucket (vacademy-media-storage) and return a NoSuchKey URL
-        // for a file that lives in the public one.
-        String url = mediaService.getFilePublicUrlById(row.getRecordingStorageKey());
+        // Bucket depends on where RecordingTxOps.persist stored it:
+        //   - Vacademy Voice (Plivo) recordings live in the PRIVATE, SSE-encrypted
+        //     bucket (recording_private = true) → presign via getFileUrlById.
+        //   - Every other provider uploads via uploadFileV2 to the PUBLIC bucket
+        //     (vacademy-media-storage-public) → getFilePublicUrlById (getFileUrlById
+        //     would resolve the private bucket and return a NoSuchKey URL).
+        String url = Boolean.TRUE.equals(row.getRecordingPrivate())
+                ? mediaService.getFileUrlById(row.getRecordingStorageKey())
+                : mediaService.getFilePublicUrlById(row.getRecordingStorageKey());
         return ResponseEntity.ok(Map.of("url", url == null ? "" : url));
     }
 }

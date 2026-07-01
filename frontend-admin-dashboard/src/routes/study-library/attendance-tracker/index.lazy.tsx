@@ -71,6 +71,17 @@ const formatDurationMinutes = (mins: number | null | undefined): string => {
     return m === 0 ? `${h}h` : `${h}h ${m}m`;
 };
 
+// Convert a 24-hour "HH:mm[:ss]" time string into a 12-hour "h:mm AM/PM" label.
+const formatTime12h = (time: string | null | undefined): string => {
+    if (!time) return '—';
+    const [hStr, mStr = '00'] = time.split(':');
+    const h = Number(hStr);
+    if (Number.isNaN(h)) return time; // unexpected format → show as-is
+    const period = h >= 12 ? 'PM' : 'AM';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${mStr.padStart(2, '0')} ${period}`;
+};
+
 interface AttendanceStudent {
     id: string; // studentId
     name: string;
@@ -117,7 +128,9 @@ const SESSION_COLUMNS: ColumnDef<ClassAttendanceItem>[] = [
         minSize: 100,
         maxSize: 180,
         header: 'Time',
-        cell: ({ row }) => <span className="text-neutral-600">{row.original.time}</span>,
+        cell: ({ row }) => (
+            <span className="text-neutral-600">{formatTime12h(row.original.time)}</span>
+        ),
     },
     {
         id: 'status',
@@ -652,7 +665,8 @@ function AttendanceTrackerContent() {
             payment_status: '',
             custom_fields: {},
         };
-        setSidebarStudent(minimalStudent);
+        // openOverlay:false → open the right-side drawer, not the full-screen profile overlay.
+        setSidebarStudent(minimalStudent, { openOverlay: false });
         setIsSidebarOpen(true);
     }, [selectedBatchIds, batchInfoMap, setSidebarStudent]);
 
@@ -904,53 +918,62 @@ function AttendanceTrackerContent() {
         try {
             const allStudents = await fetchAllAttendancePages();
 
-            const csvData = allStudents.map((student) => {
-                const total = student.sessions.length;
-                const attended = student.sessions.filter(
-                    (s) => s.attendanceStatus === 'PRESENT'
-                ).length;
+            const csvData = allStudents
+                .map((student) => {
+                    const total = student.sessions.length;
+                    const attended = student.sessions.filter(
+                        (s) => s.attendanceStatus === 'PRESENT'
+                    ).length;
+                    const missed = total - attended;
 
-                const sessionsWithDuration = student.sessions.filter(
-                    (s) => typeof s.durationMinutes === 'number' && s.durationMinutes > 0
-                );
-                const avgDurationMinutes = sessionsWithDuration.length
-                    ? Math.round(
-                          sessionsWithDuration.reduce(
-                              (acc, s) => acc + (s.durationMinutes ?? 0),
-                              0
-                          ) / sessionsWithDuration.length
-                      )
-                    : null;
+                    // Present CSV: only learners with ≥1 attended class.
+                    // Absent CSV: only learners with ≥1 missed class.
+                    // (A partially-attending learner appears in both; "Both" keeps everyone.)
+                    if (scope === 'present' && attended === 0) return null;
+                    if (scope === 'absent' && missed === 0) return null;
 
-                const presentSessions = student.sessions
-                    .filter((s) => s.attendanceStatus === 'PRESENT')
-                    .map((s) => `${s.title} (${s.meetingDate})`)
-                    .join(', ');
+                    const sessionsWithDuration = student.sessions.filter(
+                        (s) => typeof s.durationMinutes === 'number' && s.durationMinutes > 0
+                    );
+                    const avgDurationMinutes = sessionsWithDuration.length
+                        ? Math.round(
+                              sessionsWithDuration.reduce(
+                                  (acc, s) => acc + (s.durationMinutes ?? 0),
+                                  0
+                              ) / sessionsWithDuration.length
+                          )
+                        : null;
 
-                const absentSessions = student.sessions
-                    .filter((s) => s.attendanceStatus !== 'PRESENT')
-                    .map((s) => `${s.title} (${s.meetingDate})`)
-                    .join(', ');
+                    const presentSessions = student.sessions
+                        .filter((s) => s.attendanceStatus === 'PRESENT')
+                        .map((s) => `${s.title} (${s.meetingDate})`)
+                        .join(', ');
 
-                const info = student.packageSessionId
-                    ? batchInfoMap.get(student.packageSessionId)
-                    : undefined;
+                    const absentSessions = student.sessions
+                        .filter((s) => s.attendanceStatus !== 'PRESENT')
+                        .map((s) => `${s.title} (${s.meetingDate})`)
+                        .join(', ');
 
-                const row: Record<string, string> = {
-                    'Name': student.fullName || '',
-                    'Email': student.email || '',
-                    'Mobile Number': student.mobileNumber || '',
-                    'Enrollment Number': student.instituteEnrollmentNumber || '',
-                    // 'Batch': info?.batchName || '',
-                    'Course': info?.packageName || '',
-                    'Attendance %': `${student.attendancePercentage}%`,
-                    'Classes Attended': `${attended}/${total}`,
-                    'Avg Duration': formatDurationMinutes(avgDurationMinutes),
-                };
-                if (includePresent) row['Present'] = presentSessions;
-                if (includeAbsent) row['Absent'] = absentSessions;
-                return row;
-            });
+                    const info = student.packageSessionId
+                        ? batchInfoMap.get(student.packageSessionId)
+                        : undefined;
+
+                    const row: Record<string, string> = {
+                        'Name': student.fullName || '',
+                        'Email': student.email || '',
+                        'Mobile Number': student.mobileNumber || '',
+                        'Enrollment Number': student.instituteEnrollmentNumber || '',
+                        // 'Batch': info?.batchName || '',
+                        'Course': info?.packageName || '',
+                        'Attendance %': `${student.attendancePercentage}%`,
+                        'Classes Attended': `${attended}/${total}`,
+                        'Avg Duration': formatDurationMinutes(avgDurationMinutes),
+                    };
+                    if (includePresent) row['Present'] = presentSessions;
+                    if (includeAbsent) row['Absent'] = absentSessions;
+                    return row;
+                })
+                .filter((row): row is Record<string, string> => row !== null);
 
             const csv = Papa.unparse(csvData);
             const scopeSuffix = scope === 'both' ? 'full' : scope;
@@ -1406,6 +1429,10 @@ interface BatchDropdownProps {
 
 function BatchDropdown({ label, options, selectedValues, onChange }: BatchDropdownProps) {
     const [batchSearch, setBatchSearch] = useState('');
+    // Snapshot of which batches were selected when the dropdown opened. Ordering uses
+    // this (not the live selection) so items don't jump around while you toggle them —
+    // selected float to the top only on the next open.
+    const [pinnedOrder, setPinnedOrder] = useState<string[]>([]);
 
     // Real batches only (drop the synthetic "All Batches" entry — it maps to "none selected").
     const batchOnly = useMemo(() => {
@@ -1421,9 +1448,15 @@ function BatchDropdown({ label, options, selectedValues, onChange }: BatchDropdo
 
     const filteredOptions = useMemo(() => {
         const query = batchSearch.trim().toLowerCase();
-        if (!query) return batchOnly;
-        return batchOnly.filter((opt) => opt.label.toLowerCase().includes(query));
-    }, [batchOnly, batchSearch]);
+        const base = query
+            ? batchOnly.filter((opt) => opt.label.toLowerCase().includes(query))
+            : batchOnly;
+        // Batches selected at open-time float to the top (stable within each group);
+        // toggling doesn't reorder mid-interaction.
+        const selected = base.filter((o) => !!o.value && pinnedOrder.includes(o.value));
+        const rest = base.filter((o) => !(o.value && pinnedOrder.includes(o.value)));
+        return [...selected, ...rest];
+    }, [batchOnly, batchSearch, pinnedOrder]);
 
     const triggerLabel = useMemo(() => {
         if (selectedValues.length === 0) return 'All Batches';
@@ -1443,7 +1476,12 @@ function BatchDropdown({ label, options, selectedValues, onChange }: BatchDropdo
 
     return (
         <div className="w-full">
-            <Popover onOpenChange={(open) => { if (!open) setBatchSearch(''); }}>
+            <Popover
+                onOpenChange={(open) => {
+                    if (open) setPinnedOrder(selectedValues);
+                    else setBatchSearch('');
+                }}
+            >
                 <PopoverTrigger asChild>
                     <button
                         className={`flex h-9 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${selectedValues.length > 0 ? 'text-neutral-900' : 'text-neutral-500'

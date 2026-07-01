@@ -255,25 +255,57 @@ export default function ScheduleStep1() {
             timeZone: defaultTimezone,
             startTime: defaultTime,
             events: '1',
-            openWaitingRoomBefore: '15',
-            waitingRoomType: WaitingRoomType.WAITING_ROOM,
+            openWaitingRoomBefore: liveSessionSettings.defaultWaitingRoomTime ?? '15',
+            waitingRoomType:
+                liveSessionSettings.defaultWaitingRoomType ?? WaitingRoomType.WAITING_ROOM,
             sessionType: SessionType.LIVE,
             streamingType: SessionPlatform.EMBED_IN_APP,
             allowRewind: false,
             allowPause: false,
-            enableWaitingRoom: false,
-            sessionPlatform: StreamingPlatform.OTHER,
+            enableWaitingRoom: liveSessionSettings.defaultWaitingRoomEnabled ?? false,
+            // Pre-select the institute's default platform (falling back to
+            // OTHER when it isn't set or has since been disallowed). Platform
+            // enum values match the settings' PlatformKey strings 1:1.
+            sessionPlatform:
+                liveSessionSettings.defaultPlatform &&
+                liveSessionSettings.allowedPlatforms[liveSessionSettings.defaultPlatform] !== false
+                    ? (liveSessionSettings.defaultPlatform as StreamingPlatform)
+                    : StreamingPlatform.OTHER,
             durationMinutes: '30',
             durationHours: '0',
             defaultLink: '',
-            feedbackEnabled: false,
+            // Feedback defaults to ON, but only when the institute keeps the
+            // feedback feature enabled — if the whole feedback card is hidden
+            // (feedbackEnabled = false) we must never silently enable it.
+            feedbackEnabled:
+                (liveSessionSettings.feedbackEnabled ?? true) &&
+                (liveSessionSettings.defaultFeedbackEnabled ?? true),
             feedbackCompulsory: liveSessionSettings.defaultFeedbackCompulsory ?? false,
             feedbackQuestions: DEFAULT_FEEDBACK_QUESTIONS,
-            bbbRecord: true,
-            bbbAutoStartRecording: false,
-            bbbMuteOnStart: true,
-            bbbWebcamsOnlyForModerator: false,
-            bbbGuestPolicy: 'ALWAYS_ACCEPT' as const,
+            bbbRecord: liveSessionSettings.defaultBbbRecordEnabled ?? true,
+            bbbAutoStartRecording: liveSessionSettings.defaultBbbAutoStartRecording ?? false,
+            bbbMuteOnStart: liveSessionSettings.defaultBbbMuteOnStart ?? true,
+            bbbWebcamsOnlyForModerator:
+                liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
+            bbbGuestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+            // Zoom meeting defaults (only used when platform = Zoom with an account).
+            // Seeding them here means the Zoom settings panel and the step-2 DTO
+            // builder both read the institute defaults without extra wiring.
+            zoomWaitingRoom: liveSessionSettings.defaultZoomWaitingRoom ?? true,
+            zoomJoinBeforeHost: liveSessionSettings.defaultZoomJoinBeforeHost ?? false,
+            zoomMeetingAuthentication:
+                liveSessionSettings.defaultZoomMeetingAuthentication ?? false,
+            zoomApprovalType: liveSessionSettings.defaultZoomApprovalType ?? '2',
+            zoomMuteUponEntry: liveSessionSettings.defaultZoomMuteUponEntry ?? true,
+            zoomHostVideo: liveSessionSettings.defaultZoomHostVideo ?? false,
+            zoomParticipantVideo: liveSessionSettings.defaultZoomParticipantVideo ?? false,
+            zoomAudio: liveSessionSettings.defaultZoomAudio ?? 'both',
+            zoomAutoRecording: liveSessionSettings.defaultZoomAutoRecording ?? 'cloud',
+            zoomBreakoutRoom: liveSessionSettings.defaultZoomBreakoutRoom ?? false,
+            zoomFocusMode: liveSessionSettings.defaultZoomFocusMode ?? false,
+            zoomAllowMultipleDevices:
+                liveSessionSettings.defaultZoomAllowMultipleDevices ?? false,
+            zoomWatermark: liveSessionSettings.defaultZoomWatermark ?? false,
         };
     }, []);
 
@@ -297,6 +329,205 @@ export default function ScheduleStep1() {
             form.setValue('timeZone', adminDefault);
         }
     }, [liveSessionSettings.defaultTimeZone, isEdit, form]);
+
+    // Settings load asynchronously (react-query). For NEW sessions, once the
+    // institute-level live-session defaults arrive, snap the feedback and
+    // waiting-room fields to those defaults — but only while the admin hasn't
+    // manually touched each field (isDirty guard), so we never overwrite a
+    // deliberate choice. Edit mode is left alone: the existing session's saved
+    // values are mapped in separately.
+    useEffect(() => {
+        if (isEdit) return;
+        const feedbackDefault =
+            (liveSessionSettings.feedbackEnabled ?? true) &&
+            (liveSessionSettings.defaultFeedbackEnabled ?? true);
+        if (
+            !form.getFieldState('feedbackEnabled').isDirty &&
+            form.getValues('feedbackEnabled') !== feedbackDefault
+        ) {
+            form.setValue('feedbackEnabled', feedbackDefault);
+        }
+        const compulsoryDefault = liveSessionSettings.defaultFeedbackCompulsory ?? false;
+        if (
+            !form.getFieldState('feedbackCompulsory').isDirty &&
+            form.getValues('feedbackCompulsory') !== compulsoryDefault
+        ) {
+            form.setValue('feedbackCompulsory', compulsoryDefault);
+        }
+        const waitingEnabledDefault = liveSessionSettings.defaultWaitingRoomEnabled ?? false;
+        if (
+            !form.getFieldState('enableWaitingRoom').isDirty &&
+            form.getValues('enableWaitingRoom') !== waitingEnabledDefault
+        ) {
+            form.setValue('enableWaitingRoom', waitingEnabledDefault);
+        }
+        const waitingTypeDefault =
+            liveSessionSettings.defaultWaitingRoomType ?? WaitingRoomType.WAITING_ROOM;
+        if (
+            !form.getFieldState('waitingRoomType').isDirty &&
+            form.getValues('waitingRoomType') !== waitingTypeDefault
+        ) {
+            form.setValue('waitingRoomType', waitingTypeDefault);
+        }
+        const waitingTimeDefault = liveSessionSettings.defaultWaitingRoomTime ?? '15';
+        if (
+            !form.getFieldState('openWaitingRoomBefore').isDirty &&
+            form.getValues('openWaitingRoomBefore') !== waitingTimeDefault
+        ) {
+            form.setValue('openWaitingRoomBefore', waitingTimeDefault);
+        }
+        // Default platform: only pre-fill on a truly fresh form (no link typed
+        // and the admin hasn't picked a platform) so we never fight the
+        // link-based auto-detection.
+        const platformDefault =
+            liveSessionSettings.defaultPlatform &&
+            liveSessionSettings.allowedPlatforms[liveSessionSettings.defaultPlatform] !== false
+                ? (liveSessionSettings.defaultPlatform as StreamingPlatform)
+                : StreamingPlatform.OTHER;
+        if (
+            !form.getFieldState('sessionPlatform').isDirty &&
+            !form.getValues('defaultLink') &&
+            form.getValues('sessionPlatform') !== platformDefault
+        ) {
+            form.setValue('sessionPlatform', platformDefault);
+        }
+        // Vacademy Meet (BBB) recording & control defaults.
+        const bbbRecordDefault = liveSessionSettings.defaultBbbRecordEnabled ?? true;
+        if (
+            !form.getFieldState('bbbRecord').isDirty &&
+            form.getValues('bbbRecord') !== bbbRecordDefault
+        ) {
+            form.setValue('bbbRecord', bbbRecordDefault);
+        }
+        const bbbAutoStartDefault = liveSessionSettings.defaultBbbAutoStartRecording ?? false;
+        if (
+            !form.getFieldState('bbbAutoStartRecording').isDirty &&
+            form.getValues('bbbAutoStartRecording') !== bbbAutoStartDefault
+        ) {
+            form.setValue('bbbAutoStartRecording', bbbAutoStartDefault);
+        }
+        const bbbMuteDefault = liveSessionSettings.defaultBbbMuteOnStart ?? true;
+        if (
+            !form.getFieldState('bbbMuteOnStart').isDirty &&
+            form.getValues('bbbMuteOnStart') !== bbbMuteDefault
+        ) {
+            form.setValue('bbbMuteOnStart', bbbMuteDefault);
+        }
+        const bbbWebcamDefault = liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false;
+        if (
+            !form.getFieldState('bbbWebcamsOnlyForModerator').isDirty &&
+            form.getValues('bbbWebcamsOnlyForModerator') !== bbbWebcamDefault
+        ) {
+            form.setValue('bbbWebcamsOnlyForModerator', bbbWebcamDefault);
+        }
+        const bbbGuestDefault = liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT';
+        if (
+            !form.getFieldState('bbbGuestPolicy').isDirty &&
+            form.getValues('bbbGuestPolicy') !== bbbGuestDefault
+        ) {
+            form.setValue('bbbGuestPolicy', bbbGuestDefault);
+        }
+    }, [
+        liveSessionSettings.feedbackEnabled,
+        liveSessionSettings.defaultFeedbackEnabled,
+        liveSessionSettings.defaultFeedbackCompulsory,
+        liveSessionSettings.defaultWaitingRoomEnabled,
+        liveSessionSettings.defaultWaitingRoomType,
+        liveSessionSettings.defaultWaitingRoomTime,
+        liveSessionSettings.defaultPlatform,
+        liveSessionSettings.allowedPlatforms,
+        liveSessionSettings.defaultBbbRecordEnabled,
+        liveSessionSettings.defaultBbbAutoStartRecording,
+        liveSessionSettings.defaultBbbMuteOnStart,
+        liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
+        liveSessionSettings.defaultBbbGuestPolicy,
+        isEdit,
+        form,
+    ]);
+
+    // Zoom control defaults — kept in a separate effect because there are many
+    // fields. New sessions only, and only while each field is untouched. The
+    // seeded values feed both the Zoom settings panel and the step-2 provision.
+    useEffect(() => {
+        if (isEdit) return;
+        const snapZoomBool = (
+            name:
+                | 'zoomWaitingRoom'
+                | 'zoomJoinBeforeHost'
+                | 'zoomMeetingAuthentication'
+                | 'zoomMuteUponEntry'
+                | 'zoomHostVideo'
+                | 'zoomParticipantVideo'
+                | 'zoomBreakoutRoom'
+                | 'zoomFocusMode'
+                | 'zoomAllowMultipleDevices'
+                | 'zoomWatermark',
+            next: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== next) {
+                form.setValue(name, next);
+            }
+        };
+        snapZoomBool('zoomWaitingRoom', liveSessionSettings.defaultZoomWaitingRoom ?? true);
+        snapZoomBool(
+            'zoomJoinBeforeHost',
+            liveSessionSettings.defaultZoomJoinBeforeHost ?? false
+        );
+        snapZoomBool(
+            'zoomMeetingAuthentication',
+            liveSessionSettings.defaultZoomMeetingAuthentication ?? false
+        );
+        snapZoomBool('zoomMuteUponEntry', liveSessionSettings.defaultZoomMuteUponEntry ?? true);
+        snapZoomBool('zoomHostVideo', liveSessionSettings.defaultZoomHostVideo ?? false);
+        snapZoomBool(
+            'zoomParticipantVideo',
+            liveSessionSettings.defaultZoomParticipantVideo ?? false
+        );
+        snapZoomBool('zoomBreakoutRoom', liveSessionSettings.defaultZoomBreakoutRoom ?? false);
+        snapZoomBool('zoomFocusMode', liveSessionSettings.defaultZoomFocusMode ?? false);
+        snapZoomBool(
+            'zoomAllowMultipleDevices',
+            liveSessionSettings.defaultZoomAllowMultipleDevices ?? false
+        );
+        snapZoomBool('zoomWatermark', liveSessionSettings.defaultZoomWatermark ?? false);
+        const approval = liveSessionSettings.defaultZoomApprovalType ?? '2';
+        if (
+            !form.getFieldState('zoomApprovalType').isDirty &&
+            form.getValues('zoomApprovalType') !== approval
+        ) {
+            form.setValue('zoomApprovalType', approval);
+        }
+        const audio = liveSessionSettings.defaultZoomAudio ?? 'both';
+        if (
+            !form.getFieldState('zoomAudio').isDirty &&
+            form.getValues('zoomAudio') !== audio
+        ) {
+            form.setValue('zoomAudio', audio);
+        }
+        const rec = liveSessionSettings.defaultZoomAutoRecording ?? 'cloud';
+        if (
+            !form.getFieldState('zoomAutoRecording').isDirty &&
+            form.getValues('zoomAutoRecording') !== rec
+        ) {
+            form.setValue('zoomAutoRecording', rec);
+        }
+    }, [
+        liveSessionSettings.defaultZoomWaitingRoom,
+        liveSessionSettings.defaultZoomJoinBeforeHost,
+        liveSessionSettings.defaultZoomMeetingAuthentication,
+        liveSessionSettings.defaultZoomApprovalType,
+        liveSessionSettings.defaultZoomMuteUponEntry,
+        liveSessionSettings.defaultZoomHostVideo,
+        liveSessionSettings.defaultZoomParticipantVideo,
+        liveSessionSettings.defaultZoomAudio,
+        liveSessionSettings.defaultZoomAutoRecording,
+        liveSessionSettings.defaultZoomBreakoutRoom,
+        liveSessionSettings.defaultZoomFocusMode,
+        liveSessionSettings.defaultZoomAllowMultipleDevices,
+        liveSessionSettings.defaultZoomWatermark,
+        isEdit,
+        form,
+    ]);
 
     // For NEW sessions only: if the institute disables recurring weekly
     // schedules and the form somehow holds WEEKLY (e.g. defaults loaded before
@@ -702,11 +933,17 @@ export default function ScheduleStep1() {
                 break;
             }
             case 'other': {
-                form.setValue('sessionPlatform', StreamingPlatform.OTHER);
+                // Only force OTHER when an unrecognised link is actually
+                // present. With an empty link we leave the platform on its
+                // default / the admin's selection, so the institute's default
+                // platform isn't overwritten on a fresh form.
+                if (defaultLinkWatch) {
+                    form.setValue('sessionPlatform', StreamingPlatform.OTHER);
+                }
                 break;
             }
         }
-    }, [detectedPlatform]);
+    }, [detectedPlatform, defaultLinkWatch]);
 
     const isMeetPlatform = sessionPlatformWatch === StreamingPlatform.MEET;
     const isZoomPlatform = sessionPlatformWatch === StreamingPlatform.ZOOM;

@@ -99,18 +99,18 @@ public class GoogleMeetManager implements LiveSessionProviderStrategy {
         } catch (SpaceCreateException e) {
             log.error("google.meet.create.fail accountId={} httpStatus={} body={}",
                     account.getId(), e.status, snippet(e.body));
-            // Evict ONLY on auth failure — a benign 4xx (bad config) must not discard a still-valid
-            // cached token (esp. across a recurring batch).
-            if (e.status == 401 || e.status == 403) {
+            // Evict ONLY on 401 (expired/invalid token). Google returns 403 for the recording-
+            // permission error ("updateAutoRecordingGeneration is not available to the user") — that's
+            // NOT a token problem, so don't evict; the recording fallback below handles it.
+            if (e.status == 401) {
                 accessTokenService.evict(account.getId());
             }
-            // Graceful degradation: if auto-recording was requested but this Google plan can't record
-            // (e.g. Business Starter / Education Fundamentals / a consumer account), create the meeting
-            // WITHOUT recording rather than failing the whole session. The retry succeeding IS the proof
-            // that recording was the blocker → self-heal by turning auto-record off on the account (an
-            // account-wide plan property), so future occurrences don't retry and the admin sees it off.
-            if (recordingRequested && e.status >= 400 && e.status < 500
-                    && e.status != 401 && e.status != 403) {
+            // Graceful degradation: if auto-recording was requested but this Google plan can't record,
+            // Google fails the WHOLE spaces.create — typically 403 "updateAutoRecordingGeneration is
+            // not available to the user" (also possible as other 4xx). Retry WITHOUT recording rather
+            // than failing the session; the retry succeeding IS the proof that recording was the blocker
+            // → self-heal by turning auto-record off on the account (an account-wide plan property).
+            if (recordingRequested && e.status >= 400 && e.status < 500 && e.status != 401) {
                 config.remove("artifactConfig");
                 JsonNode retry;
                 try {

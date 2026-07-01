@@ -68,6 +68,11 @@ captures/
 /app/google-services.json
 /app/src/*/google-services.json
 
+# Release signing — NEVER commit the keystore or its passwords.
+keystore.properties
+*.jks
+*.keystore
+
 # Freeline
 freeline.py
 freeline/

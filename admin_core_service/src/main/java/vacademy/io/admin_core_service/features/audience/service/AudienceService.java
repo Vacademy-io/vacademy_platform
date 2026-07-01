@@ -181,6 +181,10 @@ public class AudienceService {
     @Autowired
     private LeadFollowupRepository leadFollowupRepository;
 
+    /** Synthesizes / detects non-deliverable placeholder emails for emailless webhook leads. */
+    @Autowired
+    private PlaceholderEmailService placeholderEmailService;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -3194,10 +3198,27 @@ public class AudienceService {
 
         String instituteId = audience.getInstituteId();
 
-        // Extract email from processed data
+        // Extract email from processed data. Meta/Facebook lead forms (and some
+        // Google/Zoho forms) frequently have NO email field at all, or the admin
+        // never mapped one — historically this threw and the lead was silently
+        // dropped, so whole Meta-ads campaigns produced zero leads in our system.
+        // Instead, synthesize a deterministic placeholder email from the lead's
+        // name + phone so an auth account can still be created and the lead lands
+        // in Recent Leads. The address is non-deliverable by design (see
+        // PlaceholderEmailService) and is suppressed by every send path
+        // (respondent email, bulk blast, message variables, lead-status workflows),
+        // so it never bounces.
         String email = processedData.getEmail();
+        boolean emailSynthesized = false;
         if (!StringUtils.hasText(email)) {
-            throw new VacademyException("Email is required for form submission");
+            String platformLeadId = processedData.getMetadata() != null
+                    ? processedData.getMetadata().get("platform_lead_id")
+                    : null;
+            email = placeholderEmailService.synthesize(processedData.getFullName(),
+                    processedData.getPhone(), platformLeadId);
+            emailSynthesized = true;
+            logger.info("No email on {} lead for audience {} — synthesized placeholder {} from name+phone",
+                    formProvider, audienceId, email);
         }
 
         // 1. Create/fetch user from auth_service
@@ -3320,16 +3341,26 @@ public class AudienceService {
         contextData.put("responseId", savedResponse.getId());
         contextData.put("campaignName", audience.getCampaignName());
         contextData.put("formProvider", formProvider);
-        contextData.put("sendRespondentEmail",
-                audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+        // The standard AUDIENCE_LEAD_SUBMISSION workflow's SEND_EMAIL node sends one
+        // email per entry in respondentEmailRequests and does NOT separately read the
+        // sendRespondentEmail flag — so this LIST, not the flag, is what actually gates
+        // the respondent "thank you". Populate it EXACTLY as before for real emails (so
+        // existing campaigns — including those with sendRespondentEmail=false — are
+        // unchanged), and suppress it ONLY for synthesized placeholder addresses, which
+        // are non-deliverable and would bounce.
+        boolean wantRespondentEmail = audience.getSendRespondentEmail() == null
+                || audience.getSendRespondentEmail();
+        contextData.put("sendRespondentEmail", !emailSynthesized && wantRespondentEmail);
 
-        // Prepare respondent email request
+        // Prepare respondent email request (skipped only for synthesized placeholder emails)
         List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
-        Map<String, Object> respondentEmailRequest = new HashMap<>();
-        respondentEmailRequest.put("to", createdUser.getEmail());
-        respondentEmailRequest.put("subject", respondentEmailSubject);
-        respondentEmailRequest.put("body", respondentEmailBody);
-        respondentEmailRequests.add(respondentEmailRequest);
+        if (!emailSynthesized) {
+            Map<String, Object> respondentEmailRequest = new HashMap<>();
+            respondentEmailRequest.put("to", createdUser.getEmail());
+            respondentEmailRequest.put("subject", respondentEmailSubject);
+            respondentEmailRequest.put("body", respondentEmailBody);
+            respondentEmailRequests.add(respondentEmailRequest);
+        }
         contextData.put("respondentEmailRequests", respondentEmailRequests);
 
         // Prepare admin email requests
@@ -4401,8 +4432,16 @@ public class AudienceService {
                             || (userDTO != null && StringUtils.hasText(userDTO.getMobileNumber()));
                     break;
                 case "EMAIL":
-                    hasContact = StringUtils.hasText(resp.getParentEmail())
-                            || (userDTO != null && StringUtils.hasText(userDTO.getEmail()));
+                    // Resolve the address the same way the recipient builder does (parent
+                    // email first, else the user's email), then treat a synthesized
+                    // placeholder address as "no contact" — it is non-deliverable and must
+                    // never be included in a real EMAIL blast (it would bounce). WhatsApp /
+                    // PUSH still reach these leads via phone / userId.
+                    String emailContact = StringUtils.hasText(resp.getParentEmail())
+                            ? resp.getParentEmail()
+                            : (userDTO != null ? userDTO.getEmail() : null);
+                    hasContact = StringUtils.hasText(emailContact)
+                            && !placeholderEmailService.isPlaceholder(emailContact);
                     break;
                 case "PUSH":
                 case "SYSTEM_ALERT":
@@ -4483,6 +4522,12 @@ public class AudienceService {
                     String email = StringUtils.hasText(resp.getParentEmail())
                             ? resp.getParentEmail()
                             : (userDTO != null ? userDTO.getEmail() : null);
+                    // Defensive: the contact filter above already drops placeholder-only
+                    // leads, but never hand a synthesized non-deliverable address to the
+                    // sender even if reached another way.
+                    if (placeholderEmailService.isPlaceholder(email)) {
+                        email = null;
+                    }
                     recipientBuilder.email(email);
                     break;
                 case "PUSH":
@@ -4597,9 +4642,12 @@ public class AudienceService {
                             ? userDTO.getFullName()
                             : response.getParentName();
                 case "email":
-                    return userDTO != null && StringUtils.hasText(userDTO.getEmail())
+                    String resolvedEmail = userDTO != null && StringUtils.hasText(userDTO.getEmail())
                             ? userDTO.getEmail()
                             : response.getParentEmail();
+                    // Never surface a synthesized placeholder address into a message
+                    // variable/body (it's non-deliverable and meaningless to the lead).
+                    return placeholderEmailService.isPlaceholder(resolvedEmail) ? null : resolvedEmail;
                 case "mobile_number":
                     return userDTO != null && StringUtils.hasText(userDTO.getMobileNumber())
                             ? userDTO.getMobileNumber()

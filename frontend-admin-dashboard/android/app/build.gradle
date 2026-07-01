@@ -23,6 +23,16 @@ def flavorSpecs = new JsonSlurper().parse(file("mobile-flavors.json"))
         ]
     }
 
+// --- Release signing (upload key) -------------------------------------------
+// Reads android/keystore.properties (git-ignored: storeFile/storePassword/
+// keyAlias/keyPassword). Absent on machines without the secret → release falls
+// back to the debug signing config so the build never hard-fails.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace = "io.vacademy.admin.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -39,10 +49,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig keystorePropsFile.exists() ? signingConfigs.release : signingConfigs.debug
         }
     }
 

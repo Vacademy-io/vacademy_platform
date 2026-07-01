@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMa
 import vacademy.io.admin_core_service.features.module.repository.ModuleRepository;
 import vacademy.io.admin_core_service.features.module.repository.SubjectModuleMappingRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.service.AssessmentSlideBatchRegistrationService;
 import vacademy.io.admin_core_service.features.subject.service.SubjectService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -38,10 +39,23 @@ public class ChapterService {
     private final SubjectModuleMappingRepository subjectModuleMappingRepository;
     private final SubjectService subjectService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+    private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
 
     public ChapterDTO addChapter(ChapterDTO chapterDTO, String moduleId, String subjectId,
             String commaSeparatedPackageSessionIds, CustomUserDetails user) {
         validateRequest(chapterDTO, moduleId, commaSeparatedPackageSessionIds);
+
+        // Chapter-hidden courses (course_depth < 3: depth 2) must carry EXACTLY
+        // ONE chapter per module. Reuse it instead of creating a second one — a
+        // 2nd chapter on such a batch surfaces as duplicate "Add Slide" buttons
+        // and breaks slide drag. For depth >= 3 the chapter level is visible and
+        // multiple chapters are legitimate, so this is skipped.
+        ChapterDTO reusedChapter = reuseSingleChapterForHiddenLevel(moduleId,
+                commaSeparatedPackageSessionIds, chapterDTO);
+        if (reusedChapter != null) {
+            return reusedChapter;
+        }
+
         Chapter chapter = saveChapter(chapterDTO);
         SubjectModuleMapping subjectModuleMapping = findSubjectModuleMappingWithFallback(moduleId, subjectId);
         // Get the resolved subjectId from the mapping if not provided
@@ -75,6 +89,45 @@ public class ChapterService {
 
     private Chapter saveChapter(ChapterDTO chapterDTO) {
         return chapterRepository.save(new Chapter(chapterDTO));
+    }
+
+    /**
+     * For chapter-hidden courses (course_depth < 3: depth 2) the module must
+     * carry exactly one chapter. If any target batch is such a course and its
+     * module already has a chapter, return that existing chapter instead of
+     * creating a duplicate. Returns null when no reuse applies — the normal
+     * create path then runs unchanged.
+     */
+    private ChapterDTO reuseSingleChapterForHiddenLevel(String moduleId,
+            String commaSeparatedPackageSessionIds, ChapterDTO chapterDTO) {
+        for (String packageSessionId : getPackageSessionIds(commaSeparatedPackageSessionIds)) {
+            PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+            if (ps == null || !hidesChapterLevel(ps)) {
+                continue;
+            }
+            Optional<Chapter> existing = moduleChapterMappingRepository
+                    .findChaptersByModuleIdAndStatusNotDeleted(moduleId, packageSessionId)
+                    .stream().findFirst();
+            if (existing.isPresent()) {
+                chapterDTO.setId(existing.get().getId());
+                chapterDTO.setStatus(existing.get().getStatus());
+                return chapterDTO;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * True when the batch's course structure hides the CHAPTER level — course
+     * depth < 3 (depth 2) — so each module must carry exactly one chapter.
+     * (Depth >= 3 shows the chapter level and allows many chapters.)
+     */
+    private boolean hidesChapterLevel(PackageSession packageSession) {
+        if (packageSession == null || packageSession.getPackageEntity() == null) {
+            return false;
+        }
+        Integer depth = packageSession.getPackageEntity().getCourseDepth();
+        return depth != null && depth < 3;
     }
 
     private void processChapterModuleMapping(Chapter chapter, List<Module> modules) {
@@ -268,6 +321,14 @@ public class ChapterService {
                 chapterPackageSessionMappingRepository.save(mappingToRemove);
             }
         }
+
+        // Newly-added batches must also get the chapter's assessment slides
+        // registered, otherwise learners there see the slide but the assessment
+        // never shows up in their list.
+        if (!idsToAdd.isEmpty()) {
+            assessmentSlideBatchRegistrationService
+                    .registerChapterAssessmentsToBatches(chapter.getId(), idsToAdd);
+        }
     }
 
     public void updateChapterDetails(ChapterDTO chapterDTO, Chapter chapter) {
@@ -399,6 +460,11 @@ public class ChapterService {
         ChapterPackageSessionMapping chapterPackageSessionMapping = new ChapterPackageSessionMapping(chapter,
                 packageSession, newOrder);
         chapterPackageSessionMappingRepository.save(chapterPackageSessionMapping);
+        // The chapter (with its shared slides) is now visible to a new batch.
+        // Register any assessment slides it holds to that batch so the assessment
+        // actually appears for those learners — not just the slide.
+        assessmentSlideBatchRegistrationService
+                .registerChapterAssessmentsToBatches(chapterId, List.of(packageSessionId));
         return "Chapter copied successfully";
     }
 

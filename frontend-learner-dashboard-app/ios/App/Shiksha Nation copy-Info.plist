@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyA-HYoXjokDTbPbrd5QT7Poe395TlmvHXw</string>
+	<string>AIzaSyDi599yoVEAeklFdYG21ZteLa00csKRXKU</string>
 	<key>GCM_SENDER_ID</key>
 	<string>117550803134</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>io.vacademy.admin.app</string>
+	<string>io.shikshanationapp.com</string>
 	<key>PROJECT_ID</key>
 	<string>vacademy-app</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:117550803134:ios:0000000000000000000000</string>
+	<string>1:117550803134:ios:0f5d370706771201bdd6ef</string>
 </dict>
 </plist>

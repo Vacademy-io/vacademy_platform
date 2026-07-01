@@ -43,6 +43,7 @@ import {
   getCashfreeReturnUrl,
 } from "@/services/cashfree-payment";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
+import { getPhonePeReturnUrl } from "@/services/phonepe-payment";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 
@@ -1573,6 +1574,120 @@ const EnrollByInvite = ({
         }
         console.error(err);
       } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // For PHONEPE payments — Standard Checkout full-page redirect flow.
+    // Enrollment (user + user plan, payment pending) is created, then the learner
+    // is sent to PhonePe's hosted page; the payment-result page polls status and
+    // logs them in once PhonePe confirms the payment.
+    if (vendor === "PHONEPE") {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const phonePeRedirectUrl = getPhonePeReturnUrl(instituteId);
+        const paymentResponse = await handleEnrollLearnerForPayment({
+          registrationData: form.getValues(),
+          enrollmentData: enrollmentData,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          payment_option_id:
+            inviteData?.package_session_to_payment_options[0].payment_option.id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id,
+            ) || [""],
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          referRequest: referRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
+          paymentVendor: "PHONEPE",
+          phonePeRedirectUrl,
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
+        });
+
+        const ordId =
+          paymentResponse?.payment_response?.order_id ||
+          paymentResponse?.order_id ||
+          "";
+        const redirectUrl =
+          paymentResponse?.payment_response?.response_data?.redirectUrl ||
+          paymentResponse?.payment_response?.response_data?.redirect_url;
+
+        if (!redirectUrl) {
+          throw new Error(
+            "Could not start PhonePe checkout. Please try again or contact support.",
+          );
+        }
+
+        setOrderId(ordId);
+        setPaymentCompletionResponse(paymentResponse);
+
+        // Persist credentials + order id so the payment-result page can auto-login
+        // the learner and resolve the order after PhonePe redirects back.
+        const username =
+          paymentResponse?.user?.username ??
+          paymentResponse?.user?.email ??
+          getUserDetails().email;
+        const userPassword =
+          paymentResponse?.user?.password ?? getPasswordField(form.getValues());
+        if (ordId && username && userPassword) {
+          try {
+            sessionStorage.setItem(
+              `enroll_payment_creds_${ordId}`,
+              JSON.stringify({ username, password: userPassword }),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        if (ordId) {
+          try {
+            localStorage.setItem(
+              "phonepe_pending_order",
+              JSON.stringify({ orderId: ordId, instituteId }),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Hand off to PhonePe's hosted checkout page (full-page redirect).
+        window.location.href = redirectUrl;
+        return;
+      } catch (err) {
+        const errorData = (
+          err as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Payment failed");
+          }
+        }
+        const phonePeErrorMsg =
+          errorData?.ex ||
+          (err instanceof Error ? err.message : null) ||
+          "Failed to initiate PhonePe payment";
+        setError(phonePeErrorMsg);
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "PHONEPE",
+            errorMessage: phonePeErrorMsg,
+            utmParams,
+          });
+        }
+        console.error("PhonePe enrollment error:", err);
         setLoading(false);
       }
       return;

@@ -75,6 +75,11 @@ interface VendorSchema {
     label: string;
     description: string;
     docsUrl?: string;
+    /**
+     * Optional ordered "where to find your keys" walkthrough shown above the
+     * fields. Use for gateways whose credentials are buried in a dashboard.
+     */
+    setupSteps?: string[];
     fields: VendorFieldSchema[];
     /**
      * Returns the webhook URL the admin must paste into the vendor's dashboard.
@@ -154,31 +159,56 @@ const VENDOR_SCHEMAS: VendorSchema[] = [
     {
         vendor: 'PHONEPE',
         label: 'PhonePe',
-        description: 'PhonePe PG for Indian merchants.',
+        description: 'PhonePe PG for Indian merchants (UPI, cards, wallets). V2 (OAuth) Standard Checkout. Settles in INR only.',
+        docsUrl: 'https://business.phonepe.com/',
+        setupSteps: [
+            'Sign in to the PhonePe Business dashboard (business.phonepe.com) with your PhonePe for Business merchant login.',
+            'Go to Developer Settings → API Keys. New (V2) merchants see a Client ID, Client Secret and Client Version — copy all three into the fields below.',
+            'Legacy merchants only: if you were instead given a Salt Key + Salt Index, put your Merchant ID in “Client ID”, your Salt Key (as KEY###INDEX) in “Client Secret”, and LEAVE “Client Version” blank.',
+            'Set “API Base URL”: V2 LIVE = https://api.phonepe.com/apis/pg, V2 UAT/Sandbox = https://api-preprod.phonepe.com/apis/pg-sandbox (legacy V1 = https://api.phonepe.com/apis/hermes).',
+            'Under Developer Settings → Webhooks, add the Webhook URL shown below and set a username + password. Enter the same username/password below to secure incoming callbacks.',
+        ],
         fields: [
             {
                 key: 'clientId',
-                label: 'Merchant ID',
-                placeholder: 'PGTEST… or your live merchant id',
+                label: 'Client ID',
+                placeholder: 'V2 Client ID (or legacy Merchant ID)',
                 required: true,
+                helper: 'V2: Client ID from Developer Settings → API Keys. Legacy V1 merchants: your Merchant ID (MID).',
             },
             {
                 key: 'clientSecret',
-                label: 'Salt Key',
-                placeholder: 'Your salt key',
+                label: 'Client Secret',
+                placeholder: 'V2 Client Secret (or legacy Salt Key###index)',
                 secret: true,
                 required: true,
+                helper: 'V2: your Client Secret. Legacy V1 merchants: your Salt Key, pasted as KEY###INDEX (index usually 1). Kept secret.',
+            },
+            {
+                key: 'clientVersion',
+                label: 'Client Version',
+                placeholder: 'e.g. 1',
+                helper: 'V2 only — the Client Version from the dashboard (usually 1). LEAVE BLANK if you are a legacy merchant using a Salt Key.',
             },
             {
                 key: 'baseUrl',
                 label: 'API Base URL',
-                placeholder: 'https://api.phonepe.com/apis/hermes',
+                placeholder: 'https://api.phonepe.com/apis/pg',
                 required: true,
+                helper: 'V2 LIVE: https://api.phonepe.com/apis/pg • V2 UAT: https://api-preprod.phonepe.com/apis/pg-sandbox • Legacy V1: https://api.phonepe.com/apis/hermes',
             },
             {
-                key: 'payBaseUrl',
-                label: 'Pay Base URL',
-                placeholder: 'https://api.phonepe.com/apis/pg-sandbox',
+                key: 'webhookUsername',
+                label: 'Webhook Username (optional)',
+                placeholder: 'Same username you set on PhonePe → Webhooks',
+                helper: 'Enables signature verification of incoming callbacks. Must match the username configured on the PhonePe dashboard.',
+            },
+            {
+                key: 'webhookPassword',
+                label: 'Webhook Password (optional)',
+                placeholder: 'Same password you set on PhonePe → Webhooks',
+                secret: true,
+                helper: 'Must match the password configured on the PhonePe dashboard. Leave both webhook fields blank to skip verification.',
             },
         ],
         webhookUrl: (instituteId) =>
@@ -420,7 +450,7 @@ const GatewayDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-h-screen overflow-y-auto sm:max-w-2xl">
+            <DialogContent className="max-h-screen w-full overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
                     <DialogTitle>
                         {mode === 'create' ? 'Add payment gateway' : `Edit ${schema?.label ?? ''}`}
@@ -485,6 +515,22 @@ const GatewayDialog = ({
                                 .
                             </AlertDescription>
                         </Alert>
+                    )}
+
+                    {/* Where-to-find-your-keys walkthrough */}
+                    {schema?.setupSteps && schema.setupSteps.length > 0 && (
+                        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                            <Label className="text-caption font-medium text-slate-600">
+                                Where to find these values
+                            </Label>
+                            <ol className="ml-4 list-decimal space-y-1.5 text-caption leading-relaxed text-slate-600">
+                                {schema.setupSteps.map((step, i) => (
+                                    <li key={i} className="pl-1">
+                                        {step}
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
                     )}
 
                     {/* Webhook URL — paste into the vendor's webhooks page */}

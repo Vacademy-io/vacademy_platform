@@ -303,10 +303,38 @@ const PaymentInfoStep = ({
         />
       )}
 
+      {vendor === "PHONEPE" && (
+        <div className="w-full max-w-md mx-auto">
+          <div className="bg-white rounded-md border border-gray-200 p-6 text-center">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">
+              Pay with PhonePe
+            </h2>
+            <p className="text-gray-600 mb-4">
+              You'll be securely redirected to PhonePe to complete your payment
+              {typeof amount === "number" && amount > 0
+                ? ` of ${currency || "INR"} ${amount}`
+                : ""}
+              . After paying, you'll be brought back here automatically.
+            </p>
+            <p className="text-sm text-gray-500">
+              Click <span className="font-semibold">Confirm &amp; Pay</span>{" "}
+              below to continue.
+            </p>
+            {error && (
+              <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
+                <strong className="text-red-800">Error</strong>
+                <p className="text-red-700 text-sm mt-1">{error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {vendor !== "STRIPE" &&
         vendor !== "EWAY" &&
         vendor !== "RAZORPAY" &&
-        vendor !== "CASHFREE" && (
+        vendor !== "CASHFREE" &&
+        vendor !== "PHONEPE" && (
         <div className="w-full max-w-md mx-auto">
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center">
             <h2 className="text-xl font-bold text-yellow-800 mb-2">

@@ -13,6 +13,7 @@ import {
     GET_SCHEDULE_RECORDINGS,
     SYNC_RECORDINGS_FROM_BBB,
     SYNC_RECORDINGS_TO_S3,
+    SYNC_GOOGLE_RECORDINGS,
     ZOOM_PROVISION_STATUS,
     ZOOM_PROVISION_NOW,
     RECORDING_TRANSCRIBE,
@@ -599,6 +600,29 @@ export const syncRecordingsToS3 = async (
 ): Promise<RecordingSyncResult> => {
     const response = await authenticatedAxiosInstance.post<RecordingSyncResult>(
         SYNC_RECORDINGS_TO_S3,
+        null,
+        { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
+export interface GoogleRecordingSyncResult {
+    /** Count of newly-added recordings on this call. */
+    synced: number;
+    recordings: MeetingRecording[];
+}
+
+/**
+ * On-demand Google Meet recording pull — live-fetches conferenceRecords.recordings for a
+ * schedule and persists them, bypassing the hourly poll (and its meeting-ended timing gate).
+ * Idempotent; returns the count newly added + the full stored recording list.
+ */
+export const syncGoogleRecordings = async (
+    scheduleId: string,
+    instituteId: string
+): Promise<GoogleRecordingSyncResult> => {
+    const response = await authenticatedAxiosInstance.post<GoogleRecordingSyncResult>(
+        SYNC_GOOGLE_RECORDINGS,
         null,
         { params: { scheduleId, instituteId } }
     );

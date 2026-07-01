@@ -5,7 +5,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, syncRecordingsToS3, processRecording, getTranscriptionStatus, getZoomProvisionStatus, provisionZoomNow, type ZoomProvisionStatus } from '../-services/utils';
+import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, syncRecordingsToS3, syncGoogleRecordings, processRecording, getTranscriptionStatus, getZoomProvisionStatus, provisionZoomNow, type ZoomProvisionStatus } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
@@ -649,6 +649,53 @@ function ViewLiveSession() {
             });
         }
     }, [sessionData, syncingS3Schedules]);
+
+    // Google Meet: pull recordings on demand (bypasses the hourly poll). Google needs
+    // ~10–30 min after a session ends to finish processing the Drive file.
+    const handleSyncGoogleRecordings = useCallback(async () => {
+        const instituteId = sessionData?.schedule?.institute_id;
+        if (!instituteId) return;
+        setIsSyncing(true);
+        try {
+            const pastScheduleIds = groupedSchedules.flatMap((day) =>
+                day.sessions.filter((s) => s.status === 'past').map((s) => s.id)
+            );
+            const uniqueIds = [...new Set(pastScheduleIds)];
+            const results: Record<string, MeetingRecording[]> = {};
+            let totalNew = 0;
+            let anySucceeded = false;
+            await Promise.all(
+                uniqueIds.map(async (scheduleId) => {
+                    try {
+                        const result = await syncGoogleRecordings(scheduleId, instituteId);
+                        results[scheduleId] = result.recordings ?? [];
+                        totalNew += result.synced ?? 0;
+                        anySucceeded = true;
+                    } catch {
+                        // Network/5xx — keep existing recordings for this schedule.
+                    }
+                })
+            );
+            setRefreshedRecordings((prev) => ({ ...prev, ...results }));
+
+            if (!anySucceeded) {
+                toast.error('Sync failed. Recordings appear automatically once Google finishes processing.');
+            } else if (totalNew > 0) {
+                toast.success(`Sync complete — found ${totalNew} new recording(s).`);
+            } else if (Object.values(results).some((r) => r.length > 0)) {
+                toast.success('Recordings are up to date.');
+            } else {
+                toast.info(
+                    'No recording is ready yet — Google can take 10–30 min after the session ends. Click Refresh to check again.',
+                    { duration: 8000 }
+                );
+            }
+        } catch {
+            toast.error('Sync failed. Recordings appear automatically once Google finishes processing.');
+        } finally {
+            setIsSyncing(false);
+        }
+    }, [sessionData, groupedSchedules]);
 
     const uniqueNotifications = useMemo(() => {
         if (!sessionData?.notifications?.addedNotificationActions) return [];
@@ -1357,7 +1404,7 @@ function ViewLiveSession() {
                                             <RefreshCw className={cn('size-3', isRefreshing && 'animate-spin')} />
                                             {isRefreshing ? 'Checking...' : 'Refresh'}
                                         </button>
-                                        {canShowSyncButton && (
+                                        {isBbbSession && canShowSyncButton && (
                                             <button
                                                 onClick={handleSyncFromBbb}
                                                 disabled={isSyncing || isRefreshing}
@@ -1367,13 +1414,32 @@ function ViewLiveSession() {
                                                 {isSyncing ? 'Syncing...' : 'Sync from Vacademy Meet Platform'}
                                             </button>
                                         )}
+                                        {isMeetSession && (
+                                            <button
+                                                onClick={handleSyncGoogleRecordings}
+                                                disabled={isSyncing || isRefreshing}
+                                                className="flex items-center gap-2 rounded-md border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+                                            >
+                                                <CloudDownload className={cn('size-3', isSyncing && 'animate-pulse')} />
+                                                {isSyncing ? 'Syncing…' : 'Sync recordings now'}
+                                            </button>
+                                        )}
                                     </div>
-                                    {canShowSyncButton && (
+                                    {isBbbSession && canShowSyncButton && (
                                         <div className="flex items-start gap-1.5 rounded-md border border-orange-100 bg-orange-50/60 px-3 py-2 text-left text-xs text-orange-600">
                                             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                                             <span>
                                                 Fetching recordings directly from the meeting server may temporarily
                                                 increase its load. Use only if recordings haven&apos;t appeared after 2 hours.
+                                            </span>
+                                        </div>
+                                    )}
+                                    {isMeetSession && (
+                                        <div className="flex items-start gap-1.5 rounded-md border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground">
+                                            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                                            <span>
+                                                Google Meet recordings are saved to the organizer&apos;s Google Drive and
+                                                usually appear 10–30 min after the session ends.
                                             </span>
                                         </div>
                                     )}

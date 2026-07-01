@@ -507,10 +507,13 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                       OR ss.last_recording_sync_at < :before
                       OR (ss.provider_recordings_json IS NOT NULL AND ss.provider_recordings_json LIKE '%"playbackUrl":null%')
                   )
-                  AND (
-                      ss.meeting_date < CURRENT_DATE
-                      OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)
-                  )
+                  -- Occurrence has ended: its last-entry instant (in the session's OWN
+                  -- timezone) is in the past. Compare against now converted to that TZ, matching
+                  -- the AT TIME ZONE idiom used elsewhere. The bare-UTC CURRENT_DATE/CURRENT_TIME
+                  -- form delayed a same-day IST-evening session by ~5.5h (until UTC caught up).
+                  -- COALESCE keeps a NULL last_entry_time eligible only after end-of-day.
+                  AND CAST((ss.meeting_date + COALESCE(ss.last_entry_time, TIME '23:59:59')) AS TIMESTAMP)
+                      < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(ls.timezone, ''), 'Asia/Kolkata')) AS TIMESTAMP)
             """, nativeQuery = true)
     List<SessionSchedule> findNeedingRecordingSync(
             @Param("provider") String provider,

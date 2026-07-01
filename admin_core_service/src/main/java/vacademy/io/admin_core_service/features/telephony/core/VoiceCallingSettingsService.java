@@ -6,10 +6,12 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.VoiceCallingSettingsPojo;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 /**
@@ -58,9 +60,15 @@ public class VoiceCallingSettingsService {
     /** Upsert the institute's VOICE_CALLING_SETTING envelope from the admin settings UI. */
     public void save(String instituteId, VoiceCallingSettingsPojo pojo) {
         Institute institute = instituteRepository.findById(instituteId)
-                .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Institute not found"));
+                .orElseThrow(() -> new VacademyException("Institute not found"));
+        // saveGenericSetting → GenericSettingStrategy casts the payload to a
+        // GenericSettingRequest and stores its settingData as the envelope's `data`.
+        // So wrap the POJO (passing it raw throws a ClassCastException).
+        GenericSettingRequest request = GenericSettingRequest.builder()
+                .settingName("Vacademy Voice")
+                .settingData(pojo == null ? VoiceCallingSettingsPojo.defaults() : pojo)
+                .build();
         instituteSettingService.saveGenericSetting(
-                institute, SettingKeyEnums.VOICE_CALLING_SETTING.name(),
-                pojo == null ? VoiceCallingSettingsPojo.defaults() : pojo);
+                institute, SettingKeyEnums.VOICE_CALLING_SETTING.name(), request);
     }
 }

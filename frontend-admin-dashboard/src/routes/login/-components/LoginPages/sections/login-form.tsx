@@ -36,7 +36,7 @@ import {
     resolveInstituteForDomain,
     type DomainResolveResponse,
 } from '@/services/domain-routing';
-import { getFlavor } from '@/native';
+import { getFlavor, isNative } from '@/native';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import {
     getDisplaySettings,
@@ -295,9 +295,14 @@ export function LoginForm() {
         let cancelled = false;
         (async () => {
             try {
+                // Only native flavors resolve by a FIXED domain/subdomain; the
+                // web build must resolve by the request host. The default flavor
+                // ('vacademy-admin') carries a fixed brandingDomain, so without
+                // the isNative() guard web hosts would wrongly resolve
+                // vacademy.io/admin-app → Vacademy CRM. Mirrors index.tsx.
                 const flavor = getFlavor();
                 const live =
-                    flavor.brandingDomain && flavor.brandingSubdomain
+                    isNative() && flavor.brandingDomain && flavor.brandingSubdomain
                         ? await resolveInstituteForDomain(
                               flavor.brandingDomain!,
                               flavor.brandingSubdomain!

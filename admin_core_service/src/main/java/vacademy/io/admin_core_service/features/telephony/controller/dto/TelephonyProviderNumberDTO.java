@@ -21,6 +21,8 @@ public class TelephonyProviderNumberDTO {
     private String region;
     private Integer priority;
     private Boolean enabled;
+    /** Inbound IVR menu this number plays when dialled (ivr_menu.id). Null = default. */
+    private String inboundIvrMenuId;
     /** Inbound-flow attach status: ATTACHED | PENDING | FAILED | DETACHED | null. */
     private String flowAttachStatus;
     /** Body / message of the most recent attach failure. Null when ATTACHED. */
@@ -39,6 +41,7 @@ public class TelephonyProviderNumberDTO {
                 .region(n.getRegion())
                 .priority(n.getPriority())
                 .enabled(n.getEnabled())
+                .inboundIvrMenuId(n.getInboundIvrMenuId())
                 .flowAttachStatus(n.getFlowAttachStatus())
                 .flowAttachError(n.getFlowAttachError())
                 .flowAttachedAt(n.getFlowAttachedAt())

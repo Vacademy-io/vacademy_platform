@@ -31,6 +31,8 @@ public class IvrNodeDTO {
     private Map<String, String> digitMap;
     /** DIAL: E.164 numbers to ring. */
     private List<String> dialTargets;
+    /** DIAL: counsellor user ids to ring (resolved to their mobiles at call time). */
+    private List<String> dialUserIds;
     /** PLAY: next node after the prompt. */
     private String nextNodeId;
     private Integer timeoutSeconds;

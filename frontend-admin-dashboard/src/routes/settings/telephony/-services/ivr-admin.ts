@@ -22,6 +22,8 @@ export interface IvrNodeDTO {
     digitMap?: Record<string, string> | null;
     /** DIAL: E.164 numbers to ring. */
     dialTargets?: string[] | null;
+    /** DIAL: counsellor user ids to ring (resolved to their mobiles at call time). */
+    dialUserIds?: string[] | null;
     /** PLAY: next node after the prompt. */
     nextNodeId?: string | null;
     timeoutSeconds?: number | null;

@@ -44,6 +44,10 @@ public class IvrNode {
     @Column(name = "dial_targets", columnDefinition = "TEXT")
     private String dialTargets;
 
+    /** DIAL: JSON array of counsellor user ids to ring (resolved to mobiles at call time). */
+    @Column(name = "dial_user_ids", columnDefinition = "TEXT")
+    private String dialUserIds;
+
     /** PLAY: the next node after the prompt. */
     @Column(name = "next_node_id", length = 36)
     private String nextNodeId;

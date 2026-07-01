@@ -59,6 +59,7 @@ public class PlivoProviderDescriptor implements TelephonyProviderDescriptor {
         // TRANSFER (P6) and BALANCE are added with their beans.
         return EnumSet.of(
                 ProviderCapability.OUTBOUND_CALL,
+                ProviderCapability.NUMBER_POOL,
                 ProviderCapability.REALTIME_EVENTS,
                 ProviderCapability.RECORDING,
                 ProviderCapability.SYNC_INBOUND_APPLET,

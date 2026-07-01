@@ -50,6 +50,33 @@ public class IvrMenuService {
         return menuRepo.findFirstByInstituteIdAndDialedNumberIsNullAndEnabledTrue(instituteId);
     }
 
+    /**
+     * Resolve the menu for an inbound call, honouring a number's own
+     * {@code inbound_ivr_menu_id} first (managed per number on the Numbers card),
+     * then the DID-specific/default menu.
+     */
+    public Optional<IvrMenu> resolveMenu(String instituteId, String dialedNumber, String preferredMenuId) {
+        if (preferredMenuId != null && !preferredMenuId.isBlank()) {
+            Optional<IvrMenu> pref = menuRepo.findById(preferredMenuId.trim())
+                    .filter(m -> instituteId != null && instituteId.equals(m.getInstituteId())
+                            && Boolean.TRUE.equals(m.getEnabled()));
+            if (pref.isPresent()) return pref;
+        }
+        return resolveMenu(instituteId, dialedNumber);
+    }
+
+    /** Parse a DIAL node's counsellor user ids (empty on null/garbage). */
+    public List<String> dialUserIds(IvrNode node) {
+        if (node == null || node.getDialUserIds() == null || node.getDialUserIds().isBlank()) return List.of();
+        try {
+            List<String> u = mapper.readValue(node.getDialUserIds(), new TypeReference<>() {});
+            return u == null ? List.of() : u;
+        } catch (Exception e) {
+            log.warn("ivr: bad dial_user_ids on node {}", node.getId(), e);
+            return List.of();
+        }
+    }
+
     public Optional<IvrNode> getNode(String nodeId) {
         if (nodeId == null || nodeId.isBlank()) return Optional.empty();
         return nodeRepo.findById(nodeId);
@@ -130,6 +157,7 @@ public class IvrMenuService {
                     .promptAudioId(n.getPromptAudioId())
                     .digitMap(writeJson(n.getDigitMap()))
                     .dialTargets(writeJson(n.getDialTargets()))
+                    .dialUserIds(writeJson(n.getDialUserIds()))
                     .nextNodeId(blankToNull(n.getNextNodeId()))
                     .timeoutSeconds(n.getTimeoutSeconds() == null ? 6 : n.getTimeoutSeconds())
                     .maxRetries(n.getMaxRetries() == null ? 2 : n.getMaxRetries())
@@ -191,6 +219,7 @@ public class IvrMenuService {
                     .promptAudioId(n.getPromptAudioId())
                     .digitMap(readMap(n.getDigitMap()))
                     .dialTargets(readList(n.getDialTargets()))
+                    .dialUserIds(readList(n.getDialUserIds()))
                     .nextNodeId(n.getNextNodeId())
                     .timeoutSeconds(n.getTimeoutSeconds())
                     .maxRetries(n.getMaxRetries())

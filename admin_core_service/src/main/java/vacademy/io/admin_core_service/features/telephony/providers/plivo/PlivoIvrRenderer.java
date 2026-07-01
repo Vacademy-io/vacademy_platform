@@ -2,10 +2,12 @@ package vacademy.io.admin_core_service.features.telephony.providers.plivo;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
 import vacademy.io.admin_core_service.features.telephony.enums.IvrNodeType;
 import vacademy.io.admin_core_service.features.telephony.ivr.IvrMenuService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrNode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,12 +25,14 @@ import java.util.List;
 public class PlivoIvrRenderer {
 
     private final IvrMenuService ivrMenuService;
+    private final UserMobileResolver userMobileResolver;
 
     @Value("${telephony.webhook.callback-base:}")
     private String webhookBase;
 
-    public PlivoIvrRenderer(IvrMenuService ivrMenuService) {
+    public PlivoIvrRenderer(IvrMenuService ivrMenuService, UserMobileResolver userMobileResolver) {
         this.ivrMenuService = ivrMenuService;
+        this.userMobileResolver = userMobileResolver;
     }
 
     /** Full {@code <Response>} for an inbound call positioned at {@code start}. */
@@ -69,7 +73,12 @@ public class PlivoIvrRenderer {
                 b.append("<Speak>Sorry, we did not receive your response. Goodbye.</Speak><Hangup/>");
             }
             case DIAL -> {
-                List<String> targets = ivrMenuService.dialTargets(node);
+                // Ring explicit numbers plus any chosen team members (resolved to
+                // their mobiles at call time).
+                List<String> targets = new ArrayList<>(ivrMenuService.dialTargets(node));
+                for (String userId : ivrMenuService.dialUserIds(node)) {
+                    userMobileResolver.findMobile(userId).ifPresent(targets::add);
+                }
                 if (targets.isEmpty()) {
                     speak(b, node);
                     b.append("<Hangup/>");

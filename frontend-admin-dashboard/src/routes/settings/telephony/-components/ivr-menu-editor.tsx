@@ -8,6 +8,8 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { MultiSelect } from '@/components/design-system/multi-select';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { cn } from '@/lib/utils';
 import {
     type IvrMenuDTO,
@@ -90,6 +92,9 @@ export function IvrMenuEditor({
             );
         }
     }, [open, initialMenu, instituteId]);
+
+    const { options: counsellorRaw } = useLeadCounsellorOptions();
+    const counsellorOptions = counsellorRaw.map((c) => ({ label: c.full_name, value: c.id }));
 
     const nodes = draft.nodes;
     const refOptions = nodes.map((n, i) => ({ label: nodeDisplay(n, i), value: n.id }));
@@ -440,6 +445,16 @@ export function IvrMenuEditor({
                                     >
                                         <Plus className="mr-1" /> Add number
                                     </MyButton>
+
+                                    <Label className="text-subtitle font-regular">
+                                        Or ring team members
+                                    </Label>
+                                    <MultiSelect
+                                        options={counsellorOptions}
+                                        selected={node.dialUserIds ?? []}
+                                        onChange={(ids) => patchNode(node.id, { dialUserIds: ids })}
+                                        placeholder="Pick team members to ring"
+                                    />
                                 </div>
                             )}
 

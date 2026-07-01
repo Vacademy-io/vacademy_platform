@@ -18,7 +18,9 @@ import vacademy.io.admin_core_service.features.telephony.ivr.IvrMenuService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrMenu;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrNode;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyProviderNumberRepository;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.NormalizedCallEvent;
 
 import java.nio.charset.StandardCharsets;
@@ -54,6 +56,7 @@ public class PlivoCallbackController {
     @Autowired private IvrMenuService ivrMenuService;
     @Autowired private PlivoIvrRenderer ivrRenderer;
     @Autowired private PlivoInboundResponseRenderer inboundResponseRenderer;
+    @Autowired private TelephonyProviderNumberRepository numberRepo;
 
     @Value("${telephony.webhook.callback-base:}")
     private String webhookBase;
@@ -127,8 +130,11 @@ public class PlivoCallbackController {
         boolean record = resolved != null && Boolean.TRUE.equals(resolved.getConfig().getRecordCalls());
         String token = resolved == null ? null : resolved.getWebhookToken();
 
-        // Multi-level IVR if the institute authored one for this DID (or a default menu).
-        IvrMenu menu = ivrMenuService.resolveMenu(instituteId, to).orElse(null);
+        // Multi-level IVR: the dialled number's own menu first (managed per number
+        // on the Numbers card), else the DID-specific / default menu.
+        String preferredMenuId = numberRepo.findEnabledByPhoneNumber(to.trim()).stream()
+                .findFirst().map(TelephonyProviderNumber::getInboundIvrMenuId).orElse(null);
+        IvrMenu menu = ivrMenuService.resolveMenu(instituteId, to, preferredMenuId).orElse(null);
         if (menu != null && menu.getRootNodeId() != null) {
             IvrNode root = ivrMenuService.getNode(menu.getRootNodeId()).orElse(null);
             if (root != null) {

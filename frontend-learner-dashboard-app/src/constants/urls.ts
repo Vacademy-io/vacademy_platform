@@ -227,6 +227,10 @@ export const USER_PLAN_PAYMENT_URL = `${BASE_URL}/admin-core-service/payments/us
 // Cashfree payment status (no auth required) – uses same base as enroll API (localhost:8072)
 export const CASHFREE_PAYMENT_STATUS_URL = `${ENROLL_API_BASE}/admin-core-service/payments/user-plan/CASHFREE/status`;
 
+// PhonePe payment status (no auth required) – actively queries PhonePe and updates the payment log.
+// Path: /admin-core-service/open/payments/PHONEPE/status/{orderId}?instituteId={instituteId}
+export const PHONEPE_PAYMENT_STATUS_URL = `${BASE_URL}/admin-core-service/open/payments/PHONEPE/status`;
+
 // Server time
 export const GET_SERVER_TIME = `${BASE_URL}/auth-service/v1/server-time/utc`;
 

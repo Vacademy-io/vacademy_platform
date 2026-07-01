@@ -90,32 +90,48 @@ public class GoogleMeetManager implements LiveSessionProviderStrategy {
         GoogleAccount account = resolveAccount(instituteId, request.resolveProviderAccountId());
         String token = accessTokenService.getAccessToken(account);
 
-        Map<String, Object> body = Map.of("config", buildSpaceConfig(account, request.resolveProviderConfig()));
+        Map<String, Object> config = buildSpaceConfig(account, request.resolveProviderConfig());
+        boolean recordingRequested = config.containsKey("artifactConfig");
 
-        JsonNode response = webClientBuilder.build()
-                .post()
-                .uri(GoogleMeetEndpoints.MEET_API_BASE_URL + "/spaces")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
-                        clientResponse -> clientResponse.bodyToMono(String.class)
-                                .map(b -> {
-                                    int code = clientResponse.statusCode().value();
-                                    log.error("google.meet.create.fail accountId={} httpStatus={} body={}",
-                                            account.getId(), code, b);
-                                    // Evict ONLY on auth failure — a benign 4xx (bad config) must not
-                                    // discard a still-valid cached token (esp. across a recurring batch).
-                                    if (code == 401 || code == 403) {
-                                        accessTokenService.evict(account.getId());
-                                    }
-                                    return new VacademyException(
-                                            "Google Meet create space failed: HTTP " + code);
-                                }))
-                .bodyToMono(JsonNode.class)
-                .timeout(java.time.Duration.ofSeconds(15)) // fail fast — don't hang the @Transactional create
-                .block();
+        JsonNode response;
+        try {
+            response = createSpace(account, token, config);
+        } catch (SpaceCreateException e) {
+            log.error("google.meet.create.fail accountId={} httpStatus={} body={}",
+                    account.getId(), e.status, snippet(e.body));
+            // Evict ONLY on auth failure — a benign 4xx (bad config) must not discard a still-valid
+            // cached token (esp. across a recurring batch).
+            if (e.status == 401 || e.status == 403) {
+                accessTokenService.evict(account.getId());
+            }
+            // Graceful degradation: if auto-recording was requested but this Google plan can't record
+            // (e.g. Business Starter / Education Fundamentals / a consumer account), create the meeting
+            // WITHOUT recording rather than failing the whole session. The retry succeeding IS the proof
+            // that recording was the blocker → self-heal by turning auto-record off on the account (an
+            // account-wide plan property), so future occurrences don't retry and the admin sees it off.
+            if (recordingRequested && e.status >= 400 && e.status < 500
+                    && e.status != 401 && e.status != 403) {
+                config.remove("artifactConfig");
+                JsonNode retry;
+                try {
+                    retry = createSpace(account, token, config);
+                } catch (SpaceCreateException e2) {
+                    throw new VacademyException("Google Meet create space failed: HTTP " + e.status);
+                }
+                log.warn("google.meet.create recording unavailable for account {} (HTTP {} with recording, "
+                        + "OK without) — created without recording + disabled auto-record on the account",
+                        account.getId(), e.status);
+                account.setRecordingEnabled(false);
+                try {
+                    googleAccountStore.update(account);
+                } catch (Exception ignore) {
+                    /* best-effort self-heal */
+                }
+                response = retry;
+            } else {
+                throw new VacademyException("Google Meet create space failed: HTTP " + e.status);
+            }
+        }
 
         if (response == null || !response.hasNonNull("name")) {
             throw new VacademyException("Unexpected Google Meet response when creating space");
@@ -314,5 +330,40 @@ public class GoogleMeetManager implements LiveSessionProviderStrategy {
         Object v = cfg.get(key);
         if (v instanceof Boolean b) return b;
         return Boolean.parseBoolean(v.toString());
+    }
+
+    /** POST /v2/spaces; throws {@link SpaceCreateException} (status + body) on any 4xx/5xx so the
+     *  caller can decide whether to gracefully retry without recording. */
+    private JsonNode createSpace(GoogleAccount account, String token, Map<String, Object> config) {
+        return webClientBuilder.build()
+                .post()
+                .uri(GoogleMeetEndpoints.MEET_API_BASE_URL + "/spaces")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("config", config))
+                .retrieve()
+                .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class).defaultIfEmpty("")
+                                .map(b -> new SpaceCreateException(resp.statusCode().value(), b)))
+                .bodyToMono(JsonNode.class)
+                .timeout(java.time.Duration.ofSeconds(15)) // don't hang the @Transactional create
+                .block();
+    }
+
+    private static String snippet(String body) {
+        if (body == null || body.isEmpty()) return "";
+        return body.length() > 200 ? body.substring(0, 200) : body;
+    }
+
+    /** Carries the HTTP status + body from a failed spaces.create so {@code createMeeting} can
+     *  gracefully fall back (create without recording) when a plan can't record. */
+    private static final class SpaceCreateException extends RuntimeException {
+        private final int status;
+        private final String body;
+
+        SpaceCreateException(int status, String body) {
+            this.status = status;
+            this.body = body;
+        }
     }
 }

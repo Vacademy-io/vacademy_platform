@@ -140,11 +140,13 @@ function RecordingNotice() {
         <div className="mt-4 flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-800">
             <Info size={14} className="mt-0.5 shrink-0" />
             <div className="leading-relaxed">
-                Auto-recording requires a recording-capable Workspace edition (Business Standard+,
-                Enterprise, or Education Plus) and a teacher signed into the institute’s Workspace to
-                be present. Recordings land in the connected account’s Google Drive and are
-                admin-facing for now. The connected account is the organizer for every session it
-                creates.
+                This needs a <strong>Google Workspace</strong> account — connecting, creating
+                meetings, and learners/host joining all work on <strong>any Workspace plan</strong> (a
+                free personal @gmail.com account can’t use the Meet API). <strong>Auto-recording</strong>{' '}
+                is the only paid-tier feature: it needs Business Standard+, Enterprise, or Education
+                Plus, plus a teacher signed into the Workspace present. If you enable it on a plan that
+                can’t record, we still create the meeting (without recording) and turn the toggle back
+                off. Recordings land in the connected account’s Google Drive (admin-facing).
             </div>
         </div>
     );

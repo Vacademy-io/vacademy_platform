@@ -94,6 +94,13 @@ export GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8072/admin-core-service/live-s
 
 ---
 
+## Non-paid / tier handling (2026-07-01)
+
+- **The integration needs a Google Workspace account** (any plan). The Meet REST API (`spaces.create`) is Workspace-only — a **free personal @gmail.com account cannot use it** (create would fail). Connect + create + join work on any Workspace tier.
+- **Recording is the only paid-tier-gated feature** (Business Standard+/Enterprise/Education Plus). Default is **OFF**.
+- **Graceful degradation (built):** if auto-record is enabled but the plan can't record, `GoogleMeetManager.createMeeting` catches the `spaces.create` failure, **retries without recording** (the retry succeeding proves recording was the blocker), and **self-disables `recordingEnabled` on the account** so the recurring batch stops retrying and the admin sees it's off. The session is still created — never fails over recording.
+- **Messaging:** the settings card states the Workspace requirement + that recording is the only paid-tier feature + the fallback behavior. There is still **no active edition detection at connect time** (no clean API); admin self-asserts + the fallback + logs cover it.
+
 ## Pending / to verify live
 
 - **Auto-record verification** — `autoRecordingGeneration=ON` is set; confirm a real meeting on a recording-capable edition (with a teacher signed into the institute's Workspace present) actually records, that the hourly poll lands it in `provider_recordings_json`, and it shows in the admin recording view.

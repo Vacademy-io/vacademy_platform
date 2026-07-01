@@ -130,7 +130,10 @@ public class GoogleConferenceService {
         try {
             return webClientBuilder.build()
                     .get()
-                    .uri(url)
+                    // Pass a URI (not a String): our query params (filter/pageToken) are already
+                    // percent-encoded, and WebClient's .uri(String) would re-encode them (turning
+                    // %3D into %253D → Google 400 BadRequest). Same gotcha as ZoomOAuthService.
+                    .uri(java.net.URI.create(url))
                     .header("Authorization", "Bearer " + token)
                     .retrieve()
                     .bodyToMono(JsonNode.class)

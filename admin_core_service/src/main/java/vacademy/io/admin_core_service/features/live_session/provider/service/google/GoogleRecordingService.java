@@ -96,6 +96,11 @@ public class GoogleRecordingService {
         return added;
     }
 
+    /** Recordings currently stored on the schedule (no API call). */
+    public List<MeetingRecordingDTO> getStored(SessionSchedule schedule) {
+        return parseExisting(schedule);
+    }
+
     private List<MeetingRecordingDTO> parseExisting(SessionSchedule schedule) {
         if (schedule.getProviderRecordingsJson() == null || schedule.getProviderRecordingsJson().isBlank()) {
             return new ArrayList<>();

@@ -329,6 +329,14 @@ export const SlideMaterial = ({
     });
     // Always-current editor HTML for DOC (updated on every change, not persisted to store)
     const currentDocHtmlRef = useRef<string>('');
+    // True when the last getCurrentEditorHTMLContent() had to fall back to
+    // per-block serialization (a block's serializer threw) OR blew up entirely.
+    // In that state the serialized HTML may be MISSING the offending block, so
+    // persisting it — especially via the silent auto-save-on-switch — would
+    // permanently drop that block's content and flip the slide to UNSYNC. The
+    // auto-save reads this to refuse a destructive overwrite. Reset on every
+    // serialize; only the LAST serialize before a save matters.
+    const lastSerializeDegradedRef = useRef(false);
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -1039,6 +1047,8 @@ export const SlideMaterial = ({
 
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
+        // Fresh serialize — assume healthy until a fallback path proves otherwise.
+        lastSerializeDegradedRef.current = false;
         try {
             let htmlString: string;
             try {
@@ -1068,6 +1078,12 @@ export const SlideMaterial = ({
                                 b?.type,
                                 blockErr
                             );
+                            // A block was DROPPED. Mark the result degraded so the
+                            // silent auto-save-on-switch won't persist a copy that
+                            // is missing this block (which would vanish its content
+                            // and flip the slide to UNSYNC). Explicit Save still
+                            // proceeds — but with a warning to the user.
+                            lastSerializeDegradedRef.current = true;
                             return '';
                         }
                     })
@@ -1087,8 +1103,12 @@ export const SlideMaterial = ({
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
             // Serialize blew up (typically Yoopta/Slate throwing on a
-            // partially-normalized accordion/custom-block state). Fall
-            // back to the most recent successfully-serialized HTML
+            // partially-normalized accordion/custom-block state). The value we
+            // return here is a FALLBACK, not a faithful serialization of the
+            // live editor — mark it degraded so the silent auto-save won't treat
+            // it as an authoritative new version to overwrite stored data with.
+            lastSerializeDegradedRef.current = true;
+            // Fall back to the most recent successfully-serialized HTML
             // (captured on every onChange), then to the slide's stored
             // data. Returning '' used to land in SaveDraft's empty-guard
             // and surface "Could not read editor content" — we'd rather
@@ -1348,6 +1368,24 @@ export const SlideMaterial = ({
             if (checkIsHtmlEmpty(htmlString)) {
                 console.warn(
                     '⚠️ Skipping DOC auto-save — editor content is empty; refusing to overwrite existing slide data.'
+                );
+                return;
+            }
+
+            // Never let a DEGRADED serialization silently overwrite good content.
+            // If the last serialize had to drop a block (its serializer threw) or
+            // blew up entirely, htmlString is missing content. Auto-saving it on
+            // slide switch would permanently vanish that block AND flip a
+            // PUBLISHED slide to UNSYNC — the exact "data lost on switch" report.
+            // Skip the silent save; the stored draft/published copy stays intact.
+            // The user can still Save explicitly (which surfaces a warning).
+            if (lastSerializeDegradedRef.current) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor serialization was degraded (a block failed to serialize). ' +
+                        'Refusing to overwrite stored content to avoid silently dropping that block.'
+                );
+                toast.warning(
+                    'Some content on the previous slide could not be saved automatically. Open it and click Save to retry.'
                 );
                 return;
             }
@@ -2643,6 +2681,16 @@ export const SlideMaterial = ({
 
             // Handle regular documents
             const currentHtml = getCurrentEditorHTMLContent();
+
+            // Explicit Save proceeds on user intent, but if a block's serializer
+            // threw it was dropped from currentHtml — tell the user so the loss
+            // isn't silent (the silent auto-save-on-switch already refuses this).
+            if (lastSerializeDegradedRef.current) {
+                toast.warning(
+                    'A block on this slide could not be saved and was left out. ' +
+                        'Please check the slide — you may need to re-create that block.'
+                );
+            }
 
             // Process images in HTML content before saving
             let processedHtmlString = currentHtml;

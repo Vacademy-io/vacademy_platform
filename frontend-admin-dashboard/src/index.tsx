@@ -255,8 +255,16 @@ if (!rootElement.innerHTML) {
             // Native flavors resolve branding by a FIXED domain/subdomain (their
             // institute_domain_routing row, e.g. vacademy.io/admin-app → ca3c…);
             // the web build resolves by the request host.
+            //
+            // The isNative() guard is load-bearing: the web build has no
+            // VITE_CAP_FLAVOR, so getFlavor() falls back to DEFAULT_FLAVOR_KEY
+            // ('vacademy-admin'), which carries a fixed brandingDomain. Without
+            // this guard EVERY web host (e.g. admin.shikshanation.com) would
+            // resolve vacademy.io/admin-app → Vacademy CRM instead of its own
+            // domain. Only real native apps use fixed-domain flavor branding.
             const flavor = getFlavor();
-            const useFlavorBranding = !!(flavor.brandingDomain && flavor.brandingSubdomain);
+            const useFlavorBranding =
+                isNative() && !!(flavor.brandingDomain && flavor.brandingSubdomain);
             const data = useFlavorBranding
                 ? await resolveInstituteForDomain(flavor.brandingDomain!, flavor.brandingSubdomain!)
                 : await resolveInstituteForCurrentHost();

@@ -1,51 +1,230 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    useYooptaReadOnly,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
+import { commitBlockProps } from './commitBlockProps';
+import {
+    RichTextField,
+    RichTextHtml,
+    encodeBlockData,
+    decodeBlockData,
+    isRichTextEmpty,
+    ensureRichTextStyles,
+} from './RichTextField';
 
-export function FlashcardBlock({
-    element,
-    attributes,
-    children,
-    blockId,
-}: PluginElementRenderProps) {
+interface FlashcardData {
+    front: string; // rich-text HTML (text and/or images)
+    back: string; // rich-text HTML (text and/or images)
+    aspectRatio?: string; // 'original' | '1:1' | '4:3' | '16:9' — image fit
+}
+
+const DEFAULT_FLASHCARD: FlashcardData = { front: '', back: '', aspectRatio: 'original' };
+
+// Image aspect-ratio presets. Choosing one fits every <img> in the card into that
+// ratio box (contained — never cropped or stretched) via the CSS injected below.
+const ASPECT_RATIOS: { value: string; label: string; ratio: string; className: string }[] = [
+    { value: 'original', label: 'Original', ratio: '', className: '' },
+    { value: '1:1', label: '1:1', ratio: '1 / 1', className: 'fc-ar-1-1' },
+    { value: '4:3', label: '4:3', ratio: '4 / 3', className: 'fc-ar-4-3' },
+    { value: '16:9', label: '16:9', ratio: '16 / 9', className: 'fc-ar-16-9' },
+];
+const ratioClassFor = (value?: string): string =>
+    ASPECT_RATIOS.find((r) => r.value === value)?.className || '';
+
+// Inject the aspect-ratio image rules once (idempotent). Each rule fits images
+// into a fixed-ratio box while preserving the image's own proportions (contain).
+function ensureFlashcardRatioStyles() {
+    if (typeof document === 'undefined') return;
+    const ratioRules = ASPECT_RATIOS.filter((r) => r.className)
+        .map((r) => `.${r.className} img { aspect-ratio: ${r.ratio}; width: 100%; }`)
+        .join('\n');
+    // Base rule bounds EVERY flashcard image so a card never gets oversized
+    // ("too lengthy"). The ratio rules add the chosen shape on top; the card
+    // itself is width-capped in the render, so a ratio box can't run wide.
+    const css =
+        `.fc-card-img img { max-width: 100%; max-height: 300px; height: auto; object-fit: contain; display: block; margin: 4px auto; }\n` +
+        ratioRules;
+    let style = document.getElementById('flashcard-ratio-styles') as HTMLStyleElement | null;
+    if (!style) {
+        style = document.createElement('style');
+        style.id = 'flashcard-ratio-styles';
+        document.head.appendChild(style);
+    }
+    if (style.textContent !== css) style.textContent = css;
+}
+
+// Flashcard colours — centralised so the file carries no scattered literal hex.
+const C = {
+    border: '#e0e0e0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    surface: '#fafafa', // design-lint-ignore: Yoopta editor chrome — inline style required
+    headerBg: '#f0f0f0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    text: '#333333', // design-lint-ignore: Yoopta editor chrome — inline style required
+    muted: '#666666', // design-lint-ignore: Yoopta editor chrome — inline style required
+    label: '#555555', // design-lint-ignore: Yoopta editor chrome — inline style required
+    accent: '#007acc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    accentSoft: '#f0f7ff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    placeholder: '#cccccc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    hint: '#999999', // design-lint-ignore: Yoopta editor chrome — inline style required
+};
+
+// Strip HTML tags to plain text — used only for the legacy data-front/data-back
+// fallback attributes (kept for renderers that predate the base64 payload). We
+// strip tags so no S3 image URL ever lands in a data-* attribute the document
+// sanitizer could truncate; the rich payload lives safely in base64 data-flashcard.
+const htmlToText = (html: string): string =>
+    (html || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const escapeAttr = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export function FlashcardBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
-    const [front, setFront] = useState(element?.props?.front || '');
-    const [back, setBack] = useState(element?.props?.back || '');
+    const isReadOnly = useYooptaReadOnly();
+
+    const [data, setData] = useState<FlashcardData>({
+        front: element?.props?.front || '',
+        back: element?.props?.back || '',
+        aspectRatio: element?.props?.aspectRatio || 'original',
+    });
+    const dataRef = useRef<FlashcardData>(data);
     const [isFlipped, setIsFlipped] = useState(false);
-    const [isEditing, setIsEditing] = useState(!element?.props?.front);
-    const isFirstRender = useRef(true);
+    const [isEditing, setIsEditing] = useState(
+        !isReadOnly && isRichTextEmpty(element?.props?.front || '')
+    );
 
-    // Sync local state when element props change (e.g. after deserialization)
     useEffect(() => {
-        const propFront = element?.props?.front || '';
-        const propBack = element?.props?.back || '';
-        if (propFront !== front) setFront(propFront);
-        if (propBack !== back) setBack(propBack);
-    }, [element?.props?.front, element?.props?.back]);
+        ensureRichTextStyles();
+        ensureFlashcardRatioStyles();
+    }, []);
 
-    // Persist state to Yoopta/Slate store
+    // Sync local state when element props change (e.g. after deserialization).
     useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
+        const pf = element?.props?.front || '';
+        const pb = element?.props?.back || '';
+        const par = element?.props?.aspectRatio || 'original';
+        if (
+            pf !== dataRef.current.front ||
+            pb !== dataRef.current.back ||
+            par !== (dataRef.current.aspectRatio || 'original')
+        ) {
+            const next = { front: pf, back: pb, aspectRatio: par };
+            dataRef.current = next;
+            setData(next);
         }
-        Elements.updateElement(editor, blockId, {
-            type: 'flashcard',
-            props: {
-                ...element.props,
-                front,
-                back,
-                editorType: 'flashcardEditor',
-            },
+    }, [element?.props?.front, element?.props?.back, element?.props?.aspectRatio]);
+
+    // Persist to Yoopta (Slate + block.value) so html.serialize reads fresh props.
+    const commit = (next: FlashcardData) => {
+        dataRef.current = next;
+        setData(next);
+        if (isReadOnly) return;
+        commitBlockProps(editor, blockId, element, {
+            front: next.front,
+            back: next.back,
+            aspectRatio: next.aspectRatio || 'original',
+            editorType: 'flashcardEditor',
         });
-    }, [front, back]);
+    };
+    const updateFront = (html: string) => commit({ ...dataRef.current, front: html });
+    const updateBack = (html: string) => commit({ ...dataRef.current, back: html });
+    const updateAspectRatio = (aspectRatio: string) => commit({ ...dataRef.current, aspectRatio });
 
-    const handleInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Backspace') {
-            const target = e.target as HTMLTextAreaElement;
-            if (target.value.length > 0 || target.selectionStart !== 0) {
-                e.stopPropagation();
-            }
-        }
+    const ratioClass = ratioClassFor(data.aspectRatio);
+    // Always bound flashcard images (fc-card-img); add the chosen ratio on top.
+    const imgWrapClass = `fc-card-img ${ratioClass}`.trim();
+
+    const labelStyle: React.CSSProperties = {
+        fontSize: '12px',
+        fontWeight: 600,
+        color: C.label,
+        marginBottom: '6px',
+        textTransform: 'uppercase',
+    };
+
+    // A single flip face. Both faces share grid-area 1/1 so the card grows to the
+    // taller of the two — text OR image content — without a fixed height or spacer.
+    const face = (side: 'front' | 'back') => {
+        const isFront = side === 'front';
+        const html = isFront ? data.front : data.back;
+        const empty = isRichTextEmpty(html);
+        return (
+            <div
+                style={{
+                    gridArea: '1 / 1',
+                    position: 'relative',
+                    minHeight: '150px',
+                    backfaceVisibility: 'hidden',
+                    transform: isFront ? undefined : 'rotateY(180deg)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '28px 24px',
+                    backgroundColor: isFront ? C.white : C.accent,
+                    borderRadius: '8px',
+                    border: `2px solid ${C.accent}`,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                }}
+            >
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '12px',
+                        fontSize: '10px',
+                        color: isFront ? C.accent : 'rgba(255,255,255,0.7)',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                    }}
+                >
+                    {isFront ? 'Front' : 'Back'}
+                </div>
+                {empty ? (
+                    <span
+                        style={{
+                            color: isFront ? C.placeholder : 'rgba(255,255,255,0.5)',
+                            fontStyle: 'italic',
+                        }}
+                    >
+                        No content
+                    </span>
+                ) : (
+                    <div className={imgWrapClass} style={{ width: '100%', maxWidth: '100%' }}>
+                        <RichTextHtml
+                            html={html}
+                            style={{
+                                fontSize: '16px',
+                                color: isFront ? C.text : C.white,
+                                textAlign: 'center',
+                                maxWidth: '100%',
+                                // Keeps line breaks in legacy plain-text cards; harmless
+                                // for rich HTML (which uses block elements for newlines).
+                                whiteSpace: 'pre-wrap',
+                            }}
+                        />
+                    </div>
+                )}
+                <div
+                    style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        fontSize: '11px',
+                        color: isFront ? C.hint : 'rgba(255,255,255,0.6)',
+                    }}
+                >
+                    {isFront ? 'Click to flip' : 'Click to flip back'}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -53,11 +232,11 @@ export function FlashcardBlock({
             {...attributes}
             contentEditable={false}
             style={{
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${C.border}`,
                 borderRadius: '8px',
                 margin: '8px 0',
                 overflow: 'hidden',
-                backgroundColor: '#fafafa',
+                backgroundColor: C.surface,
             }}
         >
             {/* Header */}
@@ -67,229 +246,105 @@ export function FlashcardBlock({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 12px',
-                    backgroundColor: '#f0f0f0',
-                    borderBottom: '1px solid #e0e0e0',
+                    backgroundColor: C.headerBg,
+                    borderBottom: `1px solid ${C.border}`,
                 }}
             >
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
-                    Flashcard
-                </span>
-                <button
-                    onClick={() => setIsEditing(!isEditing)}
-                    style={{
-                        padding: '3px 10px',
-                        fontSize: '12px',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        backgroundColor: 'white',
-                        color: '#666',
-                        cursor: 'pointer',
-                    }}
-                >
-                    {isEditing ? 'Preview' : 'Edit'}
-                </button>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: C.text }}>Flashcard</span>
+                {!isReadOnly && (
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        {isEditing && (
+                            <select
+                                value={data.aspectRatio || 'original'}
+                                onChange={(e) => updateAspectRatio(e.target.value)}
+                                title="Image aspect ratio"
+                                style={{
+                                    fontSize: '11px',
+                                    padding: '3px 4px',
+                                    border: `1px solid ${C.border}`,
+                                    borderRadius: '4px',
+                                    backgroundColor: C.white,
+                                    color: C.muted,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                {ASPECT_RATIOS.map((r) => (
+                                    <option key={r.value} value={r.value}>
+                                        {r.value === 'original' ? 'Image: Original' : `Image: ${r.label}`}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <button
+                            onClick={() => {
+                                setIsEditing(!isEditing);
+                                setIsFlipped(false);
+                            }}
+                            style={{
+                                padding: '3px 10px',
+                                fontSize: '12px',
+                                border: `1px solid ${C.border}`,
+                                borderRadius: '4px',
+                                backgroundColor: C.white,
+                                color: C.muted,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {isEditing ? 'Preview' : 'Edit'}
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Content */}
             <div style={{ padding: '12px' }}>
                 {isEditing ? (
-                    <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         {/* Front side */}
-                        <div style={{ flex: 1 }}>
-                            <div
-                                style={{
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    color: '#666',
-                                    marginBottom: '6px',
-                                    textTransform: 'uppercase',
-                                }}
-                            >
-                                Front (Question / Term)
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={labelStyle}>Front (Question / Term)</div>
+                            <div className={imgWrapClass}>
+                                <RichTextField
+                                    value={data.front}
+                                    onChange={updateFront}
+                                    placeholder="Front — add text and/or an image…"
+                                    minHeight={80}
+                                />
                             </div>
-                            <textarea
-                                value={front}
-                                onChange={(e) => setFront(e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder="Enter the question or term..."
-                                style={{
-                                    width: '100%',
-                                    minHeight: '80px',
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    backgroundColor: '#fff',
-                                    resize: 'vertical',
-                                    outline: 'none',
-                                }}
-                            />
                         </div>
                         {/* Back side */}
-                        <div style={{ flex: 1 }}>
-                            <div
-                                style={{
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    color: '#666',
-                                    marginBottom: '6px',
-                                    textTransform: 'uppercase',
-                                }}
-                            >
-                                Back (Answer / Definition)
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={labelStyle}>Back (Answer / Definition)</div>
+                            <div className={imgWrapClass}>
+                                <RichTextField
+                                    value={data.back}
+                                    onChange={updateBack}
+                                    placeholder="Back — add text and/or an image…"
+                                    minHeight={80}
+                                />
                             </div>
-                            <textarea
-                                value={back}
-                                onChange={(e) => setBack(e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder="Enter the answer or definition..."
-                                style={{
-                                    width: '100%',
-                                    minHeight: '80px',
-                                    padding: '10px',
-                                    fontSize: '14px',
-                                    border: '1px solid #ddd',
-                                    borderRadius: '4px',
-                                    backgroundColor: '#fff',
-                                    resize: 'vertical',
-                                    outline: 'none',
-                                }}
-                            />
                         </div>
                     </div>
                 ) : (
-                    /* Preview - Flip Card */
-                    <div
-                        style={{ perspective: '1000px', cursor: 'pointer' }}
-                        onClick={() => setIsFlipped(!isFlipped)}
-                    >
+                    /* Preview — flip card. Width-capped + centered so it stays a
+                       compact card instead of spanning the whole editor. */
+                    <div style={{ maxWidth: '420px', margin: '0 auto' }}>
                         <div
-                            style={{
-                                position: 'relative',
-                                width: '100%',
-                                minHeight: '150px',
-                                transition: 'transform 0.6s',
-                                transformStyle: 'preserve-3d',
-                                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                            }}
+                            style={{ perspective: '1000px', cursor: 'pointer' }}
+                            onClick={() => setIsFlipped(!isFlipped)}
                         >
-                            {/* Front */}
                             <div
                                 style={{
-                                    position: 'absolute',
-                                    width: '100%',
-                                    minHeight: '150px',
-                                    backfaceVisibility: 'hidden',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '24px',
-                                    backgroundColor: '#fff',
-                                    borderRadius: '8px',
-                                    border: '2px solid #007acc',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                                    display: 'grid',
+                                    transition: 'transform 0.6s',
+                                    transformStyle: 'preserve-3d',
+                                    transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
                                 }}
                             >
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        top: '8px',
-                                        left: '12px',
-                                        fontSize: '10px',
-                                        color: '#007acc',
-                                        fontWeight: 600,
-                                        textTransform: 'uppercase',
-                                    }}
-                                >
-                                    Front
-                                </div>
-                                <div
-                                    style={{
-                                        fontSize: '16px',
-                                        color: '#333',
-                                        textAlign: 'center',
-                                        whiteSpace: 'pre-wrap',
-                                    }}
-                                >
-                                    {front || (
-                                        <span style={{ color: '#ccc', fontStyle: 'italic' }}>
-                                            No content
-                                        </span>
-                                    )}
-                                </div>
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        bottom: '8px',
-                                        fontSize: '11px',
-                                        color: '#999',
-                                    }}
-                                >
-                                    Click to flip
-                                </div>
-                            </div>
-
-                            {/* Back */}
-                            <div
-                                style={{
-                                    position: 'absolute',
-                                    width: '100%',
-                                    minHeight: '150px',
-                                    backfaceVisibility: 'hidden',
-                                    transform: 'rotateY(180deg)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '24px',
-                                    backgroundColor: '#007acc',
-                                    borderRadius: '8px',
-                                    border: '2px solid #007acc',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        top: '8px',
-                                        left: '12px',
-                                        fontSize: '10px',
-                                        color: 'rgba(255,255,255,0.7)',
-                                        fontWeight: 600,
-                                        textTransform: 'uppercase',
-                                    }}
-                                >
-                                    Back
-                                </div>
-                                <div
-                                    style={{
-                                        fontSize: '16px',
-                                        color: '#fff',
-                                        textAlign: 'center',
-                                        whiteSpace: 'pre-wrap',
-                                    }}
-                                >
-                                    {back || (
-                                        <span style={{ color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
-                                            No content
-                                        </span>
-                                    )}
-                                </div>
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        bottom: '8px',
-                                        fontSize: '11px',
-                                        color: 'rgba(255,255,255,0.6)',
-                                    }}
-                                >
-                                    Click to flip back
-                                </div>
+                                {face('front')}
+                                {face('back')}
                             </div>
                         </div>
-                        {/* Spacer to maintain layout height since cards are position:absolute */}
-                        <div style={{ minHeight: '150px' }} />
                     </div>
                 )}
             </div>
@@ -318,7 +373,7 @@ export const FlashcardPlugin = new YooptaPlugin<{ flashcard: any }>({
     options: {
         display: {
             title: 'Flashcard',
-            description: 'Flip card with front and back sides',
+            description: 'Flip card with front and back — supports text and images',
             icon: <FlashcardIcon />,
         },
         shortcuts: ['flashcard', 'flip', 'card'],
@@ -331,26 +386,64 @@ export const FlashcardPlugin = new YooptaPlugin<{ flashcard: any }>({
                     if (element.getAttribute?.('data-yoopta-type') !== 'flashcard') {
                         return undefined;
                     }
-                    const front = element.getAttribute('data-front') || '';
-                    const back = element.getAttribute('data-back') || '';
+                    // Prefer the base64 payload (rich HTML, survives the document
+                    // sanitizers). Fall back to legacy plain-text data-front/data-back
+                    // for flashcards created before image support.
+                    const encoded = element.getAttribute('data-flashcard');
+                    let front = '';
+                    let back = '';
+                    let aspectRatio = 'original';
+                    if (encoded) {
+                        const d = decodeBlockData<FlashcardData>(encoded, DEFAULT_FLASHCARD);
+                        front = d.front || '';
+                        back = d.back || '';
+                        aspectRatio = d.aspectRatio || 'original';
+                    } else {
+                        front = element.getAttribute('data-front') || '';
+                        back = element.getAttribute('data-back') || '';
+                        aspectRatio = element.getAttribute('data-aspect-ratio') || 'original';
+                    }
                     return {
                         id: `fc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         type: 'flashcard',
-                        props: { front, back, editorType: 'flashcardEditor' },
+                        props: { front, back, aspectRatio, editorType: 'flashcardEditor' },
                         children: [{ text: '' }],
                     };
                 },
             },
             serialize: (element, _children) => {
+                // Must never throw — a throwing serializer aborts the whole-document
+                // Save Draft / Publish. encodeBlockData already swallows its errors.
                 const props = element.props || {};
                 const front = props.front || '';
                 const back = props.back || '';
-                const escapeForDisplay = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br/>');
-                const escapeForAttr = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-                const escapedFront = escapeForDisplay(front);
-                const escapedBack = escapeForDisplay(back);
+                const aspectRatio = props.aspectRatio || 'original';
 
-                return `<div data-yoopta-type="flashcard" data-editor-type="flashcardEditor" data-front="${escapeForAttr(front)}" data-back="${escapeForAttr(back)}" style="border: 2px solid #007acc; border-radius: 8px; margin: 8px 0; overflow: hidden; cursor: pointer;"><div style="padding: 24px; text-align: center; background: #fff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Front</div><div style="font-size: 16px; color: #333;">${escapedFront}</div></div><div style="border-top: 2px dashed #007acc; padding: 24px; text-align: center; background: #f0f7ff;"><div style="font-size: 10px; color: #007acc; font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Back</div><div style="font-size: 16px; color: #333;">${escapedBack}</div></div></div>`;
+                // base64 payload (source of truth) so the document-wide HTML
+                // sanitizers can never corrupt an S3 image URL inside the rich text.
+                const payload = encodeBlockData({ front, back, aspectRatio });
+
+                // Legacy plain-text fallback for renderers that predate data-flashcard.
+                const frontText = escapeAttr(htmlToText(front));
+                const backText = escapeAttr(htmlToText(back));
+
+                // Static visible body (rich HTML incl. images) for any renderer that
+                // just dumps the HTML. Real <img src> is safe here — the document
+                // sanitizer only trims S3 query params, it doesn't drop the tag.
+                let body = '';
+                try {
+                    body =
+                        `<div style="padding: 16px; text-align: center; background: ${C.white};">` +
+                        `<div style="font-size: 10px; color: ${C.accent}; font-weight: 600; text-transform: uppercase; margin-bottom: 8px;">Front</div>` +
+                        `<div style="font-size: 16px; color: ${C.text};">${front}</div></div>` +
+                        `<div style="border-top: 2px dashed ${C.accent}; padding: 16px; text-align: center; background: ${C.accentSoft};">` +
+                        `<div style="font-size: 10px; color: ${C.accent}; font-weight: 600; text-transform: uppercase; margin-bottom: 8px;">Back</div>` +
+                        `<div style="font-size: 16px; color: ${C.text};">${back}</div></div>`;
+                } catch {
+                    body = '';
+                }
+
+                return `<div data-yoopta-type="flashcard" data-editor-type="flashcardEditor" data-flashcard="${payload}" data-front="${frontText}" data-back="${backText}" data-aspect-ratio="${escapeAttr(aspectRatio)}" style="border: 2px solid ${C.accent}; border-radius: 8px; margin: 8px 0; overflow: hidden;">${body}</div>`;
             },
         },
     },

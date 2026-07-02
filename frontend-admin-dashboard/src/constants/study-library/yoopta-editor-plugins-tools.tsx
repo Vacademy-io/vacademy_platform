@@ -7,7 +7,6 @@ import Link from '@yoopta/link';
 import Callout from '@yoopta/callout';
 import Video from '@yoopta/video';
 import File from '@yoopta/file';
-import Accordion from '@yoopta/accordion';
 import { NumberedList, BulletedList, TodoList } from '@yoopta/lists';
 import { Bold, Italic, CodeMark, Underline, Strike, Highlight } from '@yoopta/marks';
 import { HeadingOne, HeadingThree, HeadingTwo } from '@yoopta/headings';
@@ -35,6 +34,7 @@ import { FlashcardPlugin } from '@/routes/study-library/courses/course-details/s
 import { FillBlanksPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/fill-blanks-editor';
 import { TabsPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/tabs-editor';
 import { PdfViewerPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/pdf-viewer';
+import { AccordionPlugin } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/yoopta-editor-customizations/accordion-editor';
 
 /** Extract userId from JWT token */
 function getUserIdFromToken(): string {
@@ -64,7 +64,7 @@ export const plugins: YooptaPlugin<Record<string, SlateElement>, Record<string, 
     Paragraph,
     Table as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
     Divider,
-    Accordion as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
+    AccordionPlugin as unknown as YooptaPlugin<Record<string, SlateElement>, Record<string, unknown>>,
     // Markdown-on-space auto-format disabled (shortcuts: []). Yoopta converts a
     // block when you type a trigger + space ("1." → numbered list, "#" → heading,
     // ">" → quote, etc.), but its transform REPLACES the whole block — so typing

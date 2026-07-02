@@ -50,12 +50,21 @@ def build_llm():
             model=s.openrouter_model,
             params=OpenRouterLLMService.InputParams(temperature=0.6, max_tokens=150),
         )
-    # Sarvam exposes an OpenAI-compatible chat-completions API.
+    # Sarvam's OpenAI-compatible chat-completions API, India-hosted.
+    # reasoning_effort MUST be the literal JSON null (Python None via extra_body;
+    # the SDK drops None kwargs but keeps them inside extra_body) — that is the
+    # ONLY value that disables the hybrid "thinking". Measured from the Mumbai
+    # anchor: sarvam-105b 0.14s / sarvam-30b 0.16s median TTFT with null, vs
+    # 6-14s (or content=None) with thinking on. The string "none" is a 400.
+    # Same trick as the founder's POC (sales-poc-ai services.py).
     return OpenAILLMService(
         api_key=s.sarvam_api_key,
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
-        params=OpenAILLMService.InputParams(temperature=0.6, max_tokens=150),
+        params=OpenAILLMService.InputParams(
+            temperature=0.6, max_tokens=150,
+            extra={"extra_body": {"reasoning_effort": None}},
+        ),
     )
 
 
@@ -63,11 +72,15 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session):
     """`aiohttp_session` is REQUIRED by SarvamTTSService (keyword-only, no
     default) — the FastAPI lifespan owns one shared session (see main.py)."""
     s = get_settings()
+    # enable_preprocessing: bulbul normalizes numbers/dates/mixed-script text
+    # before synthesis — noticeably cleaner Hinglish (POC voice recipe). Its
+    # expressiveness `temperature` knob only exists on pipecat 1.x; port it
+    # when the pin is bumped.
     return SarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
         aiohttp_session=aiohttp_session,
-        params=SarvamTTSService.InputParams(pace=s.tts_pace),
+        params=SarvamTTSService.InputParams(pace=s.tts_pace, enable_preprocessing=True),
     )

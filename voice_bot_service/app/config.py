@@ -44,15 +44,17 @@ class Settings:
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
 
-    # LLM provider switch: "google" (default) | "openrouter" | "sarvam". Governs
+    # LLM provider switch: "sarvam" (default) | "google" | "openrouter". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call
     # analysis (report._llm_target) — they must never diverge.
-    # google = Gemini via its OpenAI-compat endpoint, hit DIRECTLY (Google's edge
-    # is ~18ms from the cluster; OpenRouter adds a proxy + routing lottery that
-    # spiked TTFT to 7.9s on a live call). Sarvam is unusable for the live convo:
-    # its chat models (sarvam-30b/-105b, verified 2026-07-02) are ALWAYS-reasoning
-    # — 6–14s to the first content token, content=None when max_tokens dies mid-think.
-    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "google"))
+    # sarvam = India-hosted sarvam-105b with reasoning_effort=null (the literal
+    # JSON null via extra_body — the ONLY value that disables its hybrid
+    # "thinking"): 0.14s median TTFT from the Mumbai anchor, ~5x faster than
+    # Gemini's 0.75-0.85s. With thinking ON it is unusable live (6-14s, or
+    # content=None when max_tokens dies mid-think) — never drop the null.
+    # google = Gemini's OpenAI-compat endpoint hit directly (no proxy hop);
+    # openrouter = proxy fallback (routing lottery spiked TTFT to 7.9s once).
+    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "sarvam"))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")

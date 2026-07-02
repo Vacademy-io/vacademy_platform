@@ -69,17 +69,22 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         f"Transcript:\n{transcript}\n\nJSON:"
     )
     base_url, api_key, model = _llm_target(s)
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 500,
+    }
+    if s.llm_provider == "sarvam":
+        # Literal null disables Sarvam's hybrid thinking — without it the whole
+        # 500-token budget goes to reasoning and content comes back None.
+        payload["reasoning_effort"] = None
     try:
         async with httpx.AsyncClient(timeout=_ANALYSIS_TIMEOUT) as client:
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.1,
-                    "max_tokens": 500,
-                },
+                json=payload,
             )
             resp.raise_for_status()
             # `or ""`: reasoning models (e.g. Sarvam-30b/-105b) return content=None

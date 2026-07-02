@@ -465,6 +465,28 @@ const CampaignUsersContent = ({
         handleStatusUpdated();
     };
 
+    // Select every lead matching the current filter (across all pages), not just
+    // the rows on screen — fetches all ids in one call (same pattern as export).
+    const [selectAllLoading, setSelectAllLoading] = useState(false);
+    const selectAllAcrossPages = async () => {
+        if (!totalElements) return;
+        try {
+            setSelectAllLoading(true);
+            const res = await fetchCampaignLeads({ ...leadsPayload, page: 0, size: totalElements });
+            const map = new Map<string, { userId: string; name: string }>();
+            (res.content ?? []).forEach((lead) => {
+                const uid = lead.user?.id || lead.user_id;
+                if (!uid) return;
+                map.set(uid, { userId: uid, name: lead.user?.full_name || lead.parent_name || uid });
+            });
+            setSelectedLeads(map);
+        } catch {
+            toast.error('Failed to select all leads');
+        } finally {
+            setSelectAllLoading(false);
+        }
+    };
+
     // Hide the "Lead source" column — every row in this view is from the same audience.
     const hiddenColumns = useMemo(() => new Set(['source']), []);
 
@@ -947,6 +969,18 @@ const CampaignUsersContent = ({
                                 {selectedLeads.size} selected
                             </span>
                             <div className="flex gap-2">
+                                {selectedLeads.size < totalElements && (
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="small"
+                                        disable={selectAllLoading}
+                                        onClick={selectAllAcrossPages}
+                                    >
+                                        {selectAllLoading
+                                            ? 'Selecting…'
+                                            : `Select all ${totalElements}`}
+                                    </MyButton>
+                                )}
                                 <MyButton
                                     buttonType="secondary"
                                     scale="small"

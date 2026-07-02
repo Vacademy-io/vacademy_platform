@@ -530,6 +530,53 @@ const RecentLeadsContent = () => {
         handleStatusUpdated();
     };
 
+    // Select every lead matching the current filter (across all pages) — fetches
+    // all matching ids in one call, mirroring the paginated query's params.
+    const [selectAllLoading, setSelectAllLoading] = useState(false);
+    const selectAllAcrossPages = async () => {
+        if (!totalElements) return;
+        try {
+            setSelectAllLoading(true);
+            const res = await fetchRecentLeads({
+                institute_id: instituteId ?? '',
+                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                submitted_from_local: startOfDayIso(appliedRange.from),
+                submitted_to_local: endOfDayIso(appliedRange.to),
+                search_query: appliedSearch || undefined,
+                lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                lead_status_id: leadStatusId,
+                conversion_status_filter: conversionFilter,
+                sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                assigned_counselor_id:
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                        ? undefined
+                        : counsellorFilter,
+                is_unassigned: counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                source_type: sourceFilter || undefined,
+                custom_field_filters: customFieldFiltersPayload.length
+                    ? customFieldFiltersPayload
+                    : undefined,
+                page: 0,
+                size: totalElements,
+            });
+            const map = new Map<string, { userId: string; name: string }>();
+            (res.content ?? []).forEach((lead) => {
+                const uid = lead.user?.id || lead.user_id;
+                if (!uid) return;
+                map.set(uid, {
+                    userId: uid,
+                    name: lead.user?.full_name || lead.parent_name || uid,
+                });
+            });
+            setSelectedLeads(map);
+        } catch {
+            toast.error('Failed to select all leads');
+        } finally {
+            setSelectAllLoading(false);
+        }
+    };
+
     const toggleColumn = (id: string) =>
         setHiddenColumns((prev) => {
             const next = new Set(prev);
@@ -1061,6 +1108,18 @@ const RecentLeadsContent = () => {
                                 {selectedLeads.size} selected
                             </span>
                             <div className="flex gap-2">
+                                {selectedLeads.size < totalElements && (
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="small"
+                                        disable={selectAllLoading}
+                                        onClick={selectAllAcrossPages}
+                                    >
+                                        {selectAllLoading
+                                            ? 'Selecting…'
+                                            : `Select all ${totalElements}`}
+                                    </MyButton>
+                                )}
                                 <MyButton
                                     buttonType="secondary"
                                     scale="small"

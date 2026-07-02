@@ -48,7 +48,13 @@ import { ProgressBar } from "@/components/design-system/progress-bar";
 import Evaluation from "./evaluation";
 import { useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { useTimerStore } from "@/stores/evaluation/timer-store";
-import { submitEvlauationMarks, releaseEvaluationResult } from "../../evaluations/-services/evaluation-service";
+import {
+    submitEvlauationMarks,
+    releaseEvaluationResult,
+    saveEvaluationDraft,
+    getEvaluationDraft,
+    EvaluationDraftState,
+} from "../../evaluations/-services/evaluation-service";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useInstituteQuery } from "@/services/student-list-section/getInstituteDetails";
 import { getTokenDecodedData, getTokenFromCookie } from "@/lib/auth/sessionUtility";
@@ -143,8 +149,20 @@ const PDFEvaluator = ({
         height: 800,
     });
     const router = useRouter();
-    const { startTimer, stopTimer, currentTime, startTimestamp } = useTimerStore();
-    const { marksData, resetMarks, feedbackByQuestion } = useMarksStore();
+    const { startTimer, stopTimer, currentTime, startTimestamp, setElapsedTime } = useTimerStore();
+    const { marksData, resetMarks, feedbackByQuestion, addOrUpdateMark, setQuestionFeedback } =
+        useMarksStore();
+
+    // --- Draft (save-for-later) state ---
+    // Draft is saved ONLY when the evaluator clicks "Save draft" — no background
+    // polling. Keeps the network quiet and gives the user explicit control.
+    const [isSavingDraft, setIsSavingDraft] = useState(false);
+    // ISO timestamp of the last successful save/restore — powers the "Draft saved …" hint.
+    const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+    // Prevents overlapping/duplicate draft saves (e.g. double-clicks).
+    const savingDraftRef = useRef(false);
+    // Ensures we only attempt the one-time draft restore per mount.
+    const restoreAttemptedRef = useRef(false);
 
     // Submit is allowed once the evaluator has awarded at least one mark. Remarks
     // are optional.
@@ -424,6 +442,127 @@ const PDFEvaluator = ({
             stopTimer();
         };
     }, [startTimer, stopTimer]);
+
+    // ---------------------------------------------------------------------------
+    // Draft (save-for-later): persist the full EDITABLE evaluator state so a
+    // faculty can pause and resume grading later from any device — instead of the
+    // old download-PDF / re-upload dance (which also baked ticks into the image and
+    // made them un-editable). We store raw Fabric annotations per page + marks +
+    // feedback + timer, never a flattened PDF; the flattened PDF is still only
+    // produced on the final Submit.
+    // ---------------------------------------------------------------------------
+    const buildDraftState = (): EvaluationDraftState => {
+        // Include unsaved edits on the live page alongside the per-page snapshots.
+        const perPageAnnotations: { [key: number]: any } = { ...annotations };
+        if (fabricCanvas) {
+            perPageAnnotations[pageNumber] = fabricCanvas.toJSON();
+        }
+        return {
+            version: 1,
+            annotations: perPageAnnotations,
+            marksData: marksData.map((m) => ({
+                section_id: m.section_id,
+                question_id: m.question_id,
+                status: m.status,
+                marks: m.marks,
+            })),
+            feedbackByQuestion,
+            elapsedSeconds: currentTime(),
+            pageNumber,
+            pagesVisited,
+            savedAt: new Date().toISOString(),
+        };
+    };
+
+    // Save the current progress on demand (only from the "Save draft" button).
+    const persistDraft = async () => {
+        if (isFreeTool || !attemptId) return;
+        if (savingDraftRef.current || isUploading || isLoading) return;
+
+        savingDraftRef.current = true;
+        setIsSavingDraft(true);
+        try {
+            const draft = buildDraftState();
+            await saveEvaluationDraft(assessmentId, instituteId, attemptId, draft);
+            setDraftSavedAt(draft.savedAt);
+            toast.success("Draft saved", {
+                description: "You can safely leave and resume this evaluation later.",
+                duration: 3000,
+            });
+        } catch (error) {
+            console.error("Failed to save evaluation draft:", error);
+            toast.error("Couldn't save draft. Please try again.");
+        } finally {
+            savingDraftRef.current = false;
+            setIsSavingDraft(false);
+        }
+    };
+
+    // One-time draft restore. Runs when the annotation canvas is ready so we can
+    // paint the current page's saved marks. Also clears any stale marks/timer left
+    // in the (session-global) stores by a previously-opened attempt.
+    useEffect(() => {
+        if (isFreeTool || !attemptId || restoreAttemptedRef.current) return;
+        if (!fabricCanvas) return;
+        restoreAttemptedRef.current = true;
+
+        // Fresh baseline before we (maybe) hydrate from a draft.
+        resetMarks();
+        setElapsedTime(0);
+
+        (async () => {
+            try {
+                const draft = await getEvaluationDraft(attemptId);
+                if (!draft) return;
+
+                const restoredAnnotations = draft.annotations || {};
+                setAnnotations(restoredAnnotations);
+
+                (draft.marksData || []).forEach((m) => addOrUpdateMark(m));
+                Object.entries(draft.feedbackByQuestion || {}).forEach(([key, value]) => {
+                    const sep = key.indexOf("__");
+                    if (sep > 0) {
+                        setQuestionFeedback(key.slice(0, sep), key.slice(sep + 2), value as string);
+                    }
+                });
+                if (typeof draft.elapsedSeconds === "number") setElapsedTime(draft.elapsedSeconds);
+                if (Array.isArray(draft.pagesVisited) && draft.pagesVisited.length) {
+                    setPagesVisited(draft.pagesVisited);
+                }
+
+                // Paint the page currently on screen (page 1 on open).
+                const currentPageAnnotations = restoredAnnotations[pageNumber];
+                if (currentPageAnnotations && fabricCanvas) {
+                    isRestoringRef.current = true;
+                    fabricCanvas.clear();
+                    await fabricCanvas.loadFromJSON(currentPageAnnotations);
+                    fabricCanvas.requestRenderAll();
+                    undoStack.current = [JSON.stringify(fabricCanvas.toJSON())];
+                    redoStack.current = [];
+                    isRestoringRef.current = false;
+                    syncHistoryFlags();
+                }
+
+                setDraftSavedAt(draft.savedAt || null);
+                toast.success("Draft restored", {
+                    description: "We loaded your saved progress. Continue where you left off.",
+                    duration: 4000,
+                });
+            } catch (error) {
+                console.error("Failed to restore evaluation draft:", error);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fabricCanvas, isFreeTool, attemptId]);
+
+    // Short, local "last saved" label for the draft hint.
+    const formatSavedAt = (iso: string) => {
+        try {
+            return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        } catch {
+            return "";
+        }
+    };
 
     // PDF navigation
     const changePage = (offset: number) => {
@@ -1173,10 +1312,11 @@ const PDFEvaluator = ({
                 </div>
             </div>
 
-            {/* Evaluation Panel (right column) */}
+            {/* Evaluation Panel (right column). Fixed header + scrollable content
+                (which grows to fill the height, so no dead gap) + pinned action footer. */}
             {showEvaluationPanel && (
                     <div className="flex w-full shrink-0 flex-col border-l border-neutral-200 bg-white sm:w-96 lg:w-1/4">
-                        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+                        <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-4 py-3">
                             <div className="flex flex-col">
                                 <span className="text-2xs font-medium uppercase tracking-wide text-neutral-500">
                                     Grading
@@ -1196,7 +1336,7 @@ const PDFEvaluator = ({
                                 <X className="size-5" aria-hidden="true" />
                             </Button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4">
+                        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
                             <Evaluation
                                 totalPages={numPages}
                                 pagesVisited={pagesVisited}
@@ -1204,9 +1344,12 @@ const PDFEvaluator = ({
                                 questionData={questionData}
                             />
                         </div>
-                        {/* Submit at the end of the grading sidebar */}
+                        {/* Save-draft + Submit at the end of the grading sidebar.
+                            Stacked full-width so neither label ever clips in the
+                            narrow panel; Submit (primary) leads, Save draft is the
+                            lighter fallback for finishing later. */}
                         {!isFreeTool && (
-                            <div className="shrink-0 border-t border-neutral-200 p-4">
+                            <div className="shrink-0 space-y-2 border-t border-neutral-200 bg-white p-4">
                                 <MyButton
                                     buttonType="primary"
                                     scale="medium"
@@ -1216,9 +1359,20 @@ const PDFEvaluator = ({
                                 >
                                     Submit evaluation
                                 </MyButton>
-                                {!canSubmit && (
-                                    <p className="mt-2 text-center text-xs text-neutral-400">
-                                        Award marks to submit.
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={persistDraft}
+                                    disable={isSavingDraft || isLoading || isUploading}
+                                    className="w-full"
+                                >
+                                    {isSavingDraft ? "Saving draft…" : "Save draft"}
+                                </MyButton>
+                                {(draftSavedAt || !canSubmit) && (
+                                    <p className="text-center text-xs text-neutral-400">
+                                        {draftSavedAt
+                                            ? `Draft saved ${formatSavedAt(draftSavedAt)} · resume anytime`
+                                            : "Award marks to submit, or save a draft to finish later."}
                                     </p>
                                 )}
                             </div>

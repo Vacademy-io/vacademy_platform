@@ -46,6 +46,15 @@ export interface CreateRegistrationTemplateRequest {
     tnc_file_id?: string;
     max_registrations?: number;
     institute_custom_fields?: RegistrationTemplateCustomField[];
+    /** Defaults to FREE server-side; FREE keeps the fresh-option backend path. */
+    payment_type?: 'FREE' | 'ONE_TIME' | 'SUBSCRIPTION';
+    /** REQUIRED for paid — an institute-level PaymentOption id of matching type. */
+    payment_option_id?: string;
+    /** REQUIRED for paid — payment gateway vendor name. */
+    vendor?: string;
+    vendor_id?: string;
+    /** Optional — backend falls back to the picked option's first active plan currency. */
+    currency?: string;
 }
 
 export interface CreateRegistrationTemplateResponse {

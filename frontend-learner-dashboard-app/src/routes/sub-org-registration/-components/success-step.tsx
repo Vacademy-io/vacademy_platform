@@ -6,10 +6,12 @@ import { MyButton } from "@/components/design-system/button";
 interface SuccessStepProps {
   orgName: string;
   adminEmail: string;
+  /** Paid registration — payment was confirmed before completion. */
+  paid?: boolean;
 }
 
 /** Final step — registration completed, credentials emailed to the admin. */
-const SuccessStep = ({ orgName, adminEmail }: SuccessStepProps) => {
+const SuccessStep = ({ orgName, adminEmail, paid = false }: SuccessStepProps) => {
   const navigate = useNavigate();
 
   return (
@@ -26,7 +28,9 @@ const SuccessStep = ({ orgName, adminEmail }: SuccessStepProps) => {
 
         <div className="space-y-3">
           <h2 className="text-2xl font-bold text-neutral-700 sm:text-3xl">
-            Your organization has been registered!
+            {paid
+              ? "Payment received — your organization is registered."
+              : "Your organization has been registered!"}
           </h2>
           {orgName && (
             <p className="text-lg text-neutral-600">

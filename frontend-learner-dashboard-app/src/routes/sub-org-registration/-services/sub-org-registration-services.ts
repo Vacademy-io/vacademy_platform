@@ -1,5 +1,6 @@
 import { BASE_URL } from "@/constants/urls";
 import axios from "axios";
+import type { PaymentInitiationRequest } from "./build-payment-initiation-request";
 
 /**
  * PUBLIC (unauthenticated) sub-org self-registration API.
@@ -50,12 +51,34 @@ export interface TemplateInstituteCustomField {
   status?: string | null;
 }
 
+/** One selectable plan on a paid template (snake_case from the backend). */
+export interface TemplatePaymentPlan {
+  id: string;
+  name: string;
+  actual_price: number;
+  elevated_price: number | null;
+  currency: string;
+  validity_in_days: number | null;
+  description: string | null;
+}
+
+/** Payment section of the template — null/absent for FREE templates. */
+export interface TemplatePaymentInfo {
+  type: "ONE_TIME" | "SUBSCRIPTION";
+  vendor: string;
+  currency: string;
+  payment_plans: TemplatePaymentPlan[];
+}
+
 export interface SubOrgRegistrationTemplate {
   template_name: string;
   institute_id: string;
+  /** May end with "PAYMENT" for paid templates (always the last step). */
   steps: string[];
   tnc_file_id: string | null;
   custom_fields: TemplateInstituteCustomField[];
+  /** Null/absent for FREE templates. */
+  payment?: TemplatePaymentInfo | null;
 }
 
 // ─── Flow request/response types ─────────────────────────────────────────────
@@ -84,13 +107,38 @@ export interface CompleteRegistrationRequest {
   registration_id: string;
   tnc_accepted: boolean;
   custom_field_values: CustomFieldValuePayload[];
+  /** Paid templates only — the selected payment plan id. */
+  plan_id?: string;
+  /**
+   * Paid templates only — the backend REJECTS /complete for a paid template
+   * when this is missing. Same shape the enroll-by-invite flow builds.
+   */
+  payment_initiation_request?: PaymentInitiationRequest;
+}
+
+/** Gateway payload returned by /complete for paid templates. */
+export interface CompletePaymentResponse {
+  /** Payment-log id — poll payment completion status with this. */
+  order_id: string;
+  /**
+   * Vendor-specific payload, e.g. paymentStatus, razorpayKeyId,
+   * razorpayOrderId, amount, currency, redirectUrl.
+   */
+  response_data: Record<string, unknown>;
+  status?: string;
+  message?: string;
+  payment_type?: string;
 }
 
 export interface CompleteRegistrationResponse {
   registration_id: string;
+  /** "COMPLETED" for free templates; "PENDING_PAYMENT" for paid ones. */
   status: string;
   sub_org_id: string;
   admin_email: string;
+  /** Paid templates only — used for the Cashfree user-plan-payment call. */
+  user_plan_id?: string;
+  payment_response?: CompletePaymentResponse;
 }
 
 // ─── API functions ───────────────────────────────────────────────────────────

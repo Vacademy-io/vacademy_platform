@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -30,6 +32,36 @@ public final class SubOrgRegistrationFlowDTOs {
         private List<String> steps;
         private String tncFileId;
         private List<InstituteCustomFieldDTO> customFields;
+        /** Present only for paid templates. */
+        private PublicPaymentDTO payment;
+    }
+
+    /** Paid-template payment info for the wizard's PAYMENT step. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class PublicPaymentDTO {
+        private String type;      // ONE_TIME | SUBSCRIPTION
+        private String vendor;    // STRIPE | RAZORPAY | CASHFREE | PHONEPE | EWAY
+        private String currency;
+        private List<PublicPaymentPlanDTO> paymentPlans;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class PublicPaymentPlanDTO {
+        private String id;
+        private String name;
+        private Double actualPrice;
+        private Double elevatedPrice;
+        private String currency;
+        private Integer validityInDays;
+        private String description;
     }
 
     @Data
@@ -81,6 +113,10 @@ public final class SubOrgRegistrationFlowDTOs {
         private String registrationId;
         private Boolean tncAccepted;
         private List<CustomFieldValueDTO> customFieldValues;
+        /** Paid templates: which plan of the template's payment option was chosen. */
+        private String planId;
+        /** Paid templates: gateway initiation payload (same shape as the enroll flow). */
+        private PaymentInitiationRequestDTO paymentInitiationRequest;
     }
 
     @Data
@@ -93,6 +129,10 @@ public final class SubOrgRegistrationFlowDTOs {
         private String status;
         private String subOrgId;
         private String adminEmail;
+        /** Paid: UserPlan id (PENDING_FOR_PAYMENT until webhook). */
+        private String userPlanId;
+        /** Paid: gateway order payload; order_id = payment log id (poll target). */
+        private PaymentResponseDTO paymentResponse;
     }
 
     /** Admin list row for a template. */

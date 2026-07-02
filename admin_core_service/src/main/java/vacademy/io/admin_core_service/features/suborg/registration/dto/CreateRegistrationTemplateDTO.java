@@ -43,4 +43,16 @@ public class CreateRegistrationTemplateDTO {
 
     /** Form fields for the CUSTOM_FIELDS step (same shape as invite custom fields). */
     private List<InstituteCustomFieldDTO> instituteCustomFields;
+
+    // ---- P1a payment config. FREE (default) keeps the P0 fresh-FREE-option path. ----
+
+    /** FREE | ONE_TIME | SUBSCRIPTION. Paid types require paymentOptionId + vendor. */
+    private String paymentType;
+
+    /** Institute-level PaymentOption to reuse (price/plans come from it, like the manual modal). */
+    private String paymentOptionId;
+
+    private String vendor;
+    private String vendorId;
+    private String currency;
 }

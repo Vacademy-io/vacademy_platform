@@ -66,6 +66,48 @@ public class SubOrgRegistrationTemplateService {
             throw new VacademyException("At least one package session is required");
         }
 
+        String paymentType = StringUtils.hasText(request.getPaymentType())
+                ? request.getPaymentType().toUpperCase()
+                : PaymentOptionType.FREE.name();
+        boolean isPaid = PaymentOptionType.ONE_TIME.name().equals(paymentType)
+                || PaymentOptionType.SUBSCRIPTION.name().equals(paymentType);
+        if (!isPaid && !PaymentOptionType.FREE.name().equals(paymentType)) {
+            throw new VacademyException("payment_type must be FREE, ONE_TIME or SUBSCRIPTION");
+        }
+
+        // Paid templates reuse an institute-level PaymentOption (price/plans come from it),
+        // mirroring the manual create-sub-org modal + SubOrgSubscriptionService's reuse path.
+        PaymentOption pickedOption = null;
+        if (isPaid) {
+            if (!StringUtils.hasText(request.getPaymentOptionId())) {
+                throw new VacademyException("payment_option_id is required for paid templates");
+            }
+            if (!StringUtils.hasText(request.getVendor())) {
+                throw new VacademyException("vendor is required for paid templates");
+            }
+            pickedOption = paymentOptionRepository.findById(request.getPaymentOptionId())
+                    .orElseThrow(() -> new VacademyException(
+                            "Payment option not found: " + request.getPaymentOptionId()));
+            if (StatusEnum.DELETED.name().equalsIgnoreCase(pickedOption.getStatus())) {
+                throw new VacademyException("Selected payment option is not active");
+            }
+            if (StringUtils.hasText(pickedOption.getSourceId())
+                    && !instituteId.equals(pickedOption.getSourceId())) {
+                throw new VacademyException("Selected payment option does not belong to this institute");
+            }
+            if (!paymentType.equals(pickedOption.getType())) {
+                throw new VacademyException("Selected payment option type does not match payment_type");
+            }
+            if (!StringUtils.hasText(request.getCurrency())) {
+                String planCurrency = pickedOption.getPaymentPlans().stream()
+                        .filter(p -> StatusEnum.ACTIVE.name().equals(p.getStatus()))
+                        .map(PaymentPlan::getCurrency)
+                        .filter(StringUtils::hasText)
+                        .findFirst().orElse(null);
+                request.setCurrency(planCurrency);
+            }
+        }
+
         EnrollInvite invite = new EnrollInvite();
         invite.setName(request.getName());
         invite.setTag(EnrollInviteTag.SUB_ORG_REGISTRATION.name());
@@ -74,31 +116,38 @@ public class SubOrgRegistrationTemplateService {
         invite.setInviteCode(generateInviteCode());
         invite.setIsBundled(request.getPackageSessionIds().size() > 1);
         invite.setLearnerAccessDays(request.getValidityInDays());
-        invite.setSettingJson(SubOrgRegistrationSettings.serialize(buildSettings(request)));
+        invite.setSettingJson(SubOrgRegistrationSettings.serialize(buildSettings(request, paymentType)));
         invite = enrollInviteRepository.save(invite);
-        log.info("Created SUB_ORG_REGISTRATION template invite id={} institute={}",
-                invite.getId(), instituteId);
+        log.info("Created SUB_ORG_REGISTRATION template invite id={} institute={} paymentType={}",
+                invite.getId(), instituteId, paymentType);
 
-        // P0: templates are FREE — one FREE option+plan backs every PSLIPO row.
-        PaymentOption option = new PaymentOption();
-        option.setName("Sub-Org Registration: " + request.getName());
-        option.setType(PaymentOptionType.FREE.name());
-        option.setTag("DEFAULT");
-        option.setStatus(StatusEnum.ACTIVE.name());
-        option.setRequireApproval(false);
-        option = paymentOptionRepository.save(option);
+        PaymentOption option;
+        if (pickedOption != null) {
+            option = pickedOption;
+            log.info("Template {} reuses institute PaymentOption id={} type={}",
+                    invite.getId(), option.getId(), option.getType());
+        } else {
+            // FREE (P0 path): fresh FREE option+plan backs every PSLIPO row.
+            option = new PaymentOption();
+            option.setName("Sub-Org Registration: " + request.getName());
+            option.setType(PaymentOptionType.FREE.name());
+            option.setTag("DEFAULT");
+            option.setStatus(StatusEnum.ACTIVE.name());
+            option.setRequireApproval(false);
+            option = paymentOptionRepository.save(option);
 
-        PaymentPlan plan = new PaymentPlan();
-        plan.setName("Sub-Org Registration Plan");
-        plan.setStatus(StatusEnum.ACTIVE.name());
-        plan.setActualPrice(0);
-        plan.setElevatedPrice(0);
-        plan.setTag("DEFAULT");
-        plan.setMemberCount(request.getMemberCount());
-        plan.setValidityInDays(request.getValidityInDays());
-        plan.setPaymentOption(option);
-        option.getPaymentPlans().add(plan);
-        paymentOptionRepository.save(option);
+            PaymentPlan plan = new PaymentPlan();
+            plan.setName("Sub-Org Registration Plan");
+            plan.setStatus(StatusEnum.ACTIVE.name());
+            plan.setActualPrice(0);
+            plan.setElevatedPrice(0);
+            plan.setTag("DEFAULT");
+            plan.setMemberCount(request.getMemberCount());
+            plan.setValidityInDays(request.getValidityInDays());
+            plan.setPaymentOption(option);
+            option.getPaymentPlans().add(plan);
+            paymentOptionRepository.save(option);
+        }
 
         List<PackageSessionLearnerInvitationToPaymentOption> mappings = new ArrayList<>();
         for (String psId : request.getPackageSessionIds()) {
@@ -193,7 +242,7 @@ public class SubOrgRegistrationTemplateService {
     }
 
     private SubOrgRegistrationSettingDTO.RegistrationSetting buildSettings(
-            CreateRegistrationTemplateDTO request) {
+            CreateRegistrationTemplateDTO request, String paymentType) {
         SubOrgRegistrationSettingDTO.RegistrationSetting setting =
                 new SubOrgRegistrationSettingDTO.RegistrationSetting();
         List<String> steps = new ArrayList<>();
@@ -204,6 +253,16 @@ public class SubOrgRegistrationTemplateService {
         if (StringUtils.hasText(request.getTncFileId())) {
             steps.add("TNC");
             setting.setTncFileId(request.getTncFileId());
+        }
+        boolean isPaid = PaymentOptionType.ONE_TIME.name().equals(paymentType)
+                || PaymentOptionType.SUBSCRIPTION.name().equals(paymentType);
+        if (isPaid) {
+            steps.add("PAYMENT");
+            setting.setPaymentType(paymentType);
+            setting.setPaymentOptionId(request.getPaymentOptionId());
+            setting.setVendor(request.getVendor());
+            setting.setVendorId(request.getVendorId());
+            setting.setCurrency(request.getCurrency());
         }
         setting.setSteps(steps);
         setting.setMaxRegistrations(request.getMaxRegistrations());

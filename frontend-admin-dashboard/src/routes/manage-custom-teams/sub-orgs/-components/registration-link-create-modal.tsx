@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,7 +23,7 @@ import {
 import { FileUploader } from '@/routes/instructor-copilot/-components/FileUploader';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { BASE_URL } from '@/constants/urls';
+import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -39,6 +39,9 @@ import {
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getPaymentOptions } from '@/services/payment-options';
+import type { PaymentOptionApi } from '@/types/payment';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 // Local package-session lookups — same inline pattern as create-sub-org-modal so this
 // picker can't accidentally couple to the dashboard-wide package service call sites.
@@ -71,12 +74,32 @@ interface BuilderField {
     mandatory: boolean;
 }
 
-const formSchema = z.object({
-    name: z.string().min(1, 'Name is required'),
-    memberCount: z.number().min(1, 'Must be at least 1').optional(),
-    validityInDays: z.number().min(1, 'Must be at least 1 day').optional(),
-    maxRegistrations: z.number().min(1, 'Must be at least 1').optional(),
-});
+// NO CPO here on purpose — registration links only support FREE / ONE_TIME / SUBSCRIPTION.
+const PAYMENT_TYPE_VALUES = ['FREE', 'ONE_TIME', 'SUBSCRIPTION'] as const;
+type PaymentType = (typeof PAYMENT_TYPE_VALUES)[number];
+
+const formSchema = z
+    .object({
+        name: z.string().min(1, 'Name is required'),
+        memberCount: z.number().min(1, 'Must be at least 1').optional(),
+        validityInDays: z.number().min(1, 'Must be at least 1 day').optional(),
+        maxRegistrations: z.number().min(1, 'Must be at least 1').optional(),
+        paymentType: z.enum(PAYMENT_TYPE_VALUES),
+        // Required for ONE_TIME / SUBSCRIPTION — picked from the institute's existing
+        // payment options (Payment Settings). FREE keeps the fresh-option backend path.
+        paymentOptionId: z.string().optional(),
+        vendor: z.string().optional(),
+        vendorId: z.string().optional(),
+        currency: z.string().optional(),
+    })
+    .refine((values) => values.paymentType === 'FREE' || !!values.paymentOptionId, {
+        message: 'Select a payment option',
+        path: ['paymentOptionId'],
+    })
+    .refine((values) => values.paymentType === 'FREE' || !!values.vendor, {
+        message: 'A payment vendor is required for paid links',
+        path: ['vendor'],
+    });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -103,7 +126,7 @@ export function RegistrationLinkCreateModal({
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
-        defaultValues: { name: '' },
+        defaultValues: { name: '', paymentType: 'FREE' },
     });
 
     const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
@@ -166,6 +189,51 @@ export function RegistrationLinkCreateModal({
         enabled: open,
     });
 
+    // Fetch payment vendors for institute — same lookup as create-sub-org-modal step 3.
+    const { data: vendorsList = [] } = useQuery<{ vendor: string; vendor_id: string }[]>({
+        queryKey: ['institute-vendors', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(
+                `${GET_INSTITUTE_VENDORS}?instituteId=${instituteId}`
+            );
+            return response.data;
+        },
+        enabled: open && !!instituteId,
+    });
+
+    // Fetch the institute's existing payment options (Payment Settings) — the
+    // registering sub-org admin pays via one of these for paid links.
+    const { data: institutePaymentOptions = [], isLoading: isLoadingPaymentOptions } = useQuery<
+        PaymentOptionApi[]
+    >({
+        queryKey: ['sub-org-institute-payment-options', instituteId],
+        queryFn: () =>
+            getPaymentOptions({
+                types: ['ONE_TIME', 'SUBSCRIPTION', 'FREE'],
+                source: 'INSTITUTE',
+                source_id: instituteId || '',
+                require_approval: true,
+                not_require_approval: true,
+            }),
+        enabled: open && !!instituteId,
+        staleTime: 30000,
+    });
+
+    const paymentType = form.watch('paymentType');
+    const isPaid = paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION';
+    const optionsForType = institutePaymentOptions.filter(
+        (o) => o.status === 'ACTIVE' && o.type === paymentType
+    );
+
+    // Auto-select vendor when there's exactly one. `open` is a dep so a reopen after
+    // resetAll re-stamps the (cached) single vendor back onto the form.
+    useEffect(() => {
+        if (open && vendorsList.length === 1 && vendorsList[0]) {
+            form.setValue('vendor', vendorsList[0].vendor);
+            form.setValue('vendorId', vendorsList[0].vendor_id);
+        }
+    }, [vendorsList, open, form]);
+
     const createMutation = useMutation({
         mutationFn: (payload: CreateRegistrationTemplateRequest) =>
             createRegistrationTemplate(instituteId || '', payload),
@@ -189,7 +257,7 @@ export function RegistrationLinkCreateModal({
     });
 
     const resetAll = () => {
-        form.reset({ name: '' });
+        form.reset({ name: '', paymentType: 'FREE' });
         setSelectedPackageSessionIds([]);
         setSelectedAuthRoles(['ADMIN']);
         setSelectedTeamRoles([]);
@@ -324,6 +392,11 @@ export function RegistrationLinkCreateModal({
             return;
         }
 
+        // FREE keeps the current fresh-option backend path — only paid links reuse an
+        // existing institute payment option (+ gateway vendor).
+        const isGatewayBacked =
+            values.paymentType === 'ONE_TIME' || values.paymentType === 'SUBSCRIPTION';
+
         const payload: CreateRegistrationTemplateRequest = {
             name: values.name.trim(),
             package_session_ids: selectedPackageSessionIds,
@@ -336,6 +409,11 @@ export function RegistrationLinkCreateModal({
             tnc_file_id: tncEnabled && tncFileId ? tncFileId : undefined,
             max_registrations: values.maxRegistrations,
             institute_custom_fields: buildInstituteCustomFields(),
+            payment_type: values.paymentType,
+            payment_option_id: isGatewayBacked ? values.paymentOptionId : undefined,
+            vendor: isGatewayBacked ? values.vendor : undefined,
+            vendor_id: isGatewayBacked ? values.vendorId : undefined,
+            currency: isGatewayBacked ? values.currency : undefined,
         };
         createMutation.mutate(payload);
     };
@@ -471,7 +549,142 @@ export function RegistrationLinkCreateModal({
                     </div>
                 </div>
 
-                {/* 4. Roles + permissions */}
+                {/* 4. Payment */}
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <div>
+                            <Label>Payment type</Label>
+                            <p className="text-xs text-muted-foreground">
+                                What each organization pays when registering via this link.
+                            </p>
+                        </div>
+                        <Select
+                            value={paymentType}
+                            onValueChange={(v) => {
+                                form.setValue('paymentType', v as PaymentType);
+                                // Options are type-scoped — clear so a stale pick from
+                                // another type can't leak into the request.
+                                form.setValue('paymentOptionId', undefined);
+                                form.setValue('currency', undefined);
+                            }}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="FREE">Free</SelectItem>
+                                <SelectItem value="ONE_TIME">One-Time</SelectItem>
+                                <SelectItem value="SUBSCRIPTION">Subscription</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {isPaid && (
+                        <div className="space-y-2">
+                            <div>
+                                <Label>Payment option *</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    The registering admin pays via this existing institute payment
+                                    option. Price &amp; currency come from the option&apos;s plan.
+                                </p>
+                            </div>
+                            <Select
+                                value={form.watch('paymentOptionId') || ''}
+                                onValueChange={(v) => {
+                                    form.setValue('paymentOptionId', v, {
+                                        shouldValidate: true,
+                                    });
+                                    const opt = optionsForType.find((o) => o.id === v);
+                                    const cur = opt?.payment_plans?.[0]?.currency;
+                                    if (cur) form.setValue('currency', cur);
+                                }}
+                                disabled={isLoadingPaymentOptions}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue
+                                        placeholder={
+                                            isLoadingPaymentOptions
+                                                ? 'Loading payment options...'
+                                                : optionsForType.length === 0
+                                                  ? 'No active option found'
+                                                  : 'Select a payment option'
+                                        }
+                                    />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {optionsForType.map((o) => {
+                                        const plan = o.payment_plans?.[0];
+                                        const priceLabel = plan
+                                            ? ` — ${formatPlanPrice(plan.actual_price)} ${plan.currency || ''}`
+                                            : '';
+                                        return (
+                                            <SelectItem key={o.id} value={o.id}>
+                                                {o.name}
+                                                {priceLabel}
+                                            </SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
+                            {!isLoadingPaymentOptions && optionsForType.length === 0 && (
+                                <p className="text-sm text-amber-600">
+                                    No active {paymentType.replace('_', '-').toLowerCase()} option —
+                                    create one in Payment Settings.
+                                </p>
+                            )}
+                            {form.formState.errors.paymentOptionId && (
+                                <p className="text-sm text-danger-600">
+                                    {form.formState.errors.paymentOptionId.message}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {isPaid && (
+                        <div className="space-y-2">
+                            <Label>Payment vendor</Label>
+                            {vendorsList.length === 0 ? (
+                                <p className="text-sm text-amber-600">
+                                    No payment vendor found — configure a payment gateway in
+                                    Settings first.
+                                </p>
+                            ) : vendorsList.length === 1 && vendorsList[0] ? (
+                                <Input
+                                    value={vendorsList[0].vendor}
+                                    disabled
+                                    className="bg-muted"
+                                />
+                            ) : (
+                                <Select
+                                    value={form.watch('vendor') || ''}
+                                    onValueChange={(v) => {
+                                        const selected = vendorsList.find((vl) => vl.vendor === v);
+                                        form.setValue('vendor', v, { shouldValidate: true });
+                                        form.setValue('vendorId', selected?.vendor_id || v);
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select payment vendor" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {vendorsList.map((v) => (
+                                            <SelectItem key={v.vendor} value={v.vendor}>
+                                                {v.vendor}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {form.formState.errors.vendor && (
+                                <p className="text-sm text-danger-600">
+                                    {form.formState.errors.vendor.message}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* 5. Roles + permissions */}
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <div>
@@ -572,7 +785,7 @@ export function RegistrationLinkCreateModal({
                     </div>
                 </div>
 
-                {/* 5. Custom form fields */}
+                {/* 6. Custom form fields */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <div>
@@ -668,7 +881,7 @@ export function RegistrationLinkCreateModal({
                     )}
                 </div>
 
-                {/* 6. Terms & Conditions */}
+                {/* 7. Terms & Conditions */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between rounded-md border p-3">
                         <div>
@@ -719,7 +932,7 @@ export function RegistrationLinkCreateModal({
                         ))}
                 </div>
 
-                {/* 7. Max registrations */}
+                {/* 8. Max registrations */}
                 <div className="space-y-2">
                     <Label htmlFor="registration-link-max">Max registrations</Label>
                     <Input

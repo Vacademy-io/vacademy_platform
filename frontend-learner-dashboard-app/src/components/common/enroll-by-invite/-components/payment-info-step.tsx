@@ -8,6 +8,7 @@ import {
 import { CashfreeCheckoutForm } from "./cashfree-checkout-form";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
+import { useSearch } from "@tanstack/react-router";
 import { Route } from "@/routes/learner-invitation-response";
 import { useQuery } from "@tanstack/react-query";
 import { handlePaymentGatewaykeys } from "../-services/enroll-invite-services";
@@ -24,6 +25,12 @@ interface PaymentInfoStepProps {
   vendor?: PaymentVendor;
   amount?: number;
   currency?: string;
+  /**
+   * Institute id override for flows rendered outside
+   * /learner-invitation-response (e.g. sub-org registration). When omitted,
+   * it falls back to that route's search params — the original behavior.
+   */
+  instituteId?: string;
   onEwayPaymentReady?: (encryptedData: {
     encryptedNumber: string;
     encryptedCVN: string;
@@ -131,6 +138,7 @@ const PaymentInfoStep = ({
   vendor = "STRIPE",
   amount,
   currency,
+  instituteId: instituteIdProp,
   onEwayPaymentReady,
   onEwayError,
   onStripePaymentReady,
@@ -151,7 +159,12 @@ const PaymentInfoStep = ({
   onCashfreePayClick,
   onCashfreePayError,
 }: PaymentInfoStepProps) => {
-  const { instituteId } = Route.useSearch();
+  // Unconditional hook call. `shouldThrow: false` makes it return undefined
+  // (instead of throwing) when this component renders outside
+  // /learner-invitation-response — those flows pass instituteId as a prop.
+  // (Route.useSearch() can't be used for this: it drops strict/shouldThrow.)
+  const search = useSearch({ from: Route.id, shouldThrow: false });
+  const instituteId = instituteIdProp ?? search?.instituteId;
 
   // Fetch Stripe publishable key
   const {
@@ -159,7 +172,7 @@ const PaymentInfoStep = ({
     isLoading: isLoadingStripeKey,
     error: stripeKeyError,
   } = useQuery({
-    ...handlePaymentGatewaykeys(instituteId, "STRIPE"),
+    ...handlePaymentGatewaykeys(instituteId ?? "", "STRIPE"),
     enabled: vendor === "STRIPE" && !!instituteId,
   });
 

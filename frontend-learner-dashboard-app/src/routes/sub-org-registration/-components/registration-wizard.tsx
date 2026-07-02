@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Preferences } from "@capacitor/preferences";
@@ -8,6 +8,9 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 import { handleGetPublicInstituteDetails } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
+import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
+import type { PaymentVendor } from "@/components/common/enroll-by-invite/-utils/payment-vendor-helper";
+import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { cn } from "@/lib/utils";
 import type {
   SubOrgRegistrationTemplate,
@@ -24,9 +27,16 @@ import DetailsStep, { DetailsStepValues } from "./details-step";
 import OtpStep from "./otp-step";
 import CustomFieldsStep from "./custom-fields-step";
 import TncStep from "./tnc-step";
+import PaymentStep from "./payment-step";
 import SuccessStep from "./success-step";
 
-type WizardPhase = "DETAILS" | "OTP" | "CUSTOM_FIELDS" | "TNC" | "SUCCESS";
+type WizardPhase =
+  | "DETAILS"
+  | "OTP"
+  | "CUSTOM_FIELDS"
+  | "TNC"
+  | "PAYMENT"
+  | "SUCCESS";
 
 interface RegistrationWizardProps {
   template: SubOrgRegistrationTemplate;
@@ -37,7 +47,12 @@ interface RegistrationWizardProps {
 /**
  * Public sub-org self-registration wizard, driven by the template's `steps`:
  * DETAILS → OTP verify → CUSTOM_FIELDS (if present) → TNC (if present) →
- * POST /complete → SUCCESS. registration_id lives in component state.
+ * PAYMENT (paid templates; always last) → SUCCESS. registration_id lives in
+ * component state.
+ *
+ * FREE templates call POST /complete from the last non-payment step. Paid
+ * templates call /complete exactly once — from the PAYMENT step, with
+ * plan_id + payment_initiation_request; earlier steps only collect state.
  */
 const RegistrationWizard = ({
   template,
@@ -60,16 +75,22 @@ const RegistrationWizard = ({
     templateSteps.includes("CUSTOM_FIELDS") &&
     (template.custom_fields?.length ?? 0) > 0;
   const hasTncStep = templateSteps.includes("TNC");
+  // Payment requires the payment section with at least one plan to pay with.
+  const hasPaymentStep =
+    templateSteps.includes("PAYMENT") &&
+    !!template.payment &&
+    (template.payment.payment_plans?.length ?? 0) > 0;
 
   /** Ordered post-OTP steps, honoring the template's ordering. */
   const postOtpSteps = useMemo(
     () =>
       templateSteps.filter(
-        (step): step is "CUSTOM_FIELDS" | "TNC" =>
+        (step): step is "CUSTOM_FIELDS" | "TNC" | "PAYMENT" =>
           (step === "CUSTOM_FIELDS" && hasCustomFieldsStep) ||
-          (step === "TNC" && hasTncStep)
+          (step === "TNC" && hasTncStep) ||
+          (step === "PAYMENT" && hasPaymentStep)
       ),
-    [templateSteps, hasCustomFieldsStep, hasTncStep]
+    [templateSteps, hasCustomFieldsStep, hasTncStep, hasPaymentStep]
   );
 
   // ─── Wizard state ──────────────────────────────────────────────────────────
@@ -191,7 +212,12 @@ const RegistrationWizard = ({
     }
   };
 
-  /** Advances past a completed step; runs /complete when nothing remains. */
+  /**
+   * Advances past a completed step; runs /complete when nothing remains.
+   * Paid templates never hit runComplete here: PAYMENT is always their last
+   * step, so this only ever advances INTO it — the payment step then issues
+   * the single /complete with the payment initiation payload.
+   */
   const advanceAfter = async (
     completedStep: "OTP" | "CUSTOM_FIELDS" | "TNC",
     values: CustomFieldValuePayload[]
@@ -293,7 +319,9 @@ const RegistrationWizard = ({
       labels.push(
         step === "CUSTOM_FIELDS"
           ? { key: "CUSTOM_FIELDS", label: "Additional Info" }
-          : { key: "TNC", label: "Terms" }
+          : step === "TNC"
+            ? { key: "TNC", label: "Terms" }
+            : { key: "PAYMENT", label: "Payment" }
       );
     });
     return labels;
@@ -311,7 +339,7 @@ const RegistrationWizard = ({
     [customFieldValues]
   );
 
-  const isFinalPostOtpStep = (step: "CUSTOM_FIELDS" | "TNC") =>
+  const isFinalPostOtpStep = (step: "CUSTOM_FIELDS" | "TNC" | "PAYMENT") =>
     postOtpSteps[postOtpSteps.length - 1] === step;
 
   return (
@@ -440,13 +468,47 @@ const RegistrationWizard = ({
               tncFileId={template.tnc_file_id}
               isSubmitting={isCompleting}
               onContinue={handleTncContinue}
+              continueLabel={
+                isFinalPostOtpStep("TNC") ? undefined : "Continue"
+              }
             />
+          )}
+
+          {phase === "PAYMENT" && template.payment && detailsValues && (
+            <Suspense fallback={<DashboardLoader />}>
+              <PaymentGatewayWrapper
+                vendor={
+                  (template.payment.vendor || "").toUpperCase() as PaymentVendor
+                }
+                instituteId={instituteId}
+              >
+                <PaymentStep
+                  payment={template.payment}
+                  templateName={
+                    template.template_name || "Organization Registration"
+                  }
+                  instituteId={instituteId}
+                  registrationId={registrationId}
+                  tncAccepted={hasTncStep}
+                  customFieldValues={customFieldValues}
+                  adminName={detailsValues.adminName}
+                  adminEmail={detailsValues.adminEmail}
+                  adminPhone={detailsValues.adminPhone ?? ""}
+                  onRegistered={(email) => {
+                    setCompletedEmail(email || detailsValues.adminEmail || "");
+                    setPhase("SUCCESS");
+                  }}
+                  onSessionMissing={() => setPhase("DETAILS")}
+                />
+              </PaymentGatewayWrapper>
+            </Suspense>
           )}
 
           {phase === "SUCCESS" && (
             <SuccessStep
               orgName={detailsValues?.orgName ?? ""}
               adminEmail={completedEmail ?? detailsValues?.adminEmail ?? ""}
+              paid={hasPaymentStep}
             />
           )}
         </div>

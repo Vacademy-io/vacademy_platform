@@ -58,5 +58,22 @@ public class SubOrgRegistrationSettingDTO {
 
         @JsonProperty("ALLOWED_TEAM_ROLES")
         private List<String> allowedTeamRoles;
+
+        // ---- P1a payment config (paid templates). Absent/FREE = P0 behavior. ----
+
+        @JsonProperty("PAYMENT_TYPE")
+        private String paymentType;
+
+        @JsonProperty("PAYMENT_OPTION_ID")
+        private String paymentOptionId;
+
+        @JsonProperty("VENDOR")
+        private String vendor;
+
+        @JsonProperty("VENDOR_ID")
+        private String vendorId;
+
+        @JsonProperty("CURRENCY")
+        private String currency;
     }
 }

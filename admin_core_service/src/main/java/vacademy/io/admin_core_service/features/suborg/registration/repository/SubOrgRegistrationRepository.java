@@ -21,6 +21,9 @@ public interface SubOrgRegistrationRepository extends JpaRepository<SubOrgRegist
 
     List<SubOrgRegistration> findByTemplateInviteIdOrderByCreatedAtDesc(String templateInviteId);
 
+    /** Webhook lookup: flip PENDING_PAYMENT → COMPLETED once the spawned sub-org's plan activates. */
+    Optional<SubOrgRegistration> findFirstBySpawnedSubOrgIdAndStatus(String spawnedSubOrgId, String status);
+
     /** Pessimistic lock for the complete/spawn transition — guards double-submit. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM SubOrgRegistration r WHERE r.id = :id")

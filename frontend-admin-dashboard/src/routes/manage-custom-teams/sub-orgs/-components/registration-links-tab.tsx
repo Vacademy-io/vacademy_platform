@@ -27,6 +27,10 @@ import {
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
 
+// The list response only carries `steps`; paid templates include a "PAYMENT" step.
+const isPaidTemplate = (template: RegistrationTemplateListItem) =>
+    Array.isArray(template.steps) && template.steps.includes('PAYMENT');
+
 const formatDate = (value?: string | number | null) => {
     if (value === null || value === undefined || value === '') return '-';
     const date = new Date(value);
@@ -146,7 +150,19 @@ export function RegistrationLinksTab() {
                                 return (
                                     <TableRow key={template.id}>
                                         <TableCell className="font-medium">
-                                            {template.name || '-'}
+                                            <div className="flex items-center gap-2">
+                                                <span>{template.name || '-'}</span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={
+                                                        isPaidTemplate(template)
+                                                            ? 'border-primary-200 text-primary-500'
+                                                            : 'text-muted-foreground'
+                                                    }
+                                                >
+                                                    {isPaidTemplate(template) ? 'Paid' : 'Free'}
+                                                </Badge>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             {template.invite_code ? (

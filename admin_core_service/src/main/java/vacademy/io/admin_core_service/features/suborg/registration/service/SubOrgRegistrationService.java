@@ -25,6 +25,8 @@ import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscripti
 import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscriptionResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationResponseDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicPaymentDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicPaymentPlanDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicTemplateDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationResponseDTO;
@@ -35,6 +37,8 @@ import vacademy.io.admin_core_service.features.suborg.registration.repository.Su
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -67,6 +71,7 @@ public class SubOrgRegistrationService {
     private static final String OTP_SERVICE_NAME = "sub-org-registration";
 
     private final SubOrgRegistrationRepository registrationRepository;
+    private final PaymentOptionRepository paymentOptionRepository;
     private final EnrollInviteRepository enrollInviteRepository;
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
     private final SubOrgSubscriptionService subOrgSubscriptionService;
@@ -95,7 +100,40 @@ public class SubOrgRegistrationService {
                         template.getInstituteId(),
                         CustomFieldTypeEnum.ENROLL_INVITE.name(),
                         template.getId()))
+                .payment(buildPublicPayment(setting))
                 .build();
+    }
+
+    /** Payment block for the wizard's PAYMENT step; null for FREE templates. */
+    private PublicPaymentDTO buildPublicPayment(
+            SubOrgRegistrationSettingDTO.RegistrationSetting setting) {
+        if (setting == null || !isPaidType(setting.getPaymentType())) return null;
+        PaymentOption option = paymentOptionRepository
+                .findById(setting.getPaymentOptionId()).orElse(null);
+        if (option == null) return null;
+        List<PublicPaymentPlanDTO> plans = option.getPaymentPlans().stream()
+                .filter(p -> StatusEnum.ACTIVE.name().equals(p.getStatus()))
+                .map(p -> PublicPaymentPlanDTO.builder()
+                        .id(p.getId())
+                        .name(p.getName())
+                        .actualPrice(p.getActualPrice())
+                        .elevatedPrice(p.getElevatedPrice())
+                        .currency(p.getCurrency())
+                        .validityInDays(p.getValidityInDays())
+                        .description(p.getDescription())
+                        .build())
+                .toList();
+        return PublicPaymentDTO.builder()
+                .type(setting.getPaymentType())
+                .vendor(setting.getVendor())
+                .currency(setting.getCurrency())
+                .paymentPlans(plans)
+                .build();
+    }
+
+    private boolean isPaidType(String paymentType) {
+        return PaymentOptionType.ONE_TIME.name().equals(paymentType)
+                || PaymentOptionType.SUBSCRIPTION.name().equals(paymentType);
     }
 
     @Transactional
@@ -116,6 +154,7 @@ public class SubOrgRegistrationService {
                 .existsByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
                         template.getId(), email,
                         List.of(SubOrgRegistrationStatus.OTP_VERIFIED.name(),
+                                SubOrgRegistrationStatus.PENDING_PAYMENT.name(),
                                 SubOrgRegistrationStatus.COMPLETED.name()));
         if (duplicate) {
             throw new VacademyException(
@@ -202,6 +241,12 @@ public class SubOrgRegistrationService {
         if (SubOrgRegistrationStatus.COMPLETED.name().equals(registration.getStatus())) {
             return buildCompleteResponse(registration); // idempotent replay
         }
+        if (SubOrgRegistrationStatus.PENDING_PAYMENT.name().equals(registration.getStatus())) {
+            // No respawn / no re-initiation (P1b adds retry). Webhook will flip to COMPLETED.
+            throw new VacademyException(
+                    "Payment is already in progress for this registration. "
+                            + "If you completed payment, you will receive your credentials by email shortly.");
+        }
         if (!SubOrgRegistrationStatus.OTP_VERIFIED.name().equals(registration.getStatus())) {
             // Server-side OTP enforcement: DRAFT (or FAILED) can never spawn.
             throw new VacademyException("Email verification is required before completing registration");
@@ -238,10 +283,26 @@ public class SubOrgRegistrationService {
         subOrgDetails.setInstituteName(registration.getOrgName());
         subOrgDetails.setInstituteLogoFileId(registration.getOrgLogoFileId());
 
+        boolean isPaid = setting != null && isPaidType(setting.getPaymentType());
+        if (isPaid && request.getPaymentInitiationRequest() == null) {
+            throw new VacademyException("payment_initiation_request is required for this registration");
+        }
+
         CreateSubOrgSubscriptionDTO spawnRequest = new CreateSubOrgSubscriptionDTO();
         spawnRequest.setSubOrgDetails(subOrgDetails);
         spawnRequest.setPackageSessionIds(packageSessionIds);
-        spawnRequest.setPaymentType("FREE");
+        if (isPaid) {
+            // Reuse the template's institute PaymentOption on the spawned org invite —
+            // createSubOrgWithSubscription's existing paymentOptionId path handles validation,
+            // and stamps vendor/vendorId/currency onto the invite (PaymentService reads them).
+            spawnRequest.setPaymentType(setting.getPaymentType());
+            spawnRequest.setPaymentOptionId(setting.getPaymentOptionId());
+            spawnRequest.setVendor(setting.getVendor());
+            spawnRequest.setVendorId(setting.getVendorId());
+            spawnRequest.setCurrency(setting.getCurrency());
+        } else {
+            spawnRequest.setPaymentType("FREE");
+        }
         spawnRequest.setMemberCount(setting != null ? setting.getMemberCount() : null);
         spawnRequest.setValidityInDays(setting != null ? setting.getValidityDays() : null);
         spawnRequest.setAuthRoles(setting != null && !CollectionUtils.isEmpty(setting.getAuthRoles())
@@ -269,9 +330,19 @@ public class SubOrgRegistrationService {
         if (enrollResponse != null && enrollResponse.getUser() != null) {
             registration.setSpawnedUserId(enrollResponse.getUser().getId());
         }
-        registration.setStatus(SubOrgRegistrationStatus.COMPLETED.name());
+        // Paid: UserPlan is PENDING_FOR_PAYMENT; the payment webhook (UserPlanService
+        // applyOperationsOnFirstPayment SUB_ORG branch) flips this row to COMPLETED.
+        registration.setStatus(isPaid
+                ? SubOrgRegistrationStatus.PENDING_PAYMENT.name()
+                : SubOrgRegistrationStatus.COMPLETED.name());
         registrationRepository.save(registration);
-        return buildCompleteResponse(registration);
+
+        CompleteRegistrationResponseDTO response = buildCompleteResponse(registration);
+        if (isPaid && enrollResponse != null) {
+            response.setUserPlanId(enrollResponse.getUserPlanId());
+            response.setPaymentResponse(enrollResponse.getPaymentResponse());
+        }
+        return response;
     }
 
     private LearnerEnrollResponseDTO enrollAdminIntoSpawnedSubOrg(
@@ -287,10 +358,22 @@ public class SubOrgRegistrationService {
             throw new VacademyException("Spawned org invite has no payment mapping");
         }
         PaymentOption option = mappings.get(0).getPaymentOption();
-        PaymentPlan plan = option.getPaymentPlans().stream()
-                .filter(p -> StatusEnum.ACTIVE.name().equals(p.getStatus()))
-                .findFirst()
-                .orElse(null);
+        // Paid: honor the plan the org picked in the wizard (must belong to this option);
+        // otherwise (or for FREE) fall back to the first ACTIVE plan.
+        PaymentPlan plan = null;
+        if (StringUtils.hasText(request.getPlanId())) {
+            plan = option.getPaymentPlans().stream()
+                    .filter(p -> request.getPlanId().equals(p.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> new VacademyException(
+                            "Selected plan does not belong to this registration's payment option"));
+        }
+        if (plan == null) {
+            plan = option.getPaymentPlans().stream()
+                    .filter(p -> StatusEnum.ACTIVE.name().equals(p.getStatus()))
+                    .findFirst()
+                    .orElse(null);
+        }
 
         UserDTO user = new UserDTO();
         user.setFullName(registration.getAdminName());
@@ -303,6 +386,9 @@ public class SubOrgRegistrationService {
         enrollDTO.setPaymentOptionId(option.getId());
         enrollDTO.setPlanId(plan != null ? plan.getId() : null);
         enrollDTO.setCustomFieldValues(request.getCustomFieldValues());
+        // Paid: the ONE_TIME/SUBSCRIPTION strategy REQUIRES this (throws when null) and uses
+        // it to initiate the gateway order; amount is set server-side from the plan.
+        enrollDTO.setPaymentInitiationRequest(request.getPaymentInitiationRequest());
 
         LearnerEnrollRequestDTO learnerEnrollRequestDTO = new LearnerEnrollRequestDTO();
         learnerEnrollRequestDTO.setUser(user);

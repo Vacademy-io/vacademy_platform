@@ -16,10 +16,17 @@ interface TncStepProps {
   tncFileId: string | null;
   isSubmitting: boolean;
   onContinue: () => void;
+  /** Overrides the button label when TNC isn't the final step (e.g. payment follows). */
+  continueLabel?: string;
 }
 
 /** Step 4 — Terms & Conditions review + required acceptance. */
-const TncStep = ({ tncFileId, isSubmitting, onContinue }: TncStepProps) => {
+const TncStep = ({
+  tncFileId,
+  isSubmitting,
+  onContinue,
+  continueLabel,
+}: TncStepProps) => {
   const [accepted, setAccepted] = useState(false);
 
   const {
@@ -132,7 +139,7 @@ const TncStep = ({ tncFileId, isSubmitting, onContinue }: TncStepProps) => {
               Submitting...
             </>
           ) : (
-            "Submit Registration"
+            continueLabel ?? "Submit Registration"
           )}
         </MyButton>
       </div>

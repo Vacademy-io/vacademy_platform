@@ -8,6 +8,9 @@ package vacademy.io.admin_core_service.features.suborg.registration.enums;
 public enum SubOrgRegistrationStatus {
     DRAFT,
     OTP_VERIFIED,
+    // Paid templates: sub-org spawned + UserPlan PENDING_FOR_PAYMENT; flipped to COMPLETED
+    // by the payment webhook (UserPlanService.applyOperationsOnFirstPayment SUB_ORG branch).
+    PENDING_PAYMENT,
     COMPLETED,
     FAILED
 }

@@ -35,9 +35,34 @@ export function CreativeConceptDecision({ decision, isSubmitting, onSubmit }: Cr
 
     const [vals, setVals] = useState<Record<string, string>>(initial);
     const [dirty, setDirty] = useState(false);
+    // Which direction card is active: 0 = the AI's draft, 1+ = alternatives.
+    const [activeDir, setActiveDir] = useState(0);
+
+    const alternatives = useMemo(
+        () =>
+            ((decision.payload?.alternatives as Array<Record<string, string>>) ?? []).filter(
+                (a) => a && a.controlling_idea
+            ),
+        [decision.payload]
+    );
 
     const set = (k: string, v: string) => {
         setVals((prev) => ({ ...prev, [k]: v }));
+        setDirty(true);
+    };
+
+    const pickDirection = (dirIdx: number) => {
+        setActiveDir(dirIdx);
+        if (dirIdx === 0) {
+            setVals(initial);
+            setDirty(false);
+            return;
+        }
+        const alt = alternatives[dirIdx - 1];
+        if (!alt) return;
+        const next: Record<string, string> = {};
+        for (const f of FIELDS) next[f.key] = alt[f.key] != null ? String(alt[f.key]) : '';
+        setVals(next);
         setDirty(true);
     };
 
@@ -57,6 +82,44 @@ export function CreativeConceptDecision({ decision, isSubmitting, onSubmit }: Cr
                 </span>
                 Creative direction
             </div>
+
+            {alternatives.length > 0 && (
+                <div className="grid gap-2 border-b bg-violet-50/50 p-3 dark:bg-violet-950/20 sm:grid-cols-3">
+                    {[
+                        { ...Object.fromEntries(FIELDS.map((f) => [f.key, initial[f.key]])), why_this_works: 'The draft direction.' },
+                        ...alternatives,
+                    ].map((dir, i) => (
+                        <button
+                            key={i}
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => pickDirection(i)}
+                            className={`rounded-lg border p-2.5 text-left transition-colors ${
+                                activeDir === i
+                                    ? 'border-violet-500 bg-white ring-1 ring-violet-500 dark:bg-card'
+                                    : 'bg-white/60 hover:border-violet-300 dark:bg-card/60'
+                            }`}
+                        >
+                            <p className="text-xs font-semibold text-foreground">
+                                {i === 0 ? 'Direction A · draft' : `Direction ${String.fromCharCode(65 + i)}`}
+                                {dir.tonal_register ? (
+                                    <span className="ml-1 font-normal text-muted-foreground">
+                                        · {String(dir.tonal_register)}
+                                    </span>
+                                ) : null}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-xs text-foreground">
+                                {String(dir.controlling_idea ?? '')}
+                            </p>
+                            {dir.why_this_works ? (
+                                <p className="mt-1 line-clamp-2 text-xs italic text-muted-foreground">
+                                    {String(dir.why_this_works)}
+                                </p>
+                            ) : null}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             <div className="space-y-3 p-4">
                 {FIELDS.map((f) => (

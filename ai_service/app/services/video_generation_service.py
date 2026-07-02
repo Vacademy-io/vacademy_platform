@@ -399,9 +399,23 @@ class VideoGenerationService:
                 video_id, f"ai-videos/{video_id}/script/script.txt"
             ) or dg.narration_full_script_from_shots(shots)
             decision = dg.build_narration_decision(video_id, per_shot, full_script)
+            # Hook variants — 3 openings to choose from (the draft + 2 labeled
+            # alternates). Skipped on a steering re-present to keep focus on
+            # the revised draft. Best-effort; absent on any failure.
+            if not revision_note:
+                _hooks = self._generate_hook_variants(video_id, shots)
+                if _hooks:
+                    decision["payload"]["hook_variants"] = _hooks
         else:  # creative_concept
             concept = shot_plan.get("creative_concept") if isinstance(shot_plan, dict) else {}
             decision = dg.build_creative_concept_decision(video_id, concept or {})
+            # Direction alternatives — the single biggest "choose, don't just
+            # approve" upgrade: 2 genuinely different directions beside the
+            # draft. Picking one flows through the existing concept-edit path.
+            if not revision_note:
+                _alts = self._generate_concept_alternatives(video_id, concept or {})
+                if _alts:
+                    decision["payload"]["alternatives"] = _alts
 
         if revision_note:
             decision["revision_note"] = str(revision_note)[:300]
@@ -602,6 +616,125 @@ class VideoGenerationService:
             if v not in (None, ""):
                 merged[k] = str(v)
         return merged
+
+    def _assist_llm_client(self):
+        """Cheap-model OpenRouter client for assist-side enrichment/revision
+        calls (concept alternatives, hook variants, steering). Returns None
+        when no API key is configured — callers degrade gracefully."""
+        from ..config import get_settings as _gs
+        _settings = _gs()
+        _api_key = _settings.openrouter_api_key or ""
+        if not _api_key:
+            return None
+        self._decision_gates()  # ensures ai-video-gen-main on sys.path
+        from automation_pipeline import OpenRouterClient
+        return OpenRouterClient(
+            api_key=_api_key, default_model="google/gemini-3-flash-preview"
+        )
+
+    def _generate_concept_alternatives(self, video_id, concept):
+        """2 contrasting creative directions beside the draft (one LLM call).
+
+        Returns [{controlling_idea, tonal_register, emotional_arc,
+        visual_metaphor, signature_device, why_this_works}, ...] or [] on any
+        failure. The FE shows them as selectable direction cards; picking one
+        submits through the existing concept-edit write-back.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        try:
+            client = self._assist_llm_client()
+            if client is None:
+                return []
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = str(getattr(rec, "prompt", None) or "")[:800]
+            system = (
+                "You are a creative director proposing ALTERNATIVE directions for a video. "
+                "Given the current concept and the source request, output ONLY a JSON object "
+                '{"alternatives": [<2 items>]} where each item has: controlling_idea, '
+                "tonal_register (one of: ad, hype, explainer, tutorial, documentary, story, news), "
+                "emotional_arc, visual_metaphor, signature_device, why_this_works (one line selling "
+                "the direction). The two alternatives must be GENUINELY DIFFERENT from the current "
+                "concept and from each other — different register, different metaphor, different "
+                "angle of attack (e.g. one risk/fear-driven, one aspiration-driven). Concise — one "
+                "line per field. No markdown fences."
+            )
+            user = (
+                "SOURCE REQUEST:\n" + source_request
+                + "\n\nCURRENT CONCEPT (direction A — do not repeat it):\n"
+                + json.dumps(concept or {}, ensure_ascii=False)
+            )
+            text, _u = client.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.9, max_tokens=1200, response_format={"type": "json_object"},
+            )
+            s, e = text.find("{"), text.rfind("}")
+            data = json.loads(text[s:e + 1]) if (s >= 0 and e > s) else {}
+            alts = data.get("alternatives")
+            out = []
+            for a in (alts or [])[:2]:
+                if isinstance(a, dict) and a.get("controlling_idea"):
+                    out.append({k: str(v)[:300] for k, v in a.items() if v not in (None, "")})
+            return out
+        except Exception as exc:
+            logger.warning(f"[Assist] concept alternatives failed for {video_id}: {exc}")
+            return []
+
+    def _generate_hook_variants(self, video_id, shots):
+        """2 alternative hook lines for shot 0, labeled by technique (one LLM call).
+
+        Returns [{technique, text}, ...] or [] on failure. The FE shows them as
+        chips over the shot-0 editor; picking one replaces the text and submits
+        through the existing narration-edit path.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        try:
+            narrated = [
+                s for s in (shots or [])
+                if isinstance(s, dict) and str(s.get("narration_text") or "").strip()
+            ]
+            if not narrated:
+                return []
+            hook = str(narrated[0].get("narration_text") or "")
+            close = str(narrated[-1].get("narration_text") or "")
+            words = len(hook.split())
+            client = self._assist_llm_client()
+            if client is None:
+                return []
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = str(getattr(rec, "prompt", None) or "")[:600]
+            system = (
+                "You write video hooks. Given the current hook, the closing line, and the source "
+                'request, output ONLY a JSON object {"variants": [<2 items>]} — each item: '
+                "technique (one of: quantified_claim, curiosity_gap, direct_callout, reversal, "
+                "cold_open) and text. Each variant must use a DIFFERENT technique than the current "
+                f"hook, stay within ±20% of {words} words (it must fit the same shot duration), "
+                "ground any number/name in the source request (never invent), and still open a "
+                "loop the existing closing line can answer. No markdown fences."
+            )
+            user = (
+                "SOURCE REQUEST:\n" + source_request
+                + "\n\nCURRENT HOOK:\n" + hook
+                + "\n\nCLOSING LINE:\n" + close
+            )
+            text, _u = client.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.9, max_tokens=600, response_format={"type": "json_object"},
+            )
+            s, e = text.find("{"), text.rfind("}")
+            data = json.loads(text[s:e + 1]) if (s >= 0 and e > s) else {}
+            out = []
+            for v in (data.get("variants") or [])[:2]:
+                if isinstance(v, dict) and str(v.get("text") or "").strip():
+                    out.append({
+                        "technique": str(v.get("technique") or "alternative")[:40],
+                        "text": str(v.get("text")).strip()[:400],
+                    })
+            return out
+        except Exception as exc:
+            logger.warning(f"[Assist] hook variants failed for {video_id}: {exc}")
+            return []
 
     def _persist_resume_artifacts(self, video_id, run_dir) -> None:
         """Upload the artifacts a resumed HTML leg needs, so an assist pause

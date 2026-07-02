@@ -44,10 +44,29 @@ export function NarrationDecision({ decision, isSubmitting, onSubmit }: Narratio
 
     const [rows, setRows] = useState<Row[]>(initial);
     const [dirty, setDirty] = useState(false);
+    // Which hook is active: -1 = the original draft, 0/1 = a variant.
+    const [activeHook, setActiveHook] = useState(-1);
+
+    const hookVariants = useMemo(
+        () =>
+            (decision.payload?.hook_variants ?? []).filter(
+                (v): v is { technique: string; text: string } => !!v?.text
+            ),
+        [decision.payload]
+    );
+    const originalHook = initial[0]?.narration_text ?? '';
 
     const update = (idx: number, text: string) => {
         setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, narration_text: text } : r)));
         setDirty(true);
+    };
+
+    const pickHook = (variantIdx: number) => {
+        const text = variantIdx === -1 ? originalHook : hookVariants[variantIdx]?.text;
+        if (text == null) return;
+        setActiveHook(variantIdx);
+        setRows((prev) => prev.map((r, i) => (i === 0 ? { ...r, narration_text: text } : r)));
+        setDirty(variantIdx !== -1);
     };
 
     const totalWords = rows.reduce((n, r) => n + wordCount(r.narration_text), 0);
@@ -83,6 +102,44 @@ export function NarrationDecision({ decision, isSubmitting, onSubmit }: Narratio
                     {totalWords} words · ≈ {estSeconds}s
                 </div>
             </div>
+
+            {hookVariants.length > 0 && (
+                <div className="space-y-1.5 border-b bg-violet-50/50 px-4 py-2.5 dark:bg-violet-950/20">
+                    <p className="text-xs font-medium text-muted-foreground">
+                        Opening line — pick a hook:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                        <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => pickHook(-1)}
+                            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                activeHook === -1
+                                    ? 'border-violet-500 bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        >
+                            Draft
+                        </button>
+                        {hookVariants.map((v, i) => (
+                            <button
+                                key={i}
+                                type="button"
+                                disabled={isSubmitting}
+                                title={v.text}
+                                onClick={() => pickHook(i)}
+                                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                    activeHook === i
+                                        ? 'border-violet-500 bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {v.technique.replace(/_/g, ' ')}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="max-h-96 divide-y overflow-y-auto">
                 {rows.map((r, i) => (

@@ -64,6 +64,19 @@ interface AssistChatProps {
     /** Institute API key — used by the visual-casting card's stock re-search. */
     apiKey?: string;
     vimMode?: boolean;
+    /** Post-completion conversational editor: "redo shot 3 — bigger headline". */
+    onPostEdit?: (text: string) => void;
+    postEdits?: PostEditItem[];
+    /** Bumped after a post-edit lands — reloads the completion player. */
+    playerReloadKey?: number;
+}
+
+/** One post-completion edit exchange (user request → agent outcome). */
+export interface PostEditItem {
+    id: string;
+    request: string;
+    reply: string;
+    busy?: boolean;
 }
 
 function Bubble({ side, children }: { side: 'agent' | 'user'; children: ReactNode }) {
@@ -304,6 +317,7 @@ function CompletionCard({
     orientation,
     onEdit,
     onShowProgress,
+    reloadKey,
 }: {
     timelineUrl?: string;
     audioUrl?: string;
@@ -311,8 +325,15 @@ function CompletionCard({
     orientation?: 'landscape' | 'portrait';
     onEdit?: () => void;
     onShowProgress?: () => void;
+    /** Bumped after a post-completion edit — remounts the player and busts
+     *  the timeline fetch cache so the updated frame shows. */
+    reloadKey?: number;
 }) {
     const isPortrait = orientation === 'portrait';
+    const effectiveTimelineUrl =
+        timelineUrl && reloadKey
+            ? `${timelineUrl}${timelineUrl.includes('?') ? '&' : '?'}v=${reloadKey}`
+            : timelineUrl;
     return (
         <div className="space-y-3">
             <Bubble side="agent">
@@ -322,10 +343,11 @@ function CompletionCard({
                 </span>
             </Bubble>
             <div className="overflow-hidden rounded-xl border bg-black shadow-sm">
-                {timelineUrl ? (
+                {effectiveTimelineUrl ? (
                     <div className={cn('mx-auto', isPortrait ? 'max-w-xs' : 'w-full')}>
                         <AIContentPlayer
-                            timelineUrl={timelineUrl}
+                            key={reloadKey ?? 0}
+                            timelineUrl={effectiveTimelineUrl}
                             audioUrl={audioUrl}
                             wordsUrl={wordsUrl}
                             width={isPortrait ? 1080 : 1920}
@@ -385,17 +407,38 @@ export function AssistChat({
     onAbort,
     onEdit,
     apiKey,
+    onPostEdit,
+    postEdits,
+    playerReloadKey,
 }: AssistChatProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
     const [steer, setSteer] = useState('');
 
+    const postEditBusy = (postEdits ?? []).some((p) => p.busy);
+
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [pending?.decision_id, transcript.length, isSubmitting, statusMessage, isComplete]);
+    }, [
+        pending?.decision_id,
+        transcript.length,
+        isSubmitting,
+        statusMessage,
+        isComplete,
+        postEdits?.length,
+        postEditBusy,
+    ]);
 
     const sendSteer = () => {
         const text = steer.trim();
-        if (!text || !pending) return;
+        if (!text) return;
+        // Post-completion: the same box becomes the conversational editor.
+        if (isComplete) {
+            if (!onPostEdit || postEditBusy) return;
+            setSteer('');
+            onPostEdit(text);
+            return;
+        }
+        if (!pending) return;
         setSteer('');
         onSubmit({ kind: 'freeform', text });
     };
@@ -462,14 +505,32 @@ export function AssistChat({
                         />
                     </div>
                 ) : isComplete ? (
-                    <CompletionCard
-                        timelineUrl={timelineUrl}
-                        audioUrl={audioUrl}
-                        wordsUrl={wordsUrl}
-                        orientation={orientation}
-                        onEdit={onEdit}
-                        onShowProgress={onShowProgress}
-                    />
+                    <>
+                        <CompletionCard
+                            timelineUrl={timelineUrl}
+                            audioUrl={audioUrl}
+                            wordsUrl={wordsUrl}
+                            orientation={orientation}
+                            onEdit={onEdit}
+                            onShowProgress={onShowProgress}
+                            reloadKey={playerReloadKey}
+                        />
+                        {(postEdits ?? []).map((p) => (
+                            <div key={p.id} className="space-y-2">
+                                <Bubble side="user">{p.request}</Bubble>
+                                <Bubble side="agent">
+                                    {p.busy ? (
+                                        <span className="flex items-center gap-2 text-muted-foreground">
+                                            <CircleNotch className="size-3.5 animate-spin" />
+                                            Updating the shot…
+                                        </span>
+                                    ) : (
+                                        p.reply
+                                    )}
+                                </Bubble>
+                            </div>
+                        ))}
+                    </>
                 ) : (
                     <StatusBubble
                         message={statusMessage}
@@ -483,13 +544,16 @@ export function AssistChat({
                 <div ref={bottomRef} />
             </div>
 
-            {/* Free-form steering — enabled only while a decision is pending */}
-            {!isComplete && (
+            {/* Free-form input: steering while a gate is pending; the
+                conversational editor once the video is complete. */}
+            {(!isComplete || onPostEdit) && (
                 <div className="border-t px-4 py-3">
                     <div className="flex items-center gap-2">
                         <Input
                             value={steer}
-                            disabled={!pending || isSubmitting}
+                            disabled={
+                                isComplete ? postEditBusy : !pending || isSubmitting
+                            }
                             onChange={(e) => setSteer(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -498,15 +562,20 @@ export function AssistChat({
                                 }
                             }}
                             placeholder={
-                                pending
-                                    ? 'Steer it — e.g. “make shot 3 funnier and shorter”'
-                                    : 'Working…'
+                                isComplete
+                                    ? 'Edit the video — e.g. “redo shot 3 — bigger headline, real screenshot”'
+                                    : pending
+                                      ? 'Steer it — e.g. “make shot 3 funnier and shorter”'
+                                      : 'Working…'
                             }
                             className="h-9"
                         />
                         <Button
                             size="sm"
-                            disabled={!pending || isSubmitting || !steer.trim()}
+                            disabled={
+                                !steer.trim() ||
+                                (isComplete ? postEditBusy : !pending || isSubmitting)
+                            }
                             onClick={sendSteer}
                             className="gap-1.5"
                         >

@@ -22,6 +22,8 @@ import {
     RoutingOverrides,
     ShotPlanItem,
     generateVideo,
+    regenerateFrame,
+    updateFrame,
     resumeVideo,
     retryVideo,
     submitDecision,
@@ -41,7 +43,7 @@ import {
 } from '../-services/video-generation';
 import { HistorySidebar } from './HistorySidebar';
 import { ScriptReview } from './ScriptReview';
-import { AssistChat } from './assist/AssistChat';
+import { AssistChat, type PostEditItem } from './assist/AssistChat';
 import { buildTurnSummary, reconstructAssistTranscript } from './assist/-utils/decision-copy';
 import { buildStageRows } from './assist/-utils/stage-rows';
 import { AssistModeToggle } from '../console/-components/AssistModeToggle';
@@ -349,6 +351,9 @@ export function VideoConsoleWorkspace({
     const [showAssistProgress, setShowAssistProgress] = useState(false);
     // True while a /decision leg is opening (disables the cards).
     const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+    // Post-completion conversational editor state ("redo shot 3 — …").
+    const [postEdits, setPostEdits] = useState<PostEditItem[]>([]);
+    const [playerReloadKey, setPlayerReloadKey] = useState(0);
 
     // One-shot consume of the "Reuse settings" handoff written by a Recent
     // card. Read in a `useState` initializer so it's available before the
@@ -2147,6 +2152,65 @@ export function VideoConsoleWorkspace({
         [activeApiKey]
     );
 
+    // Reset the post-completion editor whenever a different video takes the stage.
+    useEffect(() => {
+        setPostEdits([]);
+        setPlayerReloadKey(0);
+    }, [currentGeneration?.videoId]);
+
+    /** Post-completion conversational editor: parse "shot N" from the message,
+     *  regenerate that frame's HTML with the note (existing /frame/regenerate),
+     *  persist via /frame/update, and refresh the inline player. */
+    const handlePostEdit = useCallback(
+        async (text: string) => {
+            const cg = currentGenerationRef.current;
+            if (!cg?.videoId || !activeApiKey || !cg.htmlUrl) return;
+            const id = `pe_${Date.now()}`;
+            setPostEdits((prev) => [...prev, { id, request: text, reply: '', busy: true }]);
+            const finish = (reply: string) =>
+                setPostEdits((prev) =>
+                    prev.map((p) => (p.id === id ? { ...p, busy: false, reply } : p))
+                );
+            try {
+                const m = text.match(/shot\s*#?\s*(\d+)/i);
+                if (!m) {
+                    finish(
+                        'Tell me which shot to change — e.g. “redo shot 3 — use a real product screenshot”.'
+                    );
+                    return;
+                }
+                const shotNum = parseInt(m[1] ?? '0', 10);
+                const resp = await fetch(cg.htmlUrl);
+                const data = await resp.json();
+                const entries: Array<Record<string, unknown>> = Array.isArray(data)
+                    ? data
+                    : (data?.entries ?? []);
+                const content = entries.filter(
+                    (e) => !String(e.id ?? '').startsWith('branding-')
+                );
+                const entry = content[shotNum - 1];
+                if (!entry) {
+                    finish(`Shot ${shotNum} not found — this video has ${content.length} shots.`);
+                    return;
+                }
+                const ts = Number(entry.inTime ?? entry.start ?? 0) + 0.05;
+                const regen = await regenerateFrame(cg.videoId, activeApiKey, ts, text);
+                await updateFrame(cg.videoId, activeApiKey, regen.frame_index, regen.new_html, {
+                    htmlModel: regen.resolved_model ?? undefined,
+                });
+                setPlayerReloadKey((k) => k + 1);
+                finish(`Shot ${shotNum} updated — the preview has refreshed. Anything else?`);
+            } catch (err) {
+                finish(
+                    err instanceof Error
+                        ? `Couldn't update that shot: ${err.message}`
+                        : 'Couldn’t update that shot — try again.'
+                );
+            }
+        },
+        [activeApiKey]
+    );
+
     // Resume generation after script review
     const handleResumeFromReview = useCallback(() => {
         if (!activeApiKey || !currentGeneration) return;
@@ -2595,6 +2659,9 @@ export function VideoConsoleWorkspace({
                                     onSubmit={handleSubmitDecision}
                                     onShowProgress={() => setShowAssistProgress(true)}
                                     apiKey={activeApiKey ?? undefined}
+                                    onPostEdit={handlePostEdit}
+                                    postEdits={postEdits}
+                                    playerReloadKey={playerReloadKey}
                                     onAbort={
                                         consoleState !== 'complete' ? handleAbort : undefined
                                     }

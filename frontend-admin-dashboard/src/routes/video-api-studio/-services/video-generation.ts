@@ -609,6 +609,10 @@ export interface DecisionPayload {
     recommended_candidate_id?: string;
     /** visual_casting (batched): one group per media query across the video. */
     groups?: VisualCastingGroup[];
+    /** narration: alternative opening hooks, each labeled by technique. */
+    hook_variants?: Array<{ technique: string; text: string }>;
+    /** creative_concept: 2 contrasting alternative directions beside the draft. */
+    alternatives?: Array<Record<string, string>>;
     [key: string]: unknown;
 }
 

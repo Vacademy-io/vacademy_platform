@@ -22559,6 +22559,30 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         except Exception:
             return groups
         orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+
+        # Media kit — the user's own uploads (logo, product shots, photos)
+        # become PINNED candidates on every image query, listed first and
+        # tagged "yours". Picking one forces the exact URL through the same
+        # path as a fresh upload from the casting card.
+        _user_cands: List[Dict[str, Any]] = []
+        try:
+            _ref_ctx = getattr(self, "_reference_context", None) or {}
+            for _img in (_ref_ctx.get("embeddable_images") or [])[:6]:
+                if not isinstance(_img, dict):
+                    continue
+                _u = (_img.get("s3_url") or _img.get("url") or "").strip()
+                if not _u:
+                    continue
+                _c = _to_cand({
+                    "kind": "image", "id": _u, "url": _u, "thumb": _u,
+                    "provider": "yours",
+                    "alt": (_img.get("description") or _img.get("name") or "Your upload"),
+                }, is_recommended=False)
+                if _c:
+                    _user_cands.append(_c)
+        except Exception:
+            _user_cands = []
+
         # Both stock VIDEO (data-video-query) and stock IMAGE (data-img-prompt)
         # queries. Keyed by the RAW query/prompt string — the resolvers' force
         # check (_process_stock_videos / _process_image_task_simple) uses the
@@ -22600,10 +22624,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     _to_cand({**c, "kind": "image", "id": c.get("url")}, is_recommended=(i == 0))
                     for i, c in enumerate(raw[:6])
                 ]
-                if cands:
+                # User uploads pinned first — a group with ONLY user assets is
+                # still presented (stock search may have found nothing).
+                combined = _user_cands + cands
+                if combined:
                     groups.append({
                         "query": q, "kind": "image", "shot_index": shot_index,
-                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                        "candidates": combined,
+                        "recommended_candidate_id": (
+                            cands[0]["candidate_id"] if cands else combined[0]["candidate_id"]
+                        ),
                     })
         return groups
 

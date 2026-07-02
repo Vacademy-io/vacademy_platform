@@ -5,6 +5,7 @@ import '@react-pdf-viewer/core/lib/styles/index.css';
 import type { ToolbarProps, ToolbarSlot, TransformToolbarSlot } from '@react-pdf-viewer/toolbar';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { pageNavigationPlugin } from '@react-pdf-viewer/page-navigation';
+import { fullScreenPlugin } from '@react-pdf-viewer/full-screen';
 import { useMediaNavigationStore } from '../-stores/media-navigation-store';
 import { toast } from 'sonner';
 import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
@@ -12,6 +13,7 @@ import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 // Style imports
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
+import '@react-pdf-viewer/full-screen/lib/styles/index.css';
 import { PDF_WORKER_URL } from '@/constants/urls';
 import { Route } from '..';
 
@@ -37,9 +39,23 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
     // Print inherits the download permission unless explicitly configured.
     const allowPrint = canPrintPdf();
 
+    // Fit the page to width on entering/exiting fullscreen so it fills the
+    // (much wider) fullscreen viewport instead of keeping its load-time scale
+    // and leaving large empty side margins. defaultLayoutPlugin doesn't expose
+    // its internal full-screen plugin, so we run our own (with the zoom
+    // callback) and route the toolbar's fullscreen button to it (transform below).
+    const fullScreenPluginInstance = fullScreenPlugin({
+        onEnterFullScreen: (zoom) => zoom(SpecialZoomLevel.PageWidth),
+        onExitFullScreen: (zoom) => zoom(SpecialZoomLevel.PageWidth),
+    });
+    const { EnterFullScreenButton } = fullScreenPluginInstance;
+
     const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
         ...slot,
         Open: () => <></>,
+        // Use our fullscreen button (configured to fit page width on enter/exit)
+        // instead of the default-layout's internal one, which we can't configure.
+        EnterFullScreen: () => <EnterFullScreenButton />,
         ...(allowDownload ? {} : { Download: () => <></>, DownloadMenuItem: () => <></> }),
         ...(allowPrint ? {} : { Print: () => <></>, PrintMenuItem: () => <></> }),
     });
@@ -91,7 +107,11 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
                     <Viewer
                         fileUrl={pdfUrl}
                         defaultScale={SpecialZoomLevel.PageWidth}
-                        plugins={[defaultLayoutPluginInstance, pageNavigationPluginInstance]}
+                        plugins={[
+                            defaultLayoutPluginInstance,
+                            pageNavigationPluginInstance,
+                            fullScreenPluginInstance,
+                        ]}
                     />
                 ) : (
                     <div className="flex size-full items-center justify-center text-sm text-neutral-400">

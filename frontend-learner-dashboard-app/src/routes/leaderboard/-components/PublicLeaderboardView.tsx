@@ -232,10 +232,12 @@ export function PublicLeaderboardView({
 
         {/* Footer */}
         <div className="mt-4 flex flex-col items-center gap-1 text-center">
-          <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
-            <ShieldCheck weight="fill" className="size-3.5 text-neutral-400" />
-            Names are anonymized for privacy
-          </p>
+          {data?.anonymized !== false && (
+            <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
+              <ShieldCheck weight="fill" className="size-3.5 text-neutral-400" />
+              Names are anonymized for privacy
+            </p>
+          )}
           {instituteName && (
             <p className="text-caption text-muted-foreground">Powered by {instituteName}</p>
           )}

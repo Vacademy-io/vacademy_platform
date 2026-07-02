@@ -21,4 +21,6 @@ public class LeaderboardResponseDTO {
     private String instituteName;
     private String instituteLogoFileId;
     private String instituteThemeCode;
+    /** Whether names are anonymized (initials) — admin-configurable for the public page. */
+    private boolean anonymized;
 }

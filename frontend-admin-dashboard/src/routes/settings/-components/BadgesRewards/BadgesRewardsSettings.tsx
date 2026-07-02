@@ -85,6 +85,7 @@ export default function BadgesRewardsSettings() {
     const [badges, setBadges] = useState<BadgeDefinitionConfig[]>([]);
     const [enabled, setEnabled] = useState(false);
     const [scoring, setScoring] = useState<ScoringConfig>(DEFAULT_SCORING);
+    const [publicShowFullNames, setPublicShowFullNames] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
     const { data, isLoading } = useQuery({
@@ -98,6 +99,7 @@ export default function BadgesRewardsSettings() {
             setBadges(data.badges);
             setEnabled(data.enabled);
             setScoring(data.scoring);
+            setPublicShowFullNames(data.publicShowFullNames);
             setHasChanges(false);
         }
     }, [data]);
@@ -107,7 +109,8 @@ export default function BadgesRewardsSettings() {
             badges: BadgeDefinitionConfig[];
             enabled: boolean;
             scoring: ScoringConfig;
-        }) => saveBadgesSettings(vars.badges, vars.enabled, vars.scoring),
+            publicShowFullNames: boolean;
+        }) => saveBadgesSettings(vars.badges, vars.enabled, vars.scoring, vars.publicShowFullNames),
         onSuccess: () => {
             toast.success('Badges saved');
             setHasChanges(false);
@@ -172,7 +175,7 @@ export default function BadgesRewardsSettings() {
             toast.error('Every badge needs a name');
             return;
         }
-        save({ badges, enabled, scoring });
+        save({ badges, enabled, scoring, publicShowFullNames });
     };
 
     if (isLoading) {
@@ -272,6 +275,30 @@ export default function BadgesRewardsSettings() {
                                 <p className="text-xs text-neutral-400">{f.help}</p>
                             </div>
                         ))}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-base font-semibold text-neutral-800">
+                                Public leaderboard names
+                            </h2>
+                            <p className="text-sm text-neutral-500">
+                                The shareable public link shows learners as anonymized initials
+                                (e.g. &quot;A.G.&quot;) by default. Turn this on to show full names —
+                                note that anyone with the link will then see real learner names.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={publicShowFullNames}
+                            onCheckedChange={(v) => {
+                                setPublicShowFullNames(v);
+                                setHasChanges(true);
+                            }}
+                        />
                     </div>
                 </CardContent>
             </Card>

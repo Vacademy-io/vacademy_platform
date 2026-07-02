@@ -64,10 +64,11 @@ public class LeaderboardService {
         String instituteId = (ctx != null && ctx.getInstituteId() != null)
                 ? ctx.getInstituteId() : instituteIdHint;
         if (instituteId == null || !isLeaderboardEnabled(instituteId)) {
-            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null);
+            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null, true);
         }
+        boolean anonymize = !isPublicFullNames(instituteId);
         LeaderboardResponseDTO dto =
-                buildCourseLeaderboard(packageSessionId, instituteId, null, true, 50, null);
+                buildCourseLeaderboard(packageSessionId, instituteId, null, anonymize, 50, null);
         if (ctx != null) {
             dto.setCourseName(ctx.getBatchName());
             dto.setInstituteName(ctx.getInstituteName());
@@ -77,22 +78,33 @@ public class LeaderboardService {
         return dto;
     }
 
-    /** Reads the institute's BADGES_REWARDS_SETTING master toggle; defaults to OFF (opt-in). */
-    private boolean isLeaderboardEnabled(String instituteId) {
+    /** The institute's BADGES_REWARDS_SETTING data map, or null if unset/unparseable. */
+    private Map<?, ?> badgesSettingData(String instituteId) {
         try {
             Institute institute = instituteRepository.findById(instituteId).orElse(null);
-            if (institute == null || institute.getSetting() == null) return false;
+            if (institute == null || institute.getSetting() == null) return null;
             InstituteSettingDto settingDto =
                     objectMapper.readValue(institute.getSetting(), InstituteSettingDto.class);
             Map<String, SettingDto> settings = settingDto.getSetting();
-            if (settings == null) return false;
+            if (settings == null) return null;
             SettingDto s = settings.get("BADGES_REWARDS_SETTING");
-            if (s == null || !(s.getData() instanceof Map)) return false;
-            Object enabled = ((Map<?, ?>) s.getData()).get("enabled");
-            return Boolean.TRUE.equals(enabled);
+            if (s == null || !(s.getData() instanceof Map)) return null;
+            return (Map<?, ?>) s.getData();
         } catch (Exception e) {
-            return false;
+            return null;
         }
+    }
+
+    /** Master toggle; defaults to OFF (opt-in). */
+    private boolean isLeaderboardEnabled(String instituteId) {
+        Map<?, ?> data = badgesSettingData(instituteId);
+        return data != null && Boolean.TRUE.equals(data.get("enabled"));
+    }
+
+    /** Whether the PUBLIC leaderboard shows full names (admin opt-in); defaults to anonymized. */
+    private boolean isPublicFullNames(String instituteId) {
+        Map<?, ?> data = badgesSettingData(instituteId);
+        return data != null && Boolean.TRUE.equals(data.get("publicShowFullNames"));
     }
 
     public LeaderboardResponseDTO buildCourseLeaderboard(String packageSessionId, String instituteId,
@@ -122,9 +134,10 @@ public class LeaderboardService {
     /** Public, fully-anonymized institute-wide leaderboard (no auth); gated by the master toggle. */
     public LeaderboardResponseDTO buildPublicInstituteLeaderboard(String instituteId) {
         if (!isLeaderboardEnabled(instituteId)) {
-            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null);
+            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null, true);
         }
-        LeaderboardResponseDTO dto = buildInstituteLeaderboard(instituteId, null, true, 50);
+        boolean anonymize = !isPublicFullNames(instituteId);
+        LeaderboardResponseDTO dto = buildInstituteLeaderboard(instituteId, null, anonymize, 50);
         // Institute branding so the public page renders on ANY domain.
         instituteRepository.findById(instituteId).ifPresent(inst -> {
             dto.setInstituteName(inst.getInstituteName());
@@ -182,7 +195,7 @@ public class LeaderboardService {
         LeaderboardEntryDTO me = all.stream().filter(LeaderboardEntryDTO::isCurrentUser).findFirst().orElse(null);
         List<LeaderboardEntryDTO> top = all.stream().limit(Math.max(1, limit)).collect(Collectors.toList());
 
-        return new LeaderboardResponseDTO(all.size(), top, me, null, null, null, null);
+        return new LeaderboardResponseDTO(all.size(), top, me, null, null, null, null, anonymize);
     }
 
     public BadgeStatsResponseDTO buildBadgeStats(String instituteId) {

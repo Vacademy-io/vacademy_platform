@@ -31,6 +31,14 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
             @Param("instituteId") String instituteId,
             @Param("statuses") List<String> statuses);
 
+    // Resolve the owning institute for a package_session (via package_institute).
+    @Query(value = "SELECT pi.institute_id " +
+            "FROM package_institute pi " +
+            "JOIN package_session ps ON ps.package_id = pi.package_id " +
+            "WHERE ps.id = :packageSessionId LIMIT 1", nativeQuery = true)
+    Optional<String> findInstituteIdByPackageSessionId(
+            @Param("packageSessionId") String packageSessionId);
+
     /**
      * Paginated query to fetch package sessions by institute with optional filters.
      * Supports filtering by session ID, level ID, package ID, status, and search.

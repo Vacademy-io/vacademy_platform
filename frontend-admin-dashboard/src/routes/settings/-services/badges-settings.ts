@@ -28,6 +28,7 @@ export const getBadgesRewardsConfig = async (): Promise<{
     enabled: boolean;
     scoring: ScoringConfig;
     badges: BadgeDefinitionConfig[];
+    publicShowFullNames: boolean;
 }> => {
     const instituteId = getCurrentInstituteId();
     try {
@@ -50,10 +51,17 @@ export const getBadgesRewardsConfig = async (): Promise<{
         // Master toggle defaults to OFF when absent — institutes must opt in.
         const enabled = blob?.enabled === true;
         const scoring = normalizeScoring(blob?.scoring);
-        return { enabled, scoring, badges };
+        // Public leaderboard names default to anonymized (opt-in to show full names).
+        const publicShowFullNames = blob?.publicShowFullNames === true;
+        return { enabled, scoring, badges, publicShowFullNames };
     } catch (error) {
         console.error('Error fetching badge settings:', error);
-        return { enabled: false, scoring: DEFAULT_SCORING, badges: DEFAULT_BADGE_CONFIG.badges };
+        return {
+            enabled: false,
+            scoring: DEFAULT_SCORING,
+            badges: DEFAULT_BADGE_CONFIG.badges,
+            publicShowFullNames: false,
+        };
     }
 };
 
@@ -67,14 +75,21 @@ export const getBadgesEnabled = async (): Promise<boolean> => {
     return (await getBadgesRewardsConfig()).enabled;
 };
 
-/** Persist the institute's badge config (master toggle + scoring + badges). */
+/** Persist the institute's badge config (master toggle + scoring + badges + public-names). */
 export const saveBadgesSettings = async (
     badges: BadgeDefinitionConfig[],
     enabled: boolean,
-    scoring: ScoringConfig
+    scoring: ScoringConfig,
+    publicShowFullNames = false
 ): Promise<void> => {
     const instituteId = getCurrentInstituteId();
-    const settingData: BadgesRewardsConfig = { version: 1, enabled, scoring, badges };
+    const settingData: BadgesRewardsConfig = {
+        version: 1,
+        enabled,
+        scoring,
+        badges,
+        publicShowFullNames,
+    };
     await authenticatedAxiosInstance.post(
         SAVE_URL,
         { setting_name: 'Badges & Rewards', setting_data: settingData },

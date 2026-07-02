@@ -4,6 +4,9 @@ export const BASE_URL = BACKEND_BASE_URL;
 // Institute-facing help desk (community-service feature/support). Institute is taken
 // from the auto-attached `clientId` header; see services/support.ts.
 export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
+// Super-admin-managed dashboard widgets (community-service feature/dashboardwidget). Institute is
+// taken from the `clientId` header / instituteId param; see services/institute-widgets.ts.
+export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -206,6 +209,15 @@ export const TELEPHONY_EXOTEL_EXOPHONES = (instituteId: string) =>
 // just to check credits.
 export const TELEPHONY_EXOTEL_BALANCE = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/exotel/balance?instituteId=${encodeURIComponent(instituteId)}`;
+// Vacademy Voice IVR menus — CRUD for the multi-level inbound call tree builder.
+export const TELEPHONY_IVR_MENUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus?instituteId=${encodeURIComponent(instituteId)}`;
+export const TELEPHONY_IVR_MENUS_BASE = `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus`;
+export const TELEPHONY_IVR_MENU_BY_ID = (menuId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus/${encodeURIComponent(menuId)}`;
+// Vacademy Voice product config (enable flag, caller-ID, recording, compliance, plan).
+export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/voice-config/${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
@@ -679,6 +691,8 @@ export const PROVIDER_MEETING_AVAILABILITY_FOR_SESSION = `${BASE_URL}/admin-core
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3`;
+// Google Meet: on-demand pull of conferenceRecords.recordings (bypasses the hourly poll).
+export const SYNC_GOOGLE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/sync`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).
@@ -697,6 +711,16 @@ export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-
 // meeting failed to provision (silent async failure) and re-create it in one click.
 export const ZOOM_PROVISION_STATUS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-status`;
 export const ZOOM_PROVISION_NOW = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-now`;
+
+// ── Google Workspace (Google Meet) integration ──
+// Per-institute connected Google account (per-tenant OAuth, NOT domain-wide delegation).
+// Accounts are created via the "Connect Google Workspace" OAuth flow — no pasted secrets.
+// See docs/googlemeetintegration/google-meet-integration-plan.md.
+export const GOOGLE_ACCOUNTS_BASE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/accounts`;
+// "Connect Google Workspace" — returns the consent URL the browser is sent to.
+export const GOOGLE_OAUTH_INITIATE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/oauth/initiate`;
+// Authenticated learner/host join — resolves the meetingUri + records attendance.
+export const GOOGLE_MEET_JOIN = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-meet-join`;
 
 // "Process Recording" / "Transcript Ready" flow — kicks off Whisper
 // transcription for a specific BBB recording and polls for terminal state.

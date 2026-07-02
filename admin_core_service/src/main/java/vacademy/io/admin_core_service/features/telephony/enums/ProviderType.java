@@ -25,7 +25,16 @@ public final class ProviderType {
      * outcome → action can be exercised end-to-end without any provider credentials.
      */
     public static final String MOCK = "MOCK";
-    // Future: PLIVO, TWILIO, KNOWLARITY, KALEYRA, …
+    /**
+     * Vacademy Voice — our first-party Plivo-backed voice product. Unlike the
+     * other providers (which are integrations into an account the institute owns
+     * elsewhere), institutes are onboarded onto OUR master Plivo account, each
+     * isolated in its own Plivo subaccount. Carries outbound bridge click-to-call,
+     * inbound multi-level IVR, recording, transfer, prepaid billing and an India
+     * compliance gate — all behind the per-institute VOICE_CALLING_SETTING flag.
+     */
+    public static final String PLIVO = "PLIVO";
+    // Future: TWILIO, KNOWLARITY, KALEYRA, …
 
     private ProviderType() {}
 }

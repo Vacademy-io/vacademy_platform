@@ -31,6 +31,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.PhonePeStatusResponseDTO;
+import vacademy.io.common.payment.currency.CurrencyGatewaySupport;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.exceptions.VacademyException;
@@ -450,8 +451,13 @@ public class PaymentService {
                         PaymentInitiationRequestDTO request) {
                 Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
                                 .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
-                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory
-                                .getStrategy(PaymentGateway.fromString(vendor));
+                PaymentGateway gateway = PaymentGateway.fromString(vendor);
+                if (StringUtils.hasText(request.getCurrency())
+                                && !CurrencyGatewaySupport.isSupported(gateway, request.getCurrency())) {
+                        throw new VacademyException("Currency " + request.getCurrency().trim().toUpperCase()
+                                        + " is not supported by payment gateway " + gateway.name() + ".");
+                }
+                PaymentServiceStrategy paymentServiceStrategy = paymentServiceFactory.getStrategy(gateway);
                 request.setInstituteId(instituteId);
                 return paymentServiceStrategy.initiatePayment(user, request, paymentGatewaySpecificData);
         }

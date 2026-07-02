@@ -62,6 +62,11 @@ export const PaymentGatewayWrapper = ({
       // Cashfree doesn't need gateway keys - uses paymentSessionId from backend
       return <>{children}</>;
 
+    case "PHONEPE":
+      // PhonePe Standard Checkout is a full-page redirect — no client-side SDK
+      // or publishable key is loaded in the browser, so no provider is needed.
+      return <>{children}</>;
+
     case "FREE":
       // FREE invites don't need any payment gateway
       return <>{children}</>;

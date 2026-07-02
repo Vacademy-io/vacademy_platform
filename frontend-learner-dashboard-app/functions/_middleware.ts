@@ -138,13 +138,28 @@ export const onRequest: PagesFunction = async (context) => {
     `${branding.instituteName}`
   );
 
-  // Resolve logo URL from fileId
-  const logoFileId =
+  // The big unfurl thumbnail uses the main institute logo; the favicon /
+  // apple-touch-icon prefer the dedicated tab icon. Resolve both (deduped).
+  const ogImageFileId =
+    branding.instituteLogoFileId || branding.tabIconFileId || "";
+  const faviconFileId =
     branding.tabIconFileId || branding.instituteLogoFileId || "";
-  let ogImage = "";
-  if (logoFileId) {
-    ogImage = await resolveLogoUrl(logoFileId, backendBase);
-  }
+  const [ogImage, faviconResolved] = await Promise.all([
+    ogImageFileId ? resolveLogoUrl(ogImageFileId, backendBase) : Promise.resolve(""),
+    faviconFileId === ogImageFileId
+      ? Promise.resolve("")
+      : faviconFileId
+        ? resolveLogoUrl(faviconFileId, backendBase)
+        : Promise.resolve(""),
+  ]);
+  const favicon = faviconResolved || ogImage;
+
+  // The S3 objects are served with a wrong content-type, which makes crawlers
+  // refuse to render them. Route og:image through our same-origin proxy, which
+  // re-serves the bytes with a correct image/* content-type.
+  const ogImageProxied = ogImage
+    ? `${url.origin}/branding-image?u=${encodeURIComponent(ogImage)}`
+    : "";
 
   // Build OG meta tags
   const ogTags = [
@@ -152,12 +167,12 @@ export const onRequest: PagesFunction = async (context) => {
     `<meta property="og:description" content="${description}" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${escapeHtml(request.url)}" />`,
-    ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : "",
+    ogImageProxied ? `<meta property="og:image" content="${escapeHtml(ogImageProxied)}" />` : "",
     // Twitter card
     `<meta name="twitter:card" content="summary" />`,
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,
-    ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}" />` : "",
+    ogImageProxied ? `<meta name="twitter:image" content="${escapeHtml(ogImageProxied)}" />` : "",
   ]
     .filter(Boolean)
     .join("\n    ");
@@ -170,15 +185,15 @@ export const onRequest: PagesFunction = async (context) => {
     `<meta name="description" content="${description}" />`
   );
 
-  // Replace empty title
-  html = html.replace(/<title><\/title>/, `<title>${title}</title>`);
+  // Replace the static title (matches both empty and "Course Catalogue").
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
 
   // Inject OG tags before </head>
   html = html.replace("</head>", `    ${ogTags}\n  </head>`);
 
-  // Replace existing apple-touch-icon and favicon with institute logo for crawlers
-  if (ogImage) {
-    const escapedLogo = escapeHtml(ogImage);
+  // Replace existing apple-touch-icon and favicon with the institute icon for crawlers
+  if (favicon) {
+    const escapedLogo = escapeHtml(favicon);
     // Replace apple-touch-icon href
     html = html.replace(
       /<link\s+rel="apple-touch-icon"[^>]*\/>/,
@@ -201,8 +216,16 @@ export const onRequest: PagesFunction = async (context) => {
   // Strip the manifest link for crawlers — it references default Vacademy icons
   html = html.replace(/<link\s+rel="manifest"[^>]*\/?>/, "");
 
+  // Rebuild headers: the body length changed (and reading .text() may have
+  // decompressed it), so a stale content-length/content-encoding would
+  // truncate or corrupt the response. Let the runtime recompute them.
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+
   return new Response(html, {
     status: response.status,
-    headers: response.headers,
+    statusText: response.statusText,
+    headers,
   });
 };

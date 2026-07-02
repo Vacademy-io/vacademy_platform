@@ -65,6 +65,7 @@ import {
     ALL_STATUSES_VALUE,
     ALL_SLA_VALUE,
     ALL_COUNSELLORS_VALUE,
+    UNASSIGNED_COUNSELLOR_VALUE,
     ALL_DATE_VALUE,
     CUSTOM_DATE_VALUE,
     DEFAULT_RANGE_DAYS,
@@ -399,7 +400,12 @@ const RecentLeadsContent = () => {
                 conversion_status_filter: conversionFilter,
                 sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                 assigned_counselor_id:
-                    counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                        ? undefined
+                        : counsellorFilter,
+                is_unassigned:
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
                 source_type: sourceFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
@@ -658,7 +664,12 @@ const RecentLeadsContent = () => {
                     conversion_status_filter: conversionFilter,
                     sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                     assigned_counselor_id:
-                        counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                        counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                            ? undefined
+                            : counsellorFilter,
+                    is_unassigned:
+                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
                     source_type: sourceFilter || undefined,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
@@ -701,7 +712,9 @@ const RecentLeadsContent = () => {
         });
     if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
         const cName =
-            counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected';
+            counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                ? 'Unassigned'
+                : (counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected');
         chips.push({
             label: `Counsellor: ${cName}`,
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
@@ -800,6 +813,7 @@ const RecentLeadsContent = () => {
                             value={counsellorFilter}
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
+                            unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
                             options={counsellorOptions}
                             isLoading={counsellorOptionsLoading}
                         />

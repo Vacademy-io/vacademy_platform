@@ -10,6 +10,7 @@ import ComboboxField from "@/components/design-system/combobox-field";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { MyButton } from "@/components/design-system/button";
 import { Calendar, CreditCard, Globe } from "@phosphor-icons/react";
+import { getCurrencySymbol } from "@/utils/currency";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
@@ -152,18 +153,8 @@ export interface RegistrationStepProps {
   billingContactFields?: BillingContactFieldsConfig;
 }
 
-const currencySymbols: { [key: string]: string } = {
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  INR: "₹",
-  AUD: "A$",
-  CAD: "C$",
-};
-
-export const getCurrencySymbol = (currencyCode: string) => {
-  return currencySymbols[currencyCode] || currencyCode;
-};
+// Currency symbols come from the shared currency util so every flow stays in sync.
+export { getCurrencySymbol };
 
 export const getPaymentPlanIcon = (type: string) => {
   switch (type) {

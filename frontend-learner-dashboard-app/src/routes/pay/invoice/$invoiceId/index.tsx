@@ -25,6 +25,7 @@ import {
 } from "@/constants/urls";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useTheme } from "@/providers/theme/theme-provider";
+import { getCurrencySymbol } from "@/utils/currency";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -81,17 +82,8 @@ export const Route = createFileRoute("/pay/invoice/$invoiceId/")({
 
 // ── Currency helpers ───────────────────────────────────────────────────────────
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  AED: "د.إ",
-  SGD: "S$",
-};
-
 function formatCurrency(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] ?? currency;
+  const symbol = getCurrencySymbol(currency);
   return `${symbol}${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 

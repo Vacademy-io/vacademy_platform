@@ -5,166 +5,205 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.TopicConfidence;
+
+import java.util.stream.Collectors;
 import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAnalysisProcess;
-import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
-import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
-import vacademy.io.admin_core_service.features.student_analysis.repository.UserLinkedDataRepository;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.ComprehensiveReportAggregator;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.ReportModule;
 
 import java.time.Duration;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 /**
- * Async service to process student analysis requests
+ * Async service to process student analysis requests.
+ *
+ * <p>v1 path (existing, UNCHANGED): uses StudentAnalysisDataService + StudentReportLLMService.
+ * <p>v2 path (new): uses ComprehensiveReportAggregator (Layer-1) + ComprehensiveReportLLMService (Layer-2).
+ * The branch is determined by {@code process.reportVersion}.
+ *
+ * <h3>Transaction strategy</h3>
+ * <p>This method is {@code @Async} and intentionally NOT {@code @Transactional}.
+ * Running a 150-second aggregation+LLM chain inside a single transaction would hold
+ * a DB connection for that entire duration, exhausting the pool and making the
+ * intermediate PROCESSING status write invisible to pollers until the final commit.
+ *
+ * <p>Instead, every DB write is delegated to {@link StudentAnalysisPersistenceService},
+ * whose short {@code @Transactional} methods each acquire, use, and release a connection
+ * independently:
+ * <ol>
+ *   <li>{@code markProcessing} — commits PROCESSING before the long work starts.
+ *   <li>{@code updateUserLinkedData} — commits strengths/weaknesses after LLM returns.
+ *   <li>{@code saveCompletedReport} — commits report JSON + COMPLETED atomically.
+ *   <li>{@code markFailed} — commits FAILED + error message on any exception.
+ * </ol>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class StudentAnalysisProcessorService {
 
-        private final StudentAnalysisProcessRepository processRepository;
-        private final UserLinkedDataRepository userLinkedDataRepository;
         private final StudentAnalysisDataService dataService;
         private final StudentReportLLMService llmService;
         private final ObjectMapper objectMapper;
 
+        // v2 dependencies (injected alongside v1, no removal of existing fields)
+        private final ComprehensiveReportAggregator comprehensiveAggregator;
+        private final ComprehensiveReportLLMService comprehensiveLLMService;
+
+        // Transactional persistence — separate bean so @Transactional proxy applies
+        private final StudentAnalysisPersistenceService persistenceService;
+
+        // Learner notification (best-effort; never affects report generation)
+        private final StudentReportNotificationService studentReportNotificationService;
+
         /**
-         * Process student analysis asynchronously
+         * Process student analysis asynchronously.
+         *
+         * <p>NOT @Transactional — see class-level javadoc for the rationale.
+         * Each DB write is handled by {@link StudentAnalysisPersistenceService}.
          */
         @Async
-        @Transactional
         public void processStudentAnalysis(String processId) {
                 log.info("[Student-Analysis-Processor] Starting async processing for process ID: {}", processId);
 
-                StudentAnalysisProcess process = processRepository.findById(processId)
-                                .orElseThrow(() -> new RuntimeException("Process not found: " + processId));
+                // Commit PROCESSING immediately so pollers see it before the long work starts.
+                StudentAnalysisProcess process = persistenceService.markProcessing(processId);
 
                 try {
-                        // Update status to PROCESSING
-                        process.setStatus("PROCESSING");
-                        processRepository.save(process);
+                        boolean isV2 = "v2".equalsIgnoreCase(process.getReportVersion());
 
-                        // Step 1: Collect all student data
-                        log.info("[Student-Analysis-Processor] Collecting student data");
-                        StudentAnalysisData data = dataService.collectStudentData(
-                                        process.getUserId(),
-                                        process.getStartDateIso(),
-                                        process.getEndDateIso());
-
-                        // Step 2: Generate LLM report (using blockOptional to prevent memory leak)
-                        log.info("[Student-Analysis-Processor] Generating LLM report");
-                        StudentReportData report = llmService.generateStudentReport(data)
-                                        .blockOptional(Duration.ofSeconds(70))
-                                        .orElseThrow(() -> new RuntimeException("LLM timeout or returned null report"));
-
-                        // Step 3: Save report as JSON
-                        String reportJson = objectMapper.writeValueAsString(report);
-                        process.setReportJson(reportJson);
-
-                        // Step 4: Update user_linked_data with strengths and weaknesses
-                        log.info("[Student-Analysis-Processor] Updating user linked data");
-                        updateUserLinkedData(process.getUserId(), report.getStrengths(), report.getWeaknesses());
-
-                        // Step 5: Mark as COMPLETED
-                        process.setStatus("COMPLETED");
-                        processRepository.save(process);
-
-                        log.info("[Student-Analysis-Processor] Successfully completed processing for process ID: {}",
-                                        processId);
+                        if (isV2) {
+                                processV2(process);
+                        } else {
+                                processV1(process);
+                        }
 
                 } catch (Exception e) {
                         log.error("[Student-Analysis-Processor] Failed to process analysis for process ID: {}",
                                         processId, e);
-                        process.setStatus("FAILED");
-                        process.setErrorMessage(e.getMessage());
-                        processRepository.save(process);
+                        persistenceService.markFailed(processId, e.getMessage());
                 }
         }
 
-        /**
-         * Update user_linked_data table with strengths and weaknesses
-         * Cleans duplicates and updates or creates entries as needed
-         */
-        @Transactional
-        protected void updateUserLinkedData(String userId, Map<String, Integer> strengths,
-                        Map<String, Integer> weaknesses) {
-                // Clean duplicates for strengths
-                cleanDuplicates(userId, "strength");
+        // ── v1 path (UNCHANGED from original) ────────────────────────────────────
+        private void processV1(StudentAnalysisProcess process) throws Exception {
+                // Step 1: Collect all student data
+                log.info("[Student-Analysis-Processor] [v1] Collecting student data");
+                StudentAnalysisData data = dataService.collectStudentData(
+                                process.getUserId(),
+                                process.getStartDateIso(),
+                                process.getEndDateIso());
 
-                // Clean duplicates for weaknesses
-                cleanDuplicates(userId, "weakness");
+                // Step 2: Generate LLM report
+                log.info("[Student-Analysis-Processor] [v1] Generating LLM report");
+                StudentReportData report = llmService.generateStudentReport(data)
+                                .blockOptional(Duration.ofSeconds(70))
+                                .orElseThrow(() -> new RuntimeException("LLM timeout or returned null report"));
 
-                // Update or add strengths
-                if (strengths != null) {
-                        // Flush any pending changes before processing
-                        userLinkedDataRepository.flush();
+                // Step 3: Save report as JSON
+                String reportJson = objectMapper.writeValueAsString(report);
 
-                        strengths.forEach((data, percentage) -> {
-                                String trimmedData = data.trim();
-                                UserLinkedData existing = userLinkedDataRepository.findByUserIdAndTypeAndData(userId,
-                                                "strength", trimmedData);
+                // Step 4: Update user_linked_data with strengths and weaknesses
+                // (runs in its own @Transactional method so flush() has a live persistence context)
+                log.info("[Student-Analysis-Processor] [v1] Updating user linked data");
+                persistenceService.updateUserLinkedData(process.getUserId(), report.getStrengths(), report.getWeaknesses());
 
-                                if (existing != null) {
-                                        existing.setData(trimmedData);
-                                        existing.setPercentage(percentage);
-                                        userLinkedDataRepository.save(existing);
-                                } else {
-                                        // Create new entry
-                                        UserLinkedData newEntry = new UserLinkedData(userId, "strength", trimmedData,
-                                                        percentage);
-                                        userLinkedDataRepository.save(newEntry);
-                                }
-                        });
-                }
+                // Step 5: Persist completed report + mark COMPLETED atomically
+                StudentAnalysisProcess completed = persistenceService.saveCompletedReport(process.getId(), reportJson);
 
-                // Update or add weaknesses
-                if (weaknesses != null) {
-                        weaknesses.forEach((data, percentage) -> {
-                                String trimmedData = data.trim();
-                                UserLinkedData existing = userLinkedDataRepository.findByUserIdAndTypeAndData(userId,
-                                                "weakness", trimmedData);
+                log.info("[Student-Analysis-Processor] [v1] Successfully completed for processId={}", process.getId());
 
-                                if (existing != null) {
-                                        existing.setData(trimmedData);
-                                        existing.setPercentage(percentage);
-                                        userLinkedDataRepository.save(existing);
-                                } else {
-                                        UserLinkedData newEntry = new UserLinkedData(userId, "weakness", trimmedData,
-                                                        percentage);
-                                        userLinkedDataRepository.save(newEntry);
-                                }
-                        });
-                }
+                // Step 6: Notify the learner (best-effort) — runs AFTER COMPLETED is committed
+                notifyLearnerSafe(completed);
         }
 
-        /**
-         * Clean duplicate entries for a given user and type
-         * Keeps the entry with the highest percentage
-         */
-        private void cleanDuplicates(String userId, String type) {
-                List<UserLinkedData> all = userLinkedDataRepository.findByUserIdAndType(userId, type);
+        // ── v2 path (new comprehensive report) ───────────────────────────────────
+        private void processV2(StudentAnalysisProcess process) throws Exception {
+                log.info("[Student-Analysis-Processor] [v2] Collecting comprehensive data");
 
-                // Group by normalized data (case-insensitive)
-                Map<String, List<UserLinkedData>> grouped = all.stream()
-                                .collect(Collectors.groupingBy(ud -> ud.getData().trim().toLowerCase()));
+                // Step 1: Layer-1 deterministic aggregation — only the admin-selected modules are queried
+                Set<String> modules = ReportModule.resolveCsv(process.getIncludedModules());
+                log.info("[Student-Analysis-Processor] [v2] Including modules: {}", modules);
+                // BUG-13: if batchId is absent but packageSessionId is provided, use it as the
+                // effective batch id so attendance/live-class/progress collectors still run.
+                String effectiveBatchId = process.getBatchId() != null
+                                ? process.getBatchId()
+                                : process.getPackageSessionId();
+                ComprehensiveStudentReport report = comprehensiveAggregator.collect(
+                                process.getUserId(),
+                                process.getInstituteId(),
+                                effectiveBatchId,
+                                process.getStartDateIso(),
+                                process.getEndDateIso(),
+                                modules);
 
-                // For each group with duplicates, keep the one with max percentage and delete
-                // others
-                grouped.values().stream()
-                                .filter(group -> group.size() > 1)
-                                .forEach(group -> {
-                                        UserLinkedData keep = group.stream()
-                                                        .max(Comparator.comparingInt(UserLinkedData::getPercentage))
-                                                        .orElse(group.get(0));
+                // Step 2: Layer-2 AI narrative (best-effort; failure → report without ai_insights)
+                log.info("[Student-Analysis-Processor] [v2] Generating AI narrative");
+                try {
+                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, process.getUserId())
+                                        .blockOptional(Duration.ofSeconds(90))
+                                        .orElse(null);
 
-                                        group.stream()
-                                                        .filter(ud -> !ud.getId().equals(keep.getId()))
-                                                        .forEach(userLinkedDataRepository::delete);
-                                });
+                        if (insights != null) {
+                                report.setAiInsights(insights);
+
+                                // Lift @JsonIgnore fields from the AI section to their canonical report-top-level homes
+                                if (insights.getParentSummary() != null) {
+                                        report.setParentSummary(insights.getParentSummary());
+                                }
+                                if (insights.getOverviewOneLine() != null && report.getOverview() != null) {
+                                        report.getOverview().setOneLine(insights.getOverviewOneLine());
+                                }
+
+                                // Convert LLM strength/weakness maps (topic→confidence) to TopicConfidence lists
+                                // at report top level so they appear in the serialized report_json.
+                                if (insights.getStrengthsMap() != null && !insights.getStrengthsMap().isEmpty()) {
+                                        report.setStrengths(insights.getStrengthsMap().entrySet().stream()
+                                                .map(e -> TopicConfidence.builder()
+                                                        .topic(e.getKey()).confidence(e.getValue()).build())
+                                                .collect(Collectors.toList()));
+                                }
+                                if (insights.getWeaknessesMap() != null && !insights.getWeaknessesMap().isEmpty()) {
+                                        report.setAreasToImprove(insights.getWeaknessesMap().entrySet().stream()
+                                                .map(e -> TopicConfidence.builder()
+                                                        .topic(e.getKey()).confidence(e.getValue()).build())
+                                                .collect(Collectors.toList()));
+                                }
+
+                                // Merge strengths/weaknesses into user_linked_data (same as v1).
+                                // Runs in its own @Transactional method so flush() has a live persistence context.
+                                persistenceService.updateUserLinkedData(
+                                        process.getUserId(), insights.getStrengthsMap(), insights.getWeaknessesMap());
+                        } else {
+                                log.warn("[Student-Analysis-Processor] [v2] AI narrative timed out; report will have no ai_insights.");
+                        }
+                } catch (Exception llmEx) {
+                        log.error("[Student-Analysis-Processor] [v2] AI narrative failed (non-fatal): {}", llmEx.getMessage());
+                        // Report is still saved without ai_insights — deterministic data is preserved
+                }
+
+                // Step 3: Persist completed report + mark COMPLETED atomically
+                String reportJson = objectMapper.writeValueAsString(report);
+                StudentAnalysisProcess completed = persistenceService.saveCompletedReport(process.getId(), reportJson);
+
+                log.info("[Student-Analysis-Processor] [v2] Successfully completed for processId={}", process.getId());
+
+                // Notify the learner (best-effort) — runs AFTER COMPLETED is committed
+                notifyLearnerSafe(completed);
+        }
+
+        /** Fire learner notifications without ever affecting report generation. */
+        private void notifyLearnerSafe(StudentAnalysisProcess process) {
+                try {
+                        studentReportNotificationService.notifyLearner(process);
+                } catch (Exception e) {
+                        log.error("[Student-Analysis-Processor] Learner notification failed for processId={} (non-fatal): {}",
+                                        process.getId(), e.getMessage());
+                }
         }
 }

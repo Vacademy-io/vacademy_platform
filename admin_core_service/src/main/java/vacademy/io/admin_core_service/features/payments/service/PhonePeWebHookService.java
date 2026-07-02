@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
 import vacademy.io.admin_core_service.features.payments.util.WebHookErrorUtils;
@@ -42,12 +43,9 @@ public class PhonePeWebHookService {
             // descriptive message)
             webhookId = webHookService.saveWebhook(PaymentGateway.PHONEPE.name(), payload, null);
 
-            // Step 4: Verify Authorization (skip for now as PhonePe doesn't send auth
-            // header in standard flow). For production, implement proper signature check.
-            log.debug(
-                    "Skipping auth verification for PhonePe webhook (implement signature verification for production)");
-
-            return processVerifiedPayload(webhookId, payload, instituteIdParam);
+            // Step 4: Signature verification happens inside processVerifiedPayload,
+            // once the instituteId (and thus the webhook credentials) is resolved.
+            return processVerifiedPayload(webhookId, payload, authHeader, instituteIdParam, true);
 
         } catch (Exception e) {
             String detailedMessage = WebHookErrorUtils.describeException(e);
@@ -88,8 +86,9 @@ public class PhonePeWebHookService {
         webHookService.resetForReprocess(webhookId);
 
         try {
-            // instituteIdParam is null on reprocess — service will fall back to metaInfo.udf1
-            return processVerifiedPayload(webhookId, payload, null);
+            // instituteIdParam is null on reprocess — service will fall back to metaInfo.udf1.
+            // Signature was already verified on first delivery, so skip it on reprocess.
+            return processVerifiedPayload(webhookId, payload, null, null, false);
         } catch (Exception e) {
             String detailedMessage = WebHookErrorUtils.describeException(e);
             log.error("Manual reprocess failed for PhonePe webhookId={}: {}", webhookId, detailedMessage, e);
@@ -99,11 +98,13 @@ public class PhonePeWebHookService {
     }
 
     /**
-     * Steps 1, 3, 5, 6 of the pipeline — payload parse, instituteId resolution,
-     * event handling, and webhook-row finalization. Shared between live webhook
-     * delivery (after no-op auth check) and manual reprocess.
+     * Steps 1, 3, 4, 5, 6 of the pipeline — payload parse, instituteId resolution,
+     * signature verification, event handling, and webhook-row finalization. Shared
+     * between live webhook delivery ({@code verifySignature=true}) and manual
+     * reprocess ({@code verifySignature=false}).
      */
-    private ResponseEntity<String> processVerifiedPayload(String webhookId, String payload, String instituteIdParam)
+    private ResponseEntity<String> processVerifiedPayload(String webhookId, String payload, String authHeader,
+            String instituteIdParam, boolean verifySignature)
             throws Exception {
         // Step 1: Parse payload
         PhonePeWebHookDTO webhookDTO = objectMapper.readValue(payload, PhonePeWebHookDTO.class);
@@ -124,6 +125,15 @@ public class PhonePeWebHookService {
             log.error("Webhook missing instituteId. Cannot process payment update.");
             webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED, "Missing instituteId");
             return ResponseEntity.status(400).body("Missing instituteId");
+        }
+
+        // Step 4: Verify the SHA256(username:password) signature PhonePe sends in
+        // the Authorization header — but only when webhook credentials have been
+        // configured for this institute (opt-in). If none are set we skip, so
+        // existing setups without credentials keep working unchanged.
+        if (verifySignature && !isSignatureAcceptable(authHeader, instituteId)) {
+            webHookService.updateWebHookStatus(webhookId, WebHookStatus.FAILED, "Signature verification failed");
+            return ResponseEntity.status(401).body("Invalid webhook signature");
         }
 
         log.info("Processing PhonePe webhook for instituteId: {}, orderId: {} (webhookId={})", instituteId,
@@ -160,35 +170,49 @@ public class PhonePeWebHookService {
         }
     }
 
-    private boolean verifyAuth(String authHeader, String instituteId) {
-        if (authHeader == null || instituteId == null)
-            return false;
-
+    /**
+     * Validates the PhonePe webhook Authorization header, which is
+     * {@code SHA256(username:password)} (hex) of the credentials configured on
+     * both the PhonePe dashboard and our gateway mapping.
+     *
+     * <p>Opt-in: if no webhook credentials are configured for the institute we
+     * return {@code true} (skip), preserving behaviour for setups that haven't
+     * set them yet. When credentials ARE configured, a missing or mismatched
+     * header is rejected.
+     */
+    private boolean isSignatureAcceptable(String authHeader, String instituteId) {
         try {
-            // Get credentials for this institute
             Map<String, Object> gatewayData = institutePaymentGatewayMappingService
                     .findInstitutePaymentGatewaySpecifData(PaymentGateway.PHONEPE.name(), instituteId);
-            String username = (String) gatewayData.get("webhookUsername");
-            String password = (String) gatewayData.get("webhookPassword");
+            String username = gatewayData != null ? (String) gatewayData.get("webhookUsername") : null;
+            String password = gatewayData != null ? (String) gatewayData.get("webhookPassword") : null;
 
-            if (username == null || password == null) {
-                log.error("PhonePe webhook credentials missing for institute: {}", instituteId);
+            if (!StringUtils.hasText(username) || !StringUtils.hasText(password)) {
+                log.warn("No PhonePe webhook credentials configured for institute {} — skipping signature verification",
+                        instituteId);
+                return true;
+            }
+
+            if (!StringUtils.hasText(authHeader)) {
+                log.error("PhonePe webhook missing Authorization header but credentials are configured for institute {}",
+                        instituteId);
                 return false;
             }
 
             String input = username + ":" + password;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedhash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-
             String expectedAuth = bytesToHex(encodedhash);
 
-            // Per doc: Authorization: SHA256(username:password)
-            // Note: The doc says SHA256, but doesn't specify if it's hex or base64.
-            // Usually it's hex for SHA256 headers like this.
-            return authHeader.equalsIgnoreCase(expectedAuth);
+            // Per docs: Authorization: SHA256(username:password), hex-encoded.
+            boolean matches = authHeader.trim().equalsIgnoreCase(expectedAuth);
+            if (!matches) {
+                log.error("PhonePe webhook signature mismatch for institute {}", instituteId);
+            }
+            return matches;
 
         } catch (Exception e) {
-            log.error("Error verifying PhonePe webhook auth", e);
+            log.error("Error verifying PhonePe webhook signature for institute {}", instituteId, e);
             return false;
         }
     }

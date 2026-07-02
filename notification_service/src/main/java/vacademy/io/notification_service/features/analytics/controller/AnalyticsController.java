@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.analytics.dto.*;
 import vacademy.io.notification_service.features.analytics.service.DailyParticipationService;
+import vacademy.io.notification_service.features.analytics.service.LeadJourneyFunnelService;
 
 import java.sql.Timestamp;
 
@@ -19,6 +20,7 @@ import java.sql.Timestamp;
 public class AnalyticsController {
 
     private final DailyParticipationService dailyParticipationService;
+    private final LeadJourneyFunnelService leadJourneyFunnelService;
 
     @PostMapping("/daily-participation")
     @Operation(
@@ -106,6 +108,34 @@ public class AnalyticsController {
                 endDate,
                 page,
                 pageSize
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/lead-journey-funnel")
+    @Operation(
+        summary = "Get Lead-Journey Daily-Message Funnel",
+        description = "Returns per-day send/recipient/reply metrics plus a per-recipient roster for a multi-day WhatsApp drip identified by a template-name prefix (default 'lead_journey_day_'). Surfaces journeys that are not registered in notification_template_day_map (e.g. Facebook-leads journeys)."
+    )
+    public ResponseEntity<LeadJourneyFunnelResponseDTO> getLeadJourneyFunnel(
+            @RequestBody LeadJourneyFunnelRequestDTO request
+    ) {
+        log.info("Received lead-journey funnel request: {}", request);
+
+        Timestamp startDate = request.getStartDate() != null
+                ? Timestamp.valueOf(request.getStartDate())
+                : null;
+        Timestamp endDate = request.getEndDate() != null
+                ? Timestamp.valueOf(request.getEndDate())
+                : null;
+
+        LeadJourneyFunnelResponseDTO response = leadJourneyFunnelService.getFunnel(
+                request.getInstituteId(),
+                request.getSenderBusinessChannelId(),
+                request.getTemplatePrefix(),
+                startDate,
+                endDate
         );
 
         return ResponseEntity.ok(response);

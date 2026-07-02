@@ -31,6 +31,11 @@ export interface AdminTestCaseResult {
     passed: boolean;
     stdout: string;
     expected: string;
+    // Which accepted output matched (-1 = none), and how many were accepted, so
+    // the report can show "accepts N outputs — matched #X". Optional: older
+    // submissions predate these fields.
+    matchedIndex?: number;
+    acceptedCount?: number;
     stderr?: string;
     timeMs?: number;
     memoryKb?: number;

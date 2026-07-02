@@ -464,6 +464,26 @@ def build_shot_planner_user_prompt(
     if subject_domain:
         lines.append(f"SUBJECT DOMAIN: {subject_domain}")
 
+    # Marketing shot-mix bias — fires ONLY for promotional/product content so
+    # educational lectures (where TEXT_DIAGRAM is the right default) are
+    # untouched. Counters the planner's default of routing every "explanation"
+    # beat to a text/diagram panel, which is what makes marketing videos feel
+    # text-heavy and robotic.
+    _sd = (subject_domain or "").strip().lower()
+    _ct = (content_type or "").strip().lower()
+    if _sd in ("saas_marketing", "business_marketing", "saas_demo") or _ct in ("ad", "marketing"):
+        lines.append("")
+        lines.append(
+            "MARKETING SHOT MIX — this is a promotional/product video, NOT a lecture. "
+            "Lead with VISUALS, keep on-screen text minimal:\n"
+            "  - FAVOR IMAGE_HERO / VIDEO_HERO / DEVICE_MOCKUP / PRODUCT_HERO / ANIMATED_ASSET "
+            "(real imagery, footage, product & device moments) over text-panel shots.\n"
+            "  - Use TEXT_DIAGRAM / INFOGRAPHIC_SVG SPARINGLY — at most ~1 in 4 shots, and only "
+            "when a diagram genuinely beats showing it. Do NOT default explanations to TEXT_DIAGRAM.\n"
+            "  - The hook MUST be a visual or kinetic-title moment, never a text diagram.\n"
+            "  - Think modern brand film / social ad: imagery carries the story; text is punchy keywords."
+        )
+
     # AI video gating
     if ai_video_enabled:
         audio_note = (

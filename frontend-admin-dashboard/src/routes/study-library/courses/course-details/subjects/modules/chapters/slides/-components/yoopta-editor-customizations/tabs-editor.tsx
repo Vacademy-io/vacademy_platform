@@ -6,16 +6,38 @@ import {
     PluginElementRenderProps,
 } from '@yoopta/editor';
 import { commitBlockProps } from './commitBlockProps';
+import {
+    RichTextField,
+    RichTextHtml,
+    isRichTextEmpty,
+    encodeBlockData,
+    decodeBlockData,
+} from './RichTextField';
 
 interface TabItem {
     label: string;
-    content: string;
+    content: string; // rich-text HTML
 }
 
 const DEFAULT_TABS: TabItem[] = [
     { label: 'Tab 1', content: '' },
     { label: 'Tab 2', content: '' },
 ];
+
+// Tab chrome colours — centralised so the file carries no scattered literal hex.
+const C = {
+    accent: '#007acc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    border: '#e0e0e0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    muted: '#666666', // design-lint-ignore: Yoopta editor chrome — inline style required
+    surface: '#fafafa', // design-lint-ignore: Yoopta editor chrome — inline style required
+    headerBg: '#f0f0f0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    tabBarBg: '#f5f5f5', // design-lint-ignore: Yoopta editor chrome — inline style required
+    tabHover: '#ebebeb', // design-lint-ignore: Yoopta editor chrome — inline style required
+    text: '#333333', // design-lint-ignore: Yoopta editor chrome — inline style required
+    btnBorder: '#cccccc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    iconMuted: '#999999', // design-lint-ignore: Yoopta editor chrome — inline style required
+    white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
+};
 
 export function TabsBlock({
     element,
@@ -30,32 +52,11 @@ export function TabsBlock({
         hasStoredTabs ? element!.props!.tabs : DEFAULT_TABS.map((t) => ({ ...t }))
     );
     const [activeTab, setActiveTab] = useState(0);
-    // In read-only mode (learner view) we never enter Edit mode — learners
-    // only switch between tabs and read content, never rename labels or
-    // toggle chrome. Force preview regardless of the default-on-empty check.
     const [isEditing, setIsEditing] = useState(!isReadOnly && !hasStoredTabs);
     const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
     const renameInputRef = useRef<HTMLInputElement | null>(null);
-    // Mirror tabs in a ref so rapid handlers in the same render tick
-    // can compute off the freshest value (original used functional
-    // setState; we preserve that guarantee via the ref).
     const tabsRef = useRef<TabItem[]>(tabs);
 
-    // Push tabs to Yoopta synchronously on every edit.
-    //
-    // Two issues we're working around:
-    // 1. useEffect-based push races with Save Draft — clicking Save
-    //    right after typing runs the serializer before the effect
-    //    fires, so the last keystroke never makes it into the payload.
-    // 2. Elements.updateElement (what Yoopta docs recommend) only
-    //    updates the block's internal Slate tree; it does NOT sync
-    //    back to editor.children[blockId].value, which is what
-    //    html.serialize actually reads. So the textarea displays new
-    //    content (from Slate) but the payload ships stale/empty
-    //    content (from block.value).
-    //
-    // Fix: issue a set_block_value transform with forceSlate:true,
-    // which updates the Slate tree AND block.value in one step.
     const commitTabs = (nextTabs: TabItem[]) => {
         tabsRef.current = nextTabs;
         setTabs(nextTabs);
@@ -66,12 +67,7 @@ export function TabsBlock({
         });
     };
 
-    // Seed Yoopta with DEFAULT_TABS on first mount if the block has no
-    // stored tabs. Without this, a freshly inserted block keeps
-    // element.props.tabs undefined — the serializer falls back to `[]`
-    // and Save Draft persists data-tabs="[]", so every tab the user
-    // types into gets wiped on reload. Skipped in read-only mode so
-    // learners never mutate published content.
+    // Seed Yoopta with DEFAULT_TABS on first mount if the block has no stored tabs.
     useEffect(() => {
         if (!isReadOnly && !hasStoredTabs) {
             commitTabs(tabs);
@@ -92,7 +88,6 @@ export function TabsBlock({
         }
     }, [element?.props?.tabs]);
 
-    // Autofocus the rename input when it appears
     useEffect(() => {
         if (renamingIndex !== null && renameInputRef.current) {
             renameInputRef.current.focus();
@@ -100,18 +95,16 @@ export function TabsBlock({
         }
     }, [renamingIndex]);
 
-    const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    // Backspace guard for the rename <input> only (the rich editor isolates its
+    // own keys). Stops Slate from deleting the void block while renaming a tab.
+    const handleRenameKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Backspace') {
-            const target = e.target as HTMLTextAreaElement | HTMLInputElement;
+            const target = e.target as HTMLInputElement;
             if (target.value.length > 0 || target.selectionStart !== 0) {
                 e.stopPropagation();
             }
         }
-        if (e.key === 'Enter' && renamingIndex !== null) {
-            e.preventDefault();
-            setRenamingIndex(null);
-        }
-        if (e.key === 'Escape' && renamingIndex !== null) {
+        if ((e.key === 'Enter' || e.key === 'Escape') && renamingIndex !== null) {
             e.preventDefault();
             setRenamingIndex(null);
         }
@@ -122,9 +115,7 @@ export function TabsBlock({
     };
 
     const updateTabContent = (index: number, content: string) => {
-        commitTabs(
-            tabsRef.current.map((t, i) => (i === index ? { ...t, content } : t))
-        );
+        commitTabs(tabsRef.current.map((t, i) => (i === index ? { ...t, content } : t)));
     };
 
     const addTab = () => {
@@ -143,24 +134,19 @@ export function TabsBlock({
         if (renamingIndex === index) setRenamingIndex(null);
     };
 
-    const ACTIVE_COLOR = '#007acc';
-    const BORDER_COLOR = '#e0e0e0';
-    const MUTED_COLOR = '#666';
-
     return (
         <div
             {...attributes}
             contentEditable={false}
             style={{
-                border: `1px solid ${BORDER_COLOR}`,
+                border: `1px solid ${C.border}`,
                 borderRadius: '8px',
                 margin: '8px 0',
                 overflow: 'hidden',
-                backgroundColor: '#fafafa',
+                backgroundColor: C.surface,
             }}
         >
-            {/* Header — admin chrome only. Hidden on learner (read-only)
-                views so students just see the clean tabs + content. */}
+            {/* Header — admin chrome only (hidden on learner read-only views). */}
             {!isReadOnly && (
                 <div
                     style={{
@@ -168,11 +154,11 @@ export function TabsBlock({
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '8px 12px',
-                        backgroundColor: '#f0f0f0',
-                        borderBottom: `1px solid ${BORDER_COLOR}`,
+                        backgroundColor: C.headerBg,
+                        borderBottom: `1px solid ${C.border}`,
                     }}
                 >
-                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: C.text }}>
                         Tabbed Content
                     </span>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -182,10 +168,10 @@ export function TabsBlock({
                                 style={{
                                     padding: '3px 10px',
                                     fontSize: '12px',
-                                    border: '1px solid #ccc',
+                                    border: `1px solid ${C.btnBorder}`,
                                     borderRadius: '4px',
-                                    backgroundColor: 'white',
-                                    color: MUTED_COLOR,
+                                    backgroundColor: C.white,
+                                    color: C.muted,
                                     cursor: 'pointer',
                                 }}
                             >
@@ -200,10 +186,10 @@ export function TabsBlock({
                             style={{
                                 padding: '3px 10px',
                                 fontSize: '12px',
-                                border: '1px solid #ccc',
+                                border: `1px solid ${C.btnBorder}`,
                                 borderRadius: '4px',
-                                backgroundColor: 'white',
-                                color: MUTED_COLOR,
+                                backgroundColor: C.white,
+                                color: C.muted,
                                 cursor: 'pointer',
                             }}
                         >
@@ -213,20 +199,14 @@ export function TabsBlock({
                 </div>
             )}
 
-            {/* Tab Bar
-                UX notes:
-                - Whole button is a click target → switches active tab
-                - Active tab: white background, blue top border, bold label
-                - Inactive: gray background, hover highlight
-                - Double-click label to rename (edit mode only)
-                - Pencil icon + x are separate buttons that stop propagation */}
+            {/* Tab Bar */}
             <div
                 style={{
                     display: 'flex',
                     gap: '2px',
                     padding: '4px 4px 0 4px',
-                    backgroundColor: '#f5f5f5',
-                    borderBottom: `1px solid ${BORDER_COLOR}`,
+                    backgroundColor: C.tabBarBg,
+                    borderBottom: `1px solid ${C.border}`,
                     overflowX: 'auto',
                 }}
             >
@@ -251,12 +231,12 @@ export function TabsBlock({
                                 padding: '8px 14px',
                                 fontSize: '13px',
                                 fontWeight: isActive ? 600 : 500,
-                                color: isActive ? ACTIVE_COLOR : MUTED_COLOR,
-                                backgroundColor: isActive ? '#ffffff' : 'transparent',
+                                color: isActive ? C.accent : C.muted,
+                                backgroundColor: isActive ? C.white : 'transparent',
                                 border: 'none',
-                                borderTop: `2px solid ${isActive ? ACTIVE_COLOR : 'transparent'}`,
-                                borderLeft: `1px solid ${isActive ? BORDER_COLOR : 'transparent'}`,
-                                borderRight: `1px solid ${isActive ? BORDER_COLOR : 'transparent'}`,
+                                borderTop: `2px solid ${isActive ? C.accent : 'transparent'}`,
+                                borderLeft: `1px solid ${isActive ? C.border : 'transparent'}`,
+                                borderRight: `1px solid ${isActive ? C.border : 'transparent'}`,
                                 borderTopLeftRadius: '6px',
                                 borderTopRightRadius: '6px',
                                 marginBottom: '-1px',
@@ -267,14 +247,12 @@ export function TabsBlock({
                             }}
                             onMouseEnter={(e) => {
                                 if (!isActive && !isRenaming) {
-                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                        '#ebebeb';
+                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = C.tabHover;
                                 }
                             }}
                             onMouseLeave={(e) => {
                                 if (!isActive && !isRenaming) {
-                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                                        'transparent';
+                                    (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
                                 }
                             }}
                         >
@@ -283,20 +261,20 @@ export function TabsBlock({
                                     ref={renameInputRef}
                                     value={tab.label}
                                     onChange={(e) => updateTabLabel(index, e.target.value)}
-                                    onKeyDown={handleInputKeyDown}
+                                    onKeyDown={handleRenameKeyDown}
                                     onBlur={() => setRenamingIndex(null)}
                                     onClick={(e) => e.stopPropagation()}
                                     style={{
-                                        border: `1px solid ${ACTIVE_COLOR}`,
+                                        border: `1px solid ${C.accent}`,
                                         borderRadius: '3px',
-                                        background: '#fff',
+                                        background: C.white,
                                         fontSize: '13px',
                                         fontWeight: 600,
-                                        color: ACTIVE_COLOR,
+                                        color: C.accent,
                                         outline: 'none',
                                         padding: '2px 6px',
                                         minWidth: '60px',
-                                        width: `${Math.max(tab.label.length * 8, 60)}px`,
+                                        width: `${Math.max((tab.label || '').length * 8, 60)}px`,
                                     }}
                                 />
                             ) : (
@@ -317,7 +295,7 @@ export function TabsBlock({
                                         justifyContent: 'center',
                                         width: '16px',
                                         height: '16px',
-                                        color: isActive ? ACTIVE_COLOR : '#999',
+                                        color: isActive ? C.accent : C.iconMuted,
                                         cursor: 'pointer',
                                         opacity: 0.75,
                                     }}
@@ -353,20 +331,18 @@ export function TabsBlock({
                                         width: '16px',
                                         height: '16px',
                                         borderRadius: '50%',
-                                        color: '#999',
+                                        color: C.iconMuted,
                                         cursor: 'pointer',
                                         fontSize: '13px',
                                         lineHeight: '13px',
                                     }}
                                     onMouseEnter={(e) => {
-                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor =
-                                            '#e0e0e0';
-                                        (e.currentTarget as HTMLSpanElement).style.color = '#333';
+                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor = C.border;
+                                        (e.currentTarget as HTMLSpanElement).style.color = C.text;
                                     }}
                                     onMouseLeave={(e) => {
-                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor =
-                                            'transparent';
-                                        (e.currentTarget as HTMLSpanElement).style.color = '#999';
+                                        (e.currentTarget as HTMLSpanElement).style.backgroundColor = 'transparent';
+                                        (e.currentTarget as HTMLSpanElement).style.color = C.iconMuted;
                                     }}
                                 >
                                     ×
@@ -377,50 +353,31 @@ export function TabsBlock({
                 })}
             </div>
 
-            {/* Tab Content */}
-            <div style={{ padding: '12px', minHeight: '80px', backgroundColor: '#fff' }}>
+            {/* Tab Content — the same rich text editor as the quiz block */}
+            <div style={{ padding: '12px', minHeight: '80px', backgroundColor: C.white }}>
                 {isEditing ? (
-                    <textarea
+                    <RichTextField
+                        key={activeTab}
                         value={tabs[activeTab]?.content || ''}
-                        onChange={(e) => updateTabContent(activeTab, e.target.value)}
-                        onKeyDown={handleInputKeyDown}
-                        placeholder={`Content for "${tabs[activeTab]?.label || 'Tab'}"...`}
-                        style={{
-                            width: '100%',
-                            minHeight: '100px',
-                            padding: '10px',
-                            fontSize: '14px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                            backgroundColor: '#fff',
-                            resize: 'vertical',
-                            outline: 'none',
-                            fontFamily: 'inherit',
-                        }}
+                        onChange={(html) => updateTabContent(activeTab, html)}
+                        placeholder={`Content for "${tabs[activeTab]?.label || 'Tab'}"…`}
+                        minHeight={100}
+                    />
+                ) : !isRichTextEmpty(tabs[activeTab]?.content) ? (
+                    <RichTextHtml
+                        html={tabs[activeTab]?.content || ''}
+                        style={{ fontSize: '14px', lineHeight: 1.6, color: C.text, padding: '8px' }}
                     />
                 ) : (
-                    <div
-                        style={{
-                            fontSize: '14px',
-                            lineHeight: 1.6,
-                            color: '#333',
-                            whiteSpace: 'pre-wrap',
-                            padding: '8px',
-                        }}
-                    >
-                        {tabs[activeTab]?.content || (
-                            <span style={{ color: '#ccc', fontStyle: 'italic' }}>
-                                Empty tab content
-                            </span>
-                        )}
+                    <div style={{ fontSize: '14px', color: C.iconMuted, fontStyle: 'italic', padding: '8px' }}>
+                        Empty tab content
                     </div>
                 )}
             </div>
 
-            {/* Slate requires {children} to be rendered for the block to be
-                valid, but we don't want the default paragraph placeholder
-                ("Type / for commands") visible — it was overlaying the tab
-                content area. Hide it visually while keeping it in the DOM. */}
+            {/* Slate requires {children} in the DOM for the block to be valid, but
+                its default "Type / for commands" placeholder overlaid the content.
+                Hide it visually while keeping it mounted. */}
             <div
                 aria-hidden
                 style={{
@@ -470,15 +427,13 @@ export const TabsPlugin = new YooptaPlugin<{ tabbedContent: any }>({
                     if (element.getAttribute?.('data-yoopta-type') !== 'tabbedContent') {
                         return undefined;
                     }
-                    let tabs: TabItem[] = [];
-                    try {
-                        const tabsJson = element.getAttribute('data-tabs');
-                        if (tabsJson) {
-                            tabs = JSON.parse(tabsJson);
-                        }
-                    } catch {
-                        tabs = [];
-                    }
+                    // decodeBlockData handles BOTH the new base64 payload and any
+                    // older raw/escaped-JSON data-tabs, so existing slides keep
+                    // working.
+                    let tabs: TabItem[] = decodeBlockData<TabItem[]>(
+                        element.getAttribute('data-tabs'),
+                        []
+                    );
                     if (!Array.isArray(tabs) || tabs.length === 0) {
                         tabs = DEFAULT_TABS.map((t) => ({ ...t }));
                     }
@@ -491,35 +446,51 @@ export const TabsPlugin = new YooptaPlugin<{ tabbedContent: any }>({
                 },
             },
             serialize: (element, _children) => {
-                const props = element.props || {};
-                // Fall back to defaults when Yoopta hasn't received a
-                // commitTabs yet (e.g. block inserted and immediately
-                // saved) — otherwise data-tabs="[]" ships and the tabs
-                // render as an empty shell on reload.
-                const rawTabs: TabItem[] = Array.isArray(props.tabs) ? props.tabs : [];
-                const tabs: TabItem[] =
-                    rawTabs.length > 0 ? rawTabs : DEFAULT_TABS.map((t) => ({ ...t }));
-                const tabsJson = JSON.stringify(tabs).replace(/"/g, '&quot;');
+                // Bulletproof: must never throw, or it breaks the whole-document
+                // Save ("Could not read editor content"). data-tabs (source of
+                // truth) is always emitted; the static body is best-effort.
+                let tabs: TabItem[];
+                try {
+                    const props = (element && element.props) || {};
+                    const raw = Array.isArray(props.tabs) ? props.tabs : [];
+                    tabs = raw.length > 0 ? raw : DEFAULT_TABS.map((t) => ({ ...t }));
+                } catch {
+                    tabs = DEFAULT_TABS.map((t) => ({ ...t }));
+                }
 
-                const tabHeaders = tabs
-                    .map(
-                        (tab, i) =>
-                            `<div style="padding: 8px 16px; font-size: 13px; font-weight: ${i === 0 ? 600 : 400}; color: ${i === 0 ? '#007acc' : '#666'}; border-bottom: 2px solid ${i === 0 ? '#007acc' : 'transparent'}; cursor: pointer;">${tab.label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
-                    )
-                    .join('');
+                // base64 so the document-wide HTML sanitizers can never corrupt
+                // the JSON (e.g. an S3 image URL inside a tab used to truncate it).
+                let tabsJson: string;
+                try {
+                    tabsJson = encodeBlockData(tabs);
+                } catch {
+                    tabsJson = encodeBlockData(DEFAULT_TABS);
+                }
 
-                const tabContents = tabs
-                    .map((tab, i) => {
-                        const contentEsc = tab.content
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/\n/g, '<br/>');
-                        return `<div data-tab-index="${i}" style="display: ${i === 0 ? 'block' : 'none'}; padding: 12px; font-size: 14px; line-height: 1.6; color: #333;">${contentEsc}</div>`;
-                    })
-                    .join('');
+                let headers = '';
+                let contents = '';
+                try {
+                    headers = tabs
+                        .map((tab, i) => {
+                            const label = (tab && tab.label ? String(tab.label) : `Tab ${i + 1}`)
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            return `<div style="padding: 8px 16px; font-size: 13px; font-weight: ${i === 0 ? 600 : 400}; color: ${i === 0 ? C.accent : C.muted}; border-bottom: 2px solid ${i === 0 ? C.accent : 'transparent'}; cursor: pointer;">${label}</div>`;
+                        })
+                        .join('');
+                    contents = tabs
+                        .map((tab, i) => {
+                            // Content is already rich-text HTML → emit as-is.
+                            const html = (tab && tab.content) || '';
+                            return `<div data-tab-index="${i}" style="display: ${i === 0 ? 'block' : 'none'}; padding: 12px; font-size: 14px; line-height: 1.6; color: ${C.text};">${html}</div>`;
+                        })
+                        .join('');
+                } catch {
+                    headers = '';
+                    contents = '';
+                }
 
-                return `<div data-yoopta-type="tabbedContent" data-editor-type="tabsEditor" data-tabs="${tabsJson}" style="border: 1px solid #e0e0e0; border-radius: 8px; margin: 8px 0; overflow: hidden; background: #fafafa;"><div style="display: flex; border-bottom: 1px solid #e0e0e0; background: #fff;">${tabHeaders}</div><div>${tabContents}</div></div>`;
+                return `<div data-yoopta-type="tabbedContent" data-editor-type="tabsEditor" data-tabs="${tabsJson}" style="border: 1px solid ${C.border}; border-radius: 8px; margin: 8px 0; overflow: hidden; background: ${C.surface};"><div style="display: flex; border-bottom: 1px solid ${C.border}; background: ${C.white};">${headers}</div><div>${contents}</div></div>`;
             },
         },
     },

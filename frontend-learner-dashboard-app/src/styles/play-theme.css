@@ -412,11 +412,17 @@
     border-radius: var(--play-radius-btn) !important;
     background: hsl(var(--primary-50)) !important;
     border: 1px solid hsl(var(--primary-100)) !important;
-    padding: 4px !important;
+    /* The active pill is ~32px tall (line-box + py). Keep the list tall enough
+       that the 6px inset survives as a real top/bottom gap, and center the row
+       so that gap is symmetric (grid tablists otherwise top-align the pill). */
+    padding: 6px !important;
+    min-height: 3rem !important;
+    align-content: center !important;
   }
 
   .ui-play [role="tab"] {
-    border-radius: 10px !important;
+    /* Concentric with the 14px container minus the 6px inset (14 − 6 = 8). */
+    border-radius: 8px !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.3px !important;
@@ -484,8 +490,12 @@
   }
 
   /* ── Dialogs / Modals ───────────────────────────────────────────── */
-  .ui-play [role="dialog"] > div,
-  .ui-play [role="alertdialog"] > div {
+  /* Style the modal panel itself. Radix puts role="dialog" on the content
+     panel (DialogContent), so this must NOT use "> div" — that selector
+     boxes every direct child (header, tabs, etc.) in a green border and
+     makes dialogs look cluttered. */
+  .ui-play [role="dialog"],
+  .ui-play [role="alertdialog"] {
     border-radius: var(--play-radius-card) !important;
     border: 1px solid hsl(var(--primary-100)) !important;
     box-shadow:

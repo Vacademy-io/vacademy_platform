@@ -13,6 +13,7 @@ import { StudentTestRecord } from './student-test-records/student-test-record';
 import { StudentCommunicationTimeline } from './student-email-notifications/student-communication-timeline';
 import { StudentMembership } from './student-membership/student-membership';
 import { StudentUserTagging } from './student-user-tagging/student-user-tagging';
+import { StudentBadges } from './student-badges/student-badges';
 import { StudentFiles } from './student-files/student-files';
 import { StudentPortalAccess } from './student-portal-access/student-portal-access';
 import { StudentSubOrg } from './student-sub-org/student-sub-org';
@@ -70,6 +71,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'membership',
         'paymentHistory',
         'userTagging',
+        'badges',
         'files',
         'portalAccess',
         'reports',
@@ -293,8 +295,9 @@ export const StudentSidebar = ({
                 className
             )}
         >
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this panel's right edge. */}
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700`}
+                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white pr-14 font-app text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
@@ -585,6 +588,11 @@ export const StudentSidebar = ({
                             tabSettings?.userTaggingTab &&
                             !isEnrollRequestStudentList && (
                                 <StudentUserTagging isSubmissionTab={isSubmissionTab} />
+                            )}
+                        {category === 'badges' &&
+                            tabSettings?.badgesTab &&
+                            !isEnrollRequestStudentList && (
+                                <StudentBadges isSubmissionTab={isSubmissionTab} />
                             )}
                         {category === 'files' &&
                             tabSettings?.fileTab &&

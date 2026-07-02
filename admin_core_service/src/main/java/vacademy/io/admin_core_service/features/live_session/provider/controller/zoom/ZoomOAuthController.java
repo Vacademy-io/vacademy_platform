@@ -28,9 +28,11 @@ import java.util.Set;
 /**
  * "Connect with Zoom" onboarding (authorization-code OAuth).
  *
- *   POST /initiate  → admin-authed; returns the Zoom consent URL + a CSRF state key.
- *   GET  /callback  → PUBLIC (browser redirect from Zoom, no JWT); exchanges the code,
- *                     creates an OAUTH ZoomAccount, then bounces back to the admin UI.
+ * POST /initiate → admin-authed; returns the Zoom consent URL + a CSRF state
+ * key.
+ * GET /callback → PUBLIC (browser redirect from Zoom, no JWT); exchanges the
+ * code,
+ * creates an OAUTH ZoomAccount, then bounces back to the admin UI.
  *
  * The /callback path MUST be in ApplicationSecurityConfig's permitAll list.
  */
@@ -47,7 +49,7 @@ public class ZoomOAuthController {
     private final OAuthConnectStateRepository stateRepository;
     private final InstituteAccessValidator instituteAccessValidator;
 
-    @Value("${zoom.oauth.frontend.callback.url:https://admin.vacademy.io/settings}")
+    @Value("${zoom.oauth.frontend.callback.url:https://dash.vacademy.io/settings}")
     private String frontendCallbackUrl;
 
     /** Step 1 — return the Zoom consent URL the admin's browser should open. */
@@ -70,14 +72,19 @@ public class ZoomOAuthController {
                 "session_key", state.getId()));
     }
 
-    /** Step 2 — Zoom redirects the browser here (PUBLIC). All token work is server-side. */
+    /**
+     * Step 2 — Zoom redirects the browser here (PUBLIC). All token work is
+     * server-side.
+     */
     @GetMapping("/callback")
     public ResponseEntity<Void> callback(
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String error) {
-        if (error != null) return redirect("zoom_error=" + error);
-        if (state == null || code == null) return redirect("zoom_error=missing_params");
+        if (error != null)
+            return redirect("zoom_error=" + error);
+        if (state == null || code == null)
+            return redirect("zoom_error=missing_params");
 
         OAuthConnectState st = stateRepository.findValidById(state, LocalDateTime.now()).orElse(null);
         if (st == null || !VENDOR.equals(st.getVendor())) {
@@ -91,7 +98,8 @@ public class ZoomOAuthController {
         } catch (Exception e) {
             log.error("zoom.oauth.callback.fail state={} reason={}", state, e.getMessage());
             // Surface the real reason in the redirect so it's visible in the browser URL
-            // (admin-only flow; the message carries no secrets). Truncated to keep the URL sane.
+            // (admin-only flow; the message carries no secrets). Truncated to keep the URL
+            // sane.
             String reason = e.getMessage() == null ? "connect_failed" : e.getMessage();
             if (reason.length() > 200) {
                 reason = reason.substring(0, 200);
@@ -109,7 +117,8 @@ public class ZoomOAuthController {
     }
 
     private void requireAdminRole(CustomUserDetails user) {
-        if (user.isRootUser()) return;
+        if (user.isRootUser())
+            return;
         boolean hasAdmin = user.getAuthorities() != null && user.getAuthorities().stream()
                 .map(a -> a.getAuthority().toUpperCase())
                 .anyMatch(ADMIN_ROLES::contains);

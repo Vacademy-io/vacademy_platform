@@ -8,6 +8,7 @@ import {
     type SubOrgSubscriptionStatus,
 } from '../../-services/custom-team-services';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface InviteLinkSectionProps {
     subOrgId: string;
@@ -25,6 +26,15 @@ export function InviteLinkSection({ subOrgId }: InviteLinkSectionProps) {
         queryFn: () => getSubscriptionStatus(subOrgId),
         enabled: !!subOrgId,
     });
+
+    // Prefer the institute's white-label learner domain so the invite opens on the
+    // institute's own portal instead of the global default. A backend `short_url`
+    // (already domain-correct) still wins when present.
+    const { instituteDetails } = useInstituteDetailsStore();
+    const inviteUrl = status?.invite_code
+        ? status.short_url ||
+          createInviteLink(status.invite_code, instituteDetails?.learner_portal_base_url)
+        : '';
 
     const copyToClipboard = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
@@ -59,19 +69,14 @@ export function InviteLinkSection({ subOrgId }: InviteLinkSectionProps) {
                     </div>
                     <div className="flex items-center gap-2 rounded bg-white p-2">
                         <span className="min-w-0 flex-1 truncate select-all font-mono text-xs text-primary">
-                            {status.short_url || createInviteLink(status.invite_code)}
+                            {inviteUrl}
                         </span>
                         <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="h-7 shrink-0 gap-1 px-2"
-                            onClick={() =>
-                                copyToClipboard(
-                                    status.short_url || createInviteLink(status.invite_code),
-                                    'Invite link'
-                                )
-                            }
+                            onClick={() => copyToClipboard(inviteUrl, 'Invite link')}
                         >
                             <Copy className="h-3 w-3" />
                             Copy
@@ -81,12 +86,7 @@ export function InviteLinkSection({ subOrgId }: InviteLinkSectionProps) {
                             variant="ghost"
                             size="sm"
                             className="h-7 shrink-0 gap-1 px-2"
-                            onClick={() =>
-                                window.open(
-                                    status.short_url || createInviteLink(status.invite_code),
-                                    '_blank'
-                                )
-                            }
+                            onClick={() => window.open(inviteUrl, '_blank')}
                         >
                             <ExternalLink className="h-3 w-3" />
                             Open

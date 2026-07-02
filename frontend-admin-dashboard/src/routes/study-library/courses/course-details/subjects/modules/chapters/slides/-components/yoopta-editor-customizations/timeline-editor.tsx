@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
+import { encodeBlockData, decodeBlockData } from './RichTextField';
 
 interface TimelineStep {
     title: string;
@@ -330,11 +331,14 @@ const TimelineIcon = () => (
 
 // Helper to serialize steps to visual HTML
 function serializeTimelineHtml(steps: TimelineStep[]): string {
+    const esc = (v: unknown) =>
+        String(v ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const stepsHtml = steps.map((step, i) => {
-        const titleEsc = step.title.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const descEsc = step.description.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const titleEsc = esc(step?.title);
+        const descEsc = esc(step?.description);
+        const color = step?.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length] || DEFAULT_COLORS[0];
         return `<div style="position: relative; margin-bottom: ${i < steps.length - 1 ? '24px' : '0'}; padding-left: 32px;">
-      <div style="position: absolute; left: 0; top: 2px; width: 24px; height: 24px; border-radius: 50%; background-color: ${step.color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; z-index: 1;">${i + 1}</div>
+      <div style="position: absolute; left: 0; top: 2px; width: 24px; height: 24px; border-radius: 50%; background-color: ${color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; z-index: 1;">${i + 1}</div>
       <div style="font-size: 15px; font-weight: 600; color: #333; margin-bottom: 2px;">${titleEsc}</div>
       ${descEsc ? `<div style="font-size: 13px; color: #666; line-height: 1.5;">${descEsc}</div>` : ''}
     </div>`;
@@ -367,14 +371,20 @@ export const TimelinePlugin = new YooptaPlugin<{ timeline: any }>({
                     if (element.getAttribute?.('data-yoopta-type') !== 'timeline') {
                         return undefined;
                     }
-                    let steps: TimelineStep[] = [];
-                    try {
-                        const stepsJson = element.getAttribute('data-steps');
-                        if (stepsJson) {
-                            steps = JSON.parse(stepsJson);
-                        }
-                    } catch {
-                        steps = [{ title: 'Step 1', description: '', color: '#007acc' }];
+                    // decodeBlockData handles both the new base64 payload and any
+                    // older escaped-JSON data-steps. Normalize every step so a
+                    // missing title/description can never make serialize throw.
+                    const raw = decodeBlockData<TimelineStep[]>(
+                        element.getAttribute('data-steps'),
+                        []
+                    );
+                    let steps: TimelineStep[] = (Array.isArray(raw) ? raw : []).map((s, i) => ({
+                        title: String(s?.title ?? ''),
+                        description: String(s?.description ?? ''),
+                        color: s?.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length] || DEFAULT_COLORS[0]!,
+                    }));
+                    if (steps.length === 0) {
+                        steps = [{ title: 'Step 1', description: '', color: DEFAULT_COLORS[0]! }];
                     }
                     return {
                         id: `timeline-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -385,10 +395,29 @@ export const TimelinePlugin = new YooptaPlugin<{ timeline: any }>({
                 },
             },
             serialize: (element, _children) => {
-                const props = element.props || {};
-                const steps: TimelineStep[] = props.steps || [];
-                const stepsJson = JSON.stringify(steps).replace(/"/g, '&quot;');
-                const visualHtml = serializeTimelineHtml(steps);
+                // Bulletproof: must NEVER throw, or the whole-document Save aborts
+                // ("Could not read editor content") and the per-block fallback
+                // silently drops this block. data-steps (source of truth) is
+                // base64 so the document-wide HTML sanitizers can't corrupt it.
+                let steps: TimelineStep[] = [];
+                try {
+                    const props = (element && element.props) || {};
+                    steps = Array.isArray(props.steps) ? props.steps : [];
+                } catch {
+                    steps = [];
+                }
+                let stepsJson = '';
+                let visualHtml = '';
+                try {
+                    stepsJson = encodeBlockData(steps);
+                } catch {
+                    stepsJson = encodeBlockData([]);
+                }
+                try {
+                    visualHtml = serializeTimelineHtml(steps);
+                } catch {
+                    visualHtml = '';
+                }
                 return `<div data-yoopta-type="timeline" data-editor-type="timelineEditor" data-steps="${stepsJson}" style="position: relative; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin: 8px 0; background: #fafafa;"><div style="position: absolute; left: 29px; top: 32px; bottom: 32px; width: 2px; background-color: #ddd;"></div>${visualHtml}</div>`;
             },
         },

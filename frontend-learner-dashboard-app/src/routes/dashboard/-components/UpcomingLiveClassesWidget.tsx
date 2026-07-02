@@ -11,7 +11,6 @@ import {
   formatSessionTimeInUserTimezone,
 } from "@/utils/timezone";
 import { cn } from "@/lib/utils";
-import { playIllustrations } from "@/assets/play-illustrations";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -138,10 +137,6 @@ export function UpcomingLiveClassesWidget({
         "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:items-stretch"
       )}
     >
-      {/* Play SVG: compact side element at all breakpoints */}
-      <div className="hidden [.ui-play_&]:!flex order-2 w-28 md:w-40 shrink-0 items-center justify-center self-center p-2">
-        <playIllustrations.LiveClass className="h-24 md:h-28 w-auto text-white" />
-      </div>
       <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
       <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
         <div className="flex items-center gap-2">
@@ -202,11 +197,11 @@ export function UpcomingLiveClassesWidget({
           <div
             key={`live-${session.session_id}-${index}`}
             className={cn(
-              "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg bg-green-50/60 dark:bg-green-900/10 border-green-200 dark:border-green-900/50",
+              "flex flex-col items-start gap-2 p-3 border rounded-lg bg-green-50/60 dark:bg-green-900/10 border-green-200 dark:border-green-900/50",
               "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
             )}
           >
-            <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex w-full items-center gap-3 min-w-0">
               <div
                 className={cn(
                   "p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0",
@@ -283,11 +278,11 @@ export function UpcomingLiveClassesWidget({
             <div
               key={`upcoming-${session.session_id}-${index}`}
               className={cn(
-                "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 border rounded-lg",
+                "flex flex-col items-start gap-2 p-3 border rounded-lg",
                 "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
               )}
             >
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex w-full items-center gap-3 min-w-0">
                 <div
                   className={cn(
                     "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400 shrink-0",
@@ -307,22 +302,24 @@ export function UpcomingLiveClassesWidget({
                   </h4>
                   <div
                     className={cn(
-                      "flex items-center gap-2 text-xs text-muted-foreground",
+                      "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground min-w-0",
                       "[.ui-play_&]:text-white/90"
                     )}
                   >
-                    <Clock weight="duotone" size={12} />
-                    <span>
-                      {formatSessionTimeInUserTimezone(
-                        session.meeting_date,
-                        session.start_time,
-                        session.timezone
-                      )}
+                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                      <Clock weight="duotone" size={12} className="shrink-0" />
+                      <span className="truncate">
+                        {formatSessionTimeInUserTimezone(
+                          session.meeting_date,
+                          session.start_time,
+                          session.timezone
+                        )}
+                      </span>
                     </span>
                     {relTime && (
                       <span
                         className={cn(
-                          "text-violet-600 dark:text-violet-400 font-medium",
+                          "whitespace-nowrap text-violet-600 dark:text-violet-400 font-medium",
                           "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
                         )}
                       >

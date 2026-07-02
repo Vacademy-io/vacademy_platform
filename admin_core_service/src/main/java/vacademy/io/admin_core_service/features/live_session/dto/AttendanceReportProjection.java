@@ -27,4 +27,5 @@ public interface AttendanceReportProjection {
     String getFeedbackDetails();
     String getPackageSessionId();
     Integer getProviderTotalDurationMinutes();
+    String getEngagementData();
 }

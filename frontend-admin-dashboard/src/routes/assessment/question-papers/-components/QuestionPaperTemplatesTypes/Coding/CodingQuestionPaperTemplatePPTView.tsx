@@ -70,6 +70,12 @@ export const CodingQuestionPaperTemplatePPTView = ({
                                         <pre className="whitespace-pre-wrap">
                                             {tc.expectedStdout}
                                         </pre>
+                                        {(tc.acceptedOutputs?.length ?? 0) > 1 && (
+                                            <div className="mt-0.5 text-muted-foreground">
+                                                +{(tc.acceptedOutputs?.length ?? 1) - 1} more
+                                                accepted
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

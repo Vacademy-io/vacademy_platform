@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,7 +17,27 @@ const AssessmentStartModal = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [examHasStarted, setExamHasStarted] = useState(false);
+  // MANUAL-evaluated assessments are answered by uploading a response (slide /
+  // file-upload submission), so the entry button reads "Upload Answer" instead
+  // of "Start Assessment". Read from the same storage key the start flow uses.
+  const [isManual, setIsManual] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const loadEvaluationType = async () => {
+      const stored = await Preferences.get({
+        key: "InstructionID_and_AboutID",
+      });
+      if (!stored.value) return;
+      try {
+        const parsed = JSON.parse(stored.value);
+        setIsManual(parsed?.evaluation_type === "MANUAL");
+      } catch {
+        // Ignore malformed storage — fall back to the default label.
+      }
+    };
+    loadEvaluationType();
+  }, []);
 
   const { fullScreen } = useProctoring({
     forceFullScreen: true,
@@ -131,7 +151,7 @@ const AssessmentStartModal = () => {
           layoutVariant="default"
           className="w-full max-w-sm"
         >
-          Start Assessment
+          {isManual ? "Upload Answer" : "Start Assessment"}
         </MyButton>
       )}
 

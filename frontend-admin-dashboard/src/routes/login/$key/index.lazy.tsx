@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import CryptoJS from 'crypto-js';
 import ClipLoader from 'react-spinners/ClipLoader';
+import { getCachedInstituteBranding } from '@/services/domain-routing';
+import { useTheme } from '@/providers/theme/theme-provider';
 
 export const Route = createLazyFileRoute('/login/$key/')({
   component: RouteComponent,
@@ -26,6 +28,11 @@ function RouteComponent() {
   const credentials = JSON.parse(text);
 
   const navigate = useNavigate();
+
+  // Drive the spinner from the institute theme (never the hardcoded Vacademy
+  // orange) so it stays on-brand on white-labelled domains. Mirrors DashboardLoader.
+  const { getPrimaryColorCode } = useTheme();
+  const loaderColor = getCachedInstituteBranding()?.instituteThemeCode || getPrimaryColorCode();
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) => loginUser(values.username, values.password),
@@ -70,7 +77,7 @@ function RouteComponent() {
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center">
       <h1 className="mb-4">Loading your demo account</h1>
-      <ClipLoader size={40} color="#ED7424" />
+      <ClipLoader size={40} color={loaderColor} />
     </div>
   );
 }

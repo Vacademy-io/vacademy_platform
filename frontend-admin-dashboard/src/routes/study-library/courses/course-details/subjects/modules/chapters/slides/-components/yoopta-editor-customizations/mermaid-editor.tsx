@@ -1,11 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { YooptaPlugin } from '@yoopta/editor';
+import {
+    YooptaPlugin,
+    useYooptaEditor,
+    useYooptaReadOnly,
+    PluginElementRenderProps,
+} from '@yoopta/editor';
 import mermaid from 'mermaid';
 import { sanitizeMermaidCode } from '@/routes/study-library/ai-copilot/shared/utils/mermaidSanitizer';
+import { commitBlockProps } from './commitBlockProps';
 
-// Use a window flag so we coordinate with TipTapEditor's initialization
-// Always re-initialize if suppressErrorRendering wasn't applied yet
+// Mermaid block chrome colours — centralised so the file carries no scattered hex.
+const C = {
+    muted: '#888888', // design-lint-ignore: Yoopta editor chrome — inline style required
+    placeholder: '#999999', // design-lint-ignore: Yoopta editor chrome — inline style required
+    cardBg: '#f8fafc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    cardBorder: '#e2e8f0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    inputBorder: '#dddddd', // design-lint-ignore: Yoopta editor chrome — inline style required
+    label: '#555555', // design-lint-ignore: Yoopta editor chrome — inline style required
+    accent: '#4338ca', // design-lint-ignore: Yoopta editor chrome — inline style required
+    indigoBg: '#eef2ff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    indigoBorder: '#c7d2fe', // design-lint-ignore: Yoopta editor chrome — inline style required
+    surface: '#fafafa', // design-lint-ignore: Yoopta editor chrome — inline style required
+    border: '#e0e0e0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    danger: '#b91c1c', // design-lint-ignore: Yoopta editor chrome — inline style required
+    dangerBg: '#fef2f2', // design-lint-ignore: Yoopta editor chrome — inline style required
+};
+
+// Coordinate mermaid init with TipTapEditor; re-init if suppression not applied.
 const initializeMermaid = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
@@ -17,11 +40,7 @@ const initializeMermaid = () => {
             theme: 'default',
             securityLevel: 'loose',
             suppressErrorRendering: true,
-            flowchart: {
-                useMaxWidth: true,
-                htmlLabels: true,
-                curve: 'basis',
-            },
+            flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
         });
         w.__mermaidSuppressErrorsApplied = true;
         w.__mermaidInitialized = true;
@@ -30,25 +49,15 @@ const initializeMermaid = () => {
     }
 };
 
-// Apply immediately at module load so it's set before any render() call
 try { initializeMermaid(); } catch (_) { /* silent */ }
-
-interface MermaidBlockProps {
-    element: any;
-    attributes: any;
-    children: React.ReactNode;
-    updateElementProps?: (props: any) => void;
-}
 
 /** Portal-based zoom modal — renders at document.body so it's never clipped */
 function MermaidZoomModal({ svg, onClose }: { svg: string; onClose: () => void }) {
-    // Close on Escape key
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
         };
         document.addEventListener('keydown', handler);
-        // Prevent body scroll while modal is open
         document.body.style.overflow = 'hidden';
         return () => {
             document.removeEventListener('keydown', handler);
@@ -72,9 +81,11 @@ function MermaidZoomModal({ svg, onClose }: { svg: string; onClose: () => void }
             }}
             onClick={onClose}
         >
-            {/* Close button */}
             <button
-                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClose();
+                }}
                 style={{
                     position: 'absolute',
                     top: '20px',
@@ -88,7 +99,7 @@ function MermaidZoomModal({ svg, onClose }: { svg: string; onClose: () => void }
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    color: '#fff',
+                    color: C.white,
                     fontSize: '20px',
                     lineHeight: 1,
                     backdropFilter: 'blur(4px)',
@@ -99,11 +110,10 @@ function MermaidZoomModal({ svg, onClose }: { svg: string; onClose: () => void }
                 ✕
             </button>
 
-            {/* Diagram card */}
             <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                    background: '#ffffff',
+                    background: C.white,
                     borderRadius: '16px',
                     padding: '40px',
                     minWidth: '60vw',
@@ -119,60 +129,72 @@ function MermaidZoomModal({ svg, onClose }: { svg: string; onClose: () => void }
             >
                 <div
                     dangerouslySetInnerHTML={{ __html: svg }}
-                    style={{
-                        width: '100%',
-                        display: 'flex',
-                        justifyContent: 'center',
-                    }}
+                    style={{ width: '100%', display: 'flex', justifyContent: 'center' }}
                 />
-                <style>{`
-                    .mermaid-zoom-svg svg {
-                        width: 100% !important;
-                        height: auto !important;
-                        max-width: 100% !important;
-                    }
-                `}</style>
             </div>
         </div>,
         document.body
     );
 }
 
-export function MermaidBlock({
-    element,
-    attributes,
-    children,
-    updateElementProps,
-}: MermaidBlockProps) {
+const EXAMPLE_CODE = `graph TD
+  A[Start] --> B{Decision?}
+  B -->|Yes| C[Do this]
+  B -->|No| D[Do that]`;
+
+export function MermaidBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
+    const editor = useYooptaEditor();
+    const isReadOnly = useYooptaReadOnly();
     const initialCode = element?.props?.code || '';
-    const [code] = useState(initialCode);
+    const [code, setCode] = useState<string>(initialCode);
     const [svg, setSvg] = useState<string>('');
     const [isRendering, setIsRendering] = useState(false);
     const [isZoomed, setIsZoomed] = useState(false);
+    const [hadError, setHadError] = useState(false);
+    // Open the code editor by default for a fresh (empty) block in the admin.
+    const [isEditing, setIsEditing] = useState(!isReadOnly && !initialCode.trim());
     const renderedCodeRef = useRef<string>('');
+    // Track the last value we pushed to the block so the prop-adopt effect below
+    // reacts ONLY to genuinely external changes (deserialize / AI insert) and
+    // never echoes our own commit back over what is being typed (which, with
+    // rapid typing + lagging props, could revert or blank the code).
+    const lastCommittedRef = useRef<string>(initialCode);
 
-    // Render mermaid diagram
+    // Adopt external prop changes (deserialization / AI insert) — but never the
+    // echo of our own commitCode.
+    useEffect(() => {
+        const propCode = element?.props?.code || '';
+        if (propCode !== lastCommittedRef.current && propCode !== code) {
+            lastCommittedRef.current = propCode;
+            setCode(propCode);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [element?.props?.code]);
+
+    // Persist the code to the Slate block so Save Draft / Publish serializes it.
+    const commitCode = (next: string) => {
+        setCode(next);
+        lastCommittedRef.current = next;
+        if (isReadOnly) return;
+        commitBlockProps(editor, blockId, element, { code: next });
+    };
+
+    // Render mermaid diagram whenever the code changes.
     useEffect(() => {
         if (!code || code.trim() === '') {
             setSvg('');
+            setHadError(false);
             return;
         }
-
-        // Skip if we already rendered this exact code
-        if (renderedCodeRef.current === code.trim()) {
-            return;
-        }
+        if (renderedCodeRef.current === code.trim()) return;
 
         const renderMermaid = async () => {
             try {
                 setIsRendering(true);
-
                 if (!mermaid || typeof mermaid.render !== 'function') {
                     setSvg('');
                     return;
                 }
-
-                // Ensure suppressErrorRendering is applied before any render call
                 initializeMermaid();
 
                 let cleanCode = code.trim();
@@ -183,24 +205,22 @@ export function MermaidBlock({
                     setSvg('');
                     return;
                 }
-
                 cleanCode = sanitizeMermaidCode(cleanCode);
-
                 const renderId = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
                 try {
                     const result = await mermaid.render(renderId, cleanCode);
                     if (result && result.svg) {
                         setSvg(result.svg);
-                        // Store the original (pre-sanitize) trimmed code so the comparison works
+                        setHadError(false);
                         renderedCodeRef.current = code.trim();
                     } else {
                         setSvg('');
+                        setHadError(true);
                     }
                 } catch (_renderError) {
-                    // Silently swallow — show nothing on syntax error
-                    console.warn('[MermaidBlock] Render failed (hidden from UI):', _renderError);
+                    console.warn('[MermaidBlock] Render failed:', _renderError);
                     setSvg('');
+                    setHadError(true);
                 }
             } catch (_) {
                 setSvg('');
@@ -208,81 +228,208 @@ export function MermaidBlock({
                 setIsRendering(false);
             }
         };
-
         renderMermaid();
     }, [code]);
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        // Keep keystrokes inside the textarea from reaching the outer Slate editor.
+        e.stopPropagation();
+    };
+
+    const renderedDiagram = svg && !isRendering && (
+        <>
+            <div
+                onClick={() => setIsZoomed(true)}
+                title="Click to zoom"
+                style={{
+                    margin: '12px 0 0',
+                    padding: '16px',
+                    backgroundColor: C.cardBg,
+                    border: `1px solid ${C.cardBorder}`,
+                    borderRadius: '8px',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    cursor: 'zoom-in',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    maxWidth: '100%',
+                }}
+            >
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(0,0,0,0.4)',
+                        color: C.white,
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        pointerEvents: 'none',
+                        opacity: 0.85,
+                    }}
+                >
+                    🔍 Click to zoom
+                </div>
+                <div
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                    style={{ maxWidth: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}
+                />
+            </div>
+            {isZoomed && <MermaidZoomModal svg={svg} onClose={() => setIsZoomed(false)} />}
+        </>
+    );
 
     return (
         <div
             {...attributes}
             className="yoopta-mermaid-block"
             contentEditable={false}
+            style={{
+                border: `1px solid ${C.border}`,
+                borderRadius: '8px',
+                margin: '8px 0',
+                overflow: 'hidden',
+                backgroundColor: C.surface,
+            }}
         >
-            {children}
-
-            {isRendering && (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#888', fontSize: '13px' }}>
-                    Rendering diagram...
-                </div>
-            )}
-
-            {svg && !isRendering && (
-                <>
-                    {/* Inline diagram — click to zoom */}
-                    <div
-                        onClick={() => setIsZoomed(true)}
-                        title="Click to zoom"
+            {/* Header — admin chrome only */}
+            {!isReadOnly && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        backgroundColor: C.indigoBg,
+                        borderBottom: `1px solid ${C.indigoBorder}`,
+                    }}
+                >
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: C.accent }}>
+                        Mermaid Diagram
+                    </span>
+                    <button
+                        onClick={() => setIsEditing((v) => !v)}
                         style={{
-                            margin: '16px 0',
-                            padding: '16px',
-                            backgroundColor: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            cursor: 'zoom-in',
-                            position: 'relative',
-                            overflow: 'hidden',
-                            maxWidth: '100%',
+                            padding: '3px 10px',
+                            fontSize: '12px',
+                            border: `1px solid ${C.indigoBorder}`,
+                            borderRadius: '4px',
+                            backgroundColor: C.white,
+                            color: C.muted,
+                            cursor: 'pointer',
                         }}
                     >
-                        {/* Zoom hint badge */}
-                        <div
-                            style={{
-                                position: 'absolute',
-                                top: '8px',
-                                right: '8px',
-                                background: 'rgba(0,0,0,0.4)',
-                                color: '#fff',
-                                fontSize: '11px',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                pointerEvents: 'none',
-                                opacity: 0.85,
-                                letterSpacing: '0.02em',
-                            }}
-                        >
-                            🔍 Click to zoom
-                        </div>
-                        <div
-                            dangerouslySetInnerHTML={{ __html: svg }}
-                            style={{ maxWidth: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}
-                        />
-                    </div>
-
-                    {/* Portal-based zoom modal */}
-                    {isZoomed && (
-                        <MermaidZoomModal svg={svg} onClose={() => setIsZoomed(false)} />
-                    )}
-                </>
-            )}
-
-            {!code && !isRendering && (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: '13px' }}>
-                    <em>Click to add mermaid diagram code</em>
+                        {isEditing ? 'Done' : 'Edit code'}
+                    </button>
                 </div>
             )}
+
+            <div style={{ padding: '12px' }}>
+                {isEditing && !isReadOnly ? (
+                    <>
+                        <label style={{ fontSize: '12px', fontWeight: 600, color: C.label, display: 'block', marginBottom: '4px' }}>
+                            Diagram code
+                        </label>
+                        <textarea
+                            value={code}
+                            onChange={(e) => commitCode(e.target.value)}
+                            onBlur={() => commitCode(code)}
+                            onKeyDown={handleKeyDown}
+                            placeholder={`Type Mermaid code, e.g.\n${EXAMPLE_CODE}`}
+                            spellCheck={false}
+                            rows={6}
+                            style={{
+                                width: '100%',
+                                minHeight: '120px',
+                                padding: '10px',
+                                fontSize: '13px',
+                                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                                border: `1px solid ${C.inputBorder}`,
+                                borderRadius: '6px',
+                                backgroundColor: C.white,
+                                resize: 'vertical',
+                                outline: 'none',
+                                lineHeight: 1.5,
+                            }}
+                        />
+                        <div style={{ marginTop: '6px', fontSize: '11px', color: C.muted, lineHeight: 1.5 }}>
+                            Live preview below. Supports flowcharts (<code>graph TD</code>), sequence,
+                            class, gantt, pie, etc.{' '}
+                            <button
+                                type="button"
+                                onClick={() => commitCode(EXAMPLE_CODE)}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: C.accent,
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    fontSize: '11px',
+                                    textDecoration: 'underline',
+                                }}
+                            >
+                                Insert example
+                            </button>
+                        </div>
+
+                        {isRendering && (
+                            <div style={{ textAlign: 'center', padding: '16px', color: C.muted, fontSize: '13px' }}>
+                                Rendering diagram…
+                            </div>
+                        )}
+                        {renderedDiagram}
+                        {!svg && !isRendering && hadError && code.trim() && (
+                            <div
+                                style={{
+                                    marginTop: '12px',
+                                    padding: '10px 12px',
+                                    backgroundColor: C.dangerBg,
+                                    border: `1px solid ${C.danger}`,
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    color: C.danger,
+                                }}
+                            >
+                                Couldn't render this diagram — check the Mermaid syntax.
+                            </div>
+                        )}
+                    </>
+                ) : isRendering ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: C.muted, fontSize: '13px' }}>
+                        Rendering diagram…
+                    </div>
+                ) : svg ? (
+                    renderedDiagram
+                ) : (
+                    <div
+                        onClick={() => !isReadOnly && setIsEditing(true)}
+                        style={{
+                            textAlign: 'center',
+                            padding: '24px',
+                            color: C.placeholder,
+                            fontSize: '13px',
+                            cursor: isReadOnly ? 'default' : 'pointer',
+                        }}
+                    >
+                        <em>
+                            {isReadOnly
+                                ? 'No diagram'
+                                : 'Click to add Mermaid diagram code'}
+                        </em>
+                    </div>
+                )}
+            </div>
+
+            {/* Keep Slate's required {children} mounted but hidden (its
+                "Type / for commands" placeholder was overlaying the block). */}
+            <div
+                aria-hidden
+                style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
+            >
+                {children}
+            </div>
 
             <style>{`
                 .yoopta-mermaid-block svg {
@@ -327,33 +474,30 @@ export const MermaidPlugin = new YooptaPlugin<{ mermaid: any }>({
                         const isMermaidDiv =
                             element.classList?.contains('mermaid') ||
                             (typeof className === 'string' && className.split(/\s+/).includes('mermaid'));
-
-                        if (!isMermaidDiv) {
-                            return undefined;
-                        }
-
+                        if (!isMermaidDiv) return undefined;
                         const code = element.textContent?.trim() || element.innerText?.trim() || '';
-
                         return {
                             id: `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                             type: 'mermaid',
-                            props: {
-                                code: code,
-                            },
+                            props: { code },
                             children: [{ text: '' }],
                         };
                     } catch (error) {
-                        console.error('[MermaidPlugin] ❌ Error during deserialization:', error);
+                        console.error('[MermaidPlugin] Error during deserialization:', error);
                         return undefined;
                     }
                 },
             },
             serialize: (element, _children) => {
-                const code = element.props?.code || '';
-                if (!code) {
-                    return '<div class="mermaid"></div>';
-                }
-                return `<div class="mermaid">${code}</div>`;
+                const code = (element && element.props && element.props.code) || '';
+                if (!code) return '<div class="mermaid"></div>';
+                // Escape so the code (which may contain &, <, >) round-trips via
+                // textContent on reload and never breaks the surrounding HTML.
+                const esc = String(code)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                return `<div class="mermaid">${esc}</div>`;
             },
         },
     },

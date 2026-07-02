@@ -44,6 +44,7 @@ public class TelephonyNumberTxOps {
                 .region(body.getRegion())
                 .priority(body.getPriority() == null ? 100 : body.getPriority())
                 .enabled(body.getEnabled() == null ? Boolean.TRUE : body.getEnabled())
+                .inboundIvrMenuId(blankToNull(body.getInboundIvrMenuId()))
                 .build();
         TelephonyProviderNumber saved = numberRepo.save(n);
         configCache.evict(cfg.getInstituteId());
@@ -62,6 +63,10 @@ public class TelephonyNumberTxOps {
             String trimmed = body.getProviderResourceId().trim();
             n.setProviderResourceId(trimmed.isEmpty() ? null : trimmed);
         }
+        // Non-null (incl. empty string) = explicit set; empty clears back to default.
+        if (body.getInboundIvrMenuId() != null) {
+            n.setInboundIvrMenuId(blankToNull(body.getInboundIvrMenuId()));
+        }
         TelephonyProviderNumber saved = numberRepo.save(n);
         configCache.evict(saved.getInstituteId());
         return saved;
@@ -71,5 +76,9 @@ public class TelephonyNumberTxOps {
     public void delete(String id, String instituteId) {
         numberRepo.deleteById(id);
         configCache.evict(instituteId);
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 }

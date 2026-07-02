@@ -295,6 +295,109 @@ export interface ReferralLeadsRequest {
 }
 
 // ============================================
+// Facebook Leads (source-specific audience leads)
+// ============================================
+
+/**
+ * Rich lead row from POST /v1/audience/leads. Unlike ReferralLead this captures
+ * the lifecycle status fields (overall_status / conversion_status). Used by the
+ * Facebook Leads tab, where the center lives in a "center name" custom field and
+ * name/phone live in custom fields rather than on user / parent columns.
+ */
+export interface AudienceLead {
+    response_id: string;
+    audience_id: string;
+    campaign_name?: string | null;
+    user_id?: string | null;
+    source_type?: string;
+    submitted_at_local?: string | null;
+    parent_name?: string | null;
+    parent_email?: string | null;
+    parent_mobile?: string | null;
+    overall_status?: string | null;
+    conversion_status?: string | null;
+    lead_status?: string | null;
+    user?: ReferralLeadUser | null;
+    custom_field_values?: Record<string, string>;
+    custom_field_metadata?: Record<
+        string,
+        { fieldName?: string; fieldKey?: string; fieldType?: string }
+    > | null;
+}
+
+export interface AudienceLeadFilterRequest {
+    audience_id?: string;
+    institute_id?: string;
+    conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    overall_statuses?: string[];
+    submitted_from_local?: string;
+    submitted_to_local?: string;
+    search_query?: string;
+    page?: number;
+    size?: number;
+    sort_by?: string;
+    sort_direction?: string;
+}
+
+// Spring Page wrapper for AudienceLead
+export interface AudienceLeadsResponse {
+    content: AudienceLead[];
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+    first: boolean;
+    last: boolean;
+    empty: boolean;
+}
+
+/** Active + opted-out leads merged across all Facebook (SOCIAL MEDIA) audiences. */
+export interface FacebookLeadsBundle {
+    active: AudienceLead[];
+    optedOut: AudienceLead[];
+}
+
+// ============================================
+// Lead-Journey Daily-Message Funnel
+// ============================================
+
+export interface LeadJourneyDay {
+    day_number: number;
+    template_identifier: string;
+    total_sends: number;
+    unique_recipients: number;
+    replied: number;
+    reply_rate: number;
+}
+
+export interface LeadJourneyRecipient {
+    phone: string;
+    center?: string | null;
+    days_received: number[];
+    message_count: number;
+    last_sent_at?: string | null;
+    replied: boolean;
+}
+
+export interface LeadJourneyFunnelSummary {
+    total_sends: number;
+    unique_recipients: number;
+    replied_recipients: number;
+    reply_rate: number;
+}
+
+export interface LeadJourneyFunnelResponse {
+    institute_id: string;
+    date_range: DateRange;
+    template_prefix: string;
+    total_days: number;
+    summary: LeadJourneyFunnelSummary;
+    days: LeadJourneyDay[];
+    recipients: LeadJourneyRecipient[];
+    recipients_truncated?: boolean;
+}
+
+// ============================================
 // Dashboard State Types
 // ============================================
 

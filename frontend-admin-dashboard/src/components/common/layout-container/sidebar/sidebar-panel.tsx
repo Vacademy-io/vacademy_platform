@@ -28,6 +28,7 @@ import {
     Brain,
     Money,
     GearSix,
+    Medal,
     type IconProps,
 } from '@phosphor-icons/react';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
@@ -366,6 +367,7 @@ const SETTINGS_TAB_ICONS: Record<string, React.FC<IconProps>> = {
     templates: Layout,
     aiSettings: Brain,
     feeManagement: Money,
+    badgesRewards: Medal,
 };
 
 interface SettingsTabsListProps {

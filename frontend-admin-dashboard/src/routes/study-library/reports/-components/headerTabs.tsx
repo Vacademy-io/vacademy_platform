@@ -2,6 +2,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useState, useEffect } from 'react';
 import BatchReports from './batch/batchReports';
 import StudentReports from './student/studentReports';
+import LiveClassReports from './live/liveClassReports';
+import LeaderboardReports from './leaderboard/LeaderboardReports';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -18,12 +20,12 @@ import {
 } from '../../reports/-types/types';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { getBadgesEnabled } from '@/routes/settings/-services/badges-settings';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { BarChart3, Users, Settings, FileText } from 'lucide-react';
 
 const reportTypes = [
     ReportDurationEnum.DAILY,
@@ -39,6 +41,20 @@ export default function HeaderTabs() {
     );
     const [settingDialogState, setSettingDialogState] = useState(false);
     const [settingDetails, setSettingDetails] = useState<InstituteSettingResponse>();
+
+    // Leaderboard tab is gated on the badges + leaderboard master toggle.
+    const { data: badgesEnabled } = useQuery({
+        queryKey: ['badges-enabled'],
+        queryFn: getBadgesEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+    // Default OFF: only show once the toggle is confirmed enabled (avoids a flicker
+    // for disabled institutes while the query resolves).
+    const showLeaderboard = badgesEnabled === true;
+
+    useEffect(() => {
+        if (!showLeaderboard && selectedTab === 'LEADERBOARD') setSelectedTab('BATCH');
+    }, [showLeaderboard, selectedTab]);
 
     const settingsMutation = useMutation({ mutationFn: fetchInstituteSetting });
     const { isPending } = settingsMutation;
@@ -177,6 +193,26 @@ export default function HeaderTabs() {
                         >
                             {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="LIVE"
+                            className={`flex min-w-fit gap-1.5 rounded-none px-6 py-2 !shadow-none sm:px-12 ${selectedTab === 'LIVE'
+                                    ? 'border-4px rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                    : 'border-none bg-transparent'
+                                }`}
+                        >
+                            Live Classes
+                        </TabsTrigger>
+                        {showLeaderboard && (
+                            <TabsTrigger
+                                value="LEADERBOARD"
+                                className={`flex min-w-fit gap-1.5 rounded-none px-6 py-2 !shadow-none sm:px-12 ${selectedTab === 'LEADERBOARD'
+                                        ? 'border-4px rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                                        : 'border-none bg-transparent'
+                                    }`}
+                            >
+                                Leaderboard
+                            </TabsTrigger>
+                        )}
                     </TabsList>
                     <div className="w-full sm:w-auto">
                         <MyButton
@@ -196,6 +232,14 @@ export default function HeaderTabs() {
                 <TabsContent value="STUDENT">
                     <StudentReports></StudentReports>
                 </TabsContent>
+                <TabsContent value="LIVE">
+                    <LiveClassReports></LiveClassReports>
+                </TabsContent>
+                {showLeaderboard && (
+                    <TabsContent value="LEADERBOARD">
+                        <LeaderboardReports></LeaderboardReports>
+                    </TabsContent>
+                )}
             </Tabs>
             <MyDialog
                 heading="Reports Settings"

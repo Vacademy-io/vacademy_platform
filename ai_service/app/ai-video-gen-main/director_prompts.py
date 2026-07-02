@@ -1022,6 +1022,144 @@ def build_brand_direction_block(text: Optional[str]) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Content-aware visual aesthetic
+# ---------------------------------------------------------------------------
+# The base per-shot HTML system prompt (shot_type_cards.py) is anchored to a
+# flat "Khan Academy / whiteboard" educational aesthetic — no shadows, no depth,
+# fadeIn-only motion, "not a website". That is RIGHT for a lecture and WRONG for
+# a marketing / product / ad video, where it reads as robotic and unfinished.
+#
+# This directive is APPENDED LAST to the per-shot system prompt (after the base
+# cards and the brand block), so for marketing/bold modes it AUTHORITATIVELY
+# overrides the earlier flat rules. For educational mode it returns "" and the
+# base whiteboard aesthetic stands unchanged — so education videos are untouched.
+
+# video_type / subject_domain values that imply a marketing/promotional video.
+_MARKETING_VIDEO_TYPES = frozenset({"ad", "marketing", "promo", "promotional", "commercial", "sales"})
+_MARKETING_SUBJECT_DOMAINS = frozenset({"saas_marketing", "business_marketing", "saas_demo"})
+
+
+def resolve_visual_style_mode(
+    *,
+    override: Optional[str] = None,
+    video_type: Optional[str] = None,
+    subject_domain: Optional[str] = None,
+) -> str:
+    """Resolve the visual aesthetic mode for a run.
+
+    Precedence: an explicit user `override` (educational | marketing | bold)
+    wins; otherwise auto-detect from `video_type` / `subject_domain` — a
+    marketing/ad/product video gets `marketing`, everything else stays
+    `educational` (the safe default that preserves today's look for lectures).
+    Returns one of: "educational" | "marketing" | "bold".
+    """
+    ov = (override or "").strip().lower()
+    if ov in ("educational", "clean", "whiteboard"):
+        return "educational"
+    if ov in ("marketing", "modern", "premium"):
+        return "marketing"
+    if ov in ("bold", "dynamic", "energetic"):
+        return "bold"
+    vt = (video_type or "").strip().lower()
+    sd = (subject_domain or "").strip().lower()
+    if vt in _MARKETING_VIDEO_TYPES or sd in _MARKETING_SUBJECT_DOMAINS:
+        return "marketing"
+    return "educational"
+
+
+# The "less text" rule is shared by marketing + bold — it is the single biggest
+# fix for the "too much text / robotic" complaint: on-screen text must be punchy
+# keywords, NEVER the spoken sentence.
+_KEYWORDS_ONLY_RULE = (
+    "**ON-SCREEN TEXT = PUNCHY KEYWORDS, NEVER THE NARRATION.**\n"
+    "- The narration is SPOKEN. Putting the same sentence on screen (the viewer "
+    "reads what they hear) is the #1 tell of robotic AI video. NEVER do it.\n"
+    "- On-screen text is a HEADLINE or KEYWORD, not a transcript: a single bold "
+    "phrase (≤ 5 words), one accent word, a stat, a label. NO body paragraphs, "
+    "NO supporting caption sentences, NO bullet lists of full sentences.\n"
+    "- If a beat has nothing crisp to put on screen, show IMAGERY ALONE (full-"
+    "bleed photo/footage with a slow move) and let the narration carry it.\n"
+    "- Let visuals breathe: large negative space, one focal idea per shot.\n"
+)
+
+_PREMIUM_AESTHETIC = (
+    "## 🎬 VISUAL MODE: PREMIUM MODERN (OVERRIDES the flat/whiteboard rules above)\n"
+    "This is a MARKETING / PRODUCT video — make it look like a polished modern "
+    "brand film or a high-end social ad (Apple, Linear, Stripe, Vercel, Webflow), "
+    "NOT a lecture slide. Where the base guidance above said 'flat, no shadows, no "
+    "fancy animation, like a whiteboard,' THIS SECTION WINS — apply depth, motion, "
+    "and finishing.\n\n"
+    "**DEPTH & FINISHING (the 'finishing' that's missing today):**\n"
+    "- Use soft, layered ELEVATION: subtle large-radius shadows (e.g. "
+    "`box-shadow: 0 24px 60px -20px rgba(0,0,0,.35)`), gentle inner glows, and "
+    "1px hairline borders to separate planes. Depth = premium.\n"
+    "- Backgrounds are RICH, not flat: soft radial/linear gradient meshes, a faint "
+    "noise/grain layer, brand-tinted vignettes, a subtle moving gradient. Never a "
+    "single dead-flat fill behind a headline.\n"
+    "- Rounded geometry (12–28px radii) on surfaces; tasteful glassmorphism "
+    "(`backdrop-filter: blur()` over imagery) for floating UI/labels.\n"
+    "- Typography is the hero: big, tight tracking, confident weight contrast "
+    "(one ultra-bold line + one light line), gradient or accent-colored key words.\n\n"
+    "**MOTION (choreographed, not fadeIn-only):**\n"
+    "- Entrances STAGGER and EASE: elements arrive in a deliberate sequence with "
+    "`power3.out` / `expo.out` easing, slight overshoot (`back.out(1.4)`) on hero "
+    "elements, scale-from-0.92 + blur-in (`filter: blur(8px)→0`), y-offset rises.\n"
+    "- Add continuous, subtle life: a slow Ken-Burns/parallax on imagery, a gentle "
+    "float/drift on a hero object, a shimmer sweep across a key word — so no frame "
+    "is ever static.\n"
+    "- Transitions between elements feel directed (wipe, mask-reveal, clip-path "
+    "grow), not just opacity. Motion should EXPLAIN and DELIGHT, not decorate.\n\n"
+    "**IMAGERY-FORWARD:** lead with full-bleed photography/footage or a crafted "
+    "hero object; reserve clean UI/diagram shots for moments that truly need them. "
+    "A marketing video is mostly VISUALS, not text panels.\n\n"
+    "**🚫 NO BARE TEXT CARDS — EVERY ELEMENT EARNS A VISUAL (this is the #1 failure):**\n"
+    "- A feature / benefit / step / stat list rendered as plain text rows is the "
+    "single most common way these videos go flat and robotic. NEVER do it.\n"
+    "- EVERY feature/benefit/step MUST carry a relevant ICON — minimum. Use the "
+    "Iconify web component: `<iconify-icon icon='mdi:whatsapp' width='44'></iconify-icon>` "
+    "in a brand-tinted circle/chip beside (or above) the label. Pick MEANINGFUL icons: "
+    "e.g. `mdi:whatsapp`, `mdi:bell-ring`, `mdi:chart-line`, `mdi:account-group`, "
+    "`mdi:clock-fast`, `tabler:rocket`, `lucide:zap`. Never an icon-less row.\n"
+    "- PREFER real imagery over icons where the thing can be shown: for a PRODUCT "
+    "(app, CRM, dashboard, chat), SHOW IT — a device mockup / UI screenshot / annotated "
+    "interface beats describing it in text. Use stock photos of the audience (students, "
+    "counsellors, classrooms) as full-bleed backgrounds or split panels.\n"
+    "- HARD RULE: every shot must contain at least ONE non-text visual element — an "
+    "icon, image, device mockup, chart, animated SVG, or bold graphic shape. A frame "
+    "that is only a headline + text rows is REJECTED. If you're about to emit a text-"
+    "only card, add icons/imagery or convert it to a hero/mockup shot instead.\n"
+    "- Big stat moments get a giant animated number + an icon/graphic, not a bare figure.\n\n"
+    + _KEYWORDS_ONLY_RULE
+)
+
+_BOLD_EXTRA = (
+    "\n**ENERGY: BOLD.** Push contrast and tempo harder — oversized type that "
+    "crops the frame, fast punchy entrances with snap timing, bold accent-color "
+    "blocks that slam in, quick rhythmic cuts on the beat. High-energy social-ad "
+    "feel. Stay tasteful: one loud move per shot, not chaos.\n"
+)
+
+
+def build_aesthetic_directive(mode: str) -> str:
+    """Return the per-shot aesthetic override block for the resolved visual mode.
+
+    - "educational" → "" (keep the base flat/whiteboard aesthetic untouched).
+    - "marketing"   → premium-modern override (depth, motion, finishing, less text).
+    - "bold"        → premium + extra energy.
+
+    Appended LAST to the per-shot HTML system prompt, after the brand block, so
+    it authoritatively overrides the earlier whiteboard rules without rewriting
+    the base shot-type cards. Educational runs see no change.
+    """
+    m = (mode or "educational").strip().lower()
+    if m == "marketing":
+        return "\n\n" + _PREMIUM_AESTHETIC
+    if m == "bold":
+        return "\n\n" + _PREMIUM_AESTHETIC + _BOLD_EXTRA
+    return ""
+
+
 def build_ai_video_director_block(
     *,
     enabled: bool,

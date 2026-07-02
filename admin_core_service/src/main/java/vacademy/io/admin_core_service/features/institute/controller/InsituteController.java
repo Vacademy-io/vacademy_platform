@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.config.cache.CacheScope;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -41,6 +42,29 @@ public class InsituteController {
         if (institute.isEmpty()) return ResponseEntity.notFound().build();
         Object data = instituteSettingService.getSettingData(institute.get(), settingKey);
         return ResponseEntity.ok(data);
+    }
+
+    /**
+     * Internal rename hook for the onboarding/demo-management flow (community-service).
+     * Body: {"instituteName": "..."}. Guarded by the internal HMAC auth filter ({@code /internal/**}).
+     */
+    @PutMapping("/{instituteId}/profile")
+    public ResponseEntity<InstituteInfoDTO> updateInstituteProfile(@PathVariable String instituteId,
+                                                                   @RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(service.updateInstituteProfile(instituteId, body.get("instituteName")));
+    }
+
+    /**
+     * Internal lead-tag lookup for the dashboard-widget feature (community-service). community-service
+     * needs an institute's lead tag to resolve LEAD_TAG-targeted widgets, but the tag lives here in
+     * admin-core. Returns {@code {"leadTag": "PROD"}} (leadTag may be null). HMAC-guarded.
+     */
+    @GetMapping("/{instituteId}/lead-tag")
+    public ResponseEntity<Map<String, String>> getInstituteLeadTag(@PathVariable String instituteId) {
+        String leadTag = instituteRepository.findById(instituteId)
+                .map(Institute::getLeadTag)
+                .orElse(null);
+        return ResponseEntity.ok(java.util.Collections.singletonMap("leadTag", leadTag));
     }
 
 }

@@ -114,6 +114,27 @@ html {
 .pr-safe { padding-right: var(--safe-area-inset-right); }
 .pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
 .pl-safe { padding-left: var(--safe-area-inset-left); }
+/* App-SHELL safe-area utilities (navbar / sidebars). SCOPED to `.platform-native`
+ * so they apply ONLY inside the Capacitor Android/iOS app — never the web portal.
+ * (`.platform-native` is added to <html> only when isNative(); on the web, even a
+ * mobile browser with viewport-fit=cover would otherwise pick up env() insets and
+ * shift the layout.) Base Tailwind classes (top-0 / h-screen) stay the default
+ * everywhere; these override only in the native app. */
+.platform-native .top-safe-native { top: var(--safe-area-inset-top); }
+.platform-native .pt-safe-native { padding-top: var(--safe-area-inset-top); }
+.platform-native .pb-safe-native { padding-bottom: var(--safe-area-inset-bottom); }
+.platform-native .h-screen-safe-native {
+    height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+}
+/* For a close (X) button pinned to the top of a FULL-HEIGHT overlay (sheets,
+ * side-views, full-screen panels). Keeps its 1rem gap but pushes it below the
+ * status-bar/notch inset on native so it isn't tucked under the camera. Pair with
+ * the base `top-4` (which stays the value on web / centered dialogs). */
+.platform-native .top-safe-offset { top: calc(var(--safe-area-inset-top) + 1rem); }
+/* Top padding for a full-height overlay's CONTENT (sheets w/ p-4..p-8): the
+ * notch inset PLUS a 1.5rem gap, so the sheet title/content clears the status
+ * bar instead of rendering under the clock/icons. Native-only. */
+.platform-native .pt-safe-6 { padding-top: calc(var(--safe-area-inset-top) + 1.5rem); }
 .px-safe {
     padding-left: var(--safe-area-inset-left);
     padding-right: var(--safe-area-inset-right);
@@ -164,6 +185,55 @@ html {
     padding-bottom: var(--safe-area-inset-bottom);
     padding-left: var(--safe-area-inset-left);
     padding-right: var(--safe-area-inset-right);
+}
+/* Edge-to-edge top inset (BOTH platforms). The WebView draws under the status
+ * bar / notch / Dynamic Island:
+ *   - Android 15 (targetSDK 35) enforces edge-to-edge and
+ *     StatusBar.setOverlaysWebView(false) no longer reserves space.
+ *   - iOS: the WKWebView spans the full screen (env(safe-area-inset-top) reports
+ *     the real notch inset), so without padding the page content scrolls up into
+ *     the Dynamic Island.
+ * Pad the top by the status-bar inset so content starts below it. Native-only
+ * (web never has `.platform-native`); resolves to 0 where the device has no inset. */
+.platform-native body {
+    padding-top: var(--safe-area-inset-top);
+    /* Colour for the status-bar + nav-bar cover strips. Follows the DEVICE/OS
+     * theme (not the app theme) so it matches the system bars and keeps the OS
+     * status-bar icons readable: white under the dark icons of light mode, black
+     * under the light icons of dark mode. */
+    --system-bar-cover: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+    .platform-native body {
+        --system-bar-cover: #000000;
+    }
+}
+/* The status-bar/notch strip is transparent and the WebView draws under it, so
+ * scrolled content appears in the camera/status-bar area above the sticky header.
+ * Paint an opaque strip over that inset (coloured to the device theme) so nothing
+ * scrolls into the notch. Sits above page content but below the sticky navbar
+ * (z-50) and modals, so it never hides them. Both iOS + Android. */
+.platform-native body::before {
+    content: '';
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: var(--safe-area-inset-top);
+    background: var(--system-bar-cover);
+    z-index: 40;
+    pointer-events: none;
+}
+/* Bottom counterpart for the navigation/home-indicator area. Uses env(safe-area-
+ * inset-bottom): on Android the system sizes it per nav mode (small for gesture
+ * nav, tall for 3-button nav); on iOS it's the home-indicator height. Re-adapts
+ * live when the nav mode/orientation changes (safeArea.ts re-measures on resize). */
+.platform-native body::after {
+    content: '';
+    position: fixed;
+    inset: auto 0 0 0;
+    height: var(--safe-area-inset-bottom);
+    background: var(--system-bar-cover);
+    z-index: 40;
+    pointer-events: none;
 }
 .platform-ios body {
     -webkit-tap-highlight-color: transparent;

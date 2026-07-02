@@ -187,7 +187,8 @@ public class LearnerAssessmentAttemptStartManager {
         return questions;
     }
 
-    // Strip expectedStdout from hidden test cases so the answer key never reaches the learner.
+    // Strip expectedStdout (and any alternative acceptedOutputs) from hidden test
+    // cases so the answer key never reaches the learner.
     private void redactHiddenTestExpectedStdout(AssessmentQuestionPreviewDto preview) {
         if (preview == null || !QuestionTypes.CODING.name().equals(preview.getQuestionType())) return;
         String evaluationJson = preview.getEvaluationJson();
@@ -200,6 +201,7 @@ public class LearnerAssessmentAttemptStartManager {
             for (JsonNode tc : testCases) {
                 if (tc instanceof ObjectNode && !tc.path("visible").asBoolean(true)) {
                     ((ObjectNode) tc).remove("expectedStdout");
+                    ((ObjectNode) tc).remove("acceptedOutputs");
                 }
             }
             preview.setEvaluationJson(mapper.writeValueAsString(root));

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useRouterState } from '@tanstack/react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
     ArrowClockwise,
     ChatCircleDots,
@@ -16,7 +16,11 @@ import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useVacademyAssistant } from './useVacademyAssistant';
+import { useAssistDock } from '@/components/assist-dock/store';
 import type { AssistantMessage } from './types';
+import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
+import type { ReactNode } from 'react';
 
 // Routes where no authenticated shell exists — the widget must stay hidden even
 // if a stale token lingers. Mirrors the public routes in routes/__root.tsx.
@@ -40,10 +44,27 @@ const SUGGESTIONS = [
 
 export function VacademyAssistant() {
     const pathname = useRouterState({ select: (s) => s.location.pathname });
-    const [open, setOpen] = useState(false);
     const [input, setInput] = useState('');
+    const panel = useAssistDock((s) => s.panel);
+    const setPanel = useAssistDock((s) => s.setPanel);
+    const open = panel === 'assistant';
     const { messages, status, error, sendMessage, reset } = useVacademyAssistant();
     const scrollEndRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+
+    // A help answer can include a route link (e.g. [Open Courses](/study-library/courses));
+    // navigate in-app and collapse the panel so the user lands on the page.
+    const handleInternalLink = useCallback(
+        (to: string) => {
+            setPanel('none');
+            navigate({ to });
+        },
+        [navigate, setPanel]
+    );
+    const mdComponents = useMemo(
+        () => createMdComponents(handleInternalLink),
+        [handleInternalLink]
+    );
 
     useEffect(() => {
         scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,7 +73,8 @@ export function VacademyAssistant() {
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
     const onPublicRoute = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
-    if (!isAuthed || onPublicRoute) return null;
+    // The rail (AssistDock) owns the trigger now; render only when it asks us to.
+    if (!isAuthed || onPublicRoute || !open) return null;
 
     const isBusy = status === 'connecting' || status === 'streaming';
     const lastMessage = messages[messages.length - 1];
@@ -72,21 +94,8 @@ export function VacademyAssistant() {
         sendMessage(text);
     };
 
-    if (!open) {
-        return (
-            <button
-                type="button"
-                aria-label="Open Vacademy Assistant"
-                onClick={() => setOpen(true)}
-                className="fixed bottom-6 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-primary-500 text-white shadow-lg transition-colors hover:bg-primary-600"
-            >
-                <Sparkle size={26} weight="fill" />
-            </button>
-        );
-    }
-
     return (
-        <div className="fixed inset-x-4 bottom-6 top-20 z-50 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-6 sm:top-24 sm:w-96">
+        <div className="fixed inset-x-4 bottom-6 top-20 z-40 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-20 sm:top-24 sm:w-96">
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-primary-500 px-4 py-3 text-white">
                 <div className="flex items-center gap-2">
@@ -114,7 +123,7 @@ export function VacademyAssistant() {
                     <button
                         type="button"
                         aria-label="Close assistant"
-                        onClick={() => setOpen(false)}
+                        onClick={() => setPanel('none')}
                         className="flex size-8 items-center justify-center rounded-md text-white/90 transition-colors hover:bg-white/20"
                     >
                         <X size={18} />
@@ -156,7 +165,11 @@ export function VacademyAssistant() {
                     )}
 
                     {messages.map((message) => (
-                        <MessageBubble key={message.id} message={message} />
+                        <MessageBubble
+                            key={message.id}
+                            message={message}
+                            mdComponents={mdComponents}
+                        />
                     ))}
 
                     {awaitingFirstToken && (
@@ -203,21 +216,84 @@ export function VacademyAssistant() {
     );
 }
 
-function MessageBubble({ message }: { message: AssistantMessage }) {
+// Token-styled markdown renderer for assistant replies (mirrors the AI-usage
+// dialog's map, so it stays design-system-conformant — no `prose` plugin).
+type MdProps = { children?: ReactNode; href?: string };
+function createMdComponents(onInternalLink: (to: string) => void): Components {
+    return {
+        p: ({ children }: MdProps) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }: MdProps) => (
+            <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>
+        ),
+        ol: ({ children }: MdProps) => (
+            <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>
+        ),
+        li: ({ children }: MdProps) => <li className="mb-1">{children}</li>,
+        strong: ({ children }: MdProps) => <strong className="font-semibold">{children}</strong>,
+        em: ({ children }: MdProps) => <em className="italic">{children}</em>,
+        a: ({ children, href }: MdProps) => {
+            // In-app routes start with "/": navigate within the SPA. Anything else
+            // (http…) opens in a new tab.
+            if (href && href.startsWith('/')) {
+                return (
+                    <button
+                        type="button"
+                        onClick={() => onInternalLink(href)}
+                        className="font-medium text-primary-600 underline"
+                    >
+                        {children}
+                    </button>
+                );
+            }
+            return (
+                <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary-600 underline"
+                >
+                    {children}
+                </a>
+            );
+        },
+        code: ({ children }: MdProps) => (
+            <code className="rounded-sm bg-neutral-100 px-1 py-0.5 text-caption">{children}</code>
+        ),
+        pre: ({ children }: MdProps) => (
+            <pre className="mb-2 overflow-x-auto rounded-md bg-neutral-100 p-3 text-caption last:mb-0">
+                {children}
+            </pre>
+        ),
+        h1: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+        h2: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+        h3: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
+    };
+}
+
+function MessageBubble({
+    message,
+    mdComponents,
+}: {
+    message: AssistantMessage;
+    mdComponents: Components;
+}) {
     const isUser = message.role === 'user';
     return (
-        <div className={cn('flex', isUser ? 'justify-end pl-8' : 'justify-start pr-8')}>
+        <div className={cn('flex', isUser ? 'justify-end pl-8' : 'justify-start pr-6')}>
             <div
                 className={cn(
-                    'w-fit whitespace-pre-wrap rounded-lg px-3 py-2 text-body',
+                    'rounded-lg px-3 py-2 text-body',
                     isUser
-                        ? 'bg-primary-500 text-white'
+                        ? 'w-fit whitespace-pre-wrap bg-primary-500 text-white'
                         : 'border border-neutral-200 bg-neutral-50 text-neutral-800'
                 )}
             >
-                {message.content}
-                {message.streaming && !message.content && (
-                    <span className="text-neutral-400">…</span>
+                {isUser ? (
+                    message.content
+                ) : message.content ? (
+                    <ReactMarkdown components={mdComponents}>{message.content}</ReactMarkdown>
+                ) : (
+                    message.streaming && <span className="text-neutral-400">…</span>
                 )}
             </div>
         </div>

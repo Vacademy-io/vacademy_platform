@@ -8,6 +8,7 @@ import {
   handleEnrollLearnerForPayment,
   handleGetEnrollInviteData,
   handleGetPublicInstituteDetails,
+  handleGetPublicInstituteDetailsWithBatches,
   ReferRequest,
   submitEnrollmentForm,
   getEnrollmentPolicy,
@@ -28,6 +29,7 @@ import {
   transformApiDataToCourseDataForInvite,
 } from "./-utils/helper";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
+import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import z from "zod";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
@@ -41,6 +43,7 @@ import {
   getCashfreeReturnUrl,
 } from "@/services/cashfree-payment";
 import { load as loadCashfree } from "@cashfreepayments/cashfree-js";
+import { getPhonePeReturnUrl } from "@/services/phonepe-payment";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 
@@ -616,19 +619,55 @@ const EnrollByInvite = ({
     }, []);
   }, [inviteData?.package_session_to_payment_options]);
 
+  // ── Bundled "What's Included" course resolution ─────────────────────────────
+  // The enroll form loads branding/settings via the lightweight
+  // `details-non-batches` endpoint, which returns `batches_for_sessions: []`.
+  // That leaves bundled package sessions with no course/level/session names —
+  // labels fall back to "Course N" and the structure preview never resolves a
+  // course id ("Course details loading..." forever). Fetch the host institute's
+  // full `details` payload (batches included) to recover them.
+  //
+  // NOTE: the bundled package sessions belong to the HOST institute (the
+  // `instituteId` in the invite URL = enroll_invite.institute_id), NOT the
+  // sub-org. For "Sub-Org Subscription" invites the `sub_org` is only a
+  // branding/grouping label — that institute is an empty shell with no batches.
+  const { data: bundleInstituteData } = useQuery(
+    handleGetPublicInstituteDetailsWithBatches({
+      instituteId,
+      enabled: isBundledInvite && bundledPackageSessions.length > 0,
+    }),
+  );
+
+  const bundleSessionDetailsMap = useMemo(() => {
+    const map = new Map<string, BatchForSessionType>();
+    const batches: BatchForSessionType[] =
+      bundleInstituteData?.batches_for_sessions ?? [];
+    for (const batch of batches) {
+      if (batch?.id) map.set(batch.id, batch);
+    }
+    return map;
+  }, [bundleInstituteData?.batches_for_sessions]);
+
+  // Resolve a package session's course/level/session details, preferring the
+  // batches fetched for the bundle's owning institute and falling back to the
+  // global institute store (covers already-cached non-bundled details).
+  const getBundleSessionDetails = useCallback(
+    (packageSessionId: string): BatchForSessionType | null =>
+      bundleSessionDetailsMap.get(packageSessionId) ??
+      getDetailsFromPackageSessionId({ packageSessionId }),
+    [bundleSessionDetailsMap, getDetailsFromPackageSessionId],
+  );
+
   const currentLevelName = useMemo(() => {
     const pId =
       activePackageSessionId ??
       inviteData?.package_session_to_payment_options?.[0]?.package_session_id ??
       "";
-    return (
-      getDetailsFromPackageSessionId({ packageSessionId: pId })?.level
-        ?.level_name || "-"
-    );
+    return getBundleSessionDetails(pId)?.level?.level_name || "-";
   }, [
     activePackageSessionId,
     inviteData?.package_session_to_payment_options,
-    getDetailsFromPackageSessionId,
+    getBundleSessionDetails,
   ]);
 
   const hasLevelName = useMemo(() => {
@@ -653,14 +692,24 @@ const EnrollByInvite = ({
     }
   }, [bundledPackageSessions]);
 
+  // Placeholder level/session names ("default"/"DEFAULT") carry no meaning for
+  // single-course catalogue packages — treat them as absent so the tab label is
+  // just the course name instead of "Course Name · default".
+  const meaningfulName = (name?: string | null) => {
+    const normalized = (name || "").trim().toLowerCase();
+    return normalized && normalized !== "default" && normalized !== "-"
+      ? (name || "").trim()
+      : undefined;
+  };
+
   const resolvePackageSessionLabel = (
     packageSessionId: string,
     fallbackIndex: number,
   ) => {
-    const details = getDetailsFromPackageSessionId({ packageSessionId });
-    const courseName = details?.package_dto?.package_name;
-    const levelName = details?.level?.level_name;
-    const sessionName = details?.session?.session_name;
+    const details = getBundleSessionDetails(packageSessionId);
+    const courseName = meaningfulName(details?.package_dto?.package_name);
+    const levelName = meaningfulName(details?.level?.level_name);
+    const sessionName = meaningfulName(details?.session?.session_name);
 
     if (courseName && levelName) {
       return `${courseName} · ${levelName}`;
@@ -1525,6 +1574,120 @@ const EnrollByInvite = ({
         }
         console.error(err);
       } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // For PHONEPE payments — Standard Checkout full-page redirect flow.
+    // Enrollment (user + user plan, payment pending) is created, then the learner
+    // is sent to PhonePe's hosted page; the payment-result page polls status and
+    // logs them in once PhonePe confirms the payment.
+    if (vendor === "PHONEPE") {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const phonePeRedirectUrl = getPhonePeReturnUrl(instituteId);
+        const paymentResponse = await handleEnrollLearnerForPayment({
+          registrationData: form.getValues(),
+          enrollmentData: enrollmentData,
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          payment_option_id:
+            inviteData?.package_session_to_payment_options[0].payment_option.id,
+          package_session_ids:
+            inviteData?.package_session_to_payment_options.map(
+              (ps: { package_session_id: string }) => ps?.package_session_id,
+            ) || [""],
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          referRequest: referRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
+          paymentVendor: "PHONEPE",
+          phonePeRedirectUrl,
+          isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
+        });
+
+        const ordId =
+          paymentResponse?.payment_response?.order_id ||
+          paymentResponse?.order_id ||
+          "";
+        const redirectUrl =
+          paymentResponse?.payment_response?.response_data?.redirectUrl ||
+          paymentResponse?.payment_response?.response_data?.redirect_url;
+
+        if (!redirectUrl) {
+          throw new Error(
+            "Could not start PhonePe checkout. Please try again or contact support.",
+          );
+        }
+
+        setOrderId(ordId);
+        setPaymentCompletionResponse(paymentResponse);
+
+        // Persist credentials + order id so the payment-result page can auto-login
+        // the learner and resolve the order after PhonePe redirects back.
+        const username =
+          paymentResponse?.user?.username ??
+          paymentResponse?.user?.email ??
+          getUserDetails().email;
+        const userPassword =
+          paymentResponse?.user?.password ?? getPasswordField(form.getValues());
+        if (ordId && username && userPassword) {
+          try {
+            sessionStorage.setItem(
+              `enroll_payment_creds_${ordId}`,
+              JSON.stringify({ username, password: userPassword }),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        if (ordId) {
+          try {
+            localStorage.setItem(
+              "phonepe_pending_order",
+              JSON.stringify({ orderId: ordId, instituteId }),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+
+        // Hand off to PhonePe's hosted checkout page (full-page redirect).
+        window.location.href = redirectUrl;
+        return;
+      } catch (err) {
+        const errorData = (
+          err as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
+        if (errorData?.responseCode?.includes("510")) {
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
+          if (!dialogOpened) {
+            toast.error(errorData?.ex || "Payment failed");
+          }
+        }
+        const phonePeErrorMsg =
+          errorData?.ex ||
+          (err instanceof Error ? err.message : null) ||
+          "Failed to initiate PhonePe payment";
+        setError(phonePeErrorMsg);
+        if (inviteData?.gtm_container_id) {
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "PHONEPE",
+            errorMessage: phonePeErrorMsg,
+            utmParams,
+          });
+        }
+        console.error("PhonePe enrollment error:", err);
         setLoading(false);
       }
       return;
@@ -2906,19 +3069,23 @@ const EnrollByInvite = ({
                       }
                       onValueChange={setActivePackageSessionId}
                     >
-                      <TabsList className="flex flex-wrap w-full gap-1.5 bg-gray-50 p-1 rounded-md mb-3 h-auto">
-                        {bundledPackageSessions.map((session, index) => (
-                          <TabsTrigger
-                            key={session.packageSessionId}
-                            value={session.packageSessionId}
-                            className="flex-1 min-w-reg-120 px-3 py-1.5 text-xs font-medium rounded text-gray-600 bg-transparent data-[state=active]:bg-white data-[state=active]:text-gray-900"
-                          >
-                            {resolvePackageSessionLabel(
-                              session.packageSessionId,
-                              index,
-                            )}
-                          </TabsTrigger>
-                        ))}
+                      <TabsList className="grid w-full grid-cols-2 gap-2 h-auto bg-transparent p-0 mb-4 sm:grid-cols-3">
+                        {bundledPackageSessions.map((session, index) => {
+                          const label = resolvePackageSessionLabel(
+                            session.packageSessionId,
+                            index,
+                          );
+                          return (
+                            <TabsTrigger
+                              key={session.packageSessionId}
+                              value={session.packageSessionId}
+                              title={label}
+                              className="h-auto w-full items-start justify-start whitespace-normal break-words rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium leading-snug text-gray-600 transition-colors hover:border-gray-300 data-[state=active]:border-primary-500 data-[state=active]:bg-primary-50 data-[state=active]:text-primary-600 data-[state=active]:shadow-none"
+                            >
+                              <span className="line-clamp-2">{label}</span>
+                            </TabsTrigger>
+                          );
+                        })}
                       </TabsList>
 
                       {bundledPackageSessions.map((session) => (
@@ -2929,10 +3096,9 @@ const EnrollByInvite = ({
                         >
                           {activePackageSessionId === session.packageSessionId
                             ? (() => {
-                                const sessionDetails =
-                                  getDetailsFromPackageSessionId({
-                                    packageSessionId: session.packageSessionId,
-                                  });
+                                const sessionDetails = getBundleSessionDetails(
+                                  session.packageSessionId,
+                                );
                                 const previewCourseId =
                                   sessionDetails?.package_dto?.id ?? "";
                                 const previewLevelId =
@@ -2967,9 +3133,8 @@ const EnrollByInvite = ({
                         bundledPackageSessions[0]?.packageSessionId ?? "";
                       if (!singleSessionId) return null;
 
-                      const sessionDetails = getDetailsFromPackageSessionId({
-                        packageSessionId: singleSessionId,
-                      });
+                      const sessionDetails =
+                        getBundleSessionDetails(singleSessionId);
                       const previewCourseId =
                         sessionDetails?.package_dto?.id ?? "";
                       const previewLevelId =

@@ -2494,6 +2494,81 @@ class VideoGenerationPipeline:
         # entry is (model_id, source) tuple
         return entry[0] if isinstance(entry, tuple) else entry
 
+    def _resolve_visual_style_mode(self) -> str:
+        """Resolve the visual aesthetic mode for this run (cached once known).
+
+        Precedence: explicit user override (`self._visual_style_override`) >
+        auto-detect from video_type / subject_domain. Marketing/product/ad
+        content gets the premium-modern look; everything else stays on the
+        clean educational (whiteboard) aesthetic — the safe default that keeps
+        lecture-style videos identical to today.
+        """
+        cached = getattr(self, "_visual_style_mode", None)
+        if cached:
+            return cached
+        # User override travels on visual_preferences.visual_style_mode (it is
+        # already threaded into the pipeline and persisted across resume legs).
+        override = getattr(self, "_visual_style_override", None)
+        if not override:
+            _vp = getattr(self, "_visual_preferences", None) or {}
+            try:
+                override = _vp.get("visual_style_mode")
+            except AttributeError:
+                override = None
+        try:
+            from director_prompts import resolve_visual_style_mode
+            mode = resolve_visual_style_mode(
+                override=override,
+                video_type=getattr(self, "_video_type", None),
+                subject_domain=getattr(self, "_current_subject_domain", None),
+            )
+        except Exception:
+            mode = "educational"
+        # Only cache once subject_domain is known (it is set during the run); a
+        # pre-plan call resolving "educational" must not stick if the domain
+        # later turns out to be marketing.
+        if getattr(self, "_current_subject_domain", None) or override:
+            self._visual_style_mode = mode
+        return mode
+
+    def _append_aesthetic_directive(self, system_prompt: str) -> str:
+        """Append the content-aware aesthetic override to a per-shot HTML system
+        prompt. No-op (returns the prompt unchanged) for educational mode, so
+        the base flat/whiteboard aesthetic is preserved for lecture content.
+        """
+        try:
+            from director_prompts import build_aesthetic_directive
+            mode = self._resolve_visual_style_mode()
+            block = build_aesthetic_directive(mode)
+            if block:
+                if not getattr(self, "_logged_visual_mode", False):
+                    print(f"🎨 Visual aesthetic mode: {mode}")
+                    self._logged_visual_mode = True
+                return system_prompt + block
+        except Exception as _aerr:
+            print(f"aesthetic directive skipped: {_aerr}")
+        return system_prompt
+
+    def _shot_templates_active(self) -> bool:
+        """Whether deterministic full-shot templates may be used this run.
+
+        Templates render fixed Python HTML and BYPASS the per-shot LLM, so they
+        ignore the premium aesthetic / icon / keywords-only / creativity
+        directives entirely — that is exactly why marketing videos still come
+        out looking templated and repetitive. They are fine for educational
+        consistency (and cheaper), but for the creative marketing/bold modes we
+        want the LLM to compose EVERY shot. So: the tier flag must be on AND the
+        resolved visual mode must not be a creative marketing mode.
+
+        At shot-planning time `subject_domain` may not be known yet, so the mode
+        can resolve to "educational" there — but the authoritative gate is the
+        per-shot bypass in `_shot_task` (which runs after the plan, when the mode
+        is fully resolved), so a marketing run never actually renders a template.
+        """
+        if not self._tier_config.get("shot_templates_enabled"):
+            return False
+        return self._resolve_visual_style_mode() not in ("marketing", "bold")
+
     def _snap_cues_to_beat(
         self,
         entries: List[Dict[str, Any]],
@@ -2895,12 +2970,25 @@ class VideoGenerationPipeline:
         institute_id: Optional[str] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
+        # Assist mode (conversational, human-in-the-loop). When enabled and the
+        # `visual_casting` gate is on, the HTML stage pauses to let the user pick
+        # stock media. Dict shape mirrors extra_metadata.assist:
+        # {enabled, enabled_gates, answered_decisions, auto_all_gates}. None ⇒
+        # fully autonomous (every assist branch below is a no-op).
+        assist_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # Stash the cooperative stop signal on the instance so deeply-nested
         # methods (per-shot HTML, sound planner, etc.) can check it via
         # `self._check_stop()` without threading the parameter through every
         # call site. None disables checking entirely (legacy / tests).
         self._stop_event = stop_event
+
+        # Assist mode: gate config + the per-query forced media selections the
+        # user made on a previous leg (loaded from asset_selections.json once
+        # run_dir is resolved). Both default to "off" so non-assist runs are
+        # byte-for-byte unchanged.
+        self._assist_state = assist_state or None
+        self._forced_casting: Dict[str, Any] = {}
 
         # Pillar 1 — reset per-run cost-event log so successive run() calls on
         # the same pipeline instance don't cross-contaminate. The new tracker
@@ -3418,6 +3506,35 @@ class VideoGenerationPipeline:
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Assist mode: load the user's forced media picks from a prior leg so the
+        # HTML-stage casting gate doesn't re-prompt and the resolver forces the
+        # chosen URL per query. No-op when the file is absent (first leg / auto).
+        if self._assist_state:
+            try:
+                _sel_path = run_dir / "asset_selections.json"
+                if _sel_path.exists():
+                    _sel = json.loads(_sel_path.read_text())
+                    if isinstance(_sel, dict) and isinstance(_sel.get("forced"), dict):
+                        self._forced_casting = _sel["forced"]
+            except Exception as _csv_err:
+                print(f"⚠️ assist: could not load asset_selections.json: {_csv_err}")
+
+        # Will the visual_casting gate fire on THIS leg? (assist on, gate enabled,
+        # unanswered). When True we suppress the pipelined early-image resolution
+        # so the data-img-prompt tags survive for the gate to gather + the user
+        # to pick — otherwise an AI image would be generated before they choose.
+        self._assist_casting_pending = False
+        if self._assist_state:
+            try:
+                _dgm = self._load_decision_gates_module()
+                _oc, _ = _dgm.resolve_gate_outcome(
+                    self._assist_state, _dgm.GateType.VISUAL_CASTING.value, None
+                )
+                self._assist_casting_pending = (_oc == _dgm.GateOutcome.EMIT_AND_STOP)
+            except Exception:
+                self._assist_casting_pending = False
+
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
         # run wrote to `host-assets/run/host_audio_NNN.mp3` and silently
@@ -4708,11 +4825,17 @@ class VideoGenerationPipeline:
                                 "reference_url": _reference_url_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
-                            with _early_image_lock:
-                                _early_image_segments.append(entry)
-                            fut = _img_executor.submit(
-                                self._process_image_task_simple, task_e, _images_dir_early)
-                            _early_futures.append(fut)
+                            # Assist mode: when the visual_casting gate will pause
+                            # this leg, DON'T resolve images early — keep the
+                            # data-img-prompt tags intact so the gate can gather
+                            # candidates and the user can pick. _process_generated_images
+                            # resolves them (forced) on the resume leg.
+                            if not getattr(self, "_assist_casting_pending", False):
+                                with _early_image_lock:
+                                    _early_image_segments.append(entry)
+                                fut = _img_executor.submit(
+                                    self._process_image_task_simple, task_e, _images_dir_early)
+                                _early_futures.append(fut)
 
                 # ── Director Stage (premium/ultra) ─────────────────────────
                 # If enabled, run a Director LLM call to plan shots, then
@@ -5389,6 +5512,13 @@ class VideoGenerationPipeline:
                 # Fall back to full _process_generated_images for any segments whose
                 # images weren't submitted early (e.g. segments that finished after
                 # the executor was already done, or images with no early result).
+                # Assist mode: pause HERE — BEFORE image gen + stock video — so
+                # the data-img-prompt / data-video-query tags are still intact for
+                # the gate to gather candidates and the user to pick. Raises
+                # DecisionRequired (caught by the service) on the first leg; on the
+                # resume leg the resolvers below force the user's picks. No-op when
+                # assist / visual_casting is off.
+                self._maybe_visual_casting_gate(html_segments)
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
@@ -11201,16 +11331,19 @@ class VideoGenerationPipeline:
         # is also used post-LLM to scrub any survivors.
         _tmpl_catalog_md = ""
         _tmpl_valid_ids: Optional[List[str]] = None
-        try:
-            from shot_template_registry import (
-                build_catalog_for_director,
-                get_registry as _tmpl_get_registry,
-            )
-            _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
-            _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
-            _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
-        except Exception as _cat_err:
-            print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
+        # Skip advertising templates to the planner for creative marketing/bold
+        # modes — we want every shot LLM-composed, not bypassed by a fixed layout.
+        if self._shot_templates_active():
+            try:
+                from shot_template_registry import (
+                    build_catalog_for_director,
+                    get_registry as _tmpl_get_registry,
+                )
+                _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
+                _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
+                _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
+            except Exception as _cat_err:
+                print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
 
         sp_result = plan_shots(
             prompt=base_prompt,
@@ -11925,7 +12058,7 @@ class VideoGenerationPipeline:
         # Surfaces the available `template_id` values + their required
         # `template_params` schemas so the Director can opt into deterministic
         # compositions when content cleanly fits one.
-        if self._tier_config.get("shot_templates_enabled"):
+        if self._shot_templates_active():
             try:
                 from shot_template_registry import build_catalog_for_director  # type: ignore
                 _canvas = "portrait" if _h > _w else "landscape"
@@ -15213,7 +15346,10 @@ class VideoGenerationPipeline:
         # Shot templates (premium / ultra / super_ultra) — deterministic full-shot
         # compositions invoked by the Director via `template_id` on a shot. When a
         # template renders successfully, the per-shot LLM call is SKIPPED entirely.
-        _template_enabled = bool(self._tier_config.get("shot_templates_enabled"))
+        # Disabled for the creative marketing/bold modes so EVERY shot is composed
+        # by the LLM with the premium aesthetic + icon directives (templates would
+        # otherwise bypass all of that and render flat, repeating layouts).
+        _template_enabled = self._shot_templates_active()
         _template_compose_fn = None
         if _template_enabled:
             try:
@@ -15758,6 +15894,11 @@ class VideoGenerationPipeline:
                     system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
                 except Exception:
                     pass
+
+            # Content-aware visual aesthetic. Appended LAST so for marketing/bold
+            # it authoritatively overrides the base flat/whiteboard rules; for
+            # educational it returns "" and the base aesthetic is untouched.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
 
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
@@ -18209,6 +18350,10 @@ class VideoGenerationPipeline:
                     system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
                 except Exception:
                     pass
+
+            # Content-aware visual aesthetic (premium override for marketing/bold;
+            # no-op for educational). Same injection as the Director path.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
 
             # Build topic-aware guidance based on subject domain
             subject_domain = getattr(self, '_current_subject_domain', 'general')
@@ -20891,6 +21036,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
+        # Assist mode: the user already picked a stock image for this query on a
+        # prior leg — force it (skip search + AI gen entirely). Keyed by the RAW
+        # data-img-prompt (matches the gather pass). No-op when unforced.
+        _forced = (getattr(self, "_forced_casting", None) or {}).get(prompt)
+        if _forced and _forced.get("url"):
+            print(f"    👤 assist: forced user-picked image for '{prompt[:40]}'")
+            return {
+                "entry":       entry,
+                "full_tag":    full_tag,
+                "stock_url":   _forced["url"],
+                "image_bytes": None,
+                "filename":    None,
+                "usage":       {},
+            }
+
         # Lazy-init cultural context for the run if it wasn't computed during
         # Director / ShotPlanner (e.g. cached resume from `html` stage). All
         # downstream routing helpers depend on it being set.
@@ -22152,6 +22312,110 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "_veo_cost_usd": result.cost_usd,
         }
 
+    def _load_decision_gates_module(self):
+        """Lazy-import the sibling decision-gate framework (assist mode)."""
+        import sys as _sys, pathlib as _pl
+        _root = str(_pl.Path(__file__).resolve().parent)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        import decision_gates as _dg  # type: ignore
+        return _dg
+
+    def _gather_casting_candidates(self, html_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Assist mode: collect stock candidates for every media query in the HTML.
+
+        Read-only — scans the generated (cached) HTML for ``data-video-query`` and
+        ``data-img-prompt`` tags and fetches candidates per unique query via the
+        same Pexels search the resolver uses. Returns groups keyed by the RAW
+        query string (the resolver's forcing key, applied BEFORE cultural
+        context). Never raises; an empty list means "nothing castable".
+        """
+        groups: List[Dict[str, Any]] = []
+        pexels = self._pexels_service if (self._pexels_service and self._pexels_service.is_available) else None
+        if pexels is None:
+            return groups
+        try:
+            _dg = self._load_decision_gates_module()
+            _to_cand = _dg.to_casting_candidate
+        except Exception:
+            return groups
+        orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+        # Both stock VIDEO (data-video-query) and stock IMAGE (data-img-prompt)
+        # queries. Keyed by the RAW query/prompt string — the resolvers' force
+        # check (_process_stock_videos / _process_image_task_simple) uses the
+        # same key, so a user pick overrides the auto search/AI-gen.
+        VID_RE = re.compile(r'<video[^>]+data-video-query=(["\'])(.*?)\1', re.DOTALL)
+        IMG_RE = re.compile(r'<img[^>]+data-img-prompt=(["\'])(.*?)\1', re.DOTALL)
+        seen: set = set()
+        for idx, entry in enumerate(html_segments):
+            html = entry.get("html", "") or ""
+            shot_index = entry.get("_shot_index", idx)
+            for m in VID_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("video", q) in seen:
+                    continue
+                seen.add(("video", q))
+                try:
+                    raw = pexels.search_video_candidates(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "video", "thumb": c.get("image")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                if cands:
+                    groups.append({
+                        "query": q, "kind": "video", "shot_index": shot_index,
+                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                    })
+            for m in IMG_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("image", q) in seen:
+                    continue
+                seen.add(("image", q))
+                try:
+                    raw = pexels.search_photos_many(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "image", "id": c.get("url")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                if cands:
+                    groups.append({
+                        "query": q, "kind": "image", "shot_index": shot_index,
+                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                    })
+        return groups
+
+    def _maybe_visual_casting_gate(self, html_segments: List[Dict[str, Any]]) -> None:
+        """Assist mode: pause for the user to pick stock media (visual_casting gate).
+
+        No-op unless assist is on and the gate is enabled-and-unanswered. When it
+        fires it emits a ``decision_required`` event (→ SSE → FE) and raises
+        ``DecisionRequired`` (a BaseException) to unwind the leg cleanly; the
+        service catches it and flips the video to AWAITING_INPUT. On the resume
+        leg the gate sees the recorded answer (USE_ANSWER → forced_casting is
+        already loaded, resolver forces the picks) or AUTO_DECIDE and returns.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.VISUAL_CASTING.value, None)
+        if outcome != _dg.GateOutcome.EMIT_AND_STOP:
+            return  # AUTO_DECIDE (off/auto) or USE_ANSWER (forced picks loaded) → proceed
+        groups = self._gather_casting_candidates(html_segments)
+        if not groups:
+            return  # nothing castable — proceed autonomously
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_visual_casting_groups_decision(video_id, groups)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
+
     def _process_stock_videos(
         self,
         html_segments: List[Dict[str, Any]],
@@ -22217,6 +22481,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             for match in VIDEO_TAG_RE.finditer(html):
                 full_tag = match.group(1)
                 query = match.group(3)
+                _raw_query = query  # assist forcing key (before cultural context)
+
+                # Assist mode: the user already picked this query's clip on a
+                # prior leg — force it and skip the search cascade entirely.
+                # Keyed by the RAW query (matches the gather pass). No-op when
+                # forced_casting is empty (auto runs / unforced queries).
+                _forced = (getattr(self, "_forced_casting", None) or {}).get(_raw_query)
+                if _forced and _forced.get("url"):
+                    poster_url = ""
+                    new_tag = full_tag
+                    if 'src=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' src="{_forced["url"]}">', 1)
+                    if poster_url and 'poster=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' poster="{poster_url}">', 1)
+                    html = html.replace(full_tag, new_tag)
+                    entry["html"] = html
+                    replacements_count += 1
+                    print(f"    👤 assist: forced user-picked clip for '{_raw_query[:40]}'")
+                    continue
 
                 # Apply cultural context — same pipeline as images. The LLM
                 # is taught to prefix queries with the region descriptor
@@ -22607,6 +22890,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _ImageGenRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
+            # Assist mode: the user picked a stock image for this query on a prior
+            # leg — force it (skip search + AI gen). Keyed by the RAW data-img-prompt
+            # (matches the gather pass). No-op when unforced. This is the resume-leg
+            # batch resolver; the twin check lives in _process_image_task_simple.
+            _forced_img = (getattr(self, "_forced_casting", None) or {}).get(task.get("prompt", ""))
+            if _forced_img and _forced_img.get("url"):
+                print(f"    👤 assist: forced user-picked image for '{task.get('prompt', '')[:40]}'")
+                return {
+                    "entry":       task.get("entry"),
+                    # The _process_generated_images consumer keys replacements by
+                    # entry_id (= id(entry)); without it this dict KeyErrors.
+                    "entry_id":    id(task.get("entry")),
+                    "full_tag":    task.get("full_tag", ""),
+                    "stock_url":   _forced_img["url"],
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+
             img_source = task.get("img_source", "generate")
 
             # stock_only tier: treat every img_source=="generate" as "stock" — never

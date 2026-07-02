@@ -22,7 +22,7 @@ export const EnquirySidebar = () => {
                     transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
             >
                 {/* Header */}
-                <div className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
+                <div className="pt-safe-native sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
                     <div className="flex flex-col p-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">

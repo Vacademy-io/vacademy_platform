@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentL
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
+import vacademy.io.common.payment.currency.CurrencyRegistry;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.payment.enums.PaymentType;
@@ -400,8 +401,11 @@ public class RazorpayWebHookService {
 
                     // 4. Extract amount and transactionId from Razorpay payload
                     try {
+                        String paidCurrency = paymentEntity.has("currency")
+                                ? paymentEntity.get("currency").asText()
+                                : (paymentLog.getCurrency() != null ? paymentLog.getCurrency() : "INR");
                         amountPaid = paymentEntity.has("amount")
-                                ? paymentEntity.get("amount").asDouble() / 100.0 // paise → rupees
+                                ? CurrencyRegistry.fromMinorUnits(paymentEntity.get("amount").asLong(), paidCurrency) // minor units → major
                                 : (paymentLog.getPaymentAmount() != null ? paymentLog.getPaymentAmount() : 0.0);
                         transactionId = paymentEntity.has("id")
                                 ? paymentEntity.get("id").asText()

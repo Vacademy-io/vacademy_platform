@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.client.HttpClientErrorException;
 import vacademy.io.admin_core_service.features.auth_service.constants.AuthServiceRoutes;
 import vacademy.io.admin_core_service.features.institute_learner.constants.StudentConstants;
 import vacademy.io.admin_core_service.features.learner.dto.JwtResponseDto;
@@ -21,6 +22,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class AuthService {
@@ -204,6 +206,41 @@ public class AuthService {
             });
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
+        }
+    }
+
+    /**
+     * Resolve a user by phone number (auth_service matches on last-10 digits, so any
+     * format works). Returns empty when no user has that number — used by the
+     * telephony lead resolver to attribute a call to the user who owns the dialed
+     * number (the phone often lives only on the user record, not the CRM lead's
+     * parent_mobile). Never throws — a missing user / lookup hiccup yields empty.
+     */
+    public Optional<UserDTO> getUserByMobile(String mobileNumber) {
+        if (mobileNumber == null || mobileNumber.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.GET_USER_BY_MOBILE + "?mobileNumber=" + mobileNumber,
+                    null);
+            if (response == null || !response.getStatusCode().is2xxSuccessful()
+                    || response.getBody() == null || response.getBody().isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.ofNullable(new ObjectMapper().readValue(response.getBody(), UserDTO.class));
+        } catch (HttpClientErrorException.NotFound nf) {
+            // No user has this number — the common case for non-lead / cold-call
+            // numbers. Expected, not an error: return empty quietly (no log spam,
+            // and never log the number itself — it's PII).
+            return Optional.empty();
+        } catch (Exception e) {
+            // Genuine failure (5xx, connection, parse) — log WITHOUT the number.
+            logger.warn("auth_service user-by-mobile lookup failed: {}", e.getMessage());
+            return Optional.empty();
         }
     }
 

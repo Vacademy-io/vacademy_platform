@@ -109,6 +109,9 @@ export const sessionFormSchema = z
         // Field names mirror the Zoom create-meeting API "settings" object
         // (camelCase here, ZoomMeetingManager re-keys to snake_case).
         zoomAccountId: z.string().optional(),
+        // Google Meet account integration (only used when sessionPlatform = 'google meet' and a
+        // connected account is selected; otherwise Meet falls back to the manual defaultLink paste).
+        googleMeetAccountId: z.string().optional(),
         // Entry / security
         zoomWaitingRoom: z.boolean().optional(),
         zoomJoinBeforeHost: z.boolean().optional(),
@@ -148,7 +151,8 @@ export const sessionFormSchema = z
         const autoGeneratesMeeting =
             data.sessionPlatform === 'zoho' ||
             data.sessionPlatform === 'bbb' ||
-            (data.sessionPlatform === 'zoom' && !!data.zoomAccountId);
+            (data.sessionPlatform === 'zoom' && !!data.zoomAccountId) ||
+            (data.sessionPlatform === 'google meet' && !!data.googleMeetAccountId);
 
         if (!autoGeneratesMeeting && !data.defaultLink) {
             ctx.addIssue({

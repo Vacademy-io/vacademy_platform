@@ -239,6 +239,7 @@ export function EmailInboxPanel() {
                 onRefresh={handleRefresh}
             />
 
+            {/* Two-pane layout. On mobile only one pane shows at a time (driven by selectedEmail). */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 <EmailConversationList
                     conversations={conversations}
@@ -251,7 +252,12 @@ export function EmailInboxPanel() {
                     onLoadMore={loadMore}
                     loadingMore={loadingMore}
                 />
-                <div className="flex flex-col flex-1 min-h-0">
+                <div
+                    className={cn(
+                        'flex-col flex-1 min-h-0 min-w-0',
+                        selectedEmail ? 'flex' : 'hidden md:flex'
+                    )}
+                >
                     <EmailThread
                         selectedEmail={selectedEmail}
                         counterpartyName={selectedConvo?.name}
@@ -260,6 +266,7 @@ export function EmailInboxPanel() {
                         hasMore={hasMoreMessages}
                         onLoadOlder={handleLoadOlder}
                         onReply={selectedEmail ? () => setReplyOpen(true) : undefined}
+                        onBack={() => setSelectedEmail(null)}
                     />
                 </div>
             </div>
@@ -358,10 +365,10 @@ function SenderSelect({
 }) {
     const empty = senders.length === 0;
     return (
-        <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Inbox for</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
+            <span className="text-xs text-muted-foreground shrink-0">Inbox for</span>
             <Select value={value} onValueChange={onChange} disabled={empty}>
-                <SelectTrigger className="h-8 text-xs w-[260px]">
+                <SelectTrigger className="h-8 text-xs w-full sm:w-[260px]">{/* design-lint-ignore: preserves original desktop sender-select width */}
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

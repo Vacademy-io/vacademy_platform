@@ -13,6 +13,7 @@ import type {
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
 import { CpoEnrollmentConfigPanel } from '@/routes/manage-students/students-list/-components/enroll-bulk/components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '@/routes/manage-students/students-list/-hooks/useResolvedInviteDetails';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 // ── Per-PS config state (exposed to parent) ──
 export interface PackageSessionConfig {
@@ -206,7 +207,7 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                             <span className="text-[10px] text-neutral-400">
                                 · {config.resolvedPaymentOption.name}
                                 {config.resolvedPaymentPlan
-                                    ? ` → ₹${config.resolvedPaymentPlan.actual_price}`
+                                    ? ` → ₹${formatPlanPrice(config.resolvedPaymentPlan.actual_price)}`
                                     : ''}
                             </span>
                         )}
@@ -442,10 +443,10 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                                     </p>
                                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-neutral-500">
                                         <span>
-                                            Price: ₹{config.resolvedPaymentPlan.actual_price}
+                                            Price: ₹{formatPlanPrice(config.resolvedPaymentPlan.actual_price)}
                                             {config.resolvedPaymentPlan.elevated_price > config.resolvedPaymentPlan.actual_price && (
                                                 <span className="ml-1 text-neutral-400 line-through">
-                                                    ₹{config.resolvedPaymentPlan.elevated_price}
+                                                    ₹{formatPlanPrice(config.resolvedPaymentPlan.elevated_price)}
                                                 </span>
                                             )}
                                         </span>

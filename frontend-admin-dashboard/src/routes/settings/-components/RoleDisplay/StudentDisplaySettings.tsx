@@ -757,6 +757,29 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <Card>
                 <CardHeader>
+                    <CardTitle>Profile Page</CardTitle>
+                    <CardDescription>What learners see on their Profile tab</CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.profile.showMembershipStatus}
+                            onCheckedChange={(v) =>
+                                update('profile', {
+                                    ...settings.profile,
+                                    showMembershipStatus: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">
+                            Show Membership Status (Access Days &amp; expiry)
+                        </Label>
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <CardHeader>
                     <CardTitle>Course Details</CardTitle>
                     <CardDescription>Tabs, default tab and view preferences</CardDescription>
                 </CardHeader>

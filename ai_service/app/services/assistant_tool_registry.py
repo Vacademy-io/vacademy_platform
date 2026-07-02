@@ -67,6 +67,10 @@ class ToolContext:
     db: Session
     principal: PinnedPrincipal
     keys: tuple  # pre-resolved (openrouter_key, gemini_key, model) for embeddings
+    # The caller's own JWT, replayed on tools that hit normal (JWT-authenticated)
+    # admin endpoints — so the REAL user identity reaches Java, and the caller can
+    # never do via the assistant what they couldn't do directly in the UI.
+    bearer_token: Optional[str] = None
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str
@@ -81,7 +85,8 @@ class ToolSpec:
     executor: ToolExecutor
     required_permission: Optional[str] = None  # RBAC leg; None = no permission required
     setting_key: Optional[str] = None          # Settings-leg key; defaults to ``name``
-    default_enabled: bool = False              # on when institute has no ASSISTANT_TOOLS_SETTING
+    default_enabled: bool = False              # on for EVERY role when no ASSISTANT_TOOLS_SETTING
+    default_roles: Optional[List[str]] = None  # on for THESE roles when no setting (e.g. ["ADMIN"])
     phase: int = 1                             # roadmap phase (1=help, 2=read, 3=write)
     mode: str = "READ"                         # READ | WRITE
 
@@ -175,7 +180,222 @@ async def _execute_search_help_knowledge(args: Dict[str, Any], ctx: ToolContext)
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# The registry. Phase-2 (read) and Phase-3 (write) tools register here later,
+# Phase-2 tools: find_learner (resolver) + get_student_360 (data aggregate).
+# ──────────────────────────────────────────────────────────────────────────
+
+_FIND_LEARNER_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "find_learner",
+        "description": (
+            "Find learners in this institute by ONE free-text query — matches name, "
+            "email, phone number, username, or enrollment number. Use this FIRST "
+            "whenever the user names a learner and the page context does not already "
+            "identify them. If more than one learner matches, list the matches and ask "
+            "the user which one they mean — never guess."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The learner's name / email / phone / enrollment number.",
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Enrollment statuses to include. Default ['ACTIVE']; "
+                                   "widen to ['ACTIVE','INACTIVE','INVITED'] if nothing is found.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+_STUDENT_360_MODULES = [
+    "attendance", "live_classes", "academics", "activity",
+    "progress", "certificates", "assignments", "doubts", "login",
+]
+
+_GET_STUDENT_360_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_student_360",
+        "description": (
+            "Fetch a learner's data for SPECIFIC modules: attendance (live-class "
+            "presence %), live_classes (attended/missed), academics (assessment scores "
+            "vs batch — SLOW, request only when asked about tests/scores), activity "
+            "(study time & habits), progress (course completion), certificates, "
+            "assignments, doubts, login (last login & session time). Request ONLY the "
+            "modules the question needs. Requires the learner's user id — from the page "
+            "context's selected student or a prior find_learner result."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {
+                    "type": "string",
+                    "description": "The learner's user_id (NOT their name).",
+                },
+                "modules": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": _STUDENT_360_MODULES},
+                    "description": "Only the modules the question actually needs (1-3 usually).",
+                },
+                "batch_id": {
+                    "type": "string",
+                    "description": "Optional package_session_id to scope attendance/progress "
+                                   "(from page context or the find_learner result).",
+                },
+                "start_date": {"type": "string", "description": "YYYY-MM-DD. Default: 30 days ago."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD. Default: today."},
+            },
+            "required": ["target_user_id", "modules"],
+        },
+    },
+}
+
+
+def _mask_mobile(mobile: Optional[str]) -> Optional[str]:
+    if not mobile:
+        return None
+    digits = str(mobile)
+    return ("*" * max(0, len(digits) - 4)) + digits[-4:]
+
+
+async def _execute_find_learner(args: Dict[str, Any], ctx: ToolContext) -> str:
+    """Search learners within the pinned institute via the students-list endpoint.
+
+    Calls the normal admin endpoint WITH THE CALLER'S OWN JWT — the caller can
+    only see what they could already see in the portal. institute_ids is forced
+    from the pinned principal; the response is reduced to a compact projection
+    (never the full row: no address, parent contacts, or custom fields).
+    """
+    import httpx
+    from ..config import get_settings
+
+    query = str((args or {}).get("query") or "").strip()
+    if not query:
+        return json.dumps({"matches": [], "note": "No search query was provided."})
+    if not ctx.bearer_token:
+        return json.dumps({"error": "no_auth", "message": "Learner search is unavailable right now."})
+
+    statuses = args.get("statuses") or ["ACTIVE"]
+    settings = get_settings()
+    url = (
+        f"{settings.admin_core_service_base_url}"
+        "/admin-core-service/institute/institute_learner/get/v2/all"
+    )
+    body = {
+        "name": query,
+        "institute_ids": [ctx.principal.institute_id],  # forced — never model-supplied
+        "statuses": [str(s) for s in statuses][:6],
+        "package_session_ids": [],
+        "group_ids": [],
+        "gender": [],
+        "sort_columns": {},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                url,
+                params={"pageNo": 0, "pageSize": 10},
+                json=body,
+                headers={"Authorization": f"Bearer {ctx.bearer_token}"},
+            )
+        if resp.status_code != 200:
+            logger.warning("find_learner: %s from students-list (%s)", resp.status_code, resp.text[:200])
+            return json.dumps({"error": "search_failed", "status": resp.status_code})
+        data = resp.json() or {}
+    except Exception as e:
+        logger.warning("find_learner failed: %s", e)
+        return json.dumps({"error": "search_failed"})
+
+    matches = []
+    for row in (data.get("content") or [])[:10]:
+        matches.append({
+            "user_id": row.get("user_id"),
+            "full_name": row.get("full_name"),
+            "email": row.get("email"),
+            "mobile": _mask_mobile(row.get("mobile_number")),
+            "enrollment_no": row.get("institute_enrollment_number"),
+            "status": row.get("status"),
+            "payment_status": row.get("payment_status"),
+            "package_session_id": row.get("package_session_id"),
+            "expiry_date": row.get("expiry_date"),
+        })
+    return json.dumps({
+        "matches": matches,
+        "total_matches": data.get("total_elements", len(matches)),
+        "note": "If more than one match, ask the user which learner they mean." if len(matches) > 1 else None,
+    })
+
+
+def _prune_nulls(obj: Any) -> Any:
+    """Drop null values / empty dicts from the report so the LLM context stays lean."""
+    if isinstance(obj, dict):
+        pruned = {k: _prune_nulls(v) for k, v in obj.items() if v is not None}
+        return {k: v for k, v in pruned.items() if v not in (None, {}, [])}
+    if isinstance(obj, list):
+        return [_prune_nulls(v) for v in obj if v is not None]
+    return obj
+
+
+async def _execute_get_student_360(args: Dict[str, Any], ctx: ToolContext) -> str:
+    """Synchronous Layer-1 student report (selected modules) via the internal endpoint.
+
+    The internal endpoint verifies the target learner belongs to the pinned
+    institute (404 otherwise), so a session pinned to institute A can never read
+    institute B's learners even though the call carries service-level trust.
+    """
+    import httpx
+    from ..config import get_settings
+    from .internal_auth import internal_auth_headers
+
+    target_user_id = str((args or {}).get("target_user_id") or "").strip()
+    if not target_user_id:
+        return json.dumps({"error": "missing_target", "message": "target_user_id is required."})
+
+    modules = [m for m in (args.get("modules") or []) if m in _STUDENT_360_MODULES]
+    if not modules:
+        return json.dumps({"error": "missing_modules",
+                           "message": f"Pick 1-3 modules from: {', '.join(_STUDENT_360_MODULES)}."})
+
+    settings = get_settings()
+    params: Dict[str, Any] = {
+        "userId": target_user_id,
+        "instituteId": ctx.principal.institute_id,  # forced — never model-supplied
+        "modules": ",".join(modules),
+    }
+    if args.get("batch_id"):
+        params["batchId"] = str(args["batch_id"])
+    if args.get("start_date"):
+        params["startDate"] = str(args["start_date"])
+    if args.get("end_date"):
+        params["endDate"] = str(args["end_date"])
+
+    url = f"{settings.admin_core_service_base_url}/admin-core-service/internal/student-analysis/student-360"
+    try:
+        headers = await internal_auth_headers()
+        async with httpx.AsyncClient(timeout=65.0) as client:
+            resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code == 404:
+            return json.dumps({"error": "not_found",
+                               "message": "This learner has no enrollment in your institute."})
+        if resp.status_code != 200:
+            logger.warning("get_student_360: %s (%s)", resp.status_code, resp.text[:200])
+            return json.dumps({"error": "fetch_failed", "status": resp.status_code})
+        report = resp.json() or {}
+    except Exception as e:
+        logger.warning("get_student_360 failed: %s", e)
+        return json.dumps({"error": "fetch_failed"})
+
+    return json.dumps(_prune_nulls(report))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The registry. Phase-3 (write) tools register here later,
 # each with its own required_permission + default_enabled=False.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -187,6 +407,33 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         required_permission=None,   # Phase-1 help is available to all non-learner roles
         default_enabled=True,       # on out-of-the-box until an institute configures the setting
         phase=1,
+        mode="READ",
+    ),
+    # Phase 2a learner-data tools. One settings key ("learner_data") controls both —
+    # the resolver is useless without the data tool and vice versa. RBAC leg is None
+    # for now: the ASSISTANT_* permission catalog isn't seeded/grantable in the roles
+    # UI yet, so the per-role Settings leg (deny-by-default, ADMIN-only default) is
+    # the founder's grant mechanism; the permission backstop lands with the catalog.
+    "find_learner": ToolSpec(
+        name="find_learner",
+        schema=_FIND_LEARNER_SCHEMA,
+        executor=_execute_find_learner,
+        required_permission=None,
+        setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],    # founder decision 2026-07-02: reads on for ADMIN only
+        phase=2,
+        mode="READ",
+    ),
+    "get_student_360": ToolSpec(
+        name="get_student_360",
+        schema=_GET_STUDENT_360_SCHEMA,
+        executor=_execute_get_student_360,
+        required_permission=None,
+        setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
         mode="READ",
     ),
 }
@@ -246,13 +493,21 @@ def _effective_enabled_tools(setting: Optional[Dict[str, Any]], roles: Optional[
     The set of tool keys enabled for the caller, given the institute setting and
     the caller's roles.
 
-    - No setting configured -> the ``default_enabled`` tools.
+    - No setting configured -> tools flagged ``default_enabled`` (all roles) plus
+      tools whose ``default_roles`` include one of the caller's roles (e.g. the
+      learner-data tools default on for ADMIN only — founder decision 2026-07-02).
     - Setting configured     -> the institute-level ``enabled_tools`` UNION the
       ``enabled_tools`` of each of the caller's roles in ``role_overrides``
       (union across multiple roles — the broadest of the caller's roles wins).
     """
     if not setting:
-        return {spec.key() for spec in ASSISTANT_TOOLS.values() if spec.default_enabled}
+        caller_roles = set(roles or [])
+        return {
+            spec.key()
+            for spec in ASSISTANT_TOOLS.values()
+            if spec.default_enabled
+            or (spec.default_roles and caller_roles.intersection(spec.default_roles))
+        }
 
     enabled = set(setting.get("enabled_tools") or [])
     overrides = setting.get("role_overrides") or {}

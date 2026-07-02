@@ -11,6 +11,134 @@ export const stripAwsQueryParamsFromUrls = (htmlString: string): string => {
     });
 };
 
+/**
+ * A cell counts as empty only when it carries no visible text AND no media.
+ * We keep media-only cells (an image with no caption) so normalization can
+ * never silently drop content.
+ */
+const isTableCellEmpty = (cell: Element): boolean => {
+    if ((cell.textContent || '').trim() !== '') return false;
+    return !cell.querySelector('img, video, audio, iframe, source, svg');
+};
+
+const normalizeSingleTable = (tableHtml: string): string => {
+    const doc = new DOMParser().parseFromString(tableHtml, 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) return tableHtml;
+
+    const rows = Array.from(table.querySelectorAll('tr'));
+    if (rows.length === 0) return tableHtml;
+
+    // Bail on any merged cell — a colspan/rowspan > 1 makes per-row cell counts
+    // legitimately uneven, so trimming "extra" cells there could corrupt the
+    // grid. The ragged-table bug we fix only ever produces colspan=rowspan=1.
+    const hasMergedCells = rows.some((row) =>
+        Array.from(row.children).some((c) => {
+            const cs = parseInt(c.getAttribute('colspan') || '1', 10);
+            const rs = parseInt(c.getAttribute('rowspan') || '1', 10);
+            return cs > 1 || rs > 1;
+        })
+    );
+    if (hasMergedCells) return tableHtml;
+
+    const colgroup = table.querySelector('colgroup');
+    const colCount = colgroup ? colgroup.querySelectorAll('col').length : 0;
+
+    // Widest row measured by its LAST non-empty cell — trailing empties (the
+    // stray cells Yoopta leaves behind after a column delete/paste) don't count.
+    let meaningfulCols = 0;
+    const rowCells = rows.map((row) => {
+        const cells = Array.from(row.children).filter(
+            (c) => c.tagName === 'TD' || c.tagName === 'TH'
+        );
+        let lastNonEmpty = 0;
+        cells.forEach((c, i) => {
+            if (!isTableCellEmpty(c)) lastNonEmpty = i + 1;
+        });
+        meaningfulCols = Math.max(meaningfulCols, lastNonEmpty);
+        return cells;
+    });
+
+    // Real column count: never below the colgroup, never drops a cell with
+    // content. For a healthy table this equals every row's length → no change.
+    const targetCols = Math.max(colCount, meaningfulCols, 1);
+
+    let mutated = false;
+    rowCells.forEach((cells, rowIdx) => {
+        const row = rows[rowIdx];
+        if (!row) return;
+        // Drop trailing EMPTY cells past the real width; stop at the first
+        // non-empty from the right so real content is always preserved.
+        for (let i = cells.length - 1; i >= targetCols; i--) {
+            const cell = cells[i];
+            if (cell && isTableCellEmpty(cell)) {
+                row.removeChild(cell);
+                mutated = true;
+            } else {
+                break;
+            }
+        }
+        // Pad short rows so the grid is rectangular.
+        const remaining = Array.from(row.children).filter(
+            (c) => c.tagName === 'TD' || c.tagName === 'TH'
+        ).length;
+        for (let i = remaining; i < targetCols; i++) {
+            const td = doc.createElement('td');
+            td.setAttribute('rowspan', '1');
+            td.setAttribute('colspan', '1');
+            row.appendChild(td);
+            mutated = true;
+        }
+    });
+
+    // Sync the <colgroup> width so the browser lays out exactly targetCols.
+    if (colgroup && colCount !== targetCols) {
+        const cols = Array.from(colgroup.querySelectorAll('col'));
+        const template = cols[cols.length - 1];
+        for (let i = cols.length; i < targetCols; i++) {
+            const col = doc.createElement('col');
+            const tplStyle = template?.getAttribute('style');
+            if (tplStyle) col.setAttribute('style', tplStyle);
+            colgroup.appendChild(col);
+        }
+        for (let i = cols.length - 1; i >= targetCols; i--) {
+            const col = cols[i];
+            if (col) colgroup.removeChild(col);
+        }
+        mutated = true;
+    }
+
+    // Only reserialize when we actually changed something, so healthy tables
+    // stay byte-identical and the unsaved-changes comparison doesn't churn.
+    return mutated ? table.outerHTML : tableHtml;
+};
+
+/**
+ * Yoopta's table plugin can emit rows with MORE <td> cells than the table's
+ * real column count — trailing empty cells left behind after a column delete,
+ * or ragged rows from paste/merge. Those stray empties stretch the rendered
+ * table with dead columns past the real content (and past the <colgroup>).
+ * Normalize every simple (non-merged) <table> so all rows share one column
+ * count: drop trailing empty cells and pad short rows into a clean grid.
+ * Cells with any content are never removed, so this cannot lose data.
+ */
+export const normalizeTableColumns = (htmlString: string): string => {
+    if (typeof DOMParser === 'undefined' || !htmlString.includes('<table')) {
+        return htmlString;
+    }
+    // Operate only on <table>…</table> substrings so the rest of the document
+    // stays byte-identical (a full DOMParser round-trip would reformat
+    // unrelated markup and trip the unsaved-changes comparison). Yoopta tables
+    // never nest, so a non-greedy match to the first </table> is safe.
+    return htmlString.replace(/<table\b[\s\S]*?<\/table>/gi, (tableHtml) => {
+        try {
+            return normalizeSingleTable(tableHtml);
+        } catch {
+            return tableHtml; // never let a normalization glitch drop the table
+        }
+    });
+};
+
 export const formatHTMLString = (htmlString: string) => {
     // Strip any existing html/head/body wrappers first to make this idempotent.
     // This prevents double-wrapping on repeated save cycles.
@@ -40,6 +168,10 @@ export const formatHTMLString = (htmlString: string) => {
 
     // Strip expired query params from public S3 URLs
     cleanedHtml = stripAwsQueryParamsFromUrls(cleanedHtml);
+
+    // Repair ragged tables — rows with trailing empty cells past the real
+    // column count render as a table stretched with dead columns.
+    cleanedHtml = normalizeTableColumns(cleanedHtml);
 
     // Trim whitespace from stripping
     cleanedHtml = cleanedHtml.trim();

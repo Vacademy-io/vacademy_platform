@@ -43,6 +43,7 @@ import {
 } from '../-services/utils';
 import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
+import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -106,6 +107,7 @@ export default function ScheduleStep2() {
     const { sessionId, step1Data } = useLiveSessionStore();
     const isEditState = useLiveSessionStore((state) => state.isEdit);
     const { sessionDetails } = useSessionDetailsStore();
+    const { settings: liveSessionSettings } = useLiveSessionSettings();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const navigate = useNavigate();
@@ -258,18 +260,20 @@ export default function ScheduleStep2() {
             selectedLearners: [],
             joinLink: '',
             notifyBy: {
-                mail: false,
-                whatsapp: false,
-                push_notification: false,
-                system_notification: false,
+                mail: liveSessionSettings.defaultNotifyByEmail ?? false,
+                whatsapp: liveSessionSettings.defaultNotifyByWhatsapp ?? false,
+                push_notification: liveSessionSettings.defaultNotifyByPush ?? false,
+                system_notification: liveSessionSettings.defaultNotifyBySystem ?? false,
             },
             notifySettings: {
-                onCreate: false,
+                onCreate: liveSessionSettings.defaultNotifyOnCreate ?? false,
                 onEdit: false,
-                beforeLive: false,
-                beforeLiveTime: [],
-                onLive: true,
-                onAttendance: false,
+                beforeLive: !!liveSessionSettings.defaultNotifyBeforeReminder,
+                beforeLiveTime: liveSessionSettings.defaultNotifyBeforeReminder
+                    ? [{ time: liveSessionSettings.defaultNotifyBeforeReminder }]
+                    : [],
+                onLive: liveSessionSettings.defaultNotifyOnLive ?? true,
+                onAttendance: liveSessionSettings.defaultNotifyOnAttendance ?? false,
             },
             fields: [],
         },
@@ -494,10 +498,70 @@ export default function ScheduleStep2() {
         fields: beforeLiveFields,
         append: beforeLiveAppend,
         remove: beforeLiveRemove,
+        replace: beforeLiveReplace,
     } = useFieldArray({
         control,
         name: 'notifySettings.beforeLiveTime',
     });
+
+    // For NEW sessions only: once the institute notification defaults load,
+    // snap the channels/triggers (and the pre-seeded reminder) to them, while
+    // the admin hasn't manually changed each field. Edit mode is populated from
+    // the saved notification actions instead, so we skip it entirely.
+    useEffect(() => {
+        if (isEditState || sessionDetails) return;
+        const snapBool = (
+            name:
+                | 'notifyBy.mail'
+                | 'notifyBy.whatsapp'
+                | 'notifyBy.push_notification'
+                | 'notifyBy.system_notification'
+                | 'notifySettings.onCreate'
+                | 'notifySettings.onLive'
+                | 'notifySettings.onAttendance',
+            next: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== next) {
+                form.setValue(name, next);
+            }
+        };
+        snapBool('notifyBy.mail', liveSessionSettings.defaultNotifyByEmail ?? false);
+        snapBool('notifyBy.whatsapp', liveSessionSettings.defaultNotifyByWhatsapp ?? false);
+        snapBool('notifyBy.push_notification', liveSessionSettings.defaultNotifyByPush ?? false);
+        snapBool(
+            'notifyBy.system_notification',
+            liveSessionSettings.defaultNotifyBySystem ?? false
+        );
+        snapBool('notifySettings.onCreate', liveSessionSettings.defaultNotifyOnCreate ?? false);
+        snapBool('notifySettings.onLive', liveSessionSettings.defaultNotifyOnLive ?? true);
+        snapBool(
+            'notifySettings.onAttendance',
+            liveSessionSettings.defaultNotifyOnAttendance ?? false
+        );
+        // Pre-seed the reminder only while the list is still empty and untouched.
+        const reminder = liveSessionSettings.defaultNotifyBeforeReminder;
+        if (
+            reminder &&
+            !form.getFieldState('notifySettings.beforeLiveTime').isDirty &&
+            (form.getValues('notifySettings.beforeLiveTime')?.length ?? 0) === 0
+        ) {
+            beforeLiveReplace([{ time: reminder }]);
+            form.setValue('notifySettings.beforeLive', true);
+        }
+    }, [
+        liveSessionSettings.defaultNotifyByEmail,
+        liveSessionSettings.defaultNotifyByWhatsapp,
+        liveSessionSettings.defaultNotifyByPush,
+        liveSessionSettings.defaultNotifyBySystem,
+        liveSessionSettings.defaultNotifyOnCreate,
+        liveSessionSettings.defaultNotifyOnLive,
+        liveSessionSettings.defaultNotifyOnAttendance,
+        liveSessionSettings.defaultNotifyBeforeReminder,
+        isEditState,
+        sessionDetails,
+        beforeLiveReplace,
+        form,
+    ]);
 
     const handleSessionChange = (value: DropdownValueType) => {
         if (value && typeof value === 'object' && 'id' in value && 'name' in value) {
@@ -681,6 +745,52 @@ export default function ScheduleStep2() {
                     });
                 } catch (err) {
                     console.error('Error creating Zoom meetings for session:', err);
+                }
+            }
+
+            // Handle Google Meet meeting creation — only when a connected account was selected in
+            // step 1 (integration on). Without an account the admin pasted a defaultLink instead.
+            // Mirrors the Zoom block; skipped in bulk for the same reason.
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.MEET &&
+                (step1Data as any)?.googleMeetAccountId &&
+                instituteDetails?.id
+            ) {
+                try {
+                    const s = step1Data as any;
+                    // Advisory double-booking check: warn (don't block) on overlap.
+                    try {
+                        const availability = await checkProviderAvailabilityForSession(
+                            sessionId,
+                            s.googleMeetAccountId
+                        );
+                        if (availability?.available === false) {
+                            const count = availability.conflicts?.length ?? 0;
+                            toast.warning(
+                                `Heads up: this Google account already has ${count} overlapping meeting${
+                                    count === 1 ? '' : 's'
+                                } at the selected time. Creating anyway.`
+                            );
+                        }
+                    } catch {
+                        // advisory only — never block meeting creation
+                    }
+
+                    const fallbackDuration =
+                        Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
+                    await createProviderMeetingsForSession({
+                        instituteId: instituteDetails.id,
+                        sessionId: sessionId,
+                        topic: step1Data.title || 'Live Class',
+                        agenda: step1Data.description || 'Live Subject Class',
+                        durationMinutes: fallbackDuration > 0 ? fallbackDuration : 30,
+                        timezone: step1Data.timeZone || 'Asia/Kolkata',
+                        provider: 'GOOGLE_MEET',
+                        providerAccountId: s.googleMeetAccountId,
+                    });
+                } catch (err) {
+                    console.error('Error creating Google Meet meetings for session:', err);
                 }
             }
 

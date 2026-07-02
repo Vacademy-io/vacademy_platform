@@ -1,0 +1,258 @@
+/**
+ * Admin-configurable badge system (admin side).
+ *
+ * Badges are authored here per-institute and persisted under the institute
+ * setting key {@link BADGES_REWARDS_SETTING_KEY}. The learner dashboard reads
+ * the same blob and evaluates unlock state on the client.
+ *
+ * Keep this schema in lock-step with the learner copy at
+ * `frontend-learner-dashboard-app/src/services/badge-config.ts`.
+ */
+
+export const BADGES_REWARDS_SETTING_KEY = 'BADGES_REWARDS_SETTING';
+
+export type BadgeTriggerType =
+    | 'course_count'
+    | 'slide_count'
+    | 'streak'
+    | 'xp_total'
+    | 'course_completion'
+    | 'assessment_score'
+    | 'live_session_count'
+    | 'live_session_streak';
+
+export interface BadgeDefinitionConfig {
+    id: string;
+    name: string;
+    description: string;
+    icon: string; // one of BADGE_ICON_NAMES
+    trigger: BadgeTriggerType;
+    threshold: number;
+    enabled: boolean;
+}
+
+/** Points-per-action scoring — how many points each factor is worth. Drives learner XP + leaderboard. */
+export interface ScoringConfig {
+    activityPerDay: number;
+    streakPerDay: number;
+    liveClassAttended: number;
+    courseCompletion: number;
+    assessmentBestScore: number;
+}
+
+export const DEFAULT_SCORING: ScoringConfig = {
+    activityPerDay: 10,
+    streakPerDay: 5,
+    liveClassAttended: 20,
+    courseCompletion: 100,
+    assessmentBestScore: 50,
+};
+
+/** Admin-facing metadata for each scoring factor (label + helper text + unit). */
+export const SCORING_FIELDS: Array<{
+    key: keyof ScoringConfig;
+    label: string;
+    help: string;
+}> = [
+    {
+        key: 'activityPerDay',
+        label: 'Learning activity',
+        help: 'Points for each day the learner is active.',
+    },
+    {
+        key: 'streakPerDay',
+        label: 'Daily streak',
+        help: 'Points for each day of the current learning streak.',
+    },
+    {
+        key: 'liveClassAttended',
+        label: 'Live class attended',
+        help: 'Points for each live class the learner attends.',
+    },
+    {
+        key: 'courseCompletion',
+        label: 'Course completion',
+        help: 'Points for finishing a course (scaled by completion %).',
+    },
+    {
+        key: 'assessmentBestScore',
+        label: 'Assessment score',
+        help: 'Points for assessments (scaled by best score %).',
+    },
+];
+
+export interface BadgesRewardsConfig {
+    version: number;
+    /** Master switch for the whole badges + leaderboard feature (defaults to OFF — opt-in). */
+    enabled: boolean;
+    /** Points-per-action scoring (defaults applied when absent). */
+    scoring?: ScoringConfig;
+    badges: BadgeDefinitionConfig[];
+}
+
+/** Curated Phosphor icon names available in both the admin picker and learner renderer. */
+export const BADGE_ICON_NAMES = [
+    'BookOpen',
+    'Fire',
+    'Lightning',
+    'Star',
+    'Trophy',
+    'Medal',
+    'Crown',
+    'Rocket',
+    'Target',
+    'Heart',
+    'Confetti',
+    'GraduationCap',
+    'Lightbulb',
+    'Sparkle',
+    'Flag',
+    'CheckCircle',
+] as const;
+
+/** UI metadata for each trigger type: label, helper text, and the unit shown next to the threshold. */
+export const TRIGGER_META: Record<
+    BadgeTriggerType,
+    { label: string; help: string; unit: string; defaultThreshold: number }
+> = {
+    course_count: {
+        label: 'Courses enrolled',
+        help: 'Unlocks when the learner is enrolled in at least this many courses.',
+        unit: 'courses',
+        defaultThreshold: 1,
+    },
+    slide_count: {
+        label: 'Slides available',
+        help: 'Unlocks when this many slides are available to the learner.',
+        unit: 'slides',
+        defaultThreshold: 10,
+    },
+    streak: {
+        label: 'Daily streak',
+        help: 'Unlocks at this many consecutive active days.',
+        unit: 'days',
+        defaultThreshold: 7,
+    },
+    xp_total: {
+        label: 'Total XP earned',
+        help: 'Unlocks when total XP reaches this value.',
+        unit: 'XP',
+        defaultThreshold: 1000,
+    },
+    course_completion: {
+        label: 'Course completion %',
+        help: 'Unlocks when any course reaches this completion percentage.',
+        unit: '%',
+        defaultThreshold: 100,
+    },
+    assessment_score: {
+        label: 'Assessment score %',
+        help: 'Unlocks when the best released assessment score reaches this percentage.',
+        unit: '%',
+        defaultThreshold: 100,
+    },
+    live_session_count: {
+        label: 'Live classes attended',
+        help: 'Unlocks after the learner attends this many live classes (in total).',
+        unit: 'classes',
+        defaultThreshold: 10,
+    },
+    live_session_streak: {
+        label: 'Live class streak (in a row)',
+        help: 'Unlocks after the learner attends this many live classes in a row, without missing one.',
+        unit: 'classes',
+        defaultThreshold: 7,
+    },
+};
+
+export const TRIGGER_OPTIONS = (Object.keys(TRIGGER_META) as BadgeTriggerType[]).map((value) => ({
+    value,
+    label: TRIGGER_META[value].label,
+}));
+
+/** The original hardcoded six badges, expressed as editable defaults. */
+export const DEFAULT_BADGE_CONFIG: BadgesRewardsConfig = {
+    version: 1,
+    enabled: false,
+    scoring: DEFAULT_SCORING,
+    badges: [
+        {
+            id: 'first_course',
+            name: 'First Steps',
+            description: 'Enrol in your first course',
+            icon: 'BookOpen',
+            trigger: 'course_count',
+            threshold: 1,
+            enabled: true,
+        },
+        {
+            id: 'streak_7',
+            name: 'On Fire',
+            description: 'Maintain a 7-day streak',
+            icon: 'Fire',
+            trigger: 'streak',
+            threshold: 7,
+            enabled: true,
+        },
+        {
+            id: 'streak_30',
+            name: 'Unstoppable',
+            description: 'Maintain a 30-day streak',
+            icon: 'Lightning',
+            trigger: 'streak',
+            threshold: 30,
+            enabled: true,
+        },
+        {
+            id: 'perfect_score',
+            name: 'Perfect Score',
+            description: 'Score 100% on an assessment',
+            icon: 'Star',
+            trigger: 'assessment_score',
+            threshold: 100,
+            enabled: true,
+        },
+        {
+            id: 'completionist',
+            name: 'Completionist',
+            description: 'Finish a course at 100%',
+            icon: 'Trophy',
+            trigger: 'course_completion',
+            threshold: 100,
+            enabled: true,
+        },
+        {
+            id: 'dedicated_learner',
+            name: 'Dedicated Learner',
+            description: 'Earn 1,000 XP total',
+            icon: 'Medal',
+            trigger: 'xp_total',
+            threshold: 1000,
+            enabled: true,
+        },
+    ],
+};
+
+/** Generate a stable id for a newly added badge. */
+export function newBadgeId(): string {
+    try {
+        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+            return `badge_${crypto.randomUUID()}`;
+        }
+    } catch {
+        /* fall through */
+    }
+    return `badge_${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
+export function makeNewBadge(): BadgeDefinitionConfig {
+    return {
+        id: newBadgeId(),
+        name: 'New Badge',
+        description: '',
+        icon: 'Trophy',
+        trigger: 'course_count',
+        threshold: TRIGGER_META.course_count.defaultThreshold,
+        enabled: true,
+    };
+}

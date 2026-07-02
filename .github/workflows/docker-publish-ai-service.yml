@@ -46,10 +46,18 @@ jobs:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
           IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
           REPOSITORY: ai-service/ai-service-repo
+          GIT_SHA: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          # Tag with BOTH the moving tag (:latest) and an IMMUTABLE :<sha> tag.
+          # The deploy step below rolls out the immutable tag, which avoids the
+          # ECR-public ':latest' CDN race where a same-tag rollout silently pulls a
+          # stale cached image (the recurring "deployed but old code" problem).
+          docker build \
+            -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$REPOSITORY:$GIT_SHA .
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
-          echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push $ECR_REGISTRY/$REPOSITORY:$GIT_SHA
+          echo "Pushed $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG and :$GIT_SHA"
 
       - name: Connect to Hetzner k3s kubernetes cluster
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -64,6 +72,9 @@ jobs:
         env:
           DEPLOYMENT_NAME: ai-service
           NAMESPACE: default
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: ai-service/ai-service-repo
+          GIT_SHA: ${{ github.sha }}
         run: |
           if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
             kubectl set env deployment/"$DEPLOYMENT_NAME" \
@@ -118,7 +129,14 @@ jobs:
                 }
               }'
 
-            kubectl rollout restart deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE"
+            # Roll out the EXACT freshly-built image by its immutable :<sha> tag.
+            # Because the tag is brand new it can't be served stale from the ECR
+            # CDN cache, so the cluster deterministically pulls the new code (a
+            # missing-tag pull self-heals via kubelet retries — far better than the
+            # old `rollout restart` on :latest, which could silently pull stale).
+            kubectl set image deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
+              ai-service=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA
+            kubectl rollout status deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --timeout=300s || true
           else
             echo "Deployment $DEPLOYMENT_NAME not found in namespace $NAMESPACE. Skipping restart."
           fi

@@ -21,6 +21,15 @@ interface ScriptReviewProps {
     onResume: () => void;
     onDiscard: () => void;
     isResuming?: boolean;
+    /** Header title. Defaults to "Review Script"; the assist narration gate
+     *  relabels it to "Review narration". */
+    title?: string;
+    /** Subtitle under the title. */
+    subtitle?: string;
+    /** Primary CTA label. Defaults to "Proceed to Video". */
+    ctaLabel?: string;
+    /** Secondary action label. Defaults to "Start Over". */
+    discardLabel?: string;
 }
 
 /**
@@ -266,6 +275,10 @@ export function ScriptReview({
     onResume,
     onDiscard,
     isResuming,
+    title = 'Review Script',
+    subtitle = 'Edit the script below, then proceed to generate audio & visuals.',
+    ctaLabel = 'Proceed to Video',
+    discardLabel = 'Start Over',
 }: ScriptReviewProps) {
     const [showPrompt, setShowPrompt] = useState(false);
     const [view, setView] = useState<'timeline' | 'raw'>('timeline');
@@ -313,11 +326,10 @@ export function ScriptReview({
                         </div>
                         <div className="min-w-0">
                             <h2 className="text-base font-semibold text-foreground">
-                                Review Script
+                                {title}
                             </h2>
                             <p className="truncate text-xs text-muted-foreground">
-                                Edit the script below, then proceed to generate audio &amp;
-                                visuals.
+                                {subtitle}
                             </p>
                         </div>
                     </div>
@@ -435,7 +447,7 @@ export function ScriptReview({
                         className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                     >
                         <RotateCcw className="size-3.5" />
-                        Start Over
+                        {discardLabel}
                     </button>
                     <Button
                         onClick={onResume}
@@ -443,7 +455,7 @@ export function ScriptReview({
                         className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700"
                     >
                         <Play className="size-4" />
-                        {isResuming ? 'Resuming...' : 'Proceed to Video'}
+                        {isResuming ? 'Resuming...' : ctaLabel}
                     </Button>
                 </div>
             </div>

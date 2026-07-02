@@ -20,12 +20,13 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
             ),
             total_concentration_score AS (
                 SELECT
-                    SUM(cs.concentration_score) AS total_score,
+                    SUM(LEAST(100, GREATEST(0, cs.concentration_score))) AS total_score,
                     COUNT(cs.concentration_score) AS score_count
                 FROM concentration_score cs
                 JOIN activity_log al ON cs.activity_id = al.id
                 JOIN valid_users vu ON al.user_id = vu.user_id
                 WHERE al.created_at BETWEEN :startDate AND :endDate
+                  AND cs.concentration_score > 0
             )
             SELECT
                 CASE
@@ -43,7 +44,7 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
     @Query(value = """
             SELECT
                 CASE
-                    WHEN COUNT(*) > 0 THEN SUM(cs.concentration_score) / COUNT(*)
+                    WHEN COUNT(*) > 0 THEN SUM(LEAST(100, GREATEST(0, cs.concentration_score))) / COUNT(*)
                     ELSE NULL
                 END AS avg_concentration_score
             FROM concentration_score cs
@@ -51,6 +52,7 @@ public interface ConcentrationScoreRepository extends JpaRepository<Concentratio
             WHERE
                 al.user_id = :userId
                 AND al.created_at BETWEEN :startDate AND :endDate
+                AND cs.concentration_score > 0
             """, nativeQuery = true)
     Double findAverageConcentrationScoreOfLearner(
             @Param("startDate") Date startDate,

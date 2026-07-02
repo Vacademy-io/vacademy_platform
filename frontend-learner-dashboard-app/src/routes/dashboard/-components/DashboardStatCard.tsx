@@ -1,7 +1,7 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CaretRight } from "@phosphor-icons/react";
+import { CaretRight, ArrowRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 
@@ -123,13 +123,25 @@ export const StatCard = ({
                             />
                         </div>
                         <div className="space-y-1">
-                            <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                                {(count ?? 0).toLocaleString()}
-                            </div>
+                            {showAction ? (
+                                // Empty: a "Get started" invitation, never a dead "0".
+                                <div className="inline-flex items-center gap-1 text-lg sm:text-xl font-bold tracking-tight text-primary">
+                                    Get started
+                                    <ArrowRight
+                                        size={16}
+                                        weight="bold"
+                                        className="transition-transform duration-300 group-hover:translate-x-0.5"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                                    {(count ?? 0).toLocaleString()}
+                                </div>
+                            )}
                             <div className={cn(
                                 "text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors line-clamp-1",
                                 "[.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:group-hover:text-primary",
-                                showAction && "text-primary font-semibold group-hover:text-primary"
+                                showAction && "text-muted-foreground font-medium"
                             )}>
                                 {subtitleText}
                             </div>

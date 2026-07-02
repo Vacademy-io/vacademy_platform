@@ -24,6 +24,8 @@ import {
     generateVideo,
     resumeVideo,
     retryVideo,
+    submitDecision,
+    readAwaitingDecisionFromStatus,
     fetchScriptText,
     getVideoUrls,
     getVideoStatus,
@@ -32,9 +34,17 @@ import {
     DEFAULT_OPTIONS,
     REUSE_SETTINGS_HANDOFF_KEY,
     type ReuseSettingsHandoff,
+    type DecisionRequest,
+    type DecisionAnswer,
+    type AssistTurn,
+    type GateType,
 } from '../-services/video-generation';
 import { HistorySidebar } from './HistorySidebar';
 import { ScriptReview } from './ScriptReview';
+import { AssistChat } from './assist/AssistChat';
+import { buildTurnSummary, reconstructAssistTranscript } from './assist/-utils/decision-copy';
+import { buildStageRows } from './assist/-utils/stage-rows';
+import { AssistModeToggle } from '../console/-components/AssistModeToggle';
 import { PipelineLayout } from './pipeline/PipelineLayout';
 import {
     derivePipelineFromLive,
@@ -159,7 +169,10 @@ function mapVideoStatusToRow(status: string): HistoryItem['status'] {
     }
 }
 
-type ConsoleState = 'idle' | 'generating' | 'reviewing' | 'complete';
+type ConsoleState = 'idle' | 'generating' | 'reviewing' | 'assisting' | 'complete';
+
+/** Gates enabled by default when assist mode is on (mirrors the BE default). */
+const DEFAULT_ASSIST_GATES: GateType[] = ['shot_plan', 'narration', 'visual_casting', 'shot_look'];
 
 interface CurrentGeneration {
     videoId: string;
@@ -219,6 +232,14 @@ interface CurrentGeneration {
     }>;
     /** v3 only — total words NarrationWriter authored. From `narration_writing_done`. */
     narrationWordCount?: number;
+    /**
+     * Assist mode: the decision the agent is currently asking the user to
+     * resolve, or null between gates. Set by the `decision_required` SSE case
+     * (or polling rehydration); drives the `generating → assisting` transition.
+     */
+    pendingDecision?: DecisionRequest | null;
+    /** Assist mode: resolved Q&A turns this session, for the conversation transcript. */
+    assistTranscript?: AssistTurn[];
     /** Latest `shot_planning*` sub_stage seen — used as the node's active sub-status. */
     shotPlannerSubStage?: string;
     /** Latest `narration_writing*` sub_stage seen — used as the node's active sub-status. */
@@ -319,6 +340,15 @@ export function VideoConsoleWorkspace({
     // Review mode state
     const [reviewModeEnabled, setReviewModeEnabled] = useState(false);
     const [reviewScript, setReviewScript] = useState('');
+
+    // Assist mode (conversational, human-in-the-loop) — the new default. When
+    // on, the BE pauses at decision gates and the FE drives a chat surface.
+    const [assistModeEnabled, setAssistModeEnabled] = useState(true);
+    const [enabledGates] = useState<GateType[]>(DEFAULT_ASSIST_GATES);
+    // Opens the production diagram in a side drawer while in the chat surface.
+    const [showAssistProgress, setShowAssistProgress] = useState(false);
+    // True while a /decision leg is opening (disables the cards).
+    const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
 
     // One-shot consume of the "Reuse settings" handoff written by a Recent
     // card. Read in a `useState` initializer so it's available before the
@@ -644,6 +674,29 @@ export function VideoConsoleWorkspace({
                     (statusResp?.s3_urls as Record<string, string | undefined> | undefined)
                         ?.script ?? undefined;
 
+                // Assist mode: the run is paused at a decision gate. Rehydrate the
+                // pending decision (the generating→assisting useEffect picks it up)
+                // and stop polling — the user drives the next leg via /decision.
+                const awaitingDecision =
+                    readAwaitingDecisionFromStatus(statusResp) ??
+                    readAwaitingDecisionFromStatus(urls);
+                if (awaitingDecision) {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+                    setCurrentGeneration((prev) =>
+                        prev
+                            ? {
+                                  ...prev,
+                                  stage: (urls.current_stage as VideoStage) || 'SCRIPT',
+                                  message: awaitingDecision.prompt,
+                                  pendingDecision: awaitingDecision,
+                                  assistTranscript: prev.assistTranscript ?? [],
+                              }
+                            : prev
+                    );
+                    return;
+                }
+
                 if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
                     // Success — fill URLs into state and let the auto-complete useEffect
                     // perform the consoleState transition + toast (single source of truth).
@@ -689,12 +742,64 @@ export function VideoConsoleWorkspace({
                             `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                     );
                 } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                    // COMPLETED without html_url. Two signals determine activity:
-                    // 1. Stage-based: pre-HTML stages COMPLETED = sub-stage finished, pipeline transitioning.
-                    // 2. Progress-based: generation_progress with sub_stage or shot data → still running.
+                    // A review-mode run (target_stage=SCRIPT) parks HERE on purpose
+                    // once the screenplay is written: the backend marks SCRIPT
+                    // COMPLETED with no html_url. Detect that FIRST — before any
+                    // "still transitioning" heuristic — because the backend leaves
+                    // generation_progress.sub_stage populated ("Shot plan + narration
+                    // ready…") after the stop, which would otherwise look like active
+                    // work and mask the review handoff (the bug that left review runs
+                    // spinning forever on the polling-fallback path).
+                    const wasReviewModeStop =
+                        pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT';
+
+                    if (wasReviewModeStop) {
+                        // Script artifact ready → drop straight into the editable
+                        // review UI (ScriptReview) instead of routing through History.
+                        if (scriptUrlFromStatus) {
+                            if (pollingRef.current) clearInterval(pollingRef.current);
+                            pollingRef.current = null;
+                            localStorage.removeItem(PENDING_GENERATION_KEY);
+                            setCurrentGeneration((prev) =>
+                                prev
+                                    ? {
+                                          ...prev,
+                                          stage: 'SCRIPT',
+                                          percentage: 100,
+                                          scriptUrl: scriptUrlFromStatus,
+                                          message: '',
+                                      }
+                                    : null
+                            );
+                            fetchScriptText(scriptUrlFromStatus)
+                                .then((text) => {
+                                    setReviewScript(text);
+                                    setConsoleState('reviewing');
+                                    toast.success('Script ready for review!');
+                                })
+                                .catch((err) => {
+                                    console.error('Failed to fetch script:', err);
+                                    toast.error('Failed to load script for review');
+                                    setConsoleState('idle');
+                                    setCurrentGeneration(null);
+                                });
+                            return;
+                        }
+                        // SCRIPT is COMPLETED but the script URL hasn't surfaced in
+                        // /status yet — keep polling (do NOT fall through to the
+                        // transition spinner, which would imply we're building visuals).
+                        setCurrentGeneration((prev) =>
+                            prev ? { ...prev, stage: 'SCRIPT', message: 'Finalizing script…' } : null
+                        );
+                        return;
+                    }
+
+                    // Non-review runs: COMPLETED without html_url means a pre-HTML
+                    // sub-stage finished and the pipeline is transitioning toward
+                    // visuals. Two activity signals: the stage bucket, or live
+                    // generation_progress (sub_stage / shots in flight).
                     const PRE_HTML_STAGES = new Set(['PENDING', 'SCRIPT', 'TTS', 'AUDIO', 'WORDS']);
-                    const stageIsTransitioning =
-                        PRE_HTML_STAGES.has(urls.current_stage) && pending.targetStage !== 'SCRIPT';
+                    const stageIsTransitioning = PRE_HTML_STAGES.has(urls.current_stage);
                     const progressSignalsActive =
                         genProg != null &&
                         (genProg.sub_stage != null || (genProg.shots_total ?? 0) > 0);
@@ -735,54 +840,15 @@ export function VideoConsoleWorkspace({
                         return;
                     }
 
-                    // Pipeline parked at SCRIPT for review-mode runs → auto-fetch the
-                    // script and transition straight into the reviewing UI instead of
-                    // forcing the user back through the History sidebar.
-                    const wasReviewModeStop =
-                        pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT';
-                    if (wasReviewModeStop && scriptUrlFromStatus) {
-                        if (pollingRef.current) clearInterval(pollingRef.current);
-                        pollingRef.current = null;
-                        localStorage.removeItem(PENDING_GENERATION_KEY);
-                        setCurrentGeneration((prev) =>
-                            prev
-                                ? {
-                                      ...prev,
-                                      stage: 'SCRIPT',
-                                      percentage: 100,
-                                      scriptUrl: scriptUrlFromStatus,
-                                      message: '',
-                                  }
-                                : null
-                        );
-                        fetchScriptText(scriptUrlFromStatus)
-                            .then((text) => {
-                                setReviewScript(text);
-                                setConsoleState('reviewing');
-                                toast.success('Script ready for review!');
-                            })
-                            .catch((err) => {
-                                console.error('Failed to fetch script:', err);
-                                toast.error('Failed to load script for review');
-                                setConsoleState('idle');
-                                setCurrentGeneration(null);
-                            });
-                        return;
-                    }
-
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     pollingRef.current = null;
                     localStorage.removeItem(PENDING_GENERATION_KEY);
                     setConsoleState('idle');
                     setCurrentGeneration(null);
-                    if (wasReviewModeStop) {
-                        toast.info('Script is ready. Open from History to review and continue.');
-                    } else {
-                        toast.error(
-                            urls.error_message ||
-                                `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
-                        );
-                    }
+                    toast.error(
+                        urls.error_message ||
+                            `Generation stopped at "${friendlyStage(urls.current_stage)}" step without producing visual content. Please try again.`
+                    );
                 } else {
                     // Still IN_PROGRESS — update stage + sub-stage progress from DB.
                     // When shots are in flight, override stage to HTML even if the urls
@@ -917,6 +983,53 @@ export function VideoConsoleWorkspace({
         currentGenerationRef.current = currentGeneration;
     }, [currentGeneration]);
 
+    // Assist mode: flip generating → assisting when a gate opens (kept out of
+    // the SSE reducer to keep reducers pure, mirroring the complete-transition
+    // effect below).
+    useEffect(() => {
+        if (consoleState !== 'generating') return;
+        if (!currentGeneration?.pendingDecision) return;
+        setConsoleState('assisting');
+    }, [consoleState, currentGeneration?.pendingDecision]);
+
+    // Live production-schedule rows for the chat's status bubble — derived from
+    // the same PipelineState the diagram uses, so the two stay consistent.
+    const assistStageRows = useMemo(
+        () =>
+            currentGeneration
+                ? buildStageRows(
+                      derivePipelineFromLive(currentGeneration satisfies LiveCurrentGeneration)
+                  )
+                : undefined,
+        [currentGeneration]
+    );
+
+    // Assist mode: rebuild the conversation transcript when a finished video
+    // loads fresh (Recent / deep-link / reload) — the in-memory transcript is
+    // gone, but the backend's answered-decisions ledger has every turn. Covers
+    // all load paths in one place; no-op for non-assist runs (empty ledger).
+    useEffect(() => {
+        if (consoleState !== 'complete') return;
+        const cg = currentGenerationRef.current;
+        if (!cg || !activeApiKey) return;
+        if (cg.assistTranscript && cg.assistTranscript.length > 0) return;
+        const vid = cg.videoId;
+        let cancelled = false;
+        getVideoStatus(vid, activeApiKey)
+            .then((status) => {
+                if (cancelled) return;
+                const turns = reconstructAssistTranscript(status);
+                if (turns.length === 0) return;
+                setCurrentGeneration((prev) =>
+                    prev && prev.videoId === vid ? { ...prev, assistTranscript: turns } : prev
+                );
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [consoleState, currentGeneration?.videoId, activeApiKey]);
+
     /**
      * Single source of truth for the `generating → complete` transition.
      *
@@ -1017,9 +1130,14 @@ export function VideoConsoleWorkspace({
             };
 
             // Always set target_stage explicitly — never trust whatever may be in options/localStorage.
+            // Assist mode subsumes review mode: when assist is on, always target
+            // HTML and let the BE pause at decision gates; otherwise honor the
+            // legacy "Review script first" toggle.
             const finalRequest: GenerateVideoRequest = {
                 ...request,
-                target_stage: reviewModeEnabled ? 'SCRIPT' : 'HTML',
+                target_stage: !assistModeEnabled && reviewModeEnabled ? 'SCRIPT' : 'HTML',
+                assist_mode: assistModeEnabled,
+                assist_gates: assistModeEnabled ? enabledGates : undefined,
             };
 
             // Hoisted so SSE callback closures capture a defined value. Used both for
@@ -1117,6 +1235,31 @@ export function VideoConsoleWorkspace({
                         // The complete-transition is handled by a single useEffect
                         // watching currentGeneration.htmlUrl/audioUrl — no inline
                         // setConsoleState here. Keeps reducers pure.
+                    } else if (event.type === 'decision_required') {
+                        // Assist mode: the BE paused at a gate. Stash the pending
+                        // decision; a useEffect flips generating → assisting (keeps
+                        // reducers pure). The SSE leg ends right after this event.
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        const decision = event;
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? { ...prev, pendingDecision: decision, message: decision.prompt }
+                                : {
+                                      videoId,
+                                      prompt: request.prompt,
+                                      contentType,
+                                      orientation:
+                                          request.orientation ||
+                                          (options.orientation as VideoOrientation) ||
+                                          'landscape',
+                                      stage: 'SCRIPT',
+                                      percentage: 100,
+                                      message: decision.prompt,
+                                      options: pendingOptions,
+                                      pendingDecision: decision,
+                                      assistTranscript: [],
+                                  }
+                        );
                     } else if (event.type === 'completed') {
                         // Review mode: if we stopped at SCRIPT, transition to reviewing.
                         // (Special path — useEffect-based completion only handles the
@@ -1869,6 +2012,141 @@ export function VideoConsoleWorkspace({
         setConsoleState('idle');
     }, [currentGeneration, activeApiKey]);
 
+    // Assist mode: answer the pending decision and resume the next leg.
+    const handleSubmitDecision = useCallback(
+        (answer: DecisionAnswer) => {
+            const cg = currentGenerationRef.current;
+            if (!activeApiKey || !cg?.pendingDecision) return;
+            const resolved = cg.pendingDecision;
+            const resumeVideoId = cg.videoId;
+
+            // Append the resolved turn, clear the pending decision, flip back to
+            // generating (the next gate's decision_required re-enters assisting).
+            const turn: AssistTurn = {
+                decision_id: resolved.decision_id,
+                gate_type: resolved.gate_type,
+                prompt: resolved.prompt,
+                answer_summary: buildTurnSummary(resolved, answer),
+                answered_at: Date.now(),
+            };
+            setCurrentGeneration((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          pendingDecision: null,
+                          assistTranscript: [...(prev.assistTranscript ?? []), turn],
+                      }
+                    : prev
+            );
+            setIsSubmittingDecision(true);
+            setConsoleState('generating');
+
+            const { abort } = submitDecision(
+                resumeVideoId,
+                resolved.decision_id,
+                resolved.gate_type,
+                answer,
+                activeApiKey,
+                (event: SSEEvent) => {
+                    if (event.type === 'decision_required') {
+                        const next = event;
+                        setIsSubmittingDecision(false);
+                        setCurrentGeneration((prev) =>
+                            prev ? { ...prev, pendingDecision: next, message: next.prompt } : prev
+                        );
+                    } else if (event.type === 'progress') {
+                        setIsSubmittingDecision(false);
+                        const audioUrl = event.files?.audio?.s3_url;
+                        const wordsUrl = event.files?.words?.s3_url;
+                        const scriptUrl = event.files?.script?.s3_url;
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      stage: event.stage,
+                                      percentage: event.percentage,
+                                      message: event.message,
+                                      // Do NOT set htmlUrl from a mid-leg progress event: the
+                                      // auto-complete effect flips to "ready" as soon as htmlUrl
+                                      // is present, so a progress-event timeline URL would mark a
+                                      // still-running (and possibly about-to-fail) leg complete.
+                                      // Only the terminal `completed` event sets the final timeline.
+                                      audioUrl: audioUrl || prev.audioUrl,
+                                      wordsUrl: wordsUrl || prev.wordsUrl,
+                                      scriptUrl: scriptUrl || prev.scriptUrl,
+                                  }
+                                : null
+                        );
+                    } else if (event.type === 'sub_stage') {
+                        setCurrentGeneration((prev) =>
+                            prev ? { ...prev, message: event.message || prev.message } : prev
+                        );
+                    } else if (event.type === 'shot_done') {
+                        setCurrentGeneration((prev) => {
+                            if (!prev) return null;
+                            const completed = (event.shot_index ?? 0) + 1;
+                            const total = event.total_shots ?? prev.shotsTotal;
+                            return {
+                                ...prev,
+                                stage: 'HTML',
+                                percentage: computeHtmlPercentage(completed, total),
+                                message: event.message || prev.message,
+                                shotsCompleted: completed,
+                                shotsTotal: total,
+                                cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
+                            };
+                        });
+                    } else if (event.type === 'completed') {
+                        setIsSubmittingDecision(false);
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      stage: 'HTML',
+                                      percentage: 100,
+                                      pendingDecision: null,
+                                      htmlUrl: prev.htmlUrl || event.files?.timeline,
+                                      audioUrl: prev.audioUrl || event.files?.audio,
+                                      wordsUrl: prev.wordsUrl || event.files?.words,
+                                  }
+                                : null
+                        );
+                        setHistory((prev) =>
+                            prev.map((h) =>
+                                h.video_id === resumeVideoId
+                                    ? { ...h, status: 'completed', stage: 'HTML' }
+                                    : h
+                            )
+                        );
+                    } else if (event.type === 'error') {
+                        setIsSubmittingDecision(false);
+                        toast.error(event.message || 'Generation failed');
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        // A failed leg must never linger as a "complete" video — clear
+                        // any persisted completion so it can't resurrect on reload.
+                        localStorage.removeItem(COMPLETE_GENERATION_KEY);
+                    }
+                },
+                (error) => {
+                    setIsSubmittingDecision(false);
+                    if (error.name === 'InsufficientCreditsError') {
+                        toast.error(error.message);
+                    } else {
+                        toast.error(`Could not continue: ${error.message}`);
+                    }
+                    // Re-surface the decision so the user can retry.
+                    setCurrentGeneration((prev) =>
+                        prev ? { ...prev, pendingDecision: resolved } : prev
+                    );
+                    setConsoleState('assisting');
+                }
+            );
+            abortRef.current = abort;
+        },
+        [activeApiKey]
+    );
+
     // Resume generation after script review
     const handleResumeFromReview = useCallback(() => {
         if (!activeApiKey || !currentGeneration) return;
@@ -2206,6 +2484,12 @@ export function VideoConsoleWorkspace({
                         <div className="duration-200 animate-in fade-in zoom-in-95">
                             <CenteredHero
                                 composer={
+                                  <div className="flex w-full flex-col items-center gap-3">
+                                    <AssistModeToggle
+                                        assistModeEnabled={assistModeEnabled}
+                                        onAssistModeChange={setAssistModeEnabled}
+                                        disabled={isGenerating}
+                                    />
                                     <Composer
                                         onGenerate={handleGenerate}
                                         isGenerating={isGenerating}
@@ -2234,6 +2518,7 @@ export function VideoConsoleWorkspace({
                                         onRoutingOverridesChange={setRoutingOverrides}
                                         vimMode={vimMode}
                                     />
+                                  </div>
                                 }
                                 intentChips={
                                     <IntentChips
@@ -2272,24 +2557,6 @@ export function VideoConsoleWorkspace({
                         </div>
                     )}
 
-                    {(consoleState === 'generating' || consoleState === 'complete') &&
-                        currentGeneration && (
-                            <PipelineLayout
-                                state={derivePipelineFromLive(
-                                    currentGeneration satisfies LiveCurrentGeneration
-                                )}
-                                apiKey={activeApiKey ?? undefined}
-                                eventLog={currentGeneration.eventLog}
-                                onAbort={consoleState === 'generating' ? handleAbort : undefined}
-                                onRetry={
-                                    currentGeneration?.videoId
-                                        ? () => handleRetry(currentGeneration.videoId)
-                                        : undefined
-                                }
-                                onEdit={onEdit}
-                            />
-                        )}
-
                     {consoleState === 'reviewing' && currentGeneration && (
                         <ScriptReview
                             script={reviewScript}
@@ -2299,6 +2566,57 @@ export function VideoConsoleWorkspace({
                             onDiscard={handleDiscardReview}
                         />
                     )}
+
+                    {/* The conversation is the ONE surface for the whole
+                        lifecycle in both Auto and Assist — status while working,
+                        decision cards at gates (Assist only), the finished video
+                        at the end. The production diagram is an optional drawer
+                        behind "Show progress". */}
+                    {(consoleState === 'generating' ||
+                        consoleState === 'assisting' ||
+                        consoleState === 'complete') &&
+                        currentGeneration && (
+                            <div className="h-full">
+                                <AssistChat
+                                    prompt={currentGeneration.prompt}
+                                    pending={currentGeneration.pendingDecision ?? null}
+                                    transcript={currentGeneration.assistTranscript ?? []}
+                                    isSubmitting={isSubmittingDecision}
+                                    statusMessage={currentGeneration.message}
+                                    percentage={currentGeneration.percentage}
+                                    shotsCompleted={currentGeneration.shotsCompleted}
+                                    shotsTotal={currentGeneration.shotsTotal}
+                                    stages={assistStageRows}
+                                    isComplete={consoleState === 'complete'}
+                                    timelineUrl={currentGeneration.htmlUrl}
+                                    audioUrl={currentGeneration.audioUrl}
+                                    wordsUrl={currentGeneration.wordsUrl}
+                                    orientation={currentGeneration.orientation}
+                                    onSubmit={handleSubmitDecision}
+                                    onShowProgress={() => setShowAssistProgress(true)}
+                                    apiKey={activeApiKey ?? undefined}
+                                    onAbort={
+                                        consoleState !== 'complete' ? handleAbort : undefined
+                                    }
+                                    onEdit={
+                                        onEdit && currentGeneration.htmlUrl && activeApiKey
+                                            ? () =>
+                                                  onEdit({
+                                                      videoId: currentGeneration.videoId,
+                                                      htmlUrl: currentGeneration.htmlUrl!,
+                                                      audioUrl: currentGeneration.audioUrl ?? '',
+                                                      wordsUrl: currentGeneration.wordsUrl ?? '',
+                                                      apiKey: activeApiKey,
+                                                      orientation:
+                                                          currentGeneration.orientation ??
+                                                          'landscape',
+                                                  })
+                                            : undefined
+                                    }
+                                    vimMode={vimMode}
+                                />
+                            </div>
+                        )}
                 </div>
 
                 {/* No docked Composer at the bottom while a video is in
@@ -2309,6 +2627,25 @@ export function VideoConsoleWorkspace({
                     accidental new runs while the user was still reading
                     through the current production. */}
             </div>
+
+            {/* Assist mode: the production diagram in a side drawer (secondary
+                "what's happening" view behind the chat). */}
+            <Sheet open={showAssistProgress} onOpenChange={setShowAssistProgress}>
+                <SheetContent side="right" className="w-full p-0 sm:max-w-3xl">
+                    <SheetTitle className="sr-only">Production progress</SheetTitle>
+                    {currentGeneration && (
+                        <div className="h-full overflow-hidden">
+                            <PipelineLayout
+                                state={derivePipelineFromLive(
+                                    currentGeneration satisfies LiveCurrentGeneration
+                                )}
+                                apiKey={activeApiKey ?? undefined}
+                                eventLog={currentGeneration.eventLog}
+                            />
+                        </div>
+                    )}
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

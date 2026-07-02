@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Aarav Sharma — June 2026 Progress Report</title>
+<style>
+  :root{
+    --accent:#2563eb;            /* institute theme_color */
+    --accent-soft:#eff4ff;
+    --ink:#1f2937; --muted:#6b7280; --line:#e8eaed; --bg:#f4f6f9;
+    --good:#16a34a; --good-soft:#e9f7ef;
+    --warn:#d97706; --warn-soft:#fdf3e6;
+    --bad:#dc2626;  --bad-soft:#fdeaea;
+    --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55}
+  .wrap{max-width:880px;margin:0 auto;padding:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  h2.section{font-size:16px;margin:0 0 16px;display:flex;align-items:center;gap:9px}
+  h2.section::before{content:"";width:4px;height:18px;background:var(--accent);border-radius:3px;display:inline-block}
+  .muted{color:var(--muted)}
+  .row{display:flex;flex-wrap:wrap;gap:16px}
+  .grid{display:grid;gap:14px}
+
+  /* Header */
+  .header{background:linear-gradient(135deg,var(--accent),#1e40af);color:#fff;border-radius:14px;padding:24px;margin-bottom:18px}
+  .header .top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .logo{width:46px;height:46px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+  .header h1{font-size:18px;margin:2px 0 0}
+  .header .sub{opacity:.85;font-size:13px}
+  .badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);padding:6px 14px;border-radius:999px;font-weight:600;font-size:13px;white-space:nowrap}
+  .student-bar{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.2);font-size:13px}
+  .student-bar b{font-size:15px}
+
+  /* KPI tiles */
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .kpi .label{font-size:12px;color:var(--muted)}
+  .kpi .val{font-size:22px;font-weight:700;margin:4px 0 2px}
+  .kpi .chg{font-size:12px;font-weight:600}
+  .up{color:var(--good)} .down{color:var(--bad)} .steady{color:var(--muted)}
+
+  /* Summary callout */
+  .summary{background:var(--accent-soft);border:1px solid #dbe6ff;border-left:4px solid var(--accent);border-radius:12px;padding:18px 20px}
+  .summary .h{font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+
+  /* progress bar */
+  .bar{height:9px;background:#eef0f3;border-radius:999px;overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:999px;background:var(--accent)}
+  .bar.good > i{background:var(--good)} .bar.warn > i{background:var(--warn)} .bar.bad > i{background:var(--bad)}
+
+  /* attendance ring */
+  .att{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+  .ring{width:128px;height:128px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+        background:conic-gradient(var(--good) 0 88%, #edf0f4 88% 100%)}
+  .ring .inner{width:96px;height:96px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .inner b{font-size:26px} .ring .inner span{font-size:11px;color:var(--muted)}
+  .att-stats{flex:1;min-width:220px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center}
+  .att-stats div b{display:block;font-size:18px}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .pill.good{background:var(--good-soft);color:var(--good)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.bad{background:var(--bad-soft);color:var(--bad)}
+
+  /* subject bar rows */
+  .subj{display:grid;grid-template-columns:120px 1fr 92px;align-items:center;gap:12px;margin:10px 0}
+  .subj .nm{font-weight:600}
+  .subj .vs{font-size:12px;color:var(--muted);text-align:right}
+
+  /* chips */
+  .chips .chip{display:flex;align-items:center;gap:10px;margin:9px 0}
+  .chips .chip .t{width:160px;font-size:13px}
+  .chips .chip .b{flex:1}
+  .chips .chip .p{width:38px;text-align:right;font-weight:700;font-size:13px}
+
+  /* daily chart */
+  .chart{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:6px;border-bottom:1px solid var(--line)}
+  .chart .col{flex:1;background:var(--accent-soft);border-radius:3px 3px 0 0;position:relative}
+  .chart .col > i{position:absolute;bottom:0;left:0;right:0;background:var(--accent);border-radius:3px 3px 0 0}
+  .chart-x{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+
+  /* two-up cards */
+  .twoup{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .stat-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .stat-row:last-child{border-bottom:0}
+  .stat-row b{font-variant-numeric:tabular-nums}
+
+  /* recommendations */
+  .rec{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .rec:last-child{border-bottom:0}
+  .rec .pr{flex:0 0 auto;align-self:flex-start;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px}
+  .pr.HIGH{background:var(--bad-soft);color:var(--bad)} .pr.MEDIUM{background:var(--warn-soft);color:var(--warn)} .pr.LOW{background:var(--accent-soft);color:var(--accent)}
+  .rec .area{font-weight:600}
+  ul.insights{margin:0;padding-left:18px} ul.insights li{margin:7px 0}
+
+  .foot{text-align:center;color:var(--muted);font-size:12px;padding:8px 0 24px}
+  @media(max-width:620px){.kpis{grid-template-columns:repeat(2,1fr)}.twoup{grid-template-columns:1fr}.subj{grid-template-columns:90px 1fr 70px}.att-stats{grid-template-columns:1fr 1fr 1fr}}
+  @media print{body{background:#fff}.card,.header{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="top">
+      <div style="display:flex;gap:14px;align-items:center">
+        <div class="logo">SNS</div>
+        <div>
+          <div class="sub">Sunrise National School</div>
+          <h1>Student Progress Report</h1>
+          <div class="sub">1–30 June 2026 · Generated 01 Jul 2026</div>
+        </div>
+      </div>
+      <div class="badge">● On Track · Grade B+</div>
+    </div>
+    <div class="student-bar">
+      <div><span class="sub">Student</span><br/><b>Aarav Sharma</b></div>
+      <div><span class="sub">Class / Batch</span><br/><b>Class 9 — Science</b></div>
+      <div><span class="sub">Enrollment No.</span><br/><b>SNS-2026-0042</b></div>
+      <div><span class="sub">Roll No.</span><br/><b>09S-042</b></div>
+    </div>
+  </div>
+
+  <!-- AT A GLANCE -->
+  <div class="kpis" style="margin-bottom:18px">
+    <div class="kpi"><div class="label">Attendance</div><div class="val">88%</div><div class="chg up">▲ +4% vs May</div></div>
+    <div class="kpi"><div class="label">Avg. Score</div><div class="val">76%</div><div class="chg up">▲ +6%</div></div>
+    <div class="kpi"><div class="label">Course Progress</div><div class="val">64%</div><div class="chg up">▲ +12%</div></div>
+    <div class="kpi"><div class="label">Study Time</div><div class="val">38.5 hrs</div><div class="chg steady">~77 min/day</div></div>
+    <div class="kpi"><div class="label">Class Rank</div><div class="val">7 / 42</div><div class="chg up">▲ up 3 places</div></div>
+    <div class="kpi"><div class="label">Assignments</div><div class="val">12 / 14</div><div class="chg steady">86% done</div></div>
+  </div>
+
+  <!-- PARENT SUMMARY -->
+  <div class="summary" style="margin-bottom:18px">
+    <div class="h">📋 Summary for Parents</div>
+    <div>Aarav had a strong and consistent June. He logged in on <b>26 of 30 days</b> and studied for about <b>38½ hours</b>, mostly in the evenings. His test scores improved by <b>6%</b> and he moved up <b>3 places to rank 7</b> of 42. He is doing very well in <b>Physics</b> and <b>Biology</b>, but <b>Chemistry — especially Organic Chemistry — is lagging</b> and pulled his average down. Attendance dipped in the third week (3 missed live classes), which lined up with a lower Chemistry test score. With focused Chemistry practice and steady attendance, he is well positioned to reach the top 5.</div>
+  </div>
+
+  <!-- ATTENDANCE -->
+  <div class="card">
+    <h2 class="section">Attendance</h2>
+    <div class="att">
+      <div class="ring"><div class="inner"><b>88%</b><span>44 / 50 present</span></div></div>
+      <div class="att-stats">
+        <div><b style="color:var(--good)">44</b>Present</div>
+        <div><b style="color:var(--bad)">5</b>Absent</div>
+        <div><b style="color:var(--warn)">1</b>Late</div>
+      </div>
+    </div>
+    <p class="muted" style="margin:14px 0 6px">Weekly trend</p>
+    <div class="grid" style="gap:8px">
+      <div class="subj"><span class="nm" style="font-weight:500">Jun 01–07</span><div class="bar good"><i style="width:100%"></i></div><span class="vs">100%</span></div>
+      <div class="subj"><span class="nm" style="font-weight:500">Jun 08–14</span><div class="bar good"><i style="width:92%"></i></div><span class="vs">92%</span></div>
+      <div class="subj"><span class="nm" style="font-weight:500">Jun 15–21</span><div class="bar warn"><i style="width:70%"></i></div><span class="vs">70%</span></div>
+      <div class="subj"><span class="nm" style="font-weight:500">Jun 22–30</span><div class="bar good"><i style="width:90%"></i></div><span class="vs">90%</span></div>
+    </div>
+  </div>
+
+  <!-- ACADEMIC PERFORMANCE -->
+  <div class="card">
+    <h2 class="section">Academic Performance</h2>
+    <p class="muted" style="margin-top:-6px">Average <b style="color:var(--ink)">76%</b> vs class average 68% · Best: Physics · Needs work: Chemistry</p>
+    <table>
+      <thead><tr><th>Assessment</th><th>Subject</th><th class="num">Score</th><th class="num">Rank</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Unit Test 1 — Motion<br/><span class="muted" style="font-size:12px">05 Jun</span></td><td>Physics</td><td class="num">42/50 · 84%</td><td class="num">5</td><td><span class="pill good">A</span></td></tr>
+        <tr><td>Quiz — Atomic Structure<br/><span class="muted" style="font-size:12px">11 Jun</span></td><td>Chemistry</td><td class="num">14/20 · 70%</td><td class="num">12</td><td><span class="pill good">B</span></td></tr>
+        <tr><td>Unit Test — Organic Basics<br/><span class="muted" style="font-size:12px">18 Jun</span></td><td>Chemistry</td><td class="num">22/50 · 44%</td><td class="num">28</td><td><span class="pill bad">Needs work</span></td></tr>
+        <tr><td>Algebra Mid-Module<br/><span class="muted" style="font-size:12px">22 Jun</span></td><td>Maths</td><td class="num">34/50 · 68%</td><td class="num">9</td><td><span class="pill good">B</span></td></tr>
+        <tr><td>Biology — Cell &amp; Tissues<br/><span class="muted" style="font-size:12px">27 Jun</span></td><td>Biology</td><td class="num">40/50 · 80%</td><td class="num">6</td><td><span class="pill good">A</span></td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin:18px 0 6px">Subject performance vs class</p>
+    <div class="subj"><span class="nm">Physics</span><div class="bar good"><i style="width:82%"></i></div><span class="vs">82% · cls 70%</span></div>
+    <div class="subj"><span class="nm">Biology</span><div class="bar good"><i style="width:79%"></i></div><span class="vs">79% · cls 72%</span></div>
+    <div class="subj"><span class="nm">Maths</span><div class="bar"><i style="width:68%"></i></div><span class="vs">68% · cls 66%</span></div>
+    <div class="subj"><span class="nm">Chemistry</span><div class="bar bad"><i style="width:57%"></i></div><span class="vs">57% · cls 65%</span></div>
+  </div>
+
+  <!-- STRENGTHS & IMPROVE -->
+  <div class="twoup">
+    <div class="card">
+      <h2 class="section">Strengths 💪</h2>
+      <div class="chips">
+        <div class="chip"><span class="t">Mechanics (Physics)</span><div class="b bar good"><i style="width:88%"></i></div><span class="p">88</span></div>
+        <div class="chip"><span class="t">Cell Biology</span><div class="b bar good"><i style="width:84%"></i></div><span class="p">84</span></div>
+        <div class="chip"><span class="t">Linear Equations</span><div class="b bar good"><i style="width:80%"></i></div><span class="p">80</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="section">Areas to Improve 🎯</h2>
+      <div class="chips">
+        <div class="chip"><span class="t">Organic Chemistry</span><div class="b bar bad"><i style="width:41%"></i></div><span class="p">41</span></div>
+        <div class="chip"><span class="t">Trigonometry</span><div class="b bar warn"><i style="width:47%"></i></div><span class="p">47</span></div>
+        <div class="chip"><span class="t">Chemical Bonding</span><div class="b bar warn"><i style="width:53%"></i></div><span class="p">53</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STUDY HABITS -->
+  <div class="card">
+    <h2 class="section">Study Habits &amp; Daily Engagement</h2>
+    <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+      <div class="kpi"><div class="label">Active days</div><div class="val">26<span style="font-size:13px;color:var(--muted)">/30</span></div></div>
+      <div class="kpi"><div class="label">Longest streak</div><div class="val">9<span style="font-size:13px;color:var(--muted)"> days</span></div></div>
+      <div class="kpi"><div class="label">Focus score</div><div class="val">78</div></div>
+      <div class="kpi"><div class="label">Most active</div><div class="val" style="font-size:17px">6–8 PM</div></div>
+    </div>
+    <p class="muted" style="margin:16px 0 6px">Daily study time (minutes) · June</p>
+    <div class="chart">
+      <div class="col"><i style="height:54%"></i></div><div class="col"><i style="height:67%"></i></div><div class="col"><i style="height:79%"></i></div><div class="col"><i style="height:33%"></i></div><div class="col"><i style="height:92%"></i></div><div class="col"><i style="height:58%"></i></div><div class="col"><i style="height:2%"></i></div>
+      <div class="col"><i style="height:71%"></i></div><div class="col"><i style="height:75%"></i></div><div class="col"><i style="height:63%"></i></div><div class="col"><i style="height:83%"></i></div><div class="col"><i style="height:50%"></i></div><div class="col"><i style="height:38%"></i></div><div class="col"><i style="height:2%"></i></div>
+      <div class="col"><i style="height:46%"></i></div><div class="col"><i style="height:58%"></i></div><div class="col"><i style="height:42%"></i></div><div class="col"><i style="height:25%"></i></div><div class="col"><i style="height:2%"></i></div><div class="col"><i style="height:33%"></i></div><div class="col"><i style="height:54%"></i></div>
+      <div class="col"><i style="height:100%"></i></div><div class="col"><i style="height:79%"></i></div><div class="col"><i style="height:71%"></i></div><div class="col"><i style="height:83%"></i></div><div class="col"><i style="height:75%"></i></div><div class="col"><i style="height:92%"></i></div><div class="col"><i style="height:58%"></i></div><div class="col"><i style="height:67%"></i></div><div class="col"><i style="height:63%"></i></div>
+    </div>
+    <div class="chart-x"><span>Jun 1</span><span>Jun 15</span><span>Jun 30</span></div>
+    <p class="muted" style="margin-top:14px">Content explored: <b style="color:var(--ink)">31</b> videos · <b style="color:var(--ink)">18</b> documents · <b style="color:var(--ink)">14</b> quizzes</p>
+  </div>
+
+  <!-- COURSE PROGRESS -->
+  <div class="card">
+    <h2 class="section">Course Progress — 64% complete</h2>
+    <div class="subj"><span class="nm">Physics</span><div class="bar good"><i style="width:78%"></i></div><span class="vs">78% · 11.5h</span></div>
+    <div class="subj"><span class="nm">Biology</span><div class="bar good"><i style="width:70%"></i></div><span class="vs">70% · 9.0h</span></div>
+    <div class="subj"><span class="nm">Maths</span><div class="bar"><i style="width:58%"></i></div><span class="vs">58% · 10.0h</span></div>
+    <div class="subj"><span class="nm">Chemistry</span><div class="bar warn"><i style="width:49%"></i></div><span class="vs">49% · 8.0h</span></div>
+  </div>
+
+  <!-- LIVE CLASSES + ASSIGNMENTS -->
+  <div class="twoup">
+    <div class="card">
+      <h2 class="section">Live Classes</h2>
+      <div class="stat-row"><span>Attended</span><b style="color:var(--good)">18</b></div>
+      <div class="stat-row"><span>Missed</span><b style="color:var(--bad)">3</b></div>
+      <div class="stat-row"><span>Attendance</span><b>86%</b></div>
+      <div class="stat-row"><span>Questions asked</span><b>12</b></div>
+      <div class="stat-row"><span>Polls answered</span><b>22</b></div>
+      <div class="stat-row"><span>Engagement</span><b style="color:var(--good)">Active</b></div>
+    </div>
+    <div class="card">
+      <h2 class="section">Assignments</h2>
+      <div class="stat-row"><span>Assigned</span><b>14</b></div>
+      <div class="stat-row"><span>Submitted</span><b style="color:var(--good)">12</b></div>
+      <div class="stat-row"><span>On time</span><b>10</b></div>
+      <div class="stat-row"><span>Late</span><b style="color:var(--warn)">2</b></div>
+      <div class="stat-row"><span>Pending</span><b style="color:var(--bad)">2</b></div>
+      <div class="stat-row"><span>Avg. score</span><b>81%</b></div>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS -->
+  <div class="card">
+    <h2 class="section">Achievements 🏆</h2>
+    <div class="row">
+      <span class="pill good" style="padding:8px 14px">🎓 Algebra Foundations — Certificate (24 Jun)</span>
+      <span class="pill good" style="padding:8px 14px">🔥 9-Day Study Streak</span>
+    </div>
+  </div>
+
+  <!-- INSIGHTS + RECOMMENDATIONS -->
+  <div class="card">
+    <h2 class="section">What we noticed</h2>
+    <ul class="insights">
+      <li>Scores rose alongside study time — the 22–27 June streak (≈100 min/day) coincided with his best Biology and Algebra results.</li>
+      <li>The 18 June Chemistry dip (44%) followed the only week with 3 missed live classes — attendance and outcomes are linked for him.</li>
+      <li>Strong consistency (26/30 active days) is his biggest asset; redirecting ~15 of those minutes/day into Chemistry could lift his average to ~80%.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Recommended next steps</h2>
+    <div class="rec"><span class="pr HIGH">HIGH</span><div><div class="area">Organic Chemistry</div><div class="muted">20 minutes/day on nomenclature &amp; functional groups for two weeks; attend the Thursday Chemistry doubt-clearing live class.</div></div></div>
+    <div class="rec"><span class="pr MEDIUM">MEDIUM</span><div><div class="area">Trigonometry</div><div class="muted">Practice 5 ratio problems daily; revisit the recorded "Intro to Trig" video.</div></div></div>
+    <div class="rec"><span class="pr LOW">LOW</span><div><div class="area">Attendance</div><div class="muted">Keep live-class attendance above 90% — it correlates directly with his test scores.</div></div></div>
+  </div>
+
+  <div class="foot">Sunrise National School · Generated by Vacademy on 01 Jul 2026 · This report covers 1–30 June 2026.</div>
+
+</div>
+</body>
+</html>

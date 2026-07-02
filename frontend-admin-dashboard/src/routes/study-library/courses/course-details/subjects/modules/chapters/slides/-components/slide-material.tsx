@@ -120,7 +120,12 @@ function checkIsHtmlEmpty(data: string | null): boolean {
         ) ||
         /\b(data-yoopta-type|data-meta-align|data-meta-depth|data-tabs|data-front|data-back)\s*=/i.test(
             data
-        )
+        ) ||
+        // A Mermaid diagram block (<div class="mermaid">…</div>) is real,
+        // intentional content even before code is typed — never let an
+        // empty-but-present mermaid make the whole document read as blank
+        // (which would block Save/Publish for every other block too).
+        /class\s*=\s*"[^"]*\bmermaid\b/i.test(data)
     ) {
         return false;
     }
@@ -260,6 +265,47 @@ export const SlideMaterial = ({
         return () => window.removeEventListener('error', handler);
     }, [editor]);
 
+    // Shift+Enter (soft line break) was scrolling the editor to the top. Yoopta's
+    // soft-break insert can momentarily drop the editor selection; combined with
+    // the selection-reset above, the editor/keyboard-sensor then refocuses the
+    // first block and yanks the viewport up. We can't cleanly intercept Yoopta's
+    // internal key handling, so we pin the scroll instead: snapshot the
+    // scrollable ancestors of the caret BEFORE the keypress is processed (capture
+    // phase) and restore them right after — queueMicrotask runs before the browser
+    // paints (so no flicker) and the rAF catches any async follow-up scroll.
+    useEffect(() => {
+        const onKeyDownCapture = (e: KeyboardEvent) => {
+            if (e.key !== 'Enter' || !e.shiftKey) return;
+            const target = e.target as HTMLElement | null;
+            if (!target?.closest?.('[contenteditable="true"]')) return;
+
+            const snaps: Array<{ el: HTMLElement; top: number }> = [];
+            let node: HTMLElement | null = target;
+            while (node) {
+                if (node.scrollHeight > node.clientHeight) {
+                    const oy = getComputedStyle(node).overflowY;
+                    if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') {
+                        snaps.push({ el: node, top: node.scrollTop });
+                    }
+                }
+                node = node.parentElement;
+            }
+            const winX = window.scrollX;
+            const winY = window.scrollY;
+
+            const restore = () => {
+                snaps.forEach(({ el, top }) => {
+                    if (Math.abs(el.scrollTop - top) > 1) el.scrollTop = top;
+                });
+                if (Math.abs(window.scrollY - winY) > 1) window.scrollTo(winX, winY);
+            };
+            queueMicrotask(restore);
+            requestAnimationFrame(restore);
+        };
+        document.addEventListener('keydown', onKeyDownCapture, true);
+        return () => document.removeEventListener('keydown', onKeyDownCapture, true);
+    }, []);
+
     const selectionRef = useRef<HTMLDivElement | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [slideTitle, setSlideTitle] = useState('');
@@ -283,6 +329,14 @@ export const SlideMaterial = ({
     });
     // Always-current editor HTML for DOC (updated on every change, not persisted to store)
     const currentDocHtmlRef = useRef<string>('');
+    // True when the last getCurrentEditorHTMLContent() had to fall back to
+    // per-block serialization (a block's serializer threw) OR blew up entirely.
+    // In that state the serialized HTML may be MISSING the offending block, so
+    // persisting it — especially via the silent auto-save-on-switch — would
+    // permanently drop that block's content and flip the slide to UNSYNC. The
+    // auto-save reads this to refuse a destructive overwrite. Reset on every
+    // serialize; only the LAST serialize before a save matters.
+    const lastSerializeDegradedRef = useRef(false);
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -547,15 +601,20 @@ export const SlideMaterial = ({
             usedManualPluginInitRef.current = false;
         }
 
+        // Fall back to published_data when a non-published slide's draft `data`
+        // is missing OR blank. `data` can be a non-null but empty editor wrapper
+        // (e.g. an auto-save race that clobbered it, or a copied PUBLISHED doc
+        // whose content lives only in published_data). A plain `data || ...`
+        // would NOT fall back, because the empty wrapper is a truthy string — so
+        // the slide opens blank even though the content survives in
+        // published_data. checkIsHtmlEmpty detects the blank wrapper.
+        const draftDocData = activeItem?.document_slide?.data;
         const docData =
             activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
-                : // Fall back to published_data when a non-published slide has empty
-                  // data — e.g. a copied slide: copying a PUBLISHED doc carries over
-                  // its content in published_data while data is null (publish clears
-                  // data), and the copy is created as DRAFT, so it would otherwise
-                  // open blank. (Publish/Save already use this same fallback.)
-                  activeItem?.document_slide?.data ||
+                : (draftDocData && !checkIsHtmlEmpty(draftDocData)
+                      ? draftDocData
+                      : null) ||
                   activeItem?.document_slide?.published_data ||
                   null;
 
@@ -695,8 +754,13 @@ export const SlideMaterial = ({
                             // empty text node, which Slate then merges —
                             // collapsing "Hello\n1.1\n1.2" into "Hello1.11.2"
                             // on Save Draft. Current denylist: lists (<li>),
-                            // callouts (<dl>).
-                            if ((parent as Element).closest?.('li, dl')) continue;
+                            // callouts (<dl>), the mermaid diagram (<div
+                            // class="mermaid">, whose multi-line code is read via
+                            // textContent — \n→<br> would collapse it to one line
+                            // and break the diagram on reload), and any Yoopta
+                            // custom block whose payload is load-bearing text/data
+                            // (math latex, etc.).
+                            if ((parent as Element).closest?.('li, dl, .mermaid, [data-yoopta-type]')) continue;
                             const parts = text.split('\n');
                             const frag = doc.createDocumentFragment();
                             parts.forEach((part, i) => {
@@ -983,19 +1047,68 @@ export const SlideMaterial = ({
 
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
+        // Fresh serialize — assume healthy until a fallback path proves otherwise.
+        lastSerializeDegradedRef.current = false;
         try {
-            const htmlString = html.serialize(editor, data);
+            let htmlString: string;
+            try {
+                htmlString = html.serialize(editor, data);
+            } catch (wholeErr) {
+                // A single block's serializer threw (e.g. timeline/columns with a
+                // missing field, or a built-in callout with an unknown theme).
+                // Whole-document serialize is all-or-nothing, so one bad block
+                // would otherwise abort the ENTIRE Save/Publish and lose every
+                // other block's content ("Could not read editor content" / a blank
+                // publish). Fall back to per-block serialization and skip ONLY the
+                // offending block, preserving everything else.
+                console.error('[Save] whole-document serialize threw; retrying per-block', wholeErr);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const blocks = Object.values((data || {}) as Record<string, any>)
+                    .filter((b) => b && b.id)
+                    .sort((a, b) => (a?.meta?.order ?? 0) - (b?.meta?.order ?? 0));
+                htmlString = blocks
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    .map((b: any) => {
+                        try {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            return html.serialize(editor, { [b.id]: b } as any);
+                        } catch (blockErr) {
+                            console.error(
+                                '[Save] skipping block that failed to serialize:',
+                                b?.type,
+                                blockErr
+                            );
+                            // A block was DROPPED. Mark the result degraded so the
+                            // silent auto-save-on-switch won't persist a copy that
+                            // is missing this block (which would vanish its content
+                            // and flip the slide to UNSYNC). Explicit Save still
+                            // proceeds — but with a warning to the user.
+                            lastSerializeDegradedRef.current = true;
+                            return '';
+                        }
+                    })
+                    .join('');
+            }
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
-            // at path" Slate bug) have something to fall back to.
-            currentDocHtmlRef.current = formatted;
+            // at path" Slate bug) have something to fall back to. Only cache a
+            // NON-empty result: a transient empty/degenerate serialize (e.g.
+            // mid slide-switch) must not poison the fallback, or the catch
+            // block below would itself recover empty content and lose work.
+            if (!checkIsHtmlEmpty(formatted)) {
+                currentDocHtmlRef.current = formatted;
+            }
             return formatted;
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
             // Serialize blew up (typically Yoopta/Slate throwing on a
-            // partially-normalized accordion/custom-block state). Fall
-            // back to the most recent successfully-serialized HTML
+            // partially-normalized accordion/custom-block state). The value we
+            // return here is a FALLBACK, not a faithful serialization of the
+            // live editor — mark it degraded so the silent auto-save won't treat
+            // it as an authoritative new version to overwrite stored data with.
+            lastSerializeDegradedRef.current = true;
+            // Fall back to the most recent successfully-serialized HTML
             // (captured on every onChange), then to the slide's stored
             // data. Returning '' used to land in SaveDraft's empty-guard
             // and surface "Could not read editor content" — we'd rather
@@ -1243,6 +1356,37 @@ export const SlideMaterial = ({
                 ? itemsNow.find((s) => s.id === slide.id)?.status === 'DELETED'
                 : false;
             if (!stillExists || deletedInStore || slide.status === 'DELETED') {
+                return;
+            }
+
+            // Never let an empty/blank editor serialization clobber a slide that
+            // has content. Mirrors SaveDraft's empty-guard. Without this, a
+            // slide-switch race (the editor is momentarily empty before its
+            // content finishes loading) auto-saves the empty wrapper into `data`
+            // and flips a PUBLISHED slide to UNSYNC — the slide then opens blank
+            // even though the real content still lives in published_data.
+            if (checkIsHtmlEmpty(htmlString)) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor content is empty; refusing to overwrite existing slide data.'
+                );
+                return;
+            }
+
+            // Never let a DEGRADED serialization silently overwrite good content.
+            // If the last serialize had to drop a block (its serializer threw) or
+            // blew up entirely, htmlString is missing content. Auto-saving it on
+            // slide switch would permanently vanish that block AND flip a
+            // PUBLISHED slide to UNSYNC — the exact "data lost on switch" report.
+            // Skip the silent save; the stored draft/published copy stays intact.
+            // The user can still Save explicitly (which surfaces a warning).
+            if (lastSerializeDegradedRef.current) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor serialization was degraded (a block failed to serialize). ' +
+                        'Refusing to overwrite stored content to avoid silently dropping that block.'
+                );
+                toast.warning(
+                    'Some content on the previous slide could not be saved automatically. Open it and click Save to retry.'
+                );
                 return;
             }
 
@@ -2181,6 +2325,10 @@ export const SlideMaterial = ({
                     console.error('Payload that failed:', videoSlidePayload);
                     toast.error(`Error saving split screen slide: ${error}`);
                 }
+                // Split-screen VIDEO is fully handled here. Return so it does
+                // not fall through to the DOC path below and get overwritten as
+                // a type:'DOC' document (the split embedded_data would be lost).
+                return;
             } else if (activeItem?.source_type == 'VIDEO') {
                 // Handle regular video slides (non-split screen)
                 const convertedData = converDataToVideoFormat({
@@ -2195,6 +2343,21 @@ export const SlideMaterial = ({
                 } catch {
                     toast.error(`Error in saving the slide`);
                 }
+                // VIDEO is fully handled here. Without this return the slide
+                // would continue into the DOC path below and risk being
+                // overwritten as a type:'DOC' document (it only survives today
+                // because the editor happens to be empty and the empty-guard
+                // catches it — too fragile to rely on).
+                return;
+            }
+
+            // HTML_VIDEO (AI Video / AI Slides / AI Storybook) is AI-generated,
+            // rendered read-only via VideoSlidePreview, and has no editor content
+            // or draft-save action (handlePublishSlide has no HTML_VIDEO branch
+            // either). Return here so it never falls through to the DOC path and
+            // gets overwritten as a type:'DOC' slide.
+            if (activeItem?.source_type === 'HTML_VIDEO') {
+                return;
             }
 
             if (activeItem?.source_type === 'QUESTION') {
@@ -2276,8 +2439,13 @@ export const SlideMaterial = ({
                         id: activeItem.id,
                         title: activeItem.title,
                         description: activeItem.description || null,
+                        // Mirror the publish/unpublish SCORM payload so a draft
+                        // save doesn't drop the thumbnail — the backend may
+                        // treat an absent image_file_id as "clear".
+                        image_file_id: activeItem.image_file_id || '',
                         status: status as 'DRAFT' | 'PUBLISHED',
                         slide_order: activeItem.slide_order,
+                        notify: false,
                         new_slide: false,
                         scorm_slide: {
                             id: activeItem.scorm_slide.id,
@@ -2460,8 +2628,69 @@ export const SlideMaterial = ({
                 return;
             }
 
+            // PDF and PPT_ANIM slides have no editor content — they reference an
+            // uploaded file by id in document_slide.data (PDF = file id rendered
+            // by the PDF viewer; PPT_ANIM = deck base rendered by DeckPlayer).
+            // Without this branch, Save Draft falls through to the DOC path
+            // below, serializes the (empty) document editor, and overwrites the
+            // slide as type:'DOC' — wiping the file and leaving only the title.
+            // Re-save in place, preserving the type / file id / page count /
+            // published snapshot.
+            if (
+                slide?.source_type === 'DOCUMENT' &&
+                (slide?.document_slide?.type === 'PDF' ||
+                    slide?.document_slide?.type === 'PPT_ANIM')
+            ) {
+                try {
+                    await addUpdateDocumentSlide({
+                        id: slide?.id || '',
+                        title: slide?.title || '',
+                        image_file_id: slide?.image_file_id || '',
+                        description: slide?.description || '',
+                        slide_order: null,
+                        document_slide: {
+                            id: slide?.document_slide?.id || '',
+                            type: slide?.document_slide?.type || 'PDF',
+                            // Fall back to the published snapshot so we never
+                            // write data:null for a deck/PDF that only has a
+                            // published copy (the UNSYNC admin preview reads
+                            // data, and a null would show a blank deck).
+                            data:
+                                slide?.document_slide?.data ||
+                                slide?.document_slide?.published_data ||
+                                null,
+                            title: slide?.document_slide?.title || '',
+                            cover_file_id: slide?.document_slide?.cover_file_id || '',
+                            total_pages: slide?.document_slide?.total_pages || 1,
+                            published_data:
+                                slide?.document_slide?.published_data || null,
+                            published_document_total_pages:
+                                slide?.document_slide
+                                    ?.published_document_total_pages || 1,
+                        },
+                        status: status,
+                        new_slide: false,
+                        notify: false,
+                    });
+                    toast.success(`slide saved in draft successfully!`);
+                } catch {
+                    toast.error(`Error in saving the slide`);
+                }
+                return;
+            }
+
             // Handle regular documents
             const currentHtml = getCurrentEditorHTMLContent();
+
+            // Explicit Save proceeds on user intent, but if a block's serializer
+            // threw it was dropped from currentHtml — tell the user so the loss
+            // isn't silent (the silent auto-save-on-switch already refuses this).
+            if (lastSerializeDegradedRef.current) {
+                toast.warning(
+                    'A block on this slide could not be saved and was left out. ' +
+                        'Please check the slide — you may need to re-create that block.'
+                );
+            }
 
             // Process images in HTML content before saving
             let processedHtmlString = currentHtml;
@@ -2727,25 +2956,30 @@ export const SlideMaterial = ({
         }
 
         if (items && items.length > 0) {
-            // Priority 1: Use slideId from URL if available (ALWAYS respect URL)
-            if (slideId) {
-                const targetSlide = items.find((slide) => slide.id === slideId);
-                if (targetSlide) {
-                    // Only update if it's different from current activeItem
-                    if (!activeItem || activeItem.id !== slideId) {
-                        setActiveItem(targetSlide);
-                    }
-                    return;
-                }
-            }
-
-            // Priority 2: Check if current active slide still exists in items
+            // Priority 1: keep the current active slide if it still exists.
+            // A slides refetch (e.g. after publishing a freshly-uploaded slide)
+            // must NOT yank selection back to the URL slideId: the URL is only
+            // updated on explicit sidebar clicks, not on new-slide creation, so
+            // right after an upload it still points at the previously-selected
+            // slide. Honoring it here flipped the sidebar highlight + header
+            // title to that stale "previous" slide while the content stayed on
+            // the new one. This mirrors the sidebar's own selection priority.
             const activeSlideStillExists =
                 activeItem && items.find((slide) => slide.id === activeItem.id);
 
             if (activeSlideStillExists) {
                 // Active slide still exists, keep it selected
                 return;
+            }
+
+            // Priority 2: fall back to the URL slideId (initial load, deep link,
+            // or after the active slide was deleted).
+            if (slideId) {
+                const targetSlide = items.find((slide) => slide.id === slideId);
+                if (targetSlide) {
+                    setActiveItem(targetSlide);
+                    return;
+                }
             }
 
             // Priority 3: Always set first available slide as active
@@ -2755,6 +2989,18 @@ export const SlideMaterial = ({
             setActiveItem(firstSlide || null);
         }
     }, [items, slideId]);
+
+    // For read-only file-backed document slides (PDF / PPT_ANIM) the rendered
+    // content is derived purely from the file URL in data/published_data — there's
+    // no live editor to disrupt. Track it so the view re-renders when the URL fills
+    // in (e.g. right after an upload, once the slides refetch lands). Scoped to
+    // these two types so we never rebuild the DOC/CODE/JUPYTER/Excalidraw editors
+    // on their autosave-triggered refetches (the reason `items` was kept out of deps).
+    const docContentSignature =
+        activeItem?.source_type === 'DOCUMENT' &&
+        ['PDF', 'PPT_ANIM'].includes(activeItem?.document_slide?.type ?? '')
+            ? `${activeItem?.document_slide?.data ?? ''}|${activeItem?.document_slide?.published_data ?? ''}`
+            : null;
 
     useEffect(() => {
         setHeading(activeItem?.title || '');
@@ -2769,6 +3015,8 @@ export const SlideMaterial = ({
         activeItem?.source_type,
         activeItem?.document_slide?.type,
         activeItem?.status,
+        // File-backed doc slides: re-render when the URL fills in (post-upload).
+        docContentSignature,
         // Re-render the video preview when an external link is edited in place.
         activeItem?.video_slide?.url,
         activeItem?.video_slide?.published_url,
@@ -2791,7 +3039,15 @@ export const SlideMaterial = ({
 
     return (
         <div
-            className="flex w-full flex-1 flex-col transition-all duration-300 ease-in-out"
+            // Bounded-height scroll container so the `sticky top-0` header below
+            // actually freezes. The LayoutContainer wraps page content in an
+            // `overflow-x-hidden` div, which makes `overflow-y` compute to `auto`
+            // — a scroll container that never scrolls (the body does), so a sticky
+            // child has nothing to stick to. Owning the scroll here fixes that:
+            // header stays put, editor content scrolls beneath it. Offsets ≈
+            // viewport − navbar (h-14 / md:h-[72px]) − the wrapper's padding/margin
+            // (p-2 / sm:p-3 / md:p-4 / lg:m-7).
+            className="flex h-[calc(100vh-76px)] w-full flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out sm:h-[calc(100vh-84px)] md:h-[calc(100vh-108px)] lg:h-[calc(100vh-132px)]"
             ref={selectionRef}
         >
             {activeItem && (
@@ -3081,15 +3337,23 @@ export const SlideMaterial = ({
             )}
 
             <div
-                className={`mx-auto mt-14 ${
-                    activeItem?.document_slide?.type === 'PDF' ||
-                    activeItem?.document_slide?.type === 'PPT_ANIM'
-                        ? 'h-[calc(100vh-200px)]'
-                        : 'h-full'
-                } relative z-20 w-full ${
-                    activeItem?.document_slide?.type === 'DOC'
-                        ? 'overflow-visible'
-                        : 'overflow-hidden'
+                className={`relative z-20 mx-auto mt-14 w-full ${
+                    assessmentCreateMode
+                        ? // Let the form grow to its natural height with bottom
+                          // padding so the parent scroll container reveals all of
+                          // it — pinning to h-full + overflow-hidden clips the
+                          // lower fields (attempts / create button).
+                          'h-auto overflow-visible pb-10'
+                        : `${
+                              activeItem?.document_slide?.type === 'PDF' ||
+                              activeItem?.document_slide?.type === 'PPT_ANIM'
+                                  ? 'h-[calc(100vh-200px)]'
+                                  : 'h-full'
+                          } ${
+                              activeItem?.document_slide?.type === 'DOC'
+                                  ? 'overflow-visible'
+                                  : 'overflow-hidden'
+                          }`
                 }`}
             >
                 {assessmentCreateMode ? <AssessmentCreateForm /> : content}

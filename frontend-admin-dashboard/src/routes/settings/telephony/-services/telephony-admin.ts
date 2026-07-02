@@ -99,6 +99,8 @@ export interface TelephonyProviderNumber {
     region?: string | null;
     priority?: number | null;
     enabled?: boolean | null;
+    /** Inbound IVR menu this number plays when dialled (ivr_menu.id). Null = default. */
+    inboundIvrMenuId?: string | null;
     /** Inbound-flow attach status: ATTACHED | PENDING | FAILED | DETACHED | null. */
     flowAttachStatus?: string | null;
     /** Body/message of the most recent attach failure. */

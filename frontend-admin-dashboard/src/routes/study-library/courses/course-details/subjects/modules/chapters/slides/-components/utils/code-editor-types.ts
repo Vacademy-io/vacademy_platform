@@ -21,7 +21,21 @@ export interface CodingTestCase {
     label?: string;
     stdin: string;
     expectedStdout: string;
+    // Optional list of acceptable outputs. A submission passes if its output
+    // matches ANY entry. Absent ⇒ [expectedStdout]. Authoring keeps the
+    // invariant acceptedOutputs[0] === expectedStdout so legacy display/preview
+    // /redaction paths that read expectedStdout keep working unchanged.
+    acceptedOutputs?: string[];
     visible: boolean; // sample (visible) vs hidden
+}
+
+// Resolve the effective set of acceptable outputs for a test case. Old test
+// cases (no acceptedOutputs) fall back to [expectedStdout] so verdicts are
+// byte-identical to the single-output behaviour.
+export function effectiveAccepted(tc: Pick<CodingTestCase, 'expectedStdout' | 'acceptedOutputs'>): string[] {
+    return tc.acceptedOutputs && tc.acceptedOutputs.length > 0
+        ? tc.acceptedOutputs
+        : [tc.expectedStdout ?? ''];
 }
 
 export interface CodingPerRunLimits {

@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getCurrencySymbol } from '@/constants/currencies';
 import { MyButton } from '@/components/design-system/button';
 import { ProgressBar } from '@/components/design-system/progress-bar';
 import {
@@ -36,17 +37,6 @@ const getFirstPolicy = (plan: UserPlan): PolicyDetails | null => {
         return plan.policy_details[0] || null;
     }
     return null;
-};
-
-const getCurrencySymbol = (currency: string): string => {
-    const symbols: Record<string, string> = {
-        USD: '$',
-        EUR: '€',
-        GBP: '£',
-        INR: '₹',
-        JPY: '¥',
-    };
-    return symbols[currency] || currency;
 };
 
 const getPlanName = (plan: UserPlan): string => {

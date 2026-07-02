@@ -86,6 +86,22 @@ public class CallIntelligenceController {
         return ResponseEntity.ok(queryService.coachingInsights(target, fromMillis, toMillis));
     }
 
+    /**
+     * Whole-team coaching — the same transcript-derived coaching insights (weakest
+     * skills, recurring tips, common objections) aggregated across the acting user's
+     * entire reporting line. Powers the team-coaching block on the Call Log page.
+     */
+    @GetMapping("/analytics/team/coaching")
+    public ResponseEntity<CallIntelligenceCoachingDto> teamCoaching(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "from", required = false) Long fromMillis,
+            @RequestParam(value = "to", required = false) Long toMillis,
+            @RequestAttribute("user") CustomUserDetails user) {
+        String callerUserId = user == null ? null : user.getUserId();
+        return ResponseEntity.ok(
+                queryService.teamCoachingInsights(instituteId, callerUserId, fromMillis, toMillis));
+    }
+
     /** Roll-up for the acting user's whole team (sales-head view). */
     @GetMapping("/analytics/team")
     public ResponseEntity<CallIntelligenceAnalyticsDto> teamAnalytics(

@@ -195,6 +195,17 @@ export const CALL_INTELLIGENCE_TEAM_ANALYTICS = (
     if (to != null) p.set('to', String(to));
     return `${BASE_URL}/admin-core-service/call-intelligence/analytics/team?${p.toString()}`;
 };
+/** Whole-team coaching (aggregated call-quality coaching across the caller's team). */
+export const CALL_INTELLIGENCE_TEAM_COACHING = (
+    instituteId: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams({ instituteId });
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/team/coaching?${p.toString()}`;
+};
 /** Manual call-recording upload (multipart/form-data). */
 export const CALL_INTELLIGENCE_MANUAL_UPLOAD = `${BASE_URL}/admin-core-service/call-intelligence/manual-call/upload`;
 

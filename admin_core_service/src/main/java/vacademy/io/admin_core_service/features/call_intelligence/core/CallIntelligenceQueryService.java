@@ -56,7 +56,26 @@ public class CallIntelligenceQueryService {
                 ? List.of()
                 : repo.findByCounsellorUserIdAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
                         counsellorUserId, "COMPLETED", from(fromMillis), to(toMillis));
+        return buildCoaching(rows, counsellorUserId);
+    }
 
+    /**
+     * Whole-team coaching: the same transcript-derived aggregation across EVERY
+     * counsellor in the caller's reporting line — the team head's "how is my team
+     * doing on calls, and what should we work on" view.
+     */
+    public CallIntelligenceCoachingDto teamCoachingInsights(String instituteId, String callerUserId,
+                                                            Long fromMillis, Long toMillis) {
+        List<String> ids = counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId);
+        List<CallIntelligence> rows = (ids == null || ids.isEmpty())
+                ? List.of()
+                : repo.findByCounsellorUserIdInAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
+                        ids, "COMPLETED", from(fromMillis), to(toMillis));
+        return buildCoaching(rows, null);
+    }
+
+    /** Shared aggregation for the coaching DTO from a set of COMPLETED rows. */
+    private CallIntelligenceCoachingDto buildCoaching(List<CallIntelligence> rows, String counsellorUserId) {
         double callerSum = 0, outputSum = 0;
         int callerN = 0, outputN = 0;
         // key -> [sumScore, count]

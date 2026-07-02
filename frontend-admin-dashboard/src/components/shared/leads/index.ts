@@ -57,6 +57,7 @@ export {
 export { CallIntelligencePanel } from './call-intelligence-panel';
 export { CallIntelligenceSummary } from './call-intelligence-summary';
 export { LeadCallIntelligenceSummary } from './lead-call-intelligence-summary';
+export { TeamCoachingSection } from './team-coaching-section';
 export { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 export { ManualCallUploadDialog } from './manual-call-upload-dialog';
 export {

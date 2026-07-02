@@ -76,6 +76,44 @@ export async function fetchPublicCourseLeaderboard(
   }
 }
 
+/**
+ * Public, no-auth institute-WIDE leaderboard (all courses combined) for the
+ * shareable page. Fully anonymized; gated server-side by the institute toggle.
+ */
+export async function fetchPublicInstituteLeaderboard(
+  instituteId: string
+): Promise<CourseLeaderboardData | null> {
+  try {
+    if (!instituteId) return null;
+    const { data } = await axios.get(
+      `${BASE_URL}/admin-core-service/public/leaderboard/v1/institute/${instituteId}`
+    );
+    return (data as CourseLeaderboardData) ?? null;
+  } catch (error) {
+    console.error("[public-institute-leaderboard] fetch failed:", error);
+    return null;
+  }
+}
+
+/** The authenticated learner's own institute-WIDE rank (across all their courses). */
+export async function fetchMyInstituteRank(): Promise<
+  { rank: number | null; totalLearners: number } | null
+> {
+  try {
+    const instituteId = await getInstituteId();
+    if (!instituteId) return null;
+    const { data } = await authenticatedAxiosInstance.get(
+      `${BASE_URL}/admin-core-service/leaderboard/v1/institute/me`,
+      { params: { instituteId } }
+    );
+    const d = data as CourseLeaderboardData;
+    return { rank: d?.currentUser?.rank ?? null, totalLearners: d?.totalLearners ?? 0 };
+  } catch (error) {
+    console.error("[institute-rank] fetch failed:", error);
+    return null;
+  }
+}
+
 /** The authenticated learner's own badges + best rank (for the profile). */
 export async function fetchLearnerSummary(): Promise<LearnerSummary | null> {
   try {

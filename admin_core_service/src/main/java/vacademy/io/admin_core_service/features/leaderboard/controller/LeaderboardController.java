@@ -36,6 +36,24 @@ public class LeaderboardController {
                 packageSessionId, instituteId, null, false, 200, user));
     }
 
+    /** Learner-facing institute-wide leaderboard: anonymized, own row marked "You". */
+    @GetMapping("/institute/me")
+    public ResponseEntity<LeaderboardResponseDTO> getInstituteLeaderboardForLearner(
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(leaderboardService.buildInstituteLeaderboard(
+                instituteId, user.getUserId(), true, 50));
+    }
+
+    /** Admin institute-wide leaderboard: real names, full list across all courses. */
+    @GetMapping("/institute/admin")
+    public ResponseEntity<LeaderboardResponseDTO> getInstituteLeaderboardForAdmin(
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(leaderboardService.buildInstituteLeaderboard(
+                instituteId, null, false, 200));
+    }
+
     /** The learner's own profile summary: total badges, badge list, and best course rank. */
     @GetMapping("/my-summary")
     public ResponseEntity<LearnerSummaryDTO> getMySummary(

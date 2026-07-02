@@ -29,4 +29,11 @@ public class PublicLeaderboardController {
         return ResponseEntity.ok(
                 leaderboardService.buildPublicCourseLeaderboard(packageSessionId, instituteId));
     }
+
+    /** Public, anonymized institute-WIDE leaderboard (all courses combined). */
+    @GetMapping("/institute/{instituteId}")
+    public ResponseEntity<LeaderboardResponseDTO> getPublicInstituteLeaderboard(
+            @PathVariable String instituteId) {
+        return ResponseEntity.ok(leaderboardService.buildPublicInstituteLeaderboard(instituteId));
+    }
 }

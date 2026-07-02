@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChatCircleDots, Flag, UsersFour, ArrowLeft, Prohibit } from '@phosphor-icons/react';
+import { ChatCircleDots, Flag, UsersFour, ArrowLeft, Prohibit, Trophy } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
@@ -36,6 +36,10 @@ import {
     type ChatPersonResponse,
 } from '@/services/chat/chatApi';
 import { getChatUser } from '@/services/chat/getChatUser';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { getBadgesEnabled } from '@/routes/settings/-services/badges-settings';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { LeaderboardShareDialog } from './LeaderboardShareDialog';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ConversationList } from './ConversationList';
@@ -80,6 +84,29 @@ export function ChatScreen({
     const deepLinkedRef = useRef(false);
     const isMobile = useIsMobile();
     const { userId } = useMemo(() => getChatUser(), []);
+    const { instituteDetails } = useInstituteDetailsStore();
+    const { data: badgesEnabled } = useQuery({
+        queryKey: ['badges-enabled'],
+        queryFn: getBadgesEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // Public, white-labelled leaderboard URL for a batch group — points at the
+    // institute's LEARNER portal (not the admin origin) so the page resolves the institute.
+    const buildLeaderboardUrl = (packageSessionId?: string | null) => {
+        if (!packageSessionId) return '';
+        const rawBase = instituteDetails?.learner_portal_base_url || BASE_URL_LEARNER_DASHBOARD;
+        const base =
+            rawBase.startsWith('http://') || rawBase.startsWith('https://')
+                ? rawBase
+                : `https://${rawBase}`;
+        return `${base.replace(/\/+$/, '')}/leaderboard/${packageSessionId}`;
+    };
+    // Open the leaderboard preview dialog (with copy/share) for a batch group.
+    const [leaderboardDialog, setLeaderboardDialog] = useState<{
+        packageSessionId: string;
+        batchName: string;
+    } | null>(null);
 
     const [showReports, setShowReports] = useState(false);
     const [search, setSearch] = useState('');
@@ -744,6 +771,24 @@ export function ChatScreen({
                                           : 'Community channel'}
                                 </div>
                             </div>
+                            {badgesEnabled === true &&
+                                activeConversation.type === 'BATCH_GROUP' &&
+                                activeConversation.referenceId && (
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() =>
+                                            setLeaderboardDialog({
+                                                packageSessionId: activeConversation.referenceId!,
+                                                batchName: conversationTitle(activeConversation),
+                                            })
+                                        }
+                                        className="ml-auto gap-1.5"
+                                    >
+                                        <Trophy size={16} weight="fill" />
+                                        Leaderboard
+                                    </MyButton>
+                                )}
                         </header>
 
                         {chatDisabled ? (
@@ -882,6 +927,14 @@ export function ChatScreen({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <LeaderboardShareDialog
+                open={Boolean(leaderboardDialog)}
+                onOpenChange={(o) => !o && setLeaderboardDialog(null)}
+                packageSessionId={leaderboardDialog?.packageSessionId ?? null}
+                batchName={leaderboardDialog?.batchName}
+                shareUrl={buildLeaderboardUrl(leaderboardDialog?.packageSessionId)}
+            />
         </div>
     );
 }

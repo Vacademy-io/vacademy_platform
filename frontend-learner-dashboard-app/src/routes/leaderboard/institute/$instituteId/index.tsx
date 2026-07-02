@@ -3,19 +3,20 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
-  fetchPublicCourseLeaderboard,
+  fetchPublicInstituteLeaderboard,
   type CourseLeaderboardData,
 } from "@/services/course-leaderboard";
-import { PublicLeaderboardView } from "../-components/PublicLeaderboardView";
+import { PublicLeaderboardView } from "../../-components/PublicLeaderboardView";
 
-export const Route = createFileRoute("/leaderboard/$packageSessionId/")({
-  component: PublicCourseLeaderboardPage,
+export const Route = createFileRoute("/leaderboard/institute/$instituteId/")({
+  component: PublicInstituteLeaderboardPage,
 });
 
-function PublicCourseLeaderboardPage() {
-  const { packageSessionId } = Route.useParams();
-  const { instituteId, instituteName, instituteLogoFileId, isLoading: brandingLoading } =
-    useDomainRouting();
+function PublicInstituteLeaderboardPage() {
+  // The institute is identified by the shared URL; branding (logo/name) comes
+  // from the white-label domain the link is opened on.
+  const { instituteId } = Route.useParams();
+  const { instituteName, instituteLogoFileId, isLoading: brandingLoading } = useDomainRouting();
 
   const [logoUrl, setLogoUrl] = useState<string>("");
   const [data, setData] = useState<CourseLeaderboardData | null>(null);
@@ -34,8 +35,7 @@ function PublicCourseLeaderboardPage() {
   }, [instituteLogoFileId]);
 
   useEffect(() => {
-    if (brandingLoading) return;
-    if (!instituteId || !packageSessionId) {
+    if (!instituteId) {
       setError(true);
       setLoading(false);
       return;
@@ -43,7 +43,7 @@ function PublicCourseLeaderboardPage() {
     let active = true;
     setLoading(true);
     setError(false);
-    fetchPublicCourseLeaderboard(packageSessionId, instituteId)
+    fetchPublicInstituteLeaderboard(instituteId)
       .then((d) => {
         if (!active) return;
         if (!d) setError(true);
@@ -54,13 +54,13 @@ function PublicCourseLeaderboardPage() {
     return () => {
       active = false;
     };
-  }, [instituteId, packageSessionId, brandingLoading]);
+  }, [instituteId]);
 
   return (
     <PublicLeaderboardView
       logoUrl={logoUrl}
       instituteName={instituteName}
-      subtitle={data?.courseName}
+      subtitle="All courses"
       data={data}
       loading={brandingLoading || loading}
       error={error}

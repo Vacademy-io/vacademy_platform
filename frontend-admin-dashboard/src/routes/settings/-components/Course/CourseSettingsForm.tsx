@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import {
+    CopiedSlideStatus,
     CourseSettingsData,
     DripConditionsSettings,
     EnrollmentNotificationsSettings,
@@ -121,6 +122,13 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                 ...prev.outlineSettings,
                 [key]: value,
             },
+        }));
+    };
+
+    const updateCopiedSlideStatus = (value: CopiedSlideStatus) => {
+        setFormData((prev) => ({
+            ...prev,
+            copiedSlideStatus: value,
         }));
     };
 
@@ -519,6 +527,38 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                                         <SelectItem value="collapsed">Collapsed</SelectItem>
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="copied-slide-status">
+                                    Publish Status for Copied Slides
+                                </Label>
+                                <Select
+                                    value={formData.copiedSlideStatus ?? 'KEEP_DRAFT'}
+                                    onValueChange={(value) =>
+                                        updateCopiedSlideStatus(value as CopiedSlideStatus)
+                                    }
+                                >
+                                    <SelectTrigger id="copied-slide-status">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="KEEP_DRAFT">
+                                            Keep as Draft (default)
+                                        </SelectItem>
+                                        <SelectItem value="INHERIT_SOURCE">
+                                            Match the original slide
+                                        </SelectItem>
+                                        <SelectItem value="ALWAYS_PUBLISHED">
+                                            Always publish
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-caption text-neutral-500">
+                                    When a slide is copied to another course, choose whether the
+                                    copy stays a draft, matches the original&apos;s published state,
+                                    or is always published. Draft copies are not visible to learners.
+                                </p>
                             </div>
                         </div>
                     </CardContent>

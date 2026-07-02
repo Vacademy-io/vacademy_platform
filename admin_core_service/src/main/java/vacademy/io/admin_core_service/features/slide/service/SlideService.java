@@ -53,6 +53,7 @@ public class SlideService {
     private final ObjectMapper objectMapper;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
+    private final CopiedSlideStatusResolver copiedSlideStatusResolver;
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
@@ -336,7 +337,22 @@ public class SlideService {
 
         Slide newSlide = copySlideByType(slide);
 
-        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
+        // Status of the copied slide is driven by the institute's
+        // COURSE_SETTING.copiedSlideStatus (KEEP_DRAFT | INHERIT_SOURCE |
+        // ALWAYS_PUBLISHED). Default/unset = KEEP_DRAFT, i.e. DRAFT — identical to
+        // the previous hardcoded behaviour, so nothing changes unless an institute
+        // opts in from Settings. copySlideByType creates the slide as DRAFT, so we
+        // only override (and re-save) when the resolved status differs.
+        String copiedStatus = copiedSlideStatusResolver.resolveForCopy(newPackageSessionId, slide.getStatus());
+        if (!copiedStatus.equalsIgnoreCase(newSlide.getStatus())) {
+            newSlide.setStatus(copiedStatus);
+            if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(copiedStatus)) {
+                newSlide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+            }
+            slideRepository.save(newSlide);
+        }
+
+        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, copiedStatus));
 
         // A copied ASSESSMENT slide keeps the same assessmentId but lands in a new
         // batch. Register that assessment to the target batch so it shows up for

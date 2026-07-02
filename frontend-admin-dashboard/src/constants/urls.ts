@@ -947,6 +947,13 @@ export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/su
 export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
 export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
+// Sub-org open registration links (reusable templates admins share publicly)
+export const SUB_ORG_REGISTRATION_BASE = `${BASE_URL}/admin-core-service/institute/v1/sub-org-registration`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_CREATE = `${SUB_ORG_REGISTRATION_BASE}/template/create`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_LIST = `${SUB_ORG_REGISTRATION_BASE}/template/list`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_STATUS = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}/status`;
+export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;

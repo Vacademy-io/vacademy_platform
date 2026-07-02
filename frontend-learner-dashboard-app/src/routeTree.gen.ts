@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
+import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-registration/index'
 import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as SignupIndexRouteImport } from './routes/signup/index'
@@ -103,6 +104,11 @@ const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
 const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
   id: '/terms-and-conditions/',
   path: '/terms-and-conditions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubOrgRegistrationIndexRoute = SubOrgRegistrationIndexRouteImport.update({
+  id: '/sub-org-registration/',
+  path: '/sub-org-registration/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SubOrgLearnersIndexRoute = SubOrgLearnersIndexRouteImport.update({
@@ -591,6 +597,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -677,6 +684,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -765,6 +773,7 @@ export interface FileRoutesById {
   '/signup/': typeof SignupIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -854,6 +863,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
+    | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -940,6 +950,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
+    | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -1027,6 +1038,7 @@ export interface FileRouteTypes {
     | '/signup/'
     | '/study-library/'
     | '/sub-org-learners/'
+    | '/sub-org-registration/'
     | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
@@ -1115,6 +1127,7 @@ export interface RootRouteChildren {
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
+  SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
@@ -1184,6 +1197,13 @@ declare module '@tanstack/react-router' {
       path: '/terms-and-conditions'
       fullPath: '/terms-and-conditions'
       preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sub-org-registration/': {
+      id: '/sub-org-registration/'
+      path: '/sub-org-registration'
+      fullPath: '/sub-org-registration'
+      preLoaderRoute: typeof SubOrgRegistrationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sub-org-learners/': {
@@ -1814,6 +1834,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,
+  SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,

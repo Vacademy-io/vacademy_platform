@@ -454,6 +454,7 @@ def build_shot_planner_user_prompt(
     ai_video_cost_cap_usd: float = 1.50,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
+    dialogue_mode: str = "storybook",
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -519,7 +520,18 @@ def build_shot_planner_user_prompt(
         )
 
     # Dialogue-scene gating (storybook/drama mode)
-    if dialogue_scenes_enabled:
+    if dialogue_scenes_enabled and str(dialogue_mode or "").lower() == "drama":
+        lines.append("")
+        lines.append(
+            "DRAMA MODE — this video is a PURE dialogue drama: EVERY shot MUST be a "
+            "DIALOGUE_SCENE. There is NO narrator (write narration_brief=\"\" everywhere). "
+            "Structure it as 3-6 scenes with a dramatic arc (setup → tension → turn → "
+            "resolution); consecutive shots in the SAME location continue the scene "
+            "(they will be visually chained). Keep each shot's spoken lines ≤ 12s. Emit "
+            "the top-level `characters` cast array with VERBATIM-reusable visual "
+            "descriptions — the SAME characters recur across scenes."
+        )
+    elif dialogue_scenes_enabled:
         lines.append("")
         lines.append(
             "DIALOGUE SCENES ARE ENABLED — this video may include 1-4 DIALOGUE_SCENE shots "
@@ -1128,6 +1140,7 @@ def plan_shots(
     ai_video_cost_cap_usd: float = 1.50,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
+    dialogue_mode: str = "storybook",
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -1194,6 +1207,7 @@ def plan_shots(
         ai_video_cost_cap_usd=ai_video_cost_cap_usd,
         source_clip_available=source_clip_available,
         dialogue_scenes_enabled=dialogue_scenes_enabled,
+        dialogue_mode=dialogue_mode,
         article_screenshots=article_screenshots,
         subject_domain=subject_domain,
         cultural_context=cultural_context,

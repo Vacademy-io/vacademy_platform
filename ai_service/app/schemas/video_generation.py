@@ -651,6 +651,15 @@ class VideoGenerationRequest(BaseModel):
             "Adds generation cost (~$0.30/s of dialogue clip at 720p, capped per video)."
         )
     )
+    dialogue_mode: Literal["storybook", "drama"] = Field(
+        default="storybook",
+        description=(
+            "Only meaningful when dialogue_scenes_enabled=True. 'storybook' = narrator "
+            "carries the video with 1-4 dialogue scenes at dramatic moments. 'drama' = "
+            "PURE dialogue film: every shot is a DIALOGUE_SCENE, no narrator, background "
+            "music off (clips carry their own ambience), higher clip budget."
+        )
+    )
     mute_tts_on_source_clips: bool = Field(
         default=False,
         description=(

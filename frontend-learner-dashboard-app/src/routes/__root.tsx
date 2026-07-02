@@ -62,6 +62,7 @@ const PUBLIC_ROUTES = [
   "/learner-invitation-response",
   "/payment-result",
   "/audience-response",
+  "/sub-org-registration", // Public sub-org self-registration wizard
   "/institute-selection",
   "/delete-user",
   "/change-password",

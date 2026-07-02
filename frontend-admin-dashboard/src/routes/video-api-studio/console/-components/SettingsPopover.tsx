@@ -1078,10 +1078,44 @@ function SettingsBody({
                         />
                     </div>
                     <p className="pl-5 text-[10px] text-muted-foreground">
-                        Storybook mode: characters act out key moments in AI-generated clips,
-                        speaking in consistent voices (lip-synced). The narrator carries the
-                        rest. Adds generation cost per dialogue scene.
+                        Characters act out key moments in AI-generated clips, speaking in
+                        consistent voices (lip-synced). Adds generation cost per scene.
                     </p>
+                    {!!options.dialogue_scenes_enabled && (
+                        <div className="flex gap-1.5 pl-5 pt-1">
+                            {(
+                                [
+                                    {
+                                        v: 'storybook',
+                                        label: 'Storybook',
+                                        desc: 'Narrator carries the video; 1-4 dialogue scenes at key moments.',
+                                    },
+                                    {
+                                        v: 'drama',
+                                        label: 'Drama',
+                                        desc: 'Pure dialogue film — every shot is a scene, no narrator, music off. Higher clip budget.',
+                                    },
+                                ] as const
+                            ).map((m) => {
+                                const active = (options.dialogue_mode ?? 'storybook') === m.v;
+                                return (
+                                    <button
+                                        key={m.v}
+                                        type="button"
+                                        title={m.desc}
+                                        onClick={() => update('dialogue_mode', m.v)}
+                                        className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
+                                            active
+                                                ? 'border-primary-500 bg-primary-50 text-foreground'
+                                                : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {m.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 <AiVideoPanel

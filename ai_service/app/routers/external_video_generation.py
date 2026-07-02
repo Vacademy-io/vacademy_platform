@@ -425,6 +425,7 @@ async def generate_video_external(
                         background_music_volume=p.background_music_volume,
                         sub_shots_enabled=p.sub_shots_enabled,
                         dialogue_scenes_enabled=p.dialogue_scenes_enabled,
+                        dialogue_mode=p.dialogue_mode,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
@@ -770,6 +771,7 @@ async def resume_video_external(
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
+                    dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
                         visual_preferences=_meta.get("visual_preferences"),
                         # Brand kit + per-video overrides: rehydrate so a resumed
                         # run re-applies the SAME brand direction (kit system_prompt,
@@ -1157,6 +1159,7 @@ async def decision_video_external(
                         background_music_volume=m.get("background_music_volume"),
                         sub_shots_enabled=bool(m.get("sub_shots_enabled", False)),
                         dialogue_scenes_enabled=bool(m.get("dialogue_scenes_enabled", False)),
+                        dialogue_mode=str(m.get("dialogue_mode", "storybook")),
                         visual_preferences=m.get("visual_preferences"),
                         brand_kit_id=m.get("brand_kit_id"),
                         brand_overrides=m.get("brand_overrides"),
@@ -1366,6 +1369,7 @@ async def retry_video_external(
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
+                    dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
                     visual_preferences=_meta.get("visual_preferences"),
                     # Brand kit + per-video overrides — retry rehydrates from saved
                     # meta so regenerated shots keep the original brand direction.

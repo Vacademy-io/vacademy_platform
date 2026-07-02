@@ -158,6 +158,13 @@ export interface StudentPermissions {
     canViewReports: boolean;
 }
 
+// Profile page
+export interface StudentProfileSettings {
+    // Whether the "Membership Status" card (Access Days + expiry date) is shown
+    // on the learner's Profile tab. Default: false (hidden).
+    showMembershipStatus: boolean;
+}
+
 // Certificates
 export interface StudentCertificateSettings {
     // Whether certificates feature is enabled
@@ -178,6 +185,7 @@ export interface StudentDisplaySettingsData {
     ui: StudentUiSettings;
     signup: StudentSignupSettings;
     permissions: StudentPermissions;
+    profile: StudentProfileSettings;
     courseDetails: StudentCourseDetailsSettings;
     courseSettings: StudentCourseSettings;
     allCourses: StudentAllCoursesSettings;

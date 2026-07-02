@@ -129,6 +129,12 @@ public class CacheConfiguration {
                                 "zoomAccessToken",
                                 caffeineCacheZoomTokenBuilder().build());
 
+                // Google OAuth access tokens (55 minutes TTL — Google tokens live for ~1h).
+                // Keyed by GoogleAccount UUID; value is the bearer token string.
+                CaffeineCache googleAccessToken = new CaffeineCache(
+                                "googleAccessToken",
+                                caffeineCacheGoogleTokenBuilder().build());
+
                 // Learner Dashboard cache (2 minutes TTL)
                 CaffeineCache learnerDashboard = new CaffeineCache(
                                 "learnerDashboard",
@@ -174,6 +180,7 @@ public class CacheConfiguration {
                                 userDetails,
                                 liveAndUpcomingSessions,
                                 zoomAccessToken,
+                                googleAccessToken,
                                 learnerDashboard,
                                 superAdminInstituteList,
                                 superAdminInstituteDetail,
@@ -252,6 +259,17 @@ public class CacheConfiguration {
                 return Caffeine.newBuilder()
                                 .maximumSize(500) // ~500 distinct zoom accounts cached in memory
                                 .expireAfterWrite(50, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * Google OAuth access token cache. TTL 55 minutes — Google access tokens are valid
+         * ~60 minutes; refreshing 5 minutes early avoids edge-case 401s.
+         */
+        private Caffeine<Object, Object> caffeineCacheGoogleTokenBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(500) // ~500 distinct connected Google accounts cached
+                                .expireAfterWrite(55, TimeUnit.MINUTES)
                                 .recordStats();
         }
 }

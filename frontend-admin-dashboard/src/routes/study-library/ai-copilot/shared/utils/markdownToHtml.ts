@@ -26,9 +26,65 @@ export function convertMermaidCodeToDiv(text: string): string {
 export function markdownToHtml(markdown: string): string {
     if (!markdown) return '';
 
+    // Extract GFM pipe tables BEFORE any other processing. The aggressive
+    // list pre-processing below splits on "dash + space", which would mangle
+    // a `| --- | --- |` delimiter row. So we detect tables on the raw input,
+    // stash each as an HTML block behind a placeholder, and restore them just
+    // before inline formatting (so **bold**/links inside cells still convert).
+    // The transcript notes viewer renders tables via remark-gfm; this keeps
+    // the DOC-slide HTML consistent instead of leaking literal `| a | b |`.
+    const tableBlocks: Array<{ placeholder: string; html: string }> = [];
+    const splitTableRow = (line: string): string[] => {
+        let s = line.trim();
+        if (s.startsWith('|')) s = s.slice(1);
+        if (s.endsWith('|')) s = s.slice(0, -1);
+        return s.split('|').map((c) => c.trim());
+    };
+    const isTableSeparator = (line: string): boolean => {
+        if (!line || !line.includes('|')) return false;
+        const cells = splitTableRow(line);
+        return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
+    };
+    const tableExtracted = (() => {
+        const rawLines = markdown.split('\n');
+        const out: string[] = [];
+        for (let i = 0; i < rawLines.length; i++) {
+            const line = rawLines[i] ?? '';
+            if (line.includes('|') && isTableSeparator((rawLines[i + 1] ?? '').trim())) {
+                const headers = splitTableRow(line);
+                const bodyRows: string[][] = [];
+                let j = i + 2;
+                while (j < rawLines.length) {
+                    const rowLine = (rawLines[j] ?? '').trim();
+                    if (!rowLine || !rowLine.includes('|')) break;
+                    bodyRows.push(splitTableRow(rowLine));
+                    j++;
+                }
+                const thead = `<thead><tr>${headers
+                    .map((h) => `<th>${h}</th>`)
+                    .join('')}</tr></thead>`;
+                const tbody = `<tbody>${bodyRows
+                    .map(
+                        (row) =>
+                            `<tr>${headers
+                                .map((_, k) => `<td>${row[k] ?? ''}</td>`)
+                                .join('')}</tr>`
+                    )
+                    .join('')}</tbody>`;
+                const placeholder = `__TABLE_PLACEHOLDER_${tableBlocks.length}__`;
+                tableBlocks.push({ placeholder, html: `<table>${thead}${tbody}</table>` });
+                out.push(placeholder);
+                i = j - 1;
+            } else {
+                out.push(line);
+            }
+        }
+        return out.join('\n');
+    })();
+
     // AGGRESSIVE PRE-PROCESSING: Ensure block elements are on their own lines
     // This fixes issues where AI output lacks newlines (e.g., "Text### Header" or "Text- List")
-    let processedMarkdown = markdown
+    let processedMarkdown = tableExtracted
         // Ensure headers have newlines before them
         .replace(/([^\n])\s*(#{1,6}\s)/g, '$1\n\n$2')
         // Ensure lists have newlines before them (if not already at start of line)
@@ -41,8 +97,12 @@ export function markdownToHtml(markdown: string): string {
         .replace(/([^\n])\s*(\bsequenceDiagram\b)/g, '$1\n\n$2')
         .replace(/([^\n])\s*(\bclassDiagram\b)/g, '$1\n\n$2');
 
-    // Check if content is markdown (has markdown syntax)
-    const hasMarkdownSyntax = /^#+\s|^\*\s|^-\s|^\d+\.\s|```|\[.*\]\(.*\)/m.test(processedMarkdown);
+    // Check if content is markdown (has markdown syntax). Extracted tables
+    // count — otherwise table-only notes would take the non-markdown early
+    // return and emit the raw placeholder.
+    const hasMarkdownSyntax =
+        tableBlocks.length > 0 ||
+        /^#+\s|^\*\s|^-\s|^\d+\.\s|```|\[.*\]\(.*\)/m.test(processedMarkdown);
 
     // If it doesn't look like markdown, just check/convert mermaid blocks
     if (!hasMarkdownSyntax) {
@@ -173,6 +233,14 @@ export function markdownToHtml(markdown: string): string {
             continue;
         }
 
+        // GFM table placeholder (extracted up-front before pre-processing).
+        if (line.startsWith('__TABLE_PLACEHOLDER_') && line.endsWith('__')) {
+            flushParagraph();
+            flushList();
+            htmlLines.push(line);
+            continue;
+        }
+
         // Headers
         if (line.startsWith('### ')) {
             flushParagraph();
@@ -240,6 +308,12 @@ export function markdownToHtml(markdown: string): string {
         mermaidDivPlaceholders.push({ placeholder, content: match });
         mermaidDivIndex++;
         return placeholder;
+    });
+
+    // Restore extracted tables BEFORE inline formatting so **bold**/links and
+    // inline code inside table cells are still converted.
+    tableBlocks.forEach(({ placeholder, html: tableHtml }) => {
+        html = html.replace(placeholder, tableHtml);
     });
 
     // Process inline markdown in the HTML

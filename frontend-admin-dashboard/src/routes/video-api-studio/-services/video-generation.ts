@@ -26,7 +26,11 @@ export type VideoStatusType =
     | 'COMPLETED'
     | 'FAILED'
     | 'STALLED'
-    | 'CANCELLED';
+    | 'CANCELLED'
+    // Assist mode: paused at a decision gate, waiting on the user. The pending
+    // decision lives in metadata.assist.pending_decision (mirrored to the
+    // top-level pending_decision field on /status).
+    | 'AWAITING_INPUT';
 
 export type VoiceGender = 'female' | 'male';
 export type TtsProvider = 'standard' | 'premium';
@@ -202,7 +206,18 @@ export interface VisualPreferences {
      * forbids KINETIC_TEXT and the per-shot HTML caps headline word count.
      */
     text_density?: TextDensity | null;
+    /**
+     * Overall visual aesthetic for the whole video (overrides auto-detection).
+     * `educational` = clean flat "whiteboard" look; `marketing` = premium
+     * modern brand-film look (depth, motion, finishing, keywords-only text);
+     * `bold` = marketing + high-energy social-ad styling. `null`/`auto` =
+     * auto-detect from content (marketing/product → marketing, else educational).
+     */
+    visual_style_mode?: VisualStyleMode | null;
 }
+
+/** Overall video aesthetic — see `visual_style_mode`. */
+export type VisualStyleMode = 'auto' | 'educational' | 'marketing' | 'bold';
 
 /** Ordered list of family slider keys — drives the Advanced Settings UI. */
 export const VISUAL_PREFERENCE_FAMILIES = [
@@ -213,7 +228,7 @@ export const VISUAL_PREFERENCE_FAMILIES = [
     { key: 'app_ui_mockup', label: 'App / device UI mockups' },
     { key: 'ai_video', label: 'AI-generated video (Veo)' },
 ] as const satisfies ReadonlyArray<{
-    key: keyof Omit<VisualPreferences, 'text_density'>;
+    key: keyof Omit<VisualPreferences, 'text_density' | 'visual_style_mode'>;
     label: string;
 }>;
 
@@ -493,6 +508,154 @@ export interface GenerateVideoRequest {
      * 'fal-ai/veo3.1/lite'. Currently the only supported value.
      */
     ai_video_model?: AiVideoModel;
+    // ── Assist mode (conversational, human-in-the-loop) ──────────────
+    /**
+     * When true, the pipeline pauses at enabled decision gates, emits a
+     * `decision_required` SSE event, and waits for the user to answer via
+     * POST /external/video/v1/decision/{videoId}. The new default in the UI;
+     * generalises the legacy review-mode. Default false = Auto mode.
+     */
+    assist_mode?: boolean;
+    /**
+     * Which gates pause when assist_mode is on. Subset of GateType. Omit for
+     * the default set (shot_plan, narration, visual_casting, shot_look).
+     */
+    assist_gates?: GateType[];
+    /** 'per_decision' (default) | 'batched'. */
+    assist_granularity?: string;
+}
+
+// ── Assist mode types (conversational decision gates) ────────────────────
+
+export type GateType =
+    | 'creative_concept'
+    | 'shot_plan'
+    | 'narration'
+    | 'visual_casting'
+    | 'shot_look'
+    | 'voice'
+    | 'music'
+    | 'avatar';
+
+export interface DecisionOption {
+    option_id: string;
+    label: string;
+    summary?: string;
+    is_recommended?: boolean;
+    /** Optional preview thumbnail for option cards. */
+    preview_url?: string;
+}
+
+/** A stock/AI media candidate shown in the visual-casting gate. */
+export interface VisualCastingCandidate {
+    candidate_id: string;
+    kind: 'image' | 'video';
+    url: string;
+    thumb?: string;
+    provider?: string | null;
+    width?: number | null;
+    height?: number | null;
+    duration?: number | null;
+    alt?: string | null;
+    is_recommended?: boolean;
+}
+
+/** One media slot to cast — a media query (often one per shot). */
+export interface VisualCastingGroup {
+    /** The search query the pipeline emitted (the forcing key). */
+    query: string;
+    kind: 'image' | 'video';
+    /** Shot this query belongs to, when known (for display). */
+    shot_index?: number;
+    candidates: VisualCastingCandidate[];
+    recommended_candidate_id?: string;
+}
+
+/**
+ * One editable shot row in the shot-plan / narration gates. Looser than
+ * ShotPlanItem because the BE summary uses `duration_estimate_s` (planner
+ * estimate) rather than the post-TTS `duration_s`.
+ */
+export type ShotPlanRow = Partial<ShotPlanItem> & {
+    shot_index: number;
+    narration_text?: string;
+    duration_estimate_s?: number;
+};
+
+/**
+ * Gate-specific structured payload the decision cards render. Loose union keyed
+ * by gate_type; cards narrow on `decision.gate_type`.
+ */
+export interface DecisionPayload {
+    /** shot_plan: editable compact shot rows. */
+    shots?: ShotPlanRow[];
+    /** narration: full concatenated script for the textarea fallback. */
+    full_script?: string;
+    /** creative_concept: the drafted creative direction. */
+    concept?: Record<string, unknown>;
+    /** visual_casting: candidate media for this shot (single-shot form). */
+    candidates?: VisualCastingCandidate[];
+    query?: string;
+    recommended_candidate_id?: string;
+    /** visual_casting (batched): one group per media query across the video. */
+    groups?: VisualCastingGroup[];
+    [key: string]: unknown;
+}
+
+/**
+ * The `decision_required` SSE event — the agent asking the user to resolve a
+ * gate. Also the shape stored in metadata.assist.pending_decision and surfaced
+ * via /status.pending_decision.
+ */
+export interface DecisionRequest {
+    type: 'decision_required';
+    video_id?: string;
+    decision_id: string;
+    gate_type: GateType;
+    /** Set for per-shot gates (visual_casting / shot_look). */
+    shot_index?: number | null;
+    /** The agent's question, rendered as a chat bubble. */
+    prompt: string;
+    options: DecisionOption[];
+    recommended_option_id?: string | null;
+    allow_freeform: boolean;
+    allow_edit: boolean;
+    created_at?: string;
+    expires_at?: string;
+    payload?: DecisionPayload;
+}
+
+/** The user's answer to a pending decision (POST /decision/{videoId} body's union). */
+export type DecisionAnswer =
+    | { kind: 'accept_recommended' }
+    | { kind: 'choose_option'; option_id: string }
+    | { kind: 'freeform'; text: string }
+    | { kind: 'auto' }
+    | { kind: 'auto_all' }
+    | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
+    | { kind: 'edit'; gate_type: 'creative_concept'; concept: Record<string, string> }
+    | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
+    | {
+          kind: 'edit';
+          gate_type: 'visual_casting';
+          // null candidate_id = "let AI decide" for that query. `query` is the
+          // backend forcing key; `url` is the chosen candidate's media URL.
+          selections: Array<{
+              query: string;
+              candidate_id: string | null;
+              url?: string;
+              shot_index?: number;
+          }>;
+      };
+
+/** One resolved turn in the assist conversation transcript (FE-only state). */
+export interface AssistTurn {
+    decision_id: string;
+    gate_type: GateType;
+    prompt: string;
+    /** Human summary of what the user answered (rendered in the transcript). */
+    answer_summary: string;
+    answered_at: number;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────
@@ -775,7 +938,8 @@ export type SSEEvent =
     | CancelledEvent
     | SubStageEvent
     | ShotDoneEvent
-    | ShotErrorEvent;
+    | ShotErrorEvent
+    | DecisionRequest;
 
 export interface TokenUsage {
     prompt_tokens: number;
@@ -1051,6 +1215,12 @@ export interface VideoStatusResponse {
      * post-restart and history reads. Absent for legacy v1/v2 runs.
      */
     live?: VideoLiveProgress | null;
+    /**
+     * Assist mode: the pending decision the run is paused on. Set only while
+     * status === 'AWAITING_INPUT'. Convenience mirror of
+     * metadata.assist.pending_decision so polling can rehydrate the card.
+     */
+    pending_decision?: DecisionRequest | null;
 }
 
 /**
@@ -1642,6 +1812,175 @@ export function resumeVideo(
         });
 
     return { abort: () => controller.abort() };
+}
+
+// ---------------------------------------------------------------------------
+// Assist mode — answer a pending decision gate and resume
+// ---------------------------------------------------------------------------
+
+/** Map a typed FE answer into the backend /decision body's {mode, answer}. */
+export function decisionAnswerToBody(
+    decisionId: string,
+    gateType: GateType,
+    answer: DecisionAnswer
+): { decision_id: string; gate_type: GateType; mode: string; answer: Record<string, unknown> } {
+    let mode = 'select';
+    let payload: Record<string, unknown> = {};
+    switch (answer.kind) {
+        case 'accept_recommended':
+            mode = 'select';
+            break;
+        case 'choose_option':
+            mode = 'select';
+            payload = { selected_option_id: answer.option_id };
+            break;
+        case 'freeform':
+            mode = 'freeform';
+            payload = { text: answer.text };
+            break;
+        case 'auto':
+            mode = 'auto';
+            break;
+        case 'auto_all':
+            mode = 'auto_all';
+            break;
+        case 'edit':
+            mode = 'edit';
+            if (answer.gate_type === 'shot_plan') {
+                payload = { shots: answer.shots };
+            } else if (answer.gate_type === 'narration') {
+                payload = { full_script: answer.modified_script, shots: answer.shots };
+            } else if (answer.gate_type === 'creative_concept') {
+                payload = { concept: answer.concept };
+            } else {
+                payload = { selections: answer.selections };
+            }
+            break;
+    }
+    return { decision_id: decisionId, gate_type: gateType, mode, answer: payload };
+}
+
+/**
+ * Answer a pending assist-mode decision and resume generation. Mirrors
+ * resumeVideo's SSE reader — POSTs the answer to /decision/{videoId} and streams
+ * the next leg through the same onProgress handler (which gets `decision_required`
+ * again at the next gate, or `completed` at the end).
+ */
+export function submitDecision(
+    videoId: string,
+    decisionId: string,
+    gateType: GateType,
+    answer: DecisionAnswer,
+    apiKey: string,
+    onProgress: (event: SSEEvent) => void,
+    onError: (error: Error) => void
+): { abort: () => void } {
+    const controller = new AbortController();
+    const body = decisionAnswerToBody(decisionId, gateType, answer);
+
+    fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/decision/${encodeURIComponent(videoId)}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Institute-Key': apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+    })
+        .then(async (response) => {
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => response.statusText);
+                if (response.status === 402) {
+                    const err = new Error(
+                        (() => {
+                            try {
+                                return JSON.parse(errorText).detail;
+                            } catch {
+                                return errorText || 'Insufficient credits';
+                            }
+                        })()
+                    );
+                    err.name = 'InsufficientCreditsError';
+                    throw err;
+                }
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('No response body');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (!jsonStr) continue;
+                        try {
+                            onProgress(JSON.parse(jsonStr) as SSEEvent);
+                        } catch (e) {
+                            console.warn('SSE parse error:', e, 'Line:', line);
+                        }
+                    }
+                }
+            }
+        })
+        .catch((error) => {
+            if (error.name !== 'AbortError') {
+                onError(error);
+            }
+        });
+
+    return { abort: () => controller.abort() };
+}
+
+/**
+ * On-demand stock search for the visual-casting card — when the AI's candidates
+ * don't fit, the user can re-search with their own terms. Returns candidates in
+ * the same shape the gate emits.
+ */
+export async function searchStock(
+    kind: 'image' | 'video',
+    query: string,
+    apiKey: string,
+    orientation: 'landscape' | 'portrait' = 'landscape'
+): Promise<VisualCastingCandidate[]> {
+    try {
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/stock/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Institute-Key': apiKey },
+            body: JSON.stringify({ kind, query, orientation }),
+        });
+        if (!res.ok) return [];
+        const data = (await res.json()) as { candidates?: VisualCastingCandidate[] };
+        return data.candidates ?? [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Pull the pending decision out of a /status response (polling rehydration).
+ * Reads the top-level convenience mirror first, then metadata.assist. Returns
+ * null when the run isn't paused at a gate.
+ */
+export function readAwaitingDecisionFromStatus(
+    status: VideoStatusResponse | VideoUrls | null | undefined
+): DecisionRequest | null {
+    if (!status) return null;
+    const top = (status as { pending_decision?: DecisionRequest | null }).pending_decision;
+    if (top && top.decision_id) return top;
+    const assist = (status as { metadata?: { assist?: { pending_decision?: DecisionRequest | null } } | null })
+        .metadata?.assist?.pending_decision;
+    if (assist && assist.decision_id) return assist;
+    return null;
 }
 
 /**

@@ -33,6 +33,7 @@ import {
 } from '../../-services/custom-team-services';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 // Local sub-org helpers mirroring create-sub-org-modal.tsx — kept inline so this
 // modal's lookups don't accidentally pick up the rest of the dashboard's
@@ -531,7 +532,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                                                     const priceLabel =
                                                         o.type === 'FREE' || !plan
                                                             ? ''
-                                                            : ` — ${plan.actual_price} ${plan.currency || ''}`;
+                                                            : ` — ${formatPlanPrice(plan.actual_price)} ${plan.currency || ''}`;
                                                     return (
                                                         <SelectItem key={o.id} value={o.id}>
                                                             {o.name} ({o.type}){priceLabel}

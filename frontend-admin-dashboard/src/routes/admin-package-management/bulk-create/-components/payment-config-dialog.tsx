@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { PaymentConfig, PaymentType, PaymentOptionItem } from '../-types/bulk-create-types';
 import { currencyOptions } from '@/routes/settings/-constants/payments';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 interface PaymentConfigDialogProps {
     open: boolean;
@@ -124,7 +125,7 @@ export function PaymentConfigDialog({
                                                 <span className="text-xs text-neutral-500">
                                                     {option.type} -{' '}
                                                     {option.price
-                                                        ? `${option.currency} ${option.price}`
+                                                        ? `${option.currency} ${formatPlanPrice(option.price)}`
                                                         : 'Free'}
                                                 </span>
                                             </div>
@@ -141,7 +142,7 @@ export function PaymentConfigDialog({
                                     {selectedPaymentOption.price && (
                                         <p className="text-neutral-600">
                                             Price: {selectedPaymentOption.currency}{' '}
-                                            {selectedPaymentOption.price}
+                                            {formatPlanPrice(selectedPaymentOption.price)}
                                         </p>
                                     )}
                                 </div>

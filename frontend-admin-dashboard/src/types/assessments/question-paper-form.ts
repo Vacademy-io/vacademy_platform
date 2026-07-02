@@ -64,6 +64,9 @@ export interface MyCodingTestCase {
     label?: string;
     stdin: string;
     expectedStdout: string;
+    // Optional acceptable outputs; pass if output matches any. Absent ⇒
+    // [expectedStdout]. acceptedOutputs[0] is kept === expectedStdout.
+    acceptedOutputs?: string[];
     visible: boolean;
 }
 

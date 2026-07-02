@@ -12,10 +12,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { MyButton } from '@/components/design-system/button';
+import { SearchableSelect } from '@/components/design-system/searchable-select';
+import { CheckCircle, Clock, Brain, ChartLineUp, Trophy, Export } from '@phosphor-icons/react';
+import { METRIC_INFO } from '../metricInfo';
+import { ReportHeader, MetricCard, SectionCard } from '../reportUi';
 import { LineChartComponent } from './lineChart';
 import { MyTable } from '@/components/design-system/table';
 import { useMutation } from '@tanstack/react-query';
-import { fetchBatchReport, fetchLeaderboardData, exportBatchReport } from '../../-services/utils';
+import { fetchBatchReport, fetchLeaderboardData } from '../../-services/utils';
+import { resolveInstituteLogoUrl } from '../live/-utils/instituteLogo';
+import { exportBatchLearningPdf } from '../../-utils/exportLearningPdf';
 import {
     DailyLearnerTimeSpent,
     BatchReportResponse,
@@ -88,11 +94,12 @@ export default function TimelineReports() {
     const [totalPage, setTotalPage] = useState<number>(0);
     const [appliedDateRange, setAppliedDateRange] = useState<{start: string, end: string} | null>(null);
     const [defaultSessionLevels, setDefaultSessionLevels] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
 
     const selectRef = useRef<HTMLDivElement | null>(null);
 
     const {
-        register,
         handleSubmit,
         setValue,
         watch,
@@ -129,9 +136,16 @@ export default function TimelineReports() {
             setValue('level', '');
             setLevelList([]);
         } else if (selectedCourse && selectedSession) {
-            setLevelList(
-                getLevelsFromPackage2({ courseId: selectedCourse, sessionId: selectedSession })
-            );
+            const levels = getLevelsFromPackage2({
+                courseId: selectedCourse,
+                sessionId: selectedSession,
+            });
+            setLevelList(levels);
+            // Auto-select when the session exposes exactly one (real) level.
+            if (selectedSession !== 'DEFAULT' && levels.length === 1 && levels[0]) {
+                setValue('level', levels[0].id);
+                clearErrors('level');
+            }
         }
     }, [selectedSession]);
     useEffect(() => {
@@ -141,9 +155,16 @@ export default function TimelineReports() {
             setDefaultSessionLevels(true);
         } else {
             setDefaultSessionLevels(false);
-            setValue('session', 'select level');
-            selectRef.current = null;
-            setValue('level', 'select level');
+            const onlySession = sessionList?.length === 1 ? sessionList[0] : undefined;
+            if (onlySession) {
+                // Auto-select when the course has exactly one (real) session.
+                setValue('session', onlySession.id);
+                clearErrors('session');
+            } else {
+                setValue('session', 'select level');
+                selectRef.current = null;
+                setValue('level', 'select level');
+            }
         }
     }, [sessionList]);
 
@@ -171,37 +192,35 @@ export default function TimelineReports() {
         );
     }, [currPage]);
 
-    const getBatchReportDataPDF = useMutation({
-        mutationFn: () =>
-            exportBatchReport({
-                startDate: appliedDateRange?.start || startDate || '',
-                endDate: appliedDateRange?.end || endDate || '',
-                packageSessionId:
-                    getPackageSessionId({
-                        courseId: selectedCourse || '',
-                        sessionId: selectedSession || '',
-                        levelId: selectedLevel || '',
-                    }) || '',
-                userId: '',
-            }),
-        onSuccess: async (response) => {
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `batch_report.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Batch Report PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getBatchReportDataPDF.mutate();
+    const handleExportPDF = async () => {
+        if (!reportData) return;
+        setIsExporting(true);
+        try {
+            const logoUrl = await resolveInstituteLogoUrl(instituteDetails?.institute_logo_file_id);
+            await exportBatchLearningPdf(
+                {
+                    instituteName: instituteDetails?.institute_name || 'Vacademy',
+                    logoUrl,
+                    courseName: courseList.find((c) => c.id === selectedCourse)?.name || '',
+                    dateRange: `${dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')} — ${dayjs(
+                        appliedDateRange?.end || endDate
+                    ).format('DD MMM YYYY')}`,
+                },
+                reportData,
+                (leaderboardData ?? []).map((l) => ({
+                    rank: l.rank,
+                    full_name: l.full_name,
+                    avg_concentration: l.avg_concentration,
+                    daily_avg_time: l.daily_avg_time,
+                    total_time: l.total_time,
+                }))
+            );
+            toast.success('Batch report exported');
+        } catch {
+            toast.error('Failed to export PDF');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const onSubmit = (data: FormValues) => {
@@ -320,7 +339,6 @@ export default function TimelineReports() {
         mutationFn: fetchLeaderboardData,
     });
     const { isPending, error } = leaderboardMutation;
-    const isExporting = getBatchReportDataPDF.isPending;
 
     return (
         <div className="space-y-6">
@@ -334,27 +352,23 @@ export default function TimelineReports() {
                                 {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                                 <span className="text-red-500 ml-1">*</span>
                             </label>
-                            <Select
-                                onValueChange={(value) => setValue('course', value)}
-                                {...register('course')}
-                                defaultValue=""
-                            >
-                                <SelectTrigger className="h-9 text-sm">
-                                    <SelectValue
-                                        placeholder={`Select a ${getTerminology(
-                                            ContentTerms.Course,
-                                            SystemTerms.Course
-                                        )}`}
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {courseList.map((course) => (
-                                        <SelectItem key={course.id} value={course.id}>
-                                            {convertCapitalToTitleCase(course.name)}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                options={courseList.map((course) => ({
+                                    label: convertCapitalToTitleCase(course.name),
+                                    value: course.id,
+                                }))}
+                                value={selectedCourse}
+                                onChange={(value) => setValue('course', value)}
+                                placeholder={`Select a ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}`}
+                                searchPlaceholder={`Search ${getTerminology(
+                                    ContentTerms.Course,
+                                    SystemTerms.Course
+                                )}...`}
+                                triggerClassName="h-9 text-sm"
+                            />
                         </div>
 
                         {!defaultSessionLevels && (
@@ -471,177 +485,123 @@ export default function TimelineReports() {
             {reportData && !loading && (
                 <div className="space-y-6">
                     {/* Report Header */}
-                    <div className="bg-white rounded-lg border border-neutral-200 p-4 shadow-sm">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="space-y-2">
-                                <h3 className="text-lg font-semibold text-primary-600">
-                                    {courseList.find((c) => c.id === selectedCourse)?.name}
-                                </h3>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <span className="text-neutral-600">Duration:</span>
-                                    <span className="rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-black">
-                                        {dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')}
-                                    </span>
-                                    <span className="text-neutral-400">—</span>
-                                    <span className="rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-black">
-                                        {dayjs(appliedDateRange?.end || endDate).format('DD MMM YYYY')}
-                                    </span>
-                                </div>
-                            </div>
+                    <ReportHeader
+                        title={courseList.find((c) => c.id === selectedCourse)?.name || ''}
+                        chips={
+                            <>
+                                <span className="text-caption text-neutral-500">Duration:</span>
+                                <span className="rounded-md bg-primary-50 px-2 py-1 text-caption font-medium text-neutral-700">
+                                    {dayjs(appliedDateRange?.start || startDate).format('DD MMM YYYY')}
+                                </span>
+                                <span className="text-neutral-400">—</span>
+                                <span className="rounded-md bg-primary-50 px-2 py-1 text-caption font-medium text-neutral-700">
+                                    {dayjs(appliedDateRange?.end || endDate).format('DD MMM YYYY')}
+                                </span>
+                            </>
+                        }
+                        actions={
                             <MyButton
                                 buttonType="secondary"
                                 onClick={handleExportPDF}
-                                className="h-9 px-4 text-sm"
-                                disabled={isExporting}
+                                disable={isExporting}
+                                className="h-9 px-4 text-body"
                             >
-                                {isExporting ? (
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-3 w-3 animate-spin rounded-full border border-neutral-300 border-t-primary-500"></div>
-                                        <span>Exporting...</span>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                        </svg>
-                                        Export PDF
-                                    </>
-                                )}
+                                <Export className="mr-1.5 size-4" />
+                                {isExporting ? 'Exporting…' : 'Export PDF'}
                             </MyButton>
-                        </div>
-                    </div>
+                        }
+                    />
                     
-                    {/* Stats Cards - Improved Design */}
+                    {/* KPI cards */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        {getTerminology(ContentTerms.Course, SystemTerms.Course)} Completed by batch
-                                    </h4>
-                                    <p className="text-2xl font-bold text-primary-600">
-                                        {`${formatToTwoDecimalPlaces(
-                                            reportData?.percentage_course_completed
-                                        )}%`}
-                                    </p>
-                                </div>
-                                <div className="rounded-full bg-primary-100 p-3">
-                                    <svg className="h-6 w-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        Daily Time Spent (Avg)
-                                    </h4>
-                                    <p className="text-2xl font-bold text-primary-600">
-                                        {convertMinutesToTimeFormat(reportData?.avg_time_spent_in_minutes)}
-                                    </p>
-                                </div>
-                                <div className="rounded-full bg-blue-100 p-3">
-                                    <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="bg-white rounded-lg border border-neutral-200 p-6 shadow-sm sm:col-span-2 lg:col-span-1">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-medium text-neutral-600">
-                                        Concentration Score (Avg)
-                                    </h4>
-                                    <p className="text-2xl font-bold text-primary-600">
-                                        {`${formatToTwoDecimalPlaces(
-                                            reportData?.percentage_concentration_score || 0
-                                        )}%`}
-                                    </p>
-                                </div>
-                                <div className="rounded-full bg-green-100 p-3">
-                                    <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
+                        <MetricCard
+                            tone="success"
+                            label={`${getTerminology(ContentTerms.Course, SystemTerms.Course)} Completed`}
+                            value={`${formatToTwoDecimalPlaces(reportData?.percentage_course_completed)}%`}
+                            sub="across the batch"
+                            info={METRIC_INFO.courseCompleted}
+                            icon={<CheckCircle className="size-5" weight="duotone" />}
+                        />
+                        <MetricCard
+                            tone="primary"
+                            label="Daily Time Spent (Avg)"
+                            value={convertMinutesToTimeFormat(reportData?.avg_time_spent_in_minutes ?? 0)}
+                            info={METRIC_INFO.timeSpentAvg}
+                            icon={<Clock className="size-5" weight="duotone" />}
+                        />
+                        <MetricCard
+                            tone="warning"
+                            label="Concentration Score (Avg)"
+                            value={`${formatToTwoDecimalPlaces(reportData?.percentage_concentration_score || 0)}%`}
+                            info={METRIC_INFO.concentration}
+                            icon={<Brain className="size-5" weight="duotone" />}
+                        />
                     </div>
                     
-                    {/* Daily Learning Performance - Improved Responsive Layout */}
-                    <div className="bg-white rounded-lg border border-neutral-200 shadow-sm">
-                        <div className="border-b border-neutral-200 p-6">
-                            <h3 className="text-lg font-semibold text-primary-600">Daily Learning Performance</h3>
-                            <p className="text-sm text-neutral-600 mt-1">Track daily progress and activity patterns</p>
-                        </div>
-                        
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                                {/* Chart Section - Takes 2/3 on large screens */}
-                                <div className="lg:col-span-2">
-                                    <div className="min-h-[500px] h-auto w-full overflow-visible rounded-lg border border-neutral-200 bg-white">
-                                        <div className="w-full p-6">
-                                            <LineChartComponent
-                                                chartData={convertChartData(reportData.daily_time_spent)}
+                    {/* Daily learning performance */}
+                    <SectionCard
+                        title="Daily Learning Performance"
+                        subtitle="Track daily progress and activity patterns"
+                        icon={<ChartLineUp className="size-4" />}
+                    >
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                            <div className="lg:col-span-2">
+                                <div className="h-auto w-full overflow-visible rounded-lg border border-neutral-200 bg-white">
+                                    <div className="w-full p-4">
+                                        <LineChartComponent
+                                            chartData={convertChartData(reportData.daily_time_spent)}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="lg:col-span-1">
+                                <div className="rounded-lg bg-neutral-50 p-4">
+                                    <h4 className="mb-4 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                        Activity Summary
+                                    </h4>
+                                    <div className="h-96 overflow-auto">
+                                        <div className="!min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
+                                            <MyTable
+                                                data={tableData}
+                                                columns={activityLogColumns}
+                                                isLoading={isPending}
+                                                error={error}
+                                                currentPage={0}
+                                                scrollable={true}
+                                                className="!h-full"
                                             />
                                         </div>
                                     </div>
                                 </div>
-                                
-                                {/* Table Section - Takes 1/3 on large screens, full width on mobile */}
-                                <div className="lg:col-span-1">
-                                    <div className="bg-neutral-50 rounded-lg p-4 min-h-[500px]">
-                                        <h4 className="text-sm font-medium text-neutral-700 mb-4">Activity Summary</h4>
-                                        <div className="h-[450px] overflow-auto">
-                                            <div className="!min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
-                                                <MyTable
-                                                    data={tableData}
-                                                    columns={activityLogColumns}
-                                                    isLoading={isPending}
-                                                    error={error}
-                                                    currentPage={0}
-                                                    scrollable={true}
-                                                    className="!h-full"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
-                    </div>
+                    </SectionCard>
                     
-                    {/* Leaderboard - Improved Layout */}
-                    <div className="bg-white rounded-lg border border-neutral-200 shadow-sm">
-                        <div className="border-b border-neutral-200 p-6">
-                            <h3 className="text-lg font-semibold text-primary-600">Leaderboard</h3>
-                            <p className="text-sm text-neutral-600 mt-1">Top performing students in the batch</p>
+                    {/* Leaderboard */}
+                    <SectionCard
+                        title="Leaderboard"
+                        subtitle="Top performing students in the batch"
+                        icon={<Trophy className="size-4" />}
+                        info={METRIC_INFO.leaderboard}
+                    >
+                        <div className="w-full overflow-hidden">
+                            <MyTable
+                                data={leaderBoardData}
+                                columns={leaderBoardColumns}
+                                isLoading={isPending}
+                                error={error}
+                                currentPage={0}
+                                className="w-full !min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_thead]:!w-full [&_tbody]:!w-full [&_tr]:!w-full [&_th]:!px-4 [&_td]:!px-4"
+                            />
                         </div>
-                        
-                        <div className="p-6">
-                            <div className="w-full overflow-hidden">
-                                <MyTable
-                                    data={leaderBoardData}
-                                    columns={leaderBoardColumns}
-                                    isLoading={isPending}
-                                    error={error}
-                                    currentPage={0}
-                                    className="w-full !min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_thead]:!w-full [&_tbody]:!w-full [&_tr]:!w-full [&_th]:!px-4 [&_td]:!px-4"
-                                />
-                            </div>
-                            <div className="mt-6 flex justify-center">
-                                <MyPagination
-                                    currentPage={currPage}
-                                    totalPages={totalPage}
-                                    onPageChange={setCurrPage}
-                                />
-                            </div>
+                        <div className="mt-6 flex justify-center">
+                            <MyPagination
+                                currentPage={currPage}
+                                totalPages={totalPage}
+                                onPageChange={setCurrPage}
+                            />
                         </div>
-                    </div>
+                    </SectionCard>
                 </div>
             )}
         </div>

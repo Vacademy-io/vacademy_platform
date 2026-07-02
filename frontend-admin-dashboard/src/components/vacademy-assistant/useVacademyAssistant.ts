@@ -9,6 +9,7 @@ import {
     ASSISTANT_SESSION_STREAM,
     ASSISTANT_SESSION_CLOSE,
 } from '@/constants/urls';
+import { useSelectedStudentMirrorStore } from '@/stores/assistant/selected-student-mirror';
 import type {
     AssistantErrorData,
     AssistantMessage,
@@ -50,6 +51,19 @@ function parseSseBuffer(buffer: string): { frames: StreamFrame[]; rest: string }
 const CREDITS_EXHAUSTED_MSG =
     'AI credits are exhausted for your institute. Please add credits to keep using the assistant.';
 const GENERIC_ERROR_MSG = 'Could not reach the assistant. Please try again in a moment.';
+
+/**
+ * Current page context sent with every message so the assistant can resolve
+ * "this student" (route + the student open in the side view / profile overlay).
+ * Read non-reactively at send time — always the state at the moment of asking.
+ */
+function getPageContext(): Record<string, unknown> {
+    const student = useSelectedStudentMirrorStore.getState().student;
+    return {
+        route: typeof window !== 'undefined' ? window.location.pathname : '',
+        ...(student ? { selected_student: student } : {}),
+    };
+}
 
 /**
  * Drives one Vacademy Assistant conversation: creates/reuses a session, posts
@@ -189,16 +203,19 @@ export function useVacademyAssistant() {
             setStatus('connecting');
 
             try {
+                const contextMeta = getPageContext();
                 let sessionId = sessionIdRef.current;
                 if (!sessionId) {
                     const resp = await authenticatedAxiosInstance.post(ASSISTANT_SESSION_INIT, {
                         initial_message: trimmed,
+                        context_meta: contextMeta,
                     });
                     sessionId = resp.data?.session_id ?? null;
                     sessionIdRef.current = sessionId;
                 } else {
                     await authenticatedAxiosInstance.post(ASSISTANT_SESSION_MESSAGE(sessionId), {
                         message: trimmed,
+                        context_meta: contextMeta,
                     });
                 }
 

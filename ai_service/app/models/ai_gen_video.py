@@ -61,7 +61,13 @@ class AiGenVideo(Base):
     Tracks AI-generated video creation progress and associated files.
     
     Stages: PENDING -> SCRIPT -> TTS -> WORDS -> HTML -> RENDER -> COMPLETED
-    Status: PENDING, IN_PROGRESS, COMPLETED, FAILED
+    Status: PENDING, IN_PROGRESS, COMPLETED, FAILED, CANCELLED, AWAITING_INPUT
+
+    AWAITING_INPUT (assist mode): the pipeline paused at a decision gate and is
+    waiting on the user. The pending decision + answer ledger live in
+    extra_metadata.assist; the leg ended cleanly (no failure, no refund). The
+    /decision endpoint records the answer and resumes. Treated like IN_PROGRESS
+    by /urls (never re-labeled STALLED) so a human-waiting video isn't reaped.
     """
     __tablename__ = "ai_gen_video"
     

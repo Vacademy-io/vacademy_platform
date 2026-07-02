@@ -492,9 +492,22 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             @Param("providerAlt") String providerAlt);
 
     /**
-     * Used by the hourly provider sync scheduler.
+     * Used by the hourly provider sync scheduler (Google Meet + Zoom).
      * Returns schedules that have a provider meeting ID set for the given provider
      * and whose recordings haven't been synced recently.
+     *
+     * <p>The "occurrence has ended" gate is judged in the session's OWN timezone via the
+     * {@code AT TIME ZONE COALESCE(NULLIF(ls.timezone, ''), 'Asia/Kolkata')} idiom used
+     * elsewhere in this file. An earlier bare-UTC {@code CURRENT_DATE}/{@code CURRENT_TIME}
+     * form delayed a same-day IST-evening session by ~5.5h (until the UTC clock caught up).
+     *
+     * <p>WARNING: keep the query BODY's single quotes balanced and add NO in-body SQL
+     * comments. Spring Data's SpelQueryContext.QuotationMap scans the whole native query for
+     * single-quote pairs and does NOT skip {@code --} comments, so a stray apostrophe (e.g. the
+     * word "session-s" written with an apostrophe inside a comment) opens a quoted range that
+     * never closes and aborts context startup with "starts a quoted range ... but never ends it".
+     * (Verified against StringQuery/QuotationMap 3.2.4.) Put explanations here in the Javadoc,
+     * never inside the query string.
      */
     @Query(value = """
                 SELECT ss.* FROM session_schedules ss
@@ -508,8 +521,13 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
                       OR (ss.provider_recordings_json IS NOT NULL AND ss.provider_recordings_json LIKE '%"playbackUrl":null%')
                   )
                   AND (
-                      ss.meeting_date < CURRENT_DATE
-                      OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)
+                      (ss.last_entry_time IS NOT NULL
+                       AND CAST((ss.meeting_date + ss.last_entry_time) AS TIMESTAMP)
+                           < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(ls.timezone, ''), 'Asia/Kolkata')) AS TIMESTAMP))
+                      OR
+                      (ss.last_entry_time IS NULL
+                       AND ss.meeting_date
+                           < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(ls.timezone, ''), 'Asia/Kolkata')) AS DATE))
                   )
             """, nativeQuery = true)
     List<SessionSchedule> findNeedingRecordingSync(

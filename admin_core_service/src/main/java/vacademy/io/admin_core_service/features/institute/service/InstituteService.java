@@ -45,6 +45,22 @@ public class InstituteService {
         return instituteRepository.searchByQuery(searchName);
     }
 
+    /**
+     * Internal: rename an institute (used by the onboarding/demo-management flow in
+     * community-service so a prospect sees the updated branding inside the live demo).
+     * Only non-blank values are applied.
+     */
+    @Transactional
+    public InstituteInfoDTO updateInstituteProfile(String instituteId, String instituteName) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found"));
+        if (instituteName != null && !instituteName.isBlank()) {
+            institute.setInstituteName(instituteName.trim());
+        }
+        instituteRepository.save(institute);
+        return getInstituteById(instituteId);
+    }
+
     @Transactional(readOnly = true)
     public Map<String, String> getInstituteBranding(String instituteId) {
         Institute institute = instituteRepository.findById(instituteId)

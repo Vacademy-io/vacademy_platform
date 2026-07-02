@@ -181,6 +181,10 @@ public class AudienceService {
     @Autowired
     private LeadFollowupRepository leadFollowupRepository;
 
+    /** Synthesizes / detects non-deliverable placeholder emails for emailless webhook leads. */
+    @Autowired
+    private PlaceholderEmailService placeholderEmailService;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -537,6 +541,12 @@ public class AudienceService {
             logger.error("Catalogue lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
         }
 
+        // Pool auto-assignment — catalogue leads carry no counsellor, so this is pure pool
+        // routing (previously catalogue leads never got an owner).
+        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+                null, null, createdUser != null ? createdUser.getFullName() : null,
+                audience.getCampaignName());
+
         return savedResponse.getId();
     }
 
@@ -653,52 +663,13 @@ public class AudienceService {
                     // Non-blocking — lead is still saved even if scoring fails
                 }
 
-                // 3c. Counselor assignment. A manually supplied counsellor (e.g. a CSV bulk
-                // import that carries a lead owner per row) takes precedence and is written
-                // straight to user_lead_profile.assigned_counselor_id/name. Otherwise we fall
-                // back to pool auto-assignment: if the audience belongs to a pool, the pool's
-                // mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this lead.
-                // MANUAL pools and audiences not in any pool return Optional.empty() and we
-                // leave the lead unassigned. The full_name lookup mirrors what the manual-assign
-                // UI does so the Counsellor column renders the name (the UI checks
-                // assigned_counselor_name; an id-without-name shows up as Unassigned).
-                // Non-blocking — submission still succeeds if routing fails.
-                final String leadUserIdForAssignment = userId;
-                final String instituteIdForAssignment = instituteId;
-                if (StringUtils.hasText(requestDTO.getCounsellorId())) {
-                    try {
-                        assignManualCounsellor(
-                                leadUserIdForAssignment, instituteIdForAssignment,
-                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
-                                userForNotification.getFullName(), audience.getCampaignName());
-                    } catch (Exception e) {
-                        logger.error("Failed to assign manual counsellor for response {}: {}",
-                                savedResponse.getId(), e.getMessage());
-                    }
-                } else {
-                    try {
-                        counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
-                                .ifPresent(counselorUserId -> {
-                                    String counselorName = null;
-                                    try {
-                                        List<UserDTO> fetched = authService
-                                                .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
-                                        if (!fetched.isEmpty() && fetched.get(0) != null) {
-                                            counselorName = fetched.get(0).getFullName();
-                                        }
-                                    } catch (Exception nameLookupFailure) {
-                                        logger.warn("Could not fetch counselor name for {}: {}",
-                                                counselorUserId, nameLookupFailure.getMessage());
-                                    }
-                                    userLeadProfileService.assignCounselor(
-                                            leadUserIdForAssignment, instituteIdForAssignment,
-                                            counselorUserId, counselorName);
-                                });
-                    } catch (Exception e) {
-                        logger.error("Failed to auto-assign counselor for response {}: {}",
-                                savedResponse.getId(), e.getMessage());
-                    }
-                }
+                // 3c. Counsellor assignment — manual owner wins (e.g. a CSV bulk import that
+                // carries a lead owner per row), otherwise pool auto-assignment. Centralised in
+                // autoAssignCounsellorOnIntake so every pool-routed channel shares one
+                // implementation. Non-blocking — submission still succeeds if routing fails.
+                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                        requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                        userForNotification.getFullName(), audience.getCampaignName());
 
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -966,6 +937,62 @@ public class AudienceService {
     }
 
     /**
+     * Pool-based counsellor assignment for a freshly-created lead — the single place every
+     * pool-routed intake path (manual / audience-side submit, course-catalogue, v2, and all
+     * form webhooks incl. Facebook/Meta) calls, so a new lead channel only has to invoke this
+     * one method to get an owner. A manually supplied counsellor wins; otherwise we fall back
+     * to the campaign's counselor pool (ROUND_ROBIN / TIME_BASED). Audiences not in any pool,
+     * or MANUAL pools, leave the lead unassigned. All failures are swallowed — assignment must
+     * never break lead intake.
+     *
+     * NOTE: enquiry / walk-in leads use a SEPARATE assignment system ({@code linkCounsellorToEnquiry}
+     * → LinkedUsers + enquiry flag) and must NOT call this, or they'd be double-assigned.
+     * This helper is an interim de-duplication step; the fuller refactor is a single
+     * LeadIntakeService that owns save + score + assign so a channel can't forget to call it.
+     */
+    private void autoAssignCounsellorOnIntake(AudienceResponse savedResponse, String leadUserId,
+            String instituteId, String manualCounsellorId, String manualCounsellorName,
+            String leadFullName, String campaignName) {
+        if (savedResponse == null || !StringUtils.hasText(leadUserId)) {
+            return;
+        }
+        // Manual counsellor (e.g. a CSV import or a form that carries a chosen owner) wins.
+        if (StringUtils.hasText(manualCounsellorId)) {
+            try {
+                assignManualCounsellor(leadUserId, instituteId, manualCounsellorId,
+                        manualCounsellorName, leadFullName, campaignName);
+            } catch (Exception e) {
+                logger.error("Failed to assign manual counsellor for response {}: {}",
+                        savedResponse.getId(), e.getMessage());
+            }
+            return;
+        }
+        // Pool auto-assignment. The name lookup mirrors the manual-assign UI so the Counsellor
+        // column renders a name (an id without a name shows up as Unassigned).
+        try {
+            counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                    .ifPresent(counselorUserId -> {
+                        String counselorName = null;
+                        try {
+                            List<UserDTO> fetched = authService
+                                    .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                            if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                counselorName = fetched.get(0).getFullName();
+                            }
+                        } catch (Exception nameLookupFailure) {
+                            logger.warn("Could not fetch counselor name for {}: {}",
+                                    counselorUserId, nameLookupFailure.getMessage());
+                        }
+                        userLeadProfileService.assignCounselor(
+                                leadUserId, instituteId, counselorUserId, counselorName);
+                    });
+        } catch (Exception e) {
+            logger.error("Failed to auto-assign counselor for response {}: {}",
+                    savedResponse.getId(), e.getMessage());
+        }
+    }
+
+    /**
      * Resolve an optional pipeline lead status key to a lead_status.id within the institute.
      * Returns null when the key is blank or no matching status exists for the institute, in
      * which case the lead is created without a pipeline status (unchanged prior behaviour).
@@ -1063,6 +1090,13 @@ public class AudienceService {
                             savedResponse.getId(), e.getMessage());
                     // Non-blocking
                 }
+
+                // 3c. Counsellor assignment — manual owner wins, else pool auto-assign.
+                // Same centralised path as v1 submitLead (v2 previously skipped assignment,
+                // so v2-submitted leads never got an owner).
+                autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                        requestDTO.getCounsellorId(), requestDTO.getCounsellorName(),
+                        createdUser.getFullName(), audience.getCampaignName());
 
                 // 4. Build custom field map for email (to pass to workflow)
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -2093,11 +2127,20 @@ public class AudienceService {
         // auth_service for matching user IDs first, then OR'ing them into the
         // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
         // CSV → predicate behaves exactly as before for non-search queries.
+        //
+        // We intentionally pass instituteId = null here. searchUserIdsByQuery scopes
+        // matches to users that hold a user_role for the institute, but lead/enquiry
+        // users are bare contacts with no role — passing the instituteId excluded
+        // every such user, so name/email/phone search returned 0 rows for leads whose
+        // identity lives only on the auth User. Broadening the auth lookup is safe:
+        // the returned IDs are intersected with ar.user_id, and audience_response is
+        // already institute-scoped (JOIN audience a ON a.institute_id = :instituteId),
+        // so no cross-institute lead can leak in.
         String searchUserIdsCsv = null;
         String rawSearch = filterDTO.getSearchQuery();
         if (rawSearch != null && !rawSearch.isBlank()) {
             try {
-                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, null);
                 if (ids != null && !ids.isEmpty()) {
                     searchUserIdsCsv = String.join(",", ids);
                 }
@@ -2150,6 +2193,7 @@ public class AudienceService {
                     filterDTO.getAssignedCounselorId(),
                     assignedCounselorIdsCsv,
                     includeUnassigned,
+                    filterDTO.getIsUnassigned(),
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -3154,10 +3198,27 @@ public class AudienceService {
 
         String instituteId = audience.getInstituteId();
 
-        // Extract email from processed data
+        // Extract email from processed data. Meta/Facebook lead forms (and some
+        // Google/Zoho forms) frequently have NO email field at all, or the admin
+        // never mapped one — historically this threw and the lead was silently
+        // dropped, so whole Meta-ads campaigns produced zero leads in our system.
+        // Instead, synthesize a deterministic placeholder email from the lead's
+        // name + phone so an auth account can still be created and the lead lands
+        // in Recent Leads. The address is non-deliverable by design (see
+        // PlaceholderEmailService) and is suppressed by every send path
+        // (respondent email, bulk blast, message variables, lead-status workflows),
+        // so it never bounces.
         String email = processedData.getEmail();
+        boolean emailSynthesized = false;
         if (!StringUtils.hasText(email)) {
-            throw new VacademyException("Email is required for form submission");
+            String platformLeadId = processedData.getMetadata() != null
+                    ? processedData.getMetadata().get("platform_lead_id")
+                    : null;
+            email = placeholderEmailService.synthesize(processedData.getFullName(),
+                    processedData.getPhone(), platformLeadId);
+            emailSynthesized = true;
+            logger.info("No email on {} lead for audience {} — synthesized placeholder {} from name+phone",
+                    formProvider, audienceId, email);
         }
 
         // 1. Create/fetch user from auth_service
@@ -3210,6 +3271,13 @@ public class AudienceService {
                     instituteId,
                     audienceId);
         }
+
+        // 3b. Pool auto-assignment. Webhook leads (Facebook/Meta Lead Ads, Google Lead Forms,
+        // Zoho, etc.) carry no counsellor, so this routes purely through the campaign's
+        // counselor pool. Centralised in autoAssignCounsellorOnIntake. Runs before the workflow
+        // trigger so downstream workflow nodes see an owned lead.
+        autoAssignCounsellorOnIntake(savedResponse, userId, instituteId,
+                null, null, createdUser.getFullName(), audience.getCampaignName());
 
         // 4. Build custom field map for workflow
         Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
@@ -3273,16 +3341,26 @@ public class AudienceService {
         contextData.put("responseId", savedResponse.getId());
         contextData.put("campaignName", audience.getCampaignName());
         contextData.put("formProvider", formProvider);
-        contextData.put("sendRespondentEmail",
-                audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+        // The standard AUDIENCE_LEAD_SUBMISSION workflow's SEND_EMAIL node sends one
+        // email per entry in respondentEmailRequests and does NOT separately read the
+        // sendRespondentEmail flag — so this LIST, not the flag, is what actually gates
+        // the respondent "thank you". Populate it EXACTLY as before for real emails (so
+        // existing campaigns — including those with sendRespondentEmail=false — are
+        // unchanged), and suppress it ONLY for synthesized placeholder addresses, which
+        // are non-deliverable and would bounce.
+        boolean wantRespondentEmail = audience.getSendRespondentEmail() == null
+                || audience.getSendRespondentEmail();
+        contextData.put("sendRespondentEmail", !emailSynthesized && wantRespondentEmail);
 
-        // Prepare respondent email request
+        // Prepare respondent email request (skipped only for synthesized placeholder emails)
         List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
-        Map<String, Object> respondentEmailRequest = new HashMap<>();
-        respondentEmailRequest.put("to", createdUser.getEmail());
-        respondentEmailRequest.put("subject", respondentEmailSubject);
-        respondentEmailRequest.put("body", respondentEmailBody);
-        respondentEmailRequests.add(respondentEmailRequest);
+        if (!emailSynthesized) {
+            Map<String, Object> respondentEmailRequest = new HashMap<>();
+            respondentEmailRequest.put("to", createdUser.getEmail());
+            respondentEmailRequest.put("subject", respondentEmailSubject);
+            respondentEmailRequest.put("body", respondentEmailBody);
+            respondentEmailRequests.add(respondentEmailRequest);
+        }
         contextData.put("respondentEmailRequests", respondentEmailRequests);
 
         // Prepare admin email requests
@@ -4354,8 +4432,16 @@ public class AudienceService {
                             || (userDTO != null && StringUtils.hasText(userDTO.getMobileNumber()));
                     break;
                 case "EMAIL":
-                    hasContact = StringUtils.hasText(resp.getParentEmail())
-                            || (userDTO != null && StringUtils.hasText(userDTO.getEmail()));
+                    // Resolve the address the same way the recipient builder does (parent
+                    // email first, else the user's email), then treat a synthesized
+                    // placeholder address as "no contact" — it is non-deliverable and must
+                    // never be included in a real EMAIL blast (it would bounce). WhatsApp /
+                    // PUSH still reach these leads via phone / userId.
+                    String emailContact = StringUtils.hasText(resp.getParentEmail())
+                            ? resp.getParentEmail()
+                            : (userDTO != null ? userDTO.getEmail() : null);
+                    hasContact = StringUtils.hasText(emailContact)
+                            && !placeholderEmailService.isPlaceholder(emailContact);
                     break;
                 case "PUSH":
                 case "SYSTEM_ALERT":
@@ -4436,6 +4522,12 @@ public class AudienceService {
                     String email = StringUtils.hasText(resp.getParentEmail())
                             ? resp.getParentEmail()
                             : (userDTO != null ? userDTO.getEmail() : null);
+                    // Defensive: the contact filter above already drops placeholder-only
+                    // leads, but never hand a synthesized non-deliverable address to the
+                    // sender even if reached another way.
+                    if (placeholderEmailService.isPlaceholder(email)) {
+                        email = null;
+                    }
                     recipientBuilder.email(email);
                     break;
                 case "PUSH":
@@ -4550,9 +4642,12 @@ public class AudienceService {
                             ? userDTO.getFullName()
                             : response.getParentName();
                 case "email":
-                    return userDTO != null && StringUtils.hasText(userDTO.getEmail())
+                    String resolvedEmail = userDTO != null && StringUtils.hasText(userDTO.getEmail())
                             ? userDTO.getEmail()
                             : response.getParentEmail();
+                    // Never surface a synthesized placeholder address into a message
+                    // variable/body (it's non-deliverable and meaningless to the lead).
+                    return placeholderEmailService.isPlaceholder(resolvedEmail) ? null : resolvedEmail;
                 case "mobile_number":
                     return userDTO != null && StringUtils.hasText(userDTO.getMobileNumber())
                             ? userDTO.getMobileNumber()

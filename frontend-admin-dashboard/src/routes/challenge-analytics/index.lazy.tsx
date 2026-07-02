@@ -22,6 +22,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { AnalyticsFilters } from './-components/AnalyticsFilters';
 import { KPICards } from './-components/KPICards';
 import { CenterHeatmap } from './-components/CenterHeatmap';
+import { FacebookLeads } from './-components/FacebookLeads';
 import { DailyParticipation } from './-components/DailyParticipation';
 import { ChurnAnalysis } from './-components/ChurnAnalysis';
 import { ReferralTracking } from './-components/ReferralTracking';
@@ -80,6 +81,10 @@ function ChallengeAnalyticsDashboard() {
     // Active tab
     const [activeTab, setActiveTab] = useState('overview');
 
+    // Global lead-source switch (top filter bar): 'zoho' shows the full challenge
+    // dashboard (tabs + KPIs); 'facebook' shows the Facebook leads view.
+    const [dataSource, setDataSource] = useState<'zoho' | 'facebook'>('zoho');
+
     useEffect(() => {
         setNavHeading(
             <div className="flex items-center gap-2">
@@ -105,7 +110,11 @@ function ChallengeAnalyticsDashboard() {
     const { data: heatmapData, isLoading: heatmapLoading } = useCenterHeatmap(
         startDate,
         endDate,
-        activeTab === 'centers' || activeTab === 'leaderboard'
+        // Needed for the Zoho Centers/Leaderboard tabs AND for the Facebook view
+        // (its center list is seeded from the Zoho-form campaign names).
+        dataSource === 'facebook' ||
+            activeTab === 'centers' ||
+            activeTab === 'leaderboard'
     );
 
     const leaderboardCustomFieldFilter =
@@ -146,6 +155,33 @@ function ChallengeAnalyticsDashboard() {
         100,
         activeTab === 'referral'
     );
+
+    // Facebook leads live in SOCIAL MEDIA campaigns (matched by LIKE '%SOCIAL%').
+    const { data: facebookCampaigns, isLoading: facebookCampaignsLoading } = useCampaigns(
+        'SOCIAL',
+        'ACTIVE',
+        0,
+        100,
+        dataSource === 'facebook'
+    );
+
+    // The canonical center list = the institute's Zoho-form (per-center) campaigns.
+    // Passed to the Facebook view so every center shows, even with zero FB leads.
+    const allCenterNames = useMemo(() => {
+        const EXCLUDED = new Set([
+            'REFERRAL',
+            'SOCIAL MEDIA',
+            'SOCIAL_MEDIA',
+            'OPT_OUT',
+            'OPT OUT',
+            'ORGANIC',
+            'WEBSITE',
+        ]);
+        return (heatmapData?.center_heatmap || [])
+            .filter((h) => !EXCLUDED.has((h.campaign_type || '').toUpperCase().trim()))
+            .map((h) => h.campaign_name)
+            .filter(Boolean);
+    }, [heatmapData]);
 
     // Templates list
     const templatesList = useMemo(() => templatesData?.days || [], [templatesData]);
@@ -242,7 +278,7 @@ function ChallengeAnalyticsDashboard() {
 
     if (templatesLoading) {
         return (
-            <div className="flex h-[60vh] items-center justify-center">
+            <div className="flex min-h-96 items-center justify-center">
                 <div className="text-center">
                     <DashboardLoader />
                     <p className="mt-4 text-sm text-gray-500">Loading analytics templates...</p>
@@ -273,51 +309,65 @@ function ChallengeAnalyticsDashboard() {
                     onTemplatesChange={setSelectedTemplates}
                     isLoading={isAnyLoading}
                     onRefresh={handleRefresh}
+                    source={dataSource}
+                    onSourceChange={setDataSource}
                 />
 
-                {/* KPI Cards */}
-                <KPICards
-                    activeUsers={kpiValues.activeUsers}
-                    totalUsersReached={kpiValues.totalUsersReached}
-                    totalMessages={kpiValues.totalMessages}
-                    completionRate={kpiValues.completionRate}
-                    responseRate={kpiValues.responseRate}
-                    totalDays={kpiValues.totalDays}
-                    isLoading={participationLoading}
-                />
+                {dataSource === 'facebook' ? (
+                    /* Facebook leads view — its own KPIs, per-center, funnel & explorer */
+                    <FacebookLeads
+                        startDate={startDate}
+                        endDate={endDate}
+                        campaigns={facebookCampaigns}
+                        campaignsLoading={facebookCampaignsLoading}
+                        allCenters={allCenterNames}
+                        enabled={dataSource === 'facebook'}
+                    />
+                ) : (
+                    <>
+                        {/* KPI Cards */}
+                        <KPICards
+                            activeUsers={kpiValues.activeUsers}
+                            totalUsersReached={kpiValues.totalUsersReached}
+                            totalMessages={kpiValues.totalMessages}
+                            completionRate={kpiValues.completionRate}
+                            responseRate={kpiValues.responseRate}
+                            totalDays={kpiValues.totalDays}
+                            isLoading={participationLoading}
+                        />
 
-                {/* Main Content Tabs */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:gap-1">
-                        <TabsTrigger value="overview" className="gap-2">
+                        {/* Main Content Tabs */}
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+                    <TabsList className="flex w-full justify-start gap-1 overflow-x-auto">
+                        <TabsTrigger value="overview" className="shrink-0 gap-2">
                             <ChartLineUp className="size-4" />
                             <span className="hidden sm:inline">Overview</span>
                         </TabsTrigger>
-                        <TabsTrigger value="centers" className="gap-2">
+                        <TabsTrigger value="centers" className="shrink-0 gap-2">
                             <MapPin className="size-4" />
                             <span className="hidden sm:inline">Centers</span>
                         </TabsTrigger>
-                        <TabsTrigger value="participation" className="gap-2">
+                        <TabsTrigger value="participation" className="shrink-0 gap-2">
                             <Users className="size-4" />
                             <span className="hidden sm:inline">Participation</span>
                         </TabsTrigger>
-                        <TabsTrigger value="churn" className="gap-2">
+                        <TabsTrigger value="churn" className="shrink-0 gap-2">
                             <Warning className="size-4" />
                             <span className="hidden sm:inline">Churn</span>
                         </TabsTrigger>
-                        <TabsTrigger value="referral" className="gap-2">
+                        <TabsTrigger value="referral" className="shrink-0 gap-2">
                             <Share className="size-4" />
                             <span className="hidden sm:inline">Referrals</span>
                         </TabsTrigger>
-                        <TabsTrigger value="leaderboard" className="gap-2">
+                        <TabsTrigger value="leaderboard" className="shrink-0 gap-2">
                             <Trophy className="size-4" />
                             <span className="hidden sm:inline">Leaderboard</span>
                         </TabsTrigger>
-                        <TabsTrigger value="cohort" className="gap-2">
+                        <TabsTrigger value="cohort" className="shrink-0 gap-2">
                             <GraduationCap className="size-4" />
                             <span className="hidden sm:inline">Completions</span>
                         </TabsTrigger>
-                        <TabsTrigger value="templates" className="gap-2">
+                        <TabsTrigger value="templates" className="shrink-0 gap-2">
                             <ChartBar className="size-4" />
                             <span className="hidden sm:inline">Templates</span>
                         </TabsTrigger>
@@ -384,16 +434,18 @@ function ChallengeAnalyticsDashboard() {
                         />
                     </TabsContent>
 
-                    {/* Cohort Tab */}
-                    <TabsContent value="cohort">
-                        <CompletionCohort
-                            data={cohortData}
-                            isLoading={cohortLoading}
-                            page={cohortPage}
-                            onPageChange={setCohortPage}
-                        />
-                    </TabsContent>
-                </Tabs>
+                            {/* Cohort Tab */}
+                            <TabsContent value="cohort">
+                                <CompletionCohort
+                                    data={cohortData}
+                                    isLoading={cohortLoading}
+                                    page={cohortPage}
+                                    onPageChange={setCohortPage}
+                                />
+                            </TabsContent>
+                        </Tabs>
+                    </>
+                )}
             </div>
         </>
     );

@@ -136,7 +136,7 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                 </MyButton>
             </DialogTrigger>
 
-            <DialogContent className="flex h-4/5 w-1/3 flex-col p-0">
+            <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                     Edit Profile
                 </h1>

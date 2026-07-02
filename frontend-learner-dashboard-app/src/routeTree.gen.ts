@@ -63,6 +63,7 @@ import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/for
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
 import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/learning-centre/attendance/index'
+import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/leaderboard/$packageSessionId/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
@@ -373,6 +374,12 @@ const LearningCentreAttendanceIndexRoute =
     path: '/learning-centre/attendance/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LeaderboardPackageSessionIdIndexRoute =
+  LeaderboardPackageSessionIdIndexRouteImport.update({
+    id: '/leaderboard/$packageSessionId/',
+    path: '/leaderboard/$packageSessionId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const HomeworkReportsIndexRoute = HomeworkReportsIndexRouteImport.update({
   id: '/homework/reports/',
   path: '/homework/reports/',
@@ -589,6 +596,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -673,6 +681,7 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -759,6 +768,7 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance/': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -846,6 +856,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/leaderboard/$packageSessionId'
     | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
@@ -930,6 +941,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/leaderboard/$packageSessionId'
     | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
@@ -1015,6 +1027,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/homework/list/'
     | '/homework/reports/'
+    | '/leaderboard/$packageSessionId/'
     | '/learning-centre/attendance/'
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
@@ -1101,6 +1114,7 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
+  LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
   LearningCentreAttendanceIndexRoute: typeof LearningCentreAttendanceIndexRoute
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
@@ -1522,6 +1536,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearningCentreAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/leaderboard/$packageSessionId/': {
+      id: '/leaderboard/$packageSessionId/'
+      path: '/leaderboard/$packageSessionId'
+      fullPath: '/leaderboard/$packageSessionId'
+      preLoaderRoute: typeof LeaderboardPackageSessionIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/homework/reports/': {
       id: '/homework/reports/'
       path: '/homework/reports'
@@ -1784,6 +1805,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
+  LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,
   LearningCentreAttendanceIndexRoute: LearningCentreAttendanceIndexRoute,
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,

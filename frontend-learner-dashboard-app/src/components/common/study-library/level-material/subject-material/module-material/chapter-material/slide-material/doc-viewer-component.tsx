@@ -316,11 +316,11 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               players are separate components, so only this HTML/markdown
               branch is constrained. */}
           {htmlContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
+            <div className="doc-fs-fill prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
               <DocumentWithMermaid htmlContent={htmlContent} />
             </div>
           ) : markdownContent ? (
-            <div className="prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
+            <div className="doc-fs-fill prose prose-sm sm:prose-base lg:prose-lg prose-gray mx-auto max-w-5xl">
               <ReactMarkdown 
                 components={{
                   // Enhanced heading styles with better typography

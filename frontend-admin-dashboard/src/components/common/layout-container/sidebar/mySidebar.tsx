@@ -378,12 +378,12 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     if (isMobile) {
         return (
             <Sheet open={openMobile} onOpenChange={setOpenMobile}>
-                <SheetContent side="left" className="w-[310px] border-r p-0">
+                <SheetContent side="left" className="w-80 border-r p-0">
                     <SheetHeader className="sr-only">
                         <SheetTitle>Navigation Menu</SheetTitle>
                     </SheetHeader>
                     <TooltipProvider delayDuration={0}>
-                        <div className="flex h-full">
+                        <div className="flex h-full pt-safe-native pb-safe-native">
                             {/* Category Rail */}
                             <CategoryRail
                                 activeCategory={activeCategory}
@@ -424,7 +424,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         <Sidebar collapsible="icon" className="z-20 !border-0">
             <SidebarContent
                 className={cn(
-                    'sidebar-content !flex !flex-row !gap-0 border-r-0 bg-transparent !overflow-hidden py-0',
+                    'sidebar-content pt-safe-native pb-safe-native !flex !flex-row !gap-0 border-r-0 bg-transparent !overflow-hidden py-0',
                 )}
             >
                 <TooltipProvider delayDuration={0}>

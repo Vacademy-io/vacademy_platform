@@ -12,13 +12,12 @@ import vacademy.io.admin_core_service.features.payments.dto.StripeCustomerDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.common.payment.currency.CurrencyRegistry;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.StripeRequestDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -67,7 +66,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
             Stripe.apiKey = apiKey;
 
             StripeRequestDTO stripeRequestDTO = request.getStripeRequest();
-            long amountInCents = convertAmountToCents(request.getAmount());
+            long amountInCents = CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency());
             logger.debug("Payment amount in cents: {}", amountInCents);
 
             // Step 2: Attach the new payment method to the customer for future use.
@@ -170,7 +169,7 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         responseData.put("transactionId", paymentIntent.getId());
         responseData.put("status", paymentIntent.getStatus());
         responseData.put("clientSecret", paymentIntent.getClientSecret());
-        responseData.put("amount", paymentIntent.getAmount()/100); // Amount is in cents
+        responseData.put("amount", CurrencyRegistry.fromMinorUnits(paymentIntent.getAmount(), paymentIntent.getCurrency())); // Stripe amount is in minor units
         responseData.put("currency", paymentIntent.getCurrency());
         responseData.put("created", paymentIntent.getCreated()); // NEW: Capture the transaction timestamp
         // Assuming 'paymentIntent' is your parsed PaymentIntent object
@@ -214,13 +213,6 @@ public class StripePaymentManager implements PaymentServiceStrategy {
 
         logger.debug("Built payment response from PaymentIntent: {}", dto);
         return dto;
-    }
-
-    private long convertAmountToCents(double amount) {
-        return BigDecimal.valueOf(amount)
-                .multiply(BigDecimal.valueOf(100))
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValue();
     }
 
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {

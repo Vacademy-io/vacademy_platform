@@ -117,6 +117,17 @@ html, body {
   font-weight: 600;
 }
 
+/* Document slides fill the width in fullscreen. The normal reading measure
+   (max-w-5xl) leaves large side gutters on a fullscreen/presentation view of
+   image-heavy slide decks. Scoped to descendants of the fullscreen element, so
+   it applies no matter which ancestor (or the whole page) is put fullscreen. */
+:fullscreen .doc-fs-fill {
+  max-width: 100% !important;
+}
+:-webkit-full-screen .doc-fs-fill {
+  max-width: 100% !important;
+}
+
 /* Column layout: override the CSS custom property on mobile so the
    var(--catalogue-grid-cols) used in the inline style collapses to 1 column.
    CSS custom properties cascade normally, so a stylesheet rule overrides an

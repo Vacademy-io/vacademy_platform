@@ -13,6 +13,7 @@ import {
     GET_SCHEDULE_RECORDINGS,
     SYNC_RECORDINGS_FROM_BBB,
     SYNC_RECORDINGS_TO_S3,
+    SYNC_GOOGLE_RECORDINGS,
     ZOOM_PROVISION_STATUS,
     ZOOM_PROVISION_NOW,
     RECORDING_TRANSCRIBE,
@@ -605,6 +606,29 @@ export const syncRecordingsToS3 = async (
     return response.data;
 };
 
+export interface GoogleRecordingSyncResult {
+    /** Count of newly-added recordings on this call. */
+    synced: number;
+    recordings: MeetingRecording[];
+}
+
+/**
+ * On-demand Google Meet recording pull — live-fetches conferenceRecords.recordings for a
+ * schedule and persists them, bypassing the hourly poll (and its meeting-ended timing gate).
+ * Idempotent; returns the count newly added + the full stored recording list.
+ */
+export const syncGoogleRecordings = async (
+    scheduleId: string,
+    instituteId: string
+): Promise<GoogleRecordingSyncResult> => {
+    const response = await authenticatedAxiosInstance.post<GoogleRecordingSyncResult>(
+        SYNC_GOOGLE_RECORDINGS,
+        null,
+        { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
 export interface ZoomProvisionStatus {
     sessionId: string;
     total: number;
@@ -786,6 +810,18 @@ export interface PublishAssessmentOverrides {
     reattemptCount?: number;
     /** Minutes on the instructions/cover screen before the timer starts. */
     previewTime?: number;
+    /**
+     * Extra batch (package_session) ids to register the assessment to, beyond
+     * the live class's own batches — so it's takeable in every destination
+     * course an assessment slide is added to. Only applied on the first publish.
+     */
+    packageSessionIds?: string[];
+    /**
+     * When true, publish the assessment WITHOUT registering it to any batch —
+     * it lands unassigned in the Assessment Center (admin can attach batches
+     * later). Overrides the live class + destination batches.
+     */
+    skipBatchRegistration?: boolean;
 }
 
 export const publishAssessmentFromRecording = async (

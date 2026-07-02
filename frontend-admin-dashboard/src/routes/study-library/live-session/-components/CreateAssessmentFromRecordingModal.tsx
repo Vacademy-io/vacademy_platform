@@ -31,6 +31,7 @@ import {
     ChevronUp,
     Settings2,
     RotateCcw,
+    GraduationCap,
 } from 'lucide-react';
 import { PencilSimple } from '@phosphor-icons/react';
 import {
@@ -46,6 +47,7 @@ import {
     type GeneratedQuestion,
 } from '../-services/utils';
 import { RecordingAssessmentExportButtons } from './RecordingAssessmentExportButtons';
+import { AddToCourseDialog } from './add-to-course/AddToCourseDialog';
 import {
     QUESTION_TYPES,
     type QuestionTypeCode,
@@ -269,7 +271,11 @@ export function CreateAssessmentFromRecordingModal({
         });
     };
 
-    const isPreview = result !== null && result.status === 'COMPLETED';
+    // PUBLISHED artifacts must also open into the preview (with the saved
+    // questions) — not the generate form. Previously only COMPLETED matched,
+    // so reopening a published assessment from history wrongly showed "regenerate".
+    const isPreview =
+        result !== null && (result.status === 'COMPLETED' || result.status === 'PUBLISHED');
     const isFailed = result !== null && result.status === 'FAILED';
     const isForm = !isPreview && !isFailed && !isPending;
 
@@ -384,13 +390,13 @@ export function CreateAssessmentFromRecordingModal({
                             visibility,
                             setVisibility,
                         }}
-                        onPublished={(updated) => {
-                            // Surface the published row briefly so the toast
-                            // and downstream caches can hydrate, then close
-                            // the modal — keeping it open after a successful
-                            // publish is just clutter for the user.
+                        onPublished={(updated, opts) => {
+                            // Surface the published row so the toast and caches
+                            // hydrate. Normally close the modal afterwards, but
+                            // keep it open when the publish came from the nested
+                            // "Add to course" flow (it owns its own close).
                             setResult(updated);
-                            onOpenChange(false);
+                            if (!opts?.keepOpen) onOpenChange(false);
                         }}
                     />
                 )}
@@ -1125,7 +1131,7 @@ function PreviewPane({
     batches?: BatchSummary[];
     recordingId: string;
     configFields: PreviewPaneConfigFields;
-    onPublished: (updated: AssessmentArtifact) => void;
+    onPublished: (updated: AssessmentArtifact, opts?: { keepOpen?: boolean }) => void;
 }) {
     const isPublished = result.status === 'PUBLISHED' || !!result.assessmentId;
     // "Create Assessment" dialog state. The form fields used to render
@@ -1133,6 +1139,7 @@ function PreviewPane({
     // wanted the questions to be the focus. Now the form lives behind
     // a button click instead.
     const [configDialogOpen, setConfigDialogOpen] = useState(false);
+    const [addToCourseOpen, setAddToCourseOpen] = useState(false);
     const { mutate: doPublish, isPending: publishing } = useMutation({
         mutationFn: () =>
             // Publish with full overrides from the post-generation form.
@@ -1302,6 +1309,14 @@ function PreviewPane({
                         />
                         <MyButton
                             type="button"
+                            buttonType="secondary"
+                            onClick={() => setAddToCourseOpen(true)}
+                        >
+                            <GraduationCap className="size-3.5" />
+                            Add to course
+                        </MyButton>
+                        <MyButton
+                            type="button"
                             onClick={() => setConfigDialogOpen(true)}
                         >
                             <Settings2 className="size-3.5" />
@@ -1310,6 +1325,82 @@ function PreviewPane({
                     </div>
                 </div>
             )}
+
+            {/* When already published, the publish row is replaced by a success
+                banner — keep an "Add to course" affordance available there too,
+                so the published assessment can be linked as a slide. */}
+            {isPublished && (
+                <div className="flex flex-wrap items-center justify-end">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        onClick={() => setAddToCourseOpen(true)}
+                    >
+                        <GraduationCap className="size-3.5" />
+                        Add to course as slide
+                    </MyButton>
+                </div>
+            )}
+
+            {/* Push these questions into a course slide — an embedded quiz, or
+                (once published) a linked assessment slide. */}
+            <AddToCourseDialog
+                open={addToCourseOpen}
+                onOpenChange={setAddToCourseOpen}
+                linkedBatches={batches}
+                assessmentConfig={<FormFields {...configFields} />}
+                content={{
+                    kind: 'ASSESSMENT',
+                    questions: result.questions ?? [],
+                    suggestedTitle:
+                        configFields.title?.trim() || result.title || 'Assessment',
+                    assessmentId: result.assessmentId,
+                }}
+                publishAssessment={
+                    result.artifactId
+                        ? async (opts?: {
+                              packageSessionIds?: string[];
+                              skipBatchRegistration?: boolean;
+                          }) => {
+                              // Already published? reuse it. Otherwise publish with
+                              // the current config and return the new assessmentId.
+                              if (result.assessmentId) return result.assessmentId;
+                              const updated = await publishAssessmentFromRecording(
+                                  recordingId,
+                                  result.artifactId!,
+                                  {
+                                      title: configFields.title.trim()
+                                          ? configFields.title.trim()
+                                          : (result.title ?? undefined),
+                                      startDateTime: toLocalIsoWithOffset(
+                                          configFields.startDateTime
+                                      ),
+                                      endDateTime: toLocalIsoWithOffset(configFields.endDateTime),
+                                      assessmentVisibility: configFields.visibility,
+                                      marksPerQuestion: configFields.marksPerQuestion,
+                                      durationMinutes: configFields.durationMinutes,
+                                      negativeMarkingEnabled: configFields.negativeMarkingEnabled,
+                                      negativeMarkPerQuestion: configFields.negativeMarkingEnabled
+                                          ? configFields.negativeMarkPerQuestion
+                                          : undefined,
+                                      reattemptCount: configFields.reattemptCount,
+                                      previewTime: configFields.previewTime,
+                                      // Register the destination course batches too.
+                                      packageSessionIds:
+                                          opts?.packageSessionIds &&
+                                          opts.packageSessionIds.length > 0
+                                              ? opts.packageSessionIds
+                                              : undefined,
+                                      skipBatchRegistration: opts?.skipBatchRegistration,
+                                  }
+                              );
+                              // keepOpen — the AddToCourse dialog owns its close.
+                              onPublished(updated, { keepOpen: true });
+                              return updated.assessmentId ?? null;
+                          }
+                        : undefined
+                }
+            />
 
             {/* Configuration dialog — collected fields the teacher overrides
                 AFTER reviewing questions: title, schedule, marking, visibility.

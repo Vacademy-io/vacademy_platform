@@ -51,14 +51,18 @@ public class AirtelProviderDescriptor implements TelephonyProviderDescriptor {
                         "OAuth Consumer Key from apimanager.uc.vonage.com → your application → Production Keys."),
                 CredentialField.secret("consumerSecret", "Consumer Secret", true,
                         "OAuth Consumer Secret paired with the Consumer Key."),
-                CredentialField.secret("vbcUsername", "API Username", true,
-                        "The non-SSO VBC API user (the '@vbc.prod' suffix is added automatically)."),
-                CredentialField.secret("vbcPassword", "API Password", true,
-                        "Password for the VBC API user."),
+                CredentialField.secret("vbcUsername", "VBC User Login (email)", true,
+                        "A real VBC USER login — the email a counsellor uses to sign in to the Vonage "
+                        + "Business app (e.g. name@yourco.com), NOT the API service account. The token "
+                        + "for click-to-call must carry this user's auth; the '@vbc.prod' realm is added "
+                        + "automatically. It's account-scoped, so one user can dial from any extension."),
+                CredentialField.secret("vbcPassword", "VBC User Password", true,
+                        "That VBC user's sign-in password (the one used in the Vonage Business app)."),
                 CredentialField.config("accountId", "Account ID", true,
                         "Your VBC account number (e.g. 439357), from admin.commssetup.com → Account."),
                 CredentialField.config("tokenUrl", "Token URL", false,
-                        "Override the OAuth token endpoint. Leave blank to use the default WSO2 endpoint."),
+                        "Override the token endpoint. Leave blank to use https://api.vonage.com/token "
+                        + "(the VBC end-user gateway — required for the Telephony API to accept the token)."),
                 CredentialField.config("baseUrl", "API Base URL", false,
                         "Override the API gateway base. Leave blank to use https://api.vonage.com/t/vbc.prod."));
     }

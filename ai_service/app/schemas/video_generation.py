@@ -329,6 +329,17 @@ class VisualPreferences(BaseModel):
             "On minimal/low, KINETIC_TEXT is forbidden by the Director."
         ),
     )
+    visual_style_mode: Optional[str] = Field(
+        default=None,
+        description=(
+            "Overall visual aesthetic for the whole video (overrides auto-detection). "
+            "'educational' = clean flat 'whiteboard' look (the default for lectures). "
+            "'marketing' = premium modern brand-film look — depth, choreographed motion, "
+            "finishing, imagery-forward, keywords-only on-screen text. "
+            "'bold' = marketing + high-energy social-ad styling. "
+            "None = auto-detect from content (marketing/product/ad → marketing, else educational)."
+        ),
+    )
 
 
 # Content types supported by the generation pipeline
@@ -392,9 +403,39 @@ class BrandOverrides(BaseModel):
     )
 
 
+class DecisionAnswerRequest(BaseModel):
+    """Body for POST /external/video/v1/{video_id}/decision — answer an assist gate.
+
+    The user resolves a pending decision (surfaced via a `decision_required` SSE
+    event) by selecting an option, editing the draft, typing free-form steering,
+    or deferring to the AI. The backend records the answer, writes the per-gate
+    sidecar artifact, and resumes the next generation leg.
+    """
+
+    decision_id: str = Field(..., description="Must match the pending decision's id (idempotency guard).")
+    gate_type: str = Field(..., description="Gate being answered: shot_plan | narration | visual_casting | …")
+    mode: str = Field(
+        ...,
+        description=(
+            "select | edit | freeform | auto | auto_all. "
+            "'auto' = let the AI decide this one; 'auto_all' = let the AI decide this "
+            "and all remaining decisions of the same gate type."
+        ),
+    )
+    answer: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Gate-specific answer. select: {selected_option_id}. "
+            "edit(shot_plan): {shots:[...]}. edit(narration): {shots:[{shot_index,narration_text}], full_script}. "
+            "edit(visual_casting): {selections:[{shot_index,candidate_id}]}. "
+            "freeform: {text}. auto/auto_all: {}."
+        ),
+    )
+
+
 class VideoGenerationRequest(BaseModel):
     """Request for generating AI video or interactive content."""
-    
+
     prompt: str = Field(..., description="Text prompt for content generation")
     content_type: ContentTypeEnum = Field(
         default="VIDEO",
@@ -419,6 +460,34 @@ class VideoGenerationRequest(BaseModel):
     user_id: Optional[str] = Field(
         default=None,
         description="User identifier (optional, for logging/context)"
+    )
+    # ── Assist mode (conversational, human-in-the-loop) ──────────────
+    assist_mode: bool = Field(
+        default=False,
+        description=(
+            "When True, the pipeline pauses at enabled decision gates (shot plan, "
+            "narration, visual casting, …), emits a `decision_required` SSE event, "
+            "persists the pending decision, and stops the leg cleanly until the user "
+            "answers via POST /external/video/v1/{video_id}/decision. Generalises "
+            "the legacy review_mode. Default False = fully autonomous (Auto mode)."
+        ),
+    )
+    assist_gates: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Which decision gates to enable when assist_mode is True. Subset of "
+            "['creative_concept','shot_plan','narration','visual_casting','shot_look',"
+            "'voice','music','avatar']. None → the default gate set (shot_plan, "
+            "narration, visual_casting, shot_look)."
+        ),
+    )
+    assist_granularity: str = Field(
+        default="per_decision",
+        description=(
+            "How finely assist mode pauses: 'per_decision' (pause at each individual "
+            "choice, incl. per-shot) or 'batched' (consolidate same-kind choices). "
+            "v1 uses per_decision; 'batched' reserved for a future option."
+        ),
     )
     model: Optional[str] = Field(
         default=None,
@@ -777,10 +846,20 @@ class VideoStatusResponse(BaseModel):
             "persisted snapshot in extra_metadata.live on history reads."
         )
     )
+    pending_decision: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Convenience mirror of metadata.assist.pending_decision. Set only when "
+            "status == 'AWAITING_INPUT' (assist mode paused at a gate). Carries the "
+            "full decision_required payload (decision_id, gate_type, prompt, options, "
+            "payload, …) so polling clients can rehydrate the conversation card "
+            "without digging into metadata.assist."
+        ),
+    )
     created_at: Optional[str]
     updated_at: Optional[str]
     completed_at: Optional[str]
-    
+
     class Config:
         json_schema_extra = {
             "example": {

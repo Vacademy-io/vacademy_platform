@@ -61,12 +61,12 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
     {
       id: "strengths",
       title: "Strengths",
-      available: Object.keys(report.report.strengths).length > 0,
+      available: Object.keys(report.report?.strengths ?? {}).length > 0,
     },
     {
       id: "weaknesses",
       title: "Weaknesses",
-      available: Object.keys(report.report.weaknesses).length > 0,
+      available: Object.keys(report.report?.weaknesses ?? {}).length > 0,
     },
     { id: "improvement", title: "Topics of Improvement", available: true },
     { id: "attention", title: "Topics Needing Attention", available: true },
@@ -199,15 +199,19 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
     </div>
   );
 
-  const heading = `${format(
-    new Date(report.start_date_iso),
-    "MMM dd, yyyy"
-  )} - ${format(new Date(report.end_date_iso), "MMM dd, yyyy")}`;
+  const safeFormatDate = (iso: string | undefined, fmt: string): string => {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "—";
+      return format(d, fmt);
+    } catch {
+      return "—";
+    }
+  };
 
-  const description = `Generated on ${format(
-    new Date(report.created_at),
-    "MMM dd, yyyy"
-  )}`;
+  const heading = `${safeFormatDate(report.start_date_iso, "MMM dd, yyyy")} - ${safeFormatDate(report.end_date_iso, "MMM dd, yyyy")}`;
+  const description = `Generated on ${safeFormatDate(report.created_at, "MMM dd, yyyy")}`;
 
   return (
     <div className="min-h-screen bg-gray-50/50">
@@ -277,7 +281,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
               {renderSection(report.report.learning_frequency, "pattern")}
 
               <div className="flex flex-col md:flex-row gap-6 w-full">
-                {Object.keys(report.report.strengths).length > 0 &&
+                {Object.keys(report.report?.strengths ?? {}).length > 0 &&
                   renderStrengthsWeaknesses(
                     "Strengths",
                     report.report.strengths,
@@ -285,7 +289,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
                     "strengths"
                   )}
 
-                {Object.keys(report.report.weaknesses).length > 0 &&
+                {Object.keys(report.report?.weaknesses ?? {}).length > 0 &&
                   renderStrengthsWeaknesses(
                     "Weaknesses",
                     report.report.weaknesses,

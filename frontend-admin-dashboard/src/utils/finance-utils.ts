@@ -19,3 +19,20 @@ export const formatCurrency = (val: number | undefined | null): string => {
     // Standard Indian Locale
     return `₹ ${val.toLocaleString('en-IN')}`;
 };
+
+/**
+ * Formats a raw payment-plan price to a clean fixed-2-decimal string for display.
+ *
+ * Backend plan prices frequently arrive with binary floating-point noise
+ * (e.g. `34999.299999999996` instead of `34999.30`) — or as numeric strings
+ * derived from those floats. Use this anywhere a payment plan / option price is
+ * rendered (dropdowns, invite previews, sidebars) so the user never sees the
+ * noise. A value that isn't a finite number (e.g. `''` or a label like `'Free'`)
+ * is returned untouched so callers can render it as-is.
+ */
+export const formatPlanPrice = (value: number | string | null | undefined): string => {
+    if (value === null || value === undefined || value === '') return '';
+    const num = typeof value === 'string' ? Number(value) : value;
+    if (!Number.isFinite(num)) return String(value);
+    return (num as number).toFixed(2);
+};

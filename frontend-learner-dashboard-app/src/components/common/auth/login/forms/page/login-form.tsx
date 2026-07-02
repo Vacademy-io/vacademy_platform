@@ -91,6 +91,12 @@ export function LoginForm({
     username: string;
     password: string;
   } | null>(null);
+  // Demo handoff: an onboarding "Enter as Learner" link arrives with
+  // ?demo=1&demo_username=…&demo_password=… → prefill + auto sign-in.
+  const [demoCreds, setDemoCreds] = useState<{
+    username: string;
+    password: string;
+  } | null>(null);
   const [authMethod, setAuthMethod] = useState<"EMAIL" | "USERNAME" | "PHONE">(() => {
     if (isPublic === "true" && !fromPaymentSuccess) return "EMAIL";
     return "USERNAME";
@@ -213,6 +219,21 @@ export function LoginForm({
       /* ignore */
     }
   }, [fromPaymentSuccess]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") !== "1") return;
+    const username = params.get("demo_username");
+    const password = params.get("demo_password");
+    if (!username || !password) return;
+    setDemoCreds({ username, password });
+    setAuthMethod("USERNAME");
+    const cleanUrl = new URL(window.location.href);
+    ["demo", "demo_username", "demo_password"].forEach((k) =>
+      cleanUrl.searchParams.delete(k),
+    );
+    window.history.replaceState({}, "", cleanUrl.toString());
+  }, []);
 
   useEffect(() => {
     // CRITICAL: Check for popup FIRST, before anything else
@@ -1147,8 +1168,9 @@ export function LoginForm({
                               type={type}
                               courseId={courseId}
                               onSwitchToSignup={onSwitchToSignup}
-                              initialUsername={postPaymentCreds?.username}
-                              initialPassword={postPaymentCreds?.password}
+                              initialUsername={demoCreds?.username ?? postPaymentCreds?.username}
+                              initialPassword={demoCreds?.password ?? postPaymentCreds?.password}
+                              autoSubmit={!!demoCreds}
                             />
                           </motion.div>
                         );

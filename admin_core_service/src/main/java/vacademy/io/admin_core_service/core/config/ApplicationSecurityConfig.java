@@ -110,6 +110,12 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)
             "/admin-core-service/live-sessions/provider/zoom/oauth/callback",
+            // "Connect Google Workspace" OAuth redirect (no JWT — CSRF-protected by the state record)
+            "/admin-core-service/live-sessions/provider/google/oauth/callback",
+            // Google Meet Pub/Sub push (Phase 4). Auth: optional shared-secret ?token=
+            // (google.events.push-token). Inbound OIDC verification is NOT yet implemented — the
+            // handler only triggers an idempotent recording re-sync (no exfiltration); harden before prod.
+            "/admin-core-service/live-sessions/provider/meeting/google-meet-callback/**",
             // Telephony provider StatusCallbacks (Exotel, Plivo, etc.) — auth via
             // shared-secret ?token= + provider IP allowlist enforced in the handler.
             "/admin-core-service/v1/telephony/webhook/**",
@@ -121,7 +127,11 @@ public class ApplicationSecurityConfig {
             // Connect applet hits /inbound/route synchronously and /inbound/status
             // when the call terminates; both auth via shared-secret ?token= verified
             // by the matching provider handler.
-            "/admin-core-service/v1/telephony/inbound/**"
+            "/admin-core-service/v1/telephony/inbound/**",
+            // Vacademy Voice (Plivo) call-flow applets — Plivo fetches the answer
+            // XML for the outbound bridge (and, later, inbound IVR) here. Auth via the
+            // unguessable ?corr= call-log UUID + optional shared-secret ?token=.
+            "/admin-core-service/v1/telephony/plivo/**"
 
     };
     @Autowired

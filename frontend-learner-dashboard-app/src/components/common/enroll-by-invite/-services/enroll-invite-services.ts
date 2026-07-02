@@ -138,8 +138,11 @@ interface EnrollLearnerForPaymentProps {
     razorpay_order_id: string;
     razorpay_signature: string;
   };
-  // Payment vendor (STRIPE, EWAY, RAZORPAY, or CASHFREE)
-  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY" | "CASHFREE";
+  // Payment vendor (STRIPE, EWAY, RAZORPAY, CASHFREE, or PHONEPE)
+  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY" | "CASHFREE" | "PHONEPE";
+  // PhonePe redirect (return) URL — where PhonePe sends the learner back after
+  // the hosted checkout. The backend stamps orderId + instituteId onto it.
+  phonePeRedirectUrl?: string;
   // Flag to indicate if using institute custom fields (don't exclude from custom_field_values)
   isUsingInstituteCustomFields?: boolean;
   // Optional User ID from form-submit step
@@ -408,6 +411,7 @@ export const handleEnrollLearnerForPayment = async ({
   ewayPaymentData,
   razorpayPaymentData,
   paymentVendor = "STRIPE",
+  phonePeRedirectUrl,
   isUsingInstituteCustomFields = false,
   userId,
   couponCode,
@@ -477,6 +481,17 @@ export const handleEnrollLearnerForPayment = async ({
       }
       : {};
 
+  // For PhonePe: redirect (Standard Checkout) flow. redirect_url is where PhonePe
+  // sends the learner back; the backend stamps orderId + instituteId onto it.
+  const phonepe_request =
+    paymentVendor === "PHONEPE"
+      ? {
+        contact: phoneNumber,
+        email: email,
+        redirect_url: phonePeRedirectUrl || "",
+      }
+      : {};
+
   const convertedData = {
     user: {
       email: email,
@@ -532,6 +547,7 @@ export const handleEnrollLearnerForPayment = async ({
         stripe_request,
         razorpay_request,
         cashfree_request,
+        phonepe_request,
         pay_pal_request: {},
         eway_request,
         include_pending_items: true,
@@ -630,6 +646,43 @@ export const handleGetPublicInstituteDetails = ({
     queryFn: () => getPublicInstituteDetails({ instituteId }),
     staleTime: 60 * 60 * 1000,
     enabled: !!instituteId,
+  };
+};
+
+/**
+ * Same institute payload as getPublicInstituteDetails but hits `/details/{id}`
+ * (includeBatches=true) instead of `/details-non-batches/{id}` — so the response
+ * actually carries `batches_for_sessions`. The enroll form uses the lighter
+ * non-batches endpoint for branding/settings, which means bundled "What's
+ * Included" courses can't resolve their names from it (batches come back empty).
+ * Pass the HOST institute id (the invite's instituteId) — the bundled package
+ * sessions belong to it, even for "Sub-Org Subscription" invites where the
+ * sub-org is only a branding label backed by an empty institute shell.
+ */
+export const getPublicInstituteDetailsWithBatches = async ({
+  instituteId,
+}: {
+  instituteId: string;
+}) => {
+  const response = await axios({
+    method: "GET",
+    url: `${BASE_URL}/admin-core-service/public/institute/v1/details/${instituteId}`,
+  });
+  return response?.data;
+};
+
+export const handleGetPublicInstituteDetailsWithBatches = ({
+  instituteId,
+  enabled = true,
+}: {
+  instituteId: string;
+  enabled?: boolean;
+}) => {
+  return {
+    queryKey: ["GET_PUBLIC_INSTITUTE_DETAILS_WITH_BATCHES", instituteId],
+    queryFn: () => getPublicInstituteDetailsWithBatches({ instituteId }),
+    staleTime: 60 * 60 * 1000,
+    enabled: enabled && !!instituteId,
   };
 };
 

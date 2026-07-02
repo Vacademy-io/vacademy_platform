@@ -240,7 +240,9 @@ export const isSystemRequiedCustomFeilds = (field: InsituteCustomField) => {
 export function convertInstituteCustomFields(
   data: InsituteCustomField[]
 ): ConvertedCustomField[] {
-  // Filter to only include system required fields (email, name, phone)
+  // Filter to only include system required fields (email, name, phone).
+  // NOTE: deliberately no client-side dedup here — duplicate/clean fields are
+  // controlled in the data (institute custom fields), not the frontend.
   const filteredFields = data?.filter((field) =>
     isSystemRequiedCustomFeilds(field)
   );
@@ -255,7 +257,7 @@ export function convertInstituteCustomFields(
         field.comma_separated_options || field.config || "",
       config: field.config || "{}",
       status: field.status || "ACTIVE",
-      is_mandatory: field.is_mandatory ?? false, // Use field's is_mandatory or default to false
+      is_mandatory: field.is_mandatory ?? false,
       field_type: field.field_type,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

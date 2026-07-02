@@ -7,6 +7,7 @@ import { getCurrencySymbol, getPaymentPlanIcon } from '../PaymentPlansDialog';
 import { X, Check } from 'lucide-react';
 import { FormControl, FormField, FormItem } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 interface DiscountSettingsDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -125,7 +126,7 @@ const PaymentPlanCard = ({ form }: DiscountSettingsDialogProps) => {
                                             {getCurrencySymbol(
                                                 form.watch('selectedPlan')?.currency || ''
                                             )}
-                                            {form.watch('selectedPlan')?.price}&nbsp;
+                                            {formatPlanPrice(form.watch('selectedPlan')?.price)}&nbsp;
                                         </div>
                                     </div>
                                 </Card>
@@ -150,7 +151,7 @@ const PaymentPlanCard = ({ form }: DiscountSettingsDialogProps) => {
                                                     {getCurrencySymbol(
                                                         form.watch('selectedPlan')?.currency || ''
                                                     )}
-                                                    {payment.price}&nbsp;
+                                                    {formatPlanPrice(payment.price)}&nbsp;
                                                     {payment.value && payment.unit && (
                                                         <span className="text-sm font-normal text-gray-500">
                                                             /{payment.value} {payment.unit}

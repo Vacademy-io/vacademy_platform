@@ -18,18 +18,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     createTelephonyNumber,
     deleteTelephonyNumber,
     fetchTelephonyNumbers,
+    fetchTelephonyConfig,
+    fetchTelephonyProviders,
     fetchExotelExoPhones,
     retryAttachTelephonyNumber,
     updateTelephonyNumber,
     type ExotelExoPhone,
     type TelephonyProviderNumber,
 } from '../-services/telephony-admin';
+import { fetchIvrMenus, type IvrMenuDTO } from '../-services/ivr-admin';
 
 /**
  * Multi-ExoPhone management. Sales-ops sees the entire fleet of provider
@@ -45,6 +49,31 @@ export function TelephonyNumbersCard() {
         queryFn: () => fetchTelephonyNumbers(instituteId),
         enabled: !!instituteId,
     });
+
+    // Provider awareness — the Numbers card is shared across providers. Exotel-only
+    // bits (Sid/attach, Sync-from-Exotel) hide for others; IVR-capable providers
+    // (Plivo) get a per-number inbound-menu picker.
+    const configQuery = useQuery({
+        queryKey: ['telephony-config', instituteId],
+        queryFn: () => fetchTelephonyConfig(instituteId),
+        enabled: !!instituteId,
+    });
+    const providersQuery = useQuery({
+        queryKey: ['telephony-providers'],
+        queryFn: fetchTelephonyProviders,
+    });
+    const providerType = configQuery.data?.providerType ?? '';
+    const isExotel = providerType === 'EXOTEL';
+    const supportsIvr = (
+        providersQuery.data?.find((p) => p.providerType === providerType)?.capabilities ?? []
+    ).includes('IVR_BUILDER');
+
+    const menusQuery = useQuery({
+        queryKey: ['ivr-menus', instituteId],
+        queryFn: () => fetchIvrMenus(instituteId),
+        enabled: !!instituteId && supportsIvr,
+    });
+    const ivrMenus = menusQuery.data ?? [];
 
     const [addOpen, setAddOpen] = useState(false);
     const [newNumber, setNewNumber] = useState('');
@@ -128,14 +157,16 @@ export function TelephonyNumbersCard() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setSyncPickerOpen((v) => !v)}
-                    >
-                        <ArrowsClockwise className="mr-1.5 size-4" />
-                        Sync from Exotel
-                    </Button>
+                    {isExotel && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSyncPickerOpen((v) => !v)}
+                        >
+                            <ArrowsClockwise className="mr-1.5 size-4" />
+                            Sync from Exotel
+                        </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => setAddOpen((v) => !v)}>
                         <Plus className="mr-1.5 size-4" />
                         Add number
@@ -172,19 +203,21 @@ export function TelephonyNumbersCard() {
                                 Include the country code (e.g. +91 for India).
                             </p>
                         </div>
-                        <div className="space-y-1.5">
-                            <Label>Exotel ExoPhone Sid</Label>
-                            <Input
-                                value={newSid}
-                                onChange={(e) => setNewSid(e.target.value)}
-                                placeholder="e.g. KX_xxx"
-                            />
-                            <p className="text-xs text-neutral-500">
-                                The Sid from Exotel's ExoPhones page — required for
-                                auto-attach. Use <strong>Sync from Exotel</strong> to fill
-                                this in automatically.
-                            </p>
-                        </div>
+                        {isExotel && (
+                            <div className="space-y-1.5">
+                                <Label>Exotel ExoPhone Sid</Label>
+                                <Input
+                                    value={newSid}
+                                    onChange={(e) => setNewSid(e.target.value)}
+                                    placeholder="e.g. KX_xxx"
+                                />
+                                <p className="text-xs text-neutral-500">
+                                    The Sid from Exotel's ExoPhones page — required for
+                                    auto-attach. Use <strong>Sync from Exotel</strong> to fill
+                                    this in automatically.
+                                </p>
+                            </div>
+                        )}
                         <div className="space-y-1.5">
                             <Label>Nickname</Label>
                             <Input
@@ -254,6 +287,15 @@ export function TelephonyNumbersCard() {
                         <NumberRow
                             key={n.id}
                             item={n}
+                            isExotel={isExotel}
+                            supportsIvr={supportsIvr}
+                            ivrMenus={ivrMenus}
+                            onInboundMenuChange={(menuId) =>
+                                updateMutation.mutate({
+                                    id: n.id,
+                                    patch: { inboundIvrMenuId: menuId },
+                                })
+                            }
                             isRecommended={n.id === recommendedId}
                             isAttaching={
                                 attachMutation.isPending &&
@@ -308,6 +350,10 @@ function flowSidFromVoiceUrl(voiceUrl?: string | null): string | null {
 
 function NumberRow({
     item,
+    isExotel,
+    supportsIvr,
+    ivrMenus,
+    onInboundMenuChange,
     isRecommended,
     isAttaching,
     onToggle,
@@ -320,6 +366,10 @@ function NumberRow({
     onMakeRecommended,
 }: {
     item: TelephonyProviderNumber;
+    isExotel: boolean;
+    supportsIvr: boolean;
+    ivrMenus: IvrMenuDTO[];
+    onInboundMenuChange: (menuId: string) => void;
     isRecommended: boolean;
     isAttaching: boolean;
     onToggle: (enabled: boolean) => void;
@@ -345,7 +395,7 @@ function NumberRow({
             <div className="col-span-3 flex items-center gap-2">
                 <Phone className="size-4 text-neutral-400" />
                 <span className="font-medium text-neutral-800">{item.phoneNumber}</span>
-                <AttachStatusPill item={item} />
+                {isExotel && <AttachStatusPill item={item} />}
                 {isRecommended && (
                     <span
                         className="inline-flex items-center gap-1 rounded-full bg-warning-50 px-1.5 py-0.5 text-caption font-medium text-warning-700"
@@ -443,10 +493,31 @@ function NumberRow({
             </div>
         </div>
 
+        {/* Per-number inbound behaviour (IVR-capable providers, e.g. Plivo):
+            pick which IVR menu a caller hears when they dial this number. */}
+        {supportsIvr && (
+            <div className="flex items-center gap-2 text-xs">
+                <span className="shrink-0 text-neutral-500">Inbound menu:</span>
+                <MyDropdown
+                    currentValue={
+                        ivrMenus.find((m) => m.id === item.inboundIvrMenuId)?.name ??
+                        'Default menu'
+                    }
+                    dropdownList={[
+                        { label: 'Default menu', value: '' },
+                        ...ivrMenus.map((m) => ({ label: m.name, value: m.id ?? '' })),
+                    ]}
+                    handleChange={(v) => onInboundMenuChange(v)}
+                    className="w-56"
+                />
+            </div>
+        )}
+
         {/* Secondary row: ExoPhone Sid + Attach action. Only renders when
             something useful is going on (missing Sid, attach error, etc.) so
             the Numbers card stays tidy for already-attached rows. */}
-        {(needsSid ||
+        {isExotel &&
+            (needsSid ||
             item.flowAttachStatus === 'FAILED' ||
             item.flowAttachStatus === 'PENDING') && (
             <div className="flex items-center gap-2 rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">

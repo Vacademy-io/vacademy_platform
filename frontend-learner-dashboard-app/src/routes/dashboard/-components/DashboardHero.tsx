@@ -15,7 +15,14 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { BookOpen, VideoCamera } from "@phosphor-icons/react";
+import {
+  BookOpen,
+  VideoCamera,
+  ClipboardText,
+  UserCircle,
+  CaretRight,
+  Sparkle,
+} from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +34,7 @@ import {
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { playIllustrations } from "@/assets/play-illustrations";
 
 export interface DashboardHeroProps {
   userName: string | null;
@@ -121,11 +129,20 @@ function resolveBannerSession(
 // ── Band shell (shared visual language across all hero states) ──────────────
 
 /** Quiet borderless band on default; tenant-primary wash + 4px top rail on
- *  vibrant (primary tokens only — never fixed pastels). */
+ *  vibrant (primary tokens only — never fixed pastels). Used by the slim
+ *  states (loading, live-only). */
 const bandClassName = cn(
   "relative w-full overflow-hidden rounded-2xl bg-muted/40 p-5 sm:p-8",
   "[.ui-vibrant_&]:bg-primary-50 dark:[.ui-vibrant_&]:bg-primary-500/10",
   "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
+);
+
+/** First-run band: a soft tenant-primary gradient with real presence (the
+ *  onboarding moment is the fold), still tasteful in default. */
+const firstRunBand = cn(
+  "relative w-full overflow-hidden rounded-2xl border border-primary/15 p-5 sm:p-8",
+  "bg-gradient-to-br from-primary/5 via-background to-background",
+  "[.ui-vibrant_&]:from-primary-50 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
 );
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -223,31 +240,111 @@ export function DashboardHero({
     </div>
   ) : null;
 
-  // 2. FIRST-RUN — no progress anywhere.
+  // 2. FIRST-RUN — no progress anywhere. An onboarding checklist so the
+  // learner always has a clear next action instead of a barren empty state.
   if (!hasAnyProgress) {
+    const steps = [
+      {
+        icon: BookOpen,
+        label: `Browse your ${coursesPlural.toLocaleLowerCase()}`,
+        hint: "Open a topic and start your first lesson",
+        onClick: goToCourses,
+        primary: true,
+      },
+      {
+        icon: ClipboardText,
+        label: "Try an assessment",
+        hint: "Check what you know with a quick quiz",
+        onClick: () => navigate({ to: "/assessment/examination" }),
+        primary: false,
+      },
+      {
+        icon: UserCircle,
+        label: "Complete your profile",
+        hint: "Add your details to personalize learning",
+        onClick: () => navigate({ to: "/user-profile" }),
+        primary: false,
+      },
+    ];
+
     return (
-      <section className={bandClassName}>
-        {liveBanner}
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              {userName ? `Welcome, ${userName}` : "Welcome"}
-            </p>
-            <h2 className="text-display-sm text-foreground">
-              Start your first lesson
-            </h2>
-            <p className="text-body text-muted-foreground">
-              Browse your {coursesPlural.toLocaleLowerCase()} and begin learning
-              at your own pace.
-            </p>
+      <section className={firstRunBand}>
+        {/* Signature decorative mesh — tenant-primary, tasteful. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-20 size-52 rounded-full bg-primary/10 blur-3xl"
+        />
+        <div className="relative">
+          {liveBanner}
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            {/* Left: greeting + checklist */}
+            <div className="min-w-0 flex-1">
+              <div className="mb-5 flex items-start gap-3">
+                <span className="hidden size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary sm:flex">
+                  <Sparkle size={22} weight="fill" />
+                </span>
+                <div className="min-w-0 space-y-1">
+                  <p className="text-caption font-semibold uppercase tracking-wider text-primary">
+                    {userName ? `Welcome, ${userName}` : "Welcome"}
+                  </p>
+                  <h2 className="text-display-sm tracking-tight text-foreground">
+                    Let's get you started
+                  </h2>
+                  <p className="text-body text-muted-foreground">
+                    A few quick steps to make the most of your learning.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                {steps.map((step, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={step.onClick}
+                    className={cn(
+                      "group/step flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-base ease-out-soft",
+                      "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                      step.primary
+                        ? "border-primary/40 bg-primary/5"
+                        : "border-border bg-background/70",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+                        step.primary
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-primary/10 text-primary group-hover/step:bg-primary/20",
+                      )}
+                    >
+                      <step.icon size={18} weight="duotone" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body font-semibold text-foreground">
+                        {step.label}
+                      </span>
+                      <span className="block truncate text-caption text-muted-foreground">
+                        {step.hint}
+                      </span>
+                    </span>
+                    <CaretRight
+                      size={16}
+                      className="shrink-0 text-muted-foreground transition-transform duration-300 group-hover/step:translate-x-0.5 group-hover/step:text-primary"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: signature illustration fills the whitespace (currentColor
+                follows the tenant primary). Desktop only. */}
+            <playIllustrations.OnlineLearning
+              aria-hidden="true"
+              className="hidden h-44 w-auto max-w-xs shrink-0 object-contain text-primary/70 lg:block"
+            />
           </div>
-          <Button
-            onClick={goToCourses}
-            className="w-full gap-2 sm:w-auto md:shrink-0"
-          >
-            <BookOpen size={16} weight="fill" />
-            Browse {coursesPlural}
-          </Button>
         </div>
       </section>
     );

@@ -8,6 +8,10 @@ export interface CodingTestCase {
   label?: string;
   stdin: string;
   expectedStdout: string;
+  // Optional list of acceptable outputs. A submission passes if its output
+  // matches ANY entry (same trim-then-exact rule). Absent ⇒ [expectedStdout].
+  // Invariant maintained by authoring: acceptedOutputs[0] === expectedStdout.
+  acceptedOutputs?: string[];
   visible: boolean;
 }
 
@@ -63,6 +67,11 @@ export interface TestCaseResult {
   passed: boolean;
   stdout: string;
   expected: string;
+  // Which accepted output matched (index into the test case's acceptedOutputs),
+  // or -1 if none matched. acceptedCount is the size of the accepted set, so the
+  // UI can show "matched 1 of N".
+  matchedIndex?: number;
+  acceptedCount?: number;
   stderr?: string;
   timeMs?: number;
   memoryKb?: number;

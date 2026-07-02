@@ -18,23 +18,15 @@ import { getDefaultPlanFromPaymentsData, splitPlansByType } from './-utils/helpe
 import { DollarSign } from 'lucide-react';
 import { useCPOFullDetails } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import type { CPOFeeType } from '@/routes/financial-management/fee-plans/-types/cpo-types';
+import { formatPlanPrice } from '@/utils/finance-utils';
+import { getCurrencySymbol } from '@/constants/currencies';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
 }
 
-const currencySymbols: { [key: string]: string } = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    INR: '₹',
-    AUD: 'A$',
-    CAD: 'C$',
-};
-
-export const getCurrencySymbol = (currencyCode: string) => {
-    return currencySymbols[currencyCode] || currencyCode;
-};
+// Re-exported from the canonical currency source (kept here for existing import paths).
+export { getCurrencySymbol };
 
 export const getPaymentPlanIcon = (type: string) => {
     switch (type) {
@@ -109,7 +101,7 @@ const CpoPlanCard = ({ plan, isSelected, onSelect }: CpoPlanCardProps) => {
                 <div className="flex flex-col gap-1 pl-8 text-xs text-neutral-600">
                     <span>
                         Total Amount: {currencySymbol}
-                        {plan.price || '—'}
+                        {formatPlanPrice(plan.price) || '—'}
                     </span>
                     <span>
                         Installments:{' '}
@@ -247,7 +239,7 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                                 <span>
                                                     Full Price:{' '}
                                                     {getCurrencySymbol(plan.currency || '')}
-                                                    {plan.price}
+                                                    {formatPlanPrice(plan.price)}
                                                 </span>
                                                 <span>Currency: {plan.currency}</span>
                                             </div>
@@ -261,7 +253,7 @@ export function PaymentPlansDialog({ form }: PaymentPlansDialogProps) {
                                                                 {getCurrencySymbol(
                                                                     plan.currency || ''
                                                                 )}
-                                                                {payment.price}
+                                                                {formatPlanPrice(payment.price)}
                                                             </span>
                                                         </div>
                                                     );

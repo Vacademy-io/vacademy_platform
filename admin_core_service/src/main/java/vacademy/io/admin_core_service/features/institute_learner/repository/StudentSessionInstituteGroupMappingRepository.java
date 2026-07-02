@@ -75,6 +75,22 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("sessionId") String packageSessionId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * Latest package_session_id for a learner within one institute (ACTIVE mappings
+   * preferred). Doubles as an institute-membership check: empty = the user has no
+   * enrollment in this institute.
+   */
+  @Query(value = """
+      SELECT package_session_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+      AND institute_id = :instituteId
+      ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC
+      LIMIT 1
+      """, nativeQuery = true)
+  Optional<String> findLatestPackageSessionIdByUserIdAndInstituteId(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   @Query(value = """
       SELECT * FROM student_session_institute_group_mapping
       WHERE user_id = :userId

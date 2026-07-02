@@ -82,7 +82,11 @@ public class DomainRoutingService {
         Institute institute = null;
 
         if (StringUtils.hasText(mapping.getInstituteId())) {
-            Optional<Institute> instituteOpt = instituteRepository.findById(mapping.getInstituteId());
+            // Trim defensively: a stray trailing newline/space in the
+            // institute_domain_routing.institute_id column would otherwise make
+            // findById miss and 404 the whole row (seen on the admin-app row).
+            Optional<Institute> instituteOpt =
+                    instituteRepository.findById(mapping.getInstituteId().trim());
             if (instituteOpt.isEmpty()) {
                 return Optional.empty();
             }

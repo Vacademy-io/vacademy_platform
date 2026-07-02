@@ -34,23 +34,39 @@ const config: CapacitorConfig = {
     appId: flavor.appId,
     appName: flavor.appName,
     webDir: 'dist',
-    // Allow live reload against the local Vite dev server during native dev.
-    // Set CAP_DEV_SERVER=<url> before `cap sync` to enable.
-    ...(process.env.CAP_DEV_SERVER
-        ? { server: { url: process.env.CAP_DEV_SERVER, cleartext: true } }
-        : {}),
+    server: {
+        // Serve the WebView from https://localhost on BOTH platforms. iOS defaults
+        // to the custom capacitor:// scheme, where js-cookie/document.cookie writes
+        // are not reliably read back — which broke login (the role check reads the
+        // auth token from a cookie right after setting it and saw it empty →
+        // "Students are not allowed"). Matching Android's https scheme fixes it.
+        iosScheme: 'https',
+        androidScheme: 'https',
+        // Live reload against the local Vite dev server: set CAP_DEV_SERVER=<url>.
+        ...(process.env.CAP_DEV_SERVER ? { url: process.env.CAP_DEV_SERVER, cleartext: true } : {}),
+    },
     ios: {
         // Keeps the WKWebView from being pushed underneath the status bar before
         // the in-app status bar plugin loads (avoids first-paint flash on cold
         // start). Status bar colour/style are set at runtime by statusBar.ts.
         contentInset: 'always',
-        // Let our keyboard listeners drive layout instead of the WebView resizing.
-        scrollEnabled: false,
+        // Vimotion drove its own scrolling, so it disabled the WKWebView scroll
+        // view. The full admin portal relies on normal page scrolling, so it MUST
+        // keep the scroll view enabled — otherwise pages don't scroll on iOS.
+        scrollEnabled: flavor.key === 'vimotion' ? false : true,
     },
     android: {
         allowMixedContent: false,
     },
     plugins: {
+        // Patch document.cookie to the native cookie store. Required for iOS:
+        // WKWebView does not reliably read back a js-cookie/document.cookie write
+        // within the same flow, so the login role-check read the auth token cookie
+        // as empty → "Students are not allowed". With this enabled, cookies work
+        // consistently on both platforms (Android already worked).
+        CapacitorCookies: {
+            enabled: true,
+        },
         SplashScreen: {
             launchShowDuration: flavor.key === 'vimotion' ? 1500 : 2000,
             // Vimotion's /vim shell calls SplashScreen.hide() manually after first
@@ -69,13 +85,11 @@ const config: CapacitorConfig = {
             style: 'LIGHT',
             overlaysWebView: false,
         },
-        Keyboard: {
-            // Don't resize the WebView; we handle it via env(safe-area-inset-bottom)
-            // and a runtime --keyboard-height CSS var so sticky elements stay glued.
-            resize: 'none',
-            style: 'DEFAULT',
-            resizeOnFullScreen: true,
-        },
+        // NOTE: @capacitor/keyboard is intentionally NOT used — its Android IME
+        // inset-animation handling cancelled the soft-keyboard show on Android 16
+        // (tap focused the field but no keyboard appeared). The WebView's native
+        // keyboard handling is used instead; safe-area is handled in CSS via
+        // env(safe-area-inset-*). See src/native/keyboard.ts.
         FirebaseMessaging: {
             presentationOptions: ['badge', 'sound', 'alert'],
         },

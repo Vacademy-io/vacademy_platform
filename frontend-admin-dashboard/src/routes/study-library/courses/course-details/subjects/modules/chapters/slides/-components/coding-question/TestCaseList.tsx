@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import type { CodingTestCase } from '../utils/code-editor-types';
+import { type CodingTestCase, effectiveAccepted } from '../utils/code-editor-types';
 
 interface Props {
     testCases: CodingTestCase[];
@@ -139,17 +139,72 @@ export function TestCaseList({ testCases, onChange, disabled }: Props) {
                                     />
                                 </div>
                                 <div>
-                                    <Label className="text-xs">Expected stdout</Label>
-                                    <Textarea
-                                        value={tc.expectedStdout}
-                                        onChange={(e) =>
-                                            update(tc.id, { expectedStdout: e.target.value })
-                                        }
-                                        placeholder="Expected program output"
-                                        rows={3}
-                                        className="font-mono text-xs"
+                                    <Label className="text-xs">Accepted outputs</Label>
+                                    <div className="space-y-1">
+                                        {effectiveAccepted(tc).map((out, idx) => (
+                                            <div key={idx} className="flex items-start gap-1">
+                                                <Textarea
+                                                    value={out}
+                                                    onChange={(e) => {
+                                                        const arr = [...effectiveAccepted(tc)];
+                                                        arr[idx] = e.target.value;
+                                                        update(tc.id, {
+                                                            acceptedOutputs: arr,
+                                                            expectedStdout: arr[0] ?? '',
+                                                        });
+                                                    }}
+                                                    placeholder={
+                                                        idx === 0
+                                                            ? 'Expected program output'
+                                                            : 'Alternative accepted output'
+                                                    }
+                                                    rows={3}
+                                                    className="font-mono text-xs"
+                                                    disabled={disabled}
+                                                />
+                                                {effectiveAccepted(tc).length > 1 && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            const arr = effectiveAccepted(tc).filter(
+                                                                (_, i) => i !== idx
+                                                            );
+                                                            update(tc.id, {
+                                                                acceptedOutputs: arr,
+                                                                expectedStdout: arr[0] ?? '',
+                                                            });
+                                                        }}
+                                                        disabled={disabled}
+                                                        className="text-red-600 hover:bg-red-50"
+                                                        title="Remove this accepted output"
+                                                    >
+                                                        <Trash2 className="size-3" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            const arr = [...effectiveAccepted(tc), ''];
+                                            update(tc.id, {
+                                                acceptedOutputs: arr,
+                                                expectedStdout: arr[0] ?? '',
+                                            });
+                                        }}
                                         disabled={disabled}
-                                    />
+                                        className="mt-1"
+                                    >
+                                        <Plus className="mr-1 size-3" />
+                                        Add acceptable output
+                                    </Button>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Passes if the program output matches any listed value (after
+                                        trimming).
+                                    </p>
                                 </div>
                             </div>
                         </div>

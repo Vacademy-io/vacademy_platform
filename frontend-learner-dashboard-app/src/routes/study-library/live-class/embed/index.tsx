@@ -11,6 +11,7 @@ import YouTubePlayerWrapper from "@/components/common/study-library/level-materi
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
 import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
+import GoogleMeetLauncher from "./-components/GoogleMeetLauncher";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
@@ -185,6 +186,9 @@ function EmbedComponent() {
 
     const lt = (fetchedSessionDetails.linkType ?? "").toLowerCase();
     if (lt === "zoom" || lt === "zoom_meeting") return;
+    // Google Meet is URL-join and can legitimately run past the soft last_entry_time — don't
+    // redirect with "class has ended" while it may still be live (matches the Zoom carve-out).
+    if (["google_meet", "googlemeet", "gmeet", "google meet"].includes(lt)) return;
 
     const serverTimestamp = getServerTime(serverTimeData);
     const now = new Date(serverTimestamp);
@@ -283,6 +287,16 @@ function EmbedComponent() {
         <div className="flex items-center justify-center p-8">
           <DashboardLoader />
         </div>
+      );
+    }
+
+    // --- Google Meet (URL-join, no SDK; backend persists linkType "GOOGLE_MEET") ---
+    if (["google_meet", "googlemeet", "gmeet", "google meet"].includes((linkType ?? "").toString().toLowerCase())) {
+      return (
+        <GoogleMeetLauncher
+          scheduleId={sessionId ?? ""}
+          fallbackUrl={sessionDetails?.customMeetingLink ?? sessionDetails?.defaultMeetLink}
+        />
       );
     }
 
@@ -496,7 +510,11 @@ function EmbedComponent() {
     fetchedSessionDetails?.linkType === LinkType.BBB_MEETING ||
     fetchedSessionDetails?.linkType === "bbb";
 
-  if (!sessionDetails?.defaultMeetLink && !isBbbSession) {
+  const isGoogleSession = ["google_meet", "googlemeet", "gmeet", "google meet"].includes(
+    (sessionDetails?.linkType ?? fetchedSessionDetails?.linkType ?? "").toString().toLowerCase()
+  );
+
+  if (!sessionDetails?.defaultMeetLink && !isBbbSession && !isGoogleSession) {
     if ((sessions as any)?.defaultDayConfig?.defaultClassLink) {
       return (
         <LayoutContainer>

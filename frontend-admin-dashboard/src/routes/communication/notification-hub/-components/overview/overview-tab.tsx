@@ -82,8 +82,8 @@ export function OverviewTab() {
     return (
         <div className="p-4 space-y-4">
             {/* Controls */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {WINDOW_OPTIONS.map((opt) => (
                         <button
                             key={opt.days}

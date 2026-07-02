@@ -99,6 +99,10 @@ export interface CampaignLeadsRequest {
      *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
      *  Omitted = all counsellors (and unassigned leads). */
     assigned_counselor_id?: string;
+    /** When true, returns ONLY leads with no owner on either linked_users or
+     *  user_lead_profile (the "Unassigned" entry in the counsellor dropdown).
+     *  Mutually exclusive with assigned_counselor_id. Omitted = no narrowing. */
+    is_unassigned?: boolean;
     page: number;
     size: number;
     sort_by?: string;
@@ -129,6 +133,7 @@ export const fetchCampaignLeads = async (
                 conversion_status_filter: payload.conversion_status_filter,
                 sla_filter: payload.sla_filter,
                 assigned_counselor_id: payload.assigned_counselor_id,
+                is_unassigned: payload.is_unassigned,
                 sort_by: payload.sort_by,
                 sort_direction: payload.sort_direction,
                 page: payload.page,
@@ -165,6 +170,7 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
             payload.sla_filter ?? '',
             payload.assigned_counselor_id ?? '',
+            payload.is_unassigned ?? false,
             // Stable cache key for an order-independent set of custom-field filters.
             payload.custom_field_filters
                 ? payload.custom_field_filters

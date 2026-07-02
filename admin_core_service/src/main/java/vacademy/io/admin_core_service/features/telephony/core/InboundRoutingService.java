@@ -189,6 +189,7 @@ public class InboundRoutingService {
 
         public InboundRouteDecision getDecision() { return decision; }
         public String getInstituteId() { return instituteId; }
+        public String getCallLogId() { return callLogId; }
         public boolean isRouted() { return callLogId != null; }
     }
 

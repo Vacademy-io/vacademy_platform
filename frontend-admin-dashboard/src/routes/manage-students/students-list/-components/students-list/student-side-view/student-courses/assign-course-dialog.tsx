@@ -19,6 +19,7 @@ import {
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
+import { formatPlanPrice } from '@/utils/finance-utils';
 
 type WizardStep = 'SELECT_COURSES' | 'CONFIGURE' | 'PREVIEW' | 'RESULTS';
 
@@ -424,7 +425,7 @@ export const AssignCourseDialog = ({
                                     <span className="text-purple-600">
                                         {cfg.selectedInvite?.name}
                                         {!isCpo && cfg.resolvedPaymentPlan
-                                            ? ` · ₹${cfg.resolvedPaymentPlan.actual_price}`
+                                            ? ` · ₹${formatPlanPrice(cfg.resolvedPaymentPlan.actual_price)}`
                                             : ''}
                                     </span>
                                 )}

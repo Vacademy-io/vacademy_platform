@@ -151,6 +151,29 @@ export async function resolveInstituteById(
     }
 }
 
+/**
+ * Resolve institute branding by a FIXED domain + subdomain (not the request
+ * host). Used by native flavors (e.g. Vacademy Admin → vacademy.io/admin-app)
+ * which have no meaningful WebView hostname but map to a known
+ * `institute_domain_routing` row. Uses the same deployed public endpoint as
+ * host-based resolution.
+ */
+export async function resolveInstituteForDomain(
+    domain: string,
+    subdomain: string
+): Promise<DomainResolveResponse | null> {
+    if (!domain || !subdomain) return null;
+    try {
+        const { data } = await axios.get<DomainResolveResponse>(DOMAIN_ROUTING_RESOLVE, {
+            params: { domain, subdomain },
+            timeout: 5000,
+        });
+        return data;
+    } catch (_error) {
+        return null;
+    }
+}
+
 export async function getPublicUrl(fileId?: string | null): Promise<string | null> {
     if (!fileId) return null;
     try {
@@ -166,15 +189,23 @@ export async function getPublicUrl(fileId?: string | null): Promise<string | nul
 
 export function cacheInstituteBranding(
     instituteId: string | null | undefined,
-    payload: DomainResolveResponse & { instituteLogoUrl?: string; tabIconUrl?: string }
+    payload: DomainResolveResponse & { instituteLogoUrl?: string; tabIconUrl?: string },
+    options?: { setSelectedInstitute?: boolean }
 ): void {
+    // Native flavors that brand by a FIXED institute (e.g. Vacademy Admin → ca3c…)
+    // pass setSelectedInstitute:false so the app shows that institute's theme while
+    // login still resolves the user's OWN institute. Web (host-based) keeps the
+    // default behaviour where the resolved institute IS the working institute.
+    const setSelected = options?.setSelectedInstitute !== false;
     try {
-        // Store with key as institute id per requirement
         if (instituteId) {
             localStorage.setItem(instituteId, JSON.stringify(payload));
-            localStorage.setItem('selectedInstituteId', instituteId);
+            if (setSelected) {
+                localStorage.setItem('selectedInstituteId', instituteId);
+            }
         }
-        // Also store as current domain branding for robust fallback
+        // Always store as current domain branding for robust fallback (drives the
+        // app's theme/title/favicon via index.html pre-paint + ThemeProvider).
         localStorage.setItem('current_domain_branding', JSON.stringify(payload));
     } catch (_err) {
         // ignore storage failures

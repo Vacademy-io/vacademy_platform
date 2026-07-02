@@ -80,7 +80,8 @@ export const OpenStudentSidebar = () => {
 
     return (
         <Sidebar side="right">
-            <SidebarContent className="sidebar-content flex flex-col border-l border-slate-200 bg-white">
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) overlaying the right edge. */}
+            <SidebarContent className="sidebar-content flex flex-col border-l border-slate-200 bg-white pr-14">
                 <SidebarHeader className="sticky top-0 z-10 border-b border-slate-200 bg-white px-5 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">

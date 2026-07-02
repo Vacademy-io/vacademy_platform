@@ -71,6 +71,19 @@ public class LeadReportSettingService {
         return byInstituteId.get(instituteId, this::load);
     }
 
+    /**
+     * The institute's report {@link ZoneId} (already validated on load; defaults
+     * to {@code Asia/Kolkata}). Use this to convert an institute-local date
+     * window into UTC bounds before querying UTC-stored timestamps.
+     */
+    public ZoneId zoneOf(String instituteId) {
+        try {
+            return ZoneId.of(get(instituteId).timezone());
+        } catch (Exception e) {
+            return ZoneId.of(DEFAULT_TIMEZONE);
+        }
+    }
+
     private ReportSettings load(String instituteId) {
         try {
             String settingJson = instituteRepository.findById(instituteId)

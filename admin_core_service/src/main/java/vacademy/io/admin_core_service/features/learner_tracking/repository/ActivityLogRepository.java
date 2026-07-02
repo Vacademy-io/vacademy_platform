@@ -532,41 +532,48 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     FROM student_session_institute_group_mapping
                     WHERE package_session_id = :packageSessionId
                     AND status IN (:statusList)
+                ),
+                activity AS (
+                    SELECT
+                        a.user_id,
+                        SUM(
+                            CASE
+                                WHEN a.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                            END
+                        ) AS total_minutes,
+                        COUNT(DISTINCT DATE(a.start_time)) AS active_days
+                    FROM activity_log a
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                    GROUP BY a.user_id
+                ),
+                concentration AS (
+                    SELECT
+                        a.user_id,
+                        AVG(LEAST(100, GREATEST(0, cs.concentration_score))) AS avg_concentration
+                    FROM concentration_score cs
+                    JOIN activity_log a ON a.id = cs.activity_id
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                      AND cs.concentration_score > 0
+                    GROUP BY a.user_id
                 )
                 SELECT
                     s.user_id AS userId,
                     s.full_name AS fullName,
                     s.email AS email,
-                    COALESCE(AVG(cs.concentration_score), 0) AS avgConcentration,
-                    COALESCE(SUM(
-                        CASE
-                            WHEN a.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
-                        END
-                    ), 0) AS totalTime,
-                    COALESCE(SUM(
-                        CASE
-                            WHEN a.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
-                        END
-                    ) / NULLIF(COUNT(DISTINCT DATE(a.start_time)), 0), 0) AS dailyAvgTime,
-                    DENSE_RANK() OVER (ORDER BY
-                        COALESCE(SUM(
-                            CASE
-                                WHEN a.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)), 86400)
-                            END
-                        ), 0) DESC,
-                        COALESCE(AVG(cs.concentration_score), 0) DESC
+                    COALESCE(c.avg_concentration, 0) AS avgConcentration,
+                    COALESCE(act.total_minutes, 0) AS totalTime,
+                    COALESCE(act.total_minutes / NULLIF(act.active_days, 0), 0) AS dailyAvgTime,
+                    DENSE_RANK() OVER (
+                        ORDER BY COALESCE(act.total_minutes, 0) DESC,
+                                 COALESCE(c.avg_concentration, 0) DESC
                     ) AS rank
                 FROM student s
-                JOIN valid_users vu ON s.user_id = vu.user_id
-                LEFT JOIN activity_log a
-                    ON vu.user_id = a.user_id
-                    AND a.start_time BETWEEN :startTime AND :endTime
-                LEFT JOIN concentration_score cs
-                    ON a.id = cs.activity_id
-                GROUP BY s.user_id, s.full_name, s.email
+                JOIN valid_users vu ON vu.user_id = s.user_id
+                LEFT JOIN activity act ON act.user_id = s.user_id
+                LEFT JOIN concentration c ON c.user_id = s.user_id
             """, countQuery = """
                 SELECT COUNT(DISTINCT s.user_id)
                 FROM student s
@@ -674,7 +681,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         cs.subject_name,
                         cs.module_name,
                         cs.chapter_id,
-                        SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) AS total_time_seconds
+                        SUM(
+                            CASE
+                                WHEN al.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                            END
+                        ) AS total_time_seconds
                     FROM ChapterSlides cs
                     JOIN activity_log al ON cs.slide_id = al.slide_id
                     JOIN student_session_institute_group_mapping ssigm
@@ -840,7 +852,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 LearnerConcentration AS (
                     SELECT
                         la.slide_id,
-                        CAST(SUM(cs.concentration_score) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+                        CAST(SUM(LEAST(100, GREATEST(0, cs.concentration_score))) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
                     FROM concentration_score cs
                     JOIN LearnerActivity la ON cs.activity_id = la.activity_id
                     GROUP BY la.slide_id
@@ -860,7 +872,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 BatchConcentration AS (
                     SELECT
                         ba.slide_id,
-                        CAST(SUM(cs.concentration_score) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score_by_batch
+                        CAST(SUM(LEAST(100, GREATEST(0, cs.concentration_score))) AS FLOAT) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score_by_batch
                     FROM concentration_score cs
                     JOIN BatchActivity ba ON cs.activity_id = ba.activity_id
                     GROUP BY ba.slide_id
@@ -987,7 +999,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 SELECT
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60, 0) AS total_time_spent_minutes
+                    COALESCE(SUM(
+                        CASE
+                            WHEN al.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                        END
+                    ), 0) AS total_time_spent_minutes
                 FROM activity_log al
                 JOIN slide s ON s.id = al.slide_id
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
@@ -1033,7 +1050,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 )
                 SELECT
                     ds.activity_date,
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / 60, 0) AS time_spent_minutes
+                    COALESCE(SUM(
+                        CASE
+                            WHEN a.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                        END
+                    ), 0) AS time_spent_minutes
                 FROM date_series ds
                 LEFT JOIN activity_log a
                     ON a.user_id = :userId
@@ -1093,7 +1115,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         cs.subject_id,
                         cs.module_id,
-                        SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / 60 AS learner_time
+                        SUM(
+                            CASE
+                                WHEN al.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                            END
+                        ) / 60 AS learner_time
                     FROM ChapterSlides cs
                     JOIN activity_log al ON cs.slide_id = al.slide_id
                     WHERE al.user_id = :userId
@@ -1103,7 +1130,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         cs.subject_id,
                         cs.module_id,
-                        SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time))) / COUNT(DISTINCT ssigm.user_id) / 60 AS batch_time
+                        SUM(
+                            CASE
+                                WHEN al.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                            END
+                        ) / COUNT(DISTINCT ssigm.user_id) / 60 AS batch_time
                     FROM ChapterSlides cs
                     JOIN activity_log al ON cs.slide_id = al.slide_id
                     JOIN student_session_institute_group_mapping ssigm
@@ -1206,14 +1238,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             AvgTimeSpent AS (
                 SELECT
                     al.slide_id,
-                    (EXTRACT(EPOCH FROM SUM(al.end_time - al.start_time)) / 60) AS avg_time_spent
+                    (SUM(
+                        CASE
+                            WHEN al.start_time < '2023-01-01' THEN 0
+                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                        END
+                    ) / 60) AS avg_time_spent
                 FROM ActivityLogs al
                 GROUP BY al.slide_id
             ),
             AvgConcentrationScore AS (
                 SELECT
                     al.slide_id,
-                    SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+                    SUM(LEAST(100, GREATEST(0, cs.concentration_score))) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
                 FROM concentration_score cs
                 JOIN ActivityLogs al ON cs.activity_id = al.activity_id
                 GROUP BY al.slide_id
@@ -1302,7 +1339,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         cs.slide_id AS slide_id,
                         cs.slide_title AS slide_title,
                         DATE(al.created_at) AS activity_date,
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60), 0) AS time_spent_minutes
+                        COALESCE(SUM(
+                            CASE
+                                WHEN al.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                            END
+                        ), 0) AS time_spent_minutes
                     FROM ChapterSlides cs
                     JOIN activity_log al ON cs.slide_id = al.slide_id
                     WHERE al.user_id = :userId
@@ -1314,7 +1356,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         al.id AS activity_id,
                         al.slide_id AS slide_id,
-                        COALESCE(AVG(cs.concentration_score), 0) AS avg_concentration_score
+                        COALESCE(AVG(LEAST(100, GREATEST(0, cs.concentration_score))), 0) AS avg_concentration_score
                     FROM activity_log al
                     JOIN concentration_score cs ON al.id = cs.activity_id
                     WHERE al.user_id = :userId
@@ -1355,28 +1397,53 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("slideStatusList") List<String> slideStatusList);
 
     @Query(value = """
+                WITH valid_users AS (
+                    SELECT DISTINCT user_id
+                    FROM student_session_institute_group_mapping
+                    WHERE package_session_id = :packageSessionId
+                    AND status IN (:statusList)
+                ),
+                activity AS (
+                    SELECT
+                        a.user_id,
+                        SUM(
+                            CASE
+                                WHEN a.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                            END
+                        ) AS total_minutes,
+                        COUNT(DISTINCT DATE(a.start_time)) AS active_days
+                    FROM activity_log a
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                    GROUP BY a.user_id
+                ),
+                concentration AS (
+                    SELECT
+                        a.user_id,
+                        AVG(LEAST(100, GREATEST(0, cs.concentration_score))) AS avg_concentration
+                    FROM concentration_score cs
+                    JOIN activity_log a ON a.id = cs.activity_id
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                      AND cs.concentration_score > 0
+                    GROUP BY a.user_id
+                )
                 SELECT
                     s.user_id AS userId,
                     s.full_name AS fullName,
                     s.email AS email,
-                    COALESCE(AVG(cs.concentration_score), 0) AS avgConcentration,
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) AS totalTime,
-                    COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) / NULLIF(COUNT(DISTINCT DATE(a.start_time)), 0), 0) AS dailyAvgTime,
-                    DENSE_RANK() OVER (ORDER BY
-                        COALESCE(SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))), 0) DESC,
-                        COALESCE(AVG(cs.concentration_score), 0) DESC
+                    COALESCE(c.avg_concentration, 0) AS avgConcentration,
+                    COALESCE(act.total_minutes, 0) AS totalTime,
+                    COALESCE(act.total_minutes / NULLIF(act.active_days, 0), 0) AS dailyAvgTime,
+                    DENSE_RANK() OVER (
+                        ORDER BY COALESCE(act.total_minutes, 0) DESC,
+                                 COALESCE(c.avg_concentration, 0) DESC
                     ) AS rank
                 FROM student s
-                JOIN student_session_institute_group_mapping ssig
-                    ON s.user_id = ssig.user_id
-                LEFT JOIN activity_log a
-                    ON ssig.user_id = a.user_id
-                    AND a.start_time BETWEEN :startTime AND :endTime
-                LEFT JOIN concentration_score cs
-                    ON a.id = cs.activity_id
-                WHERE ssig.package_session_id = :packageSessionId
-                AND ssig.status IN (:statusList)
-                GROUP BY s.user_id, s.full_name, s.email
+                JOIN valid_users vu ON vu.user_id = s.user_id
+                LEFT JOIN activity act ON act.user_id = s.user_id
+                LEFT JOIN concentration c ON c.user_id = s.user_id
             """, countQuery = """
                 SELECT COUNT(DISTINCT s.user_id)
                 FROM student s
@@ -1434,21 +1501,21 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         AvgTimeSpent AS (
                             SELECT
                                 al.slide_id,
-                               (EXTRACT(EPOCH FROM SUM(
+                               (SUM(
               CASE
                 WHEN al.end_time > al.start_time
-                 AND al.start_time > TIMESTAMP '2000-01-01'
-                THEN (al.end_time - al.start_time)
-                ELSE INTERVAL '0 seconds'
+                 AND al.start_time > TIMESTAMP '2023-01-01'
+                THEN LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                ELSE 0
               END
-            )) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
+            ) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
               FROM ActivityLogs al
                             GROUP BY al.slide_id
                         ),
                         AvgConcentrationScore AS (
                             SELECT
                                 al.slide_id,
-                                SUM(cs.concentration_score) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
+                                SUM(LEAST(100, GREATEST(0, cs.concentration_score))) / NULLIF(COUNT(cs.id), 0) AS avg_concentration_score
                             FROM concentration_score cs
                             JOIN ActivityLogs al ON cs.activity_id = al.activity_id
                             GROUP BY al.slide_id
@@ -1757,5 +1824,38 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("UPDATE ActivityLog a SET a.processedJson = :processedJson, a.status = :status WHERE a.id = :id")
     void updateProcessedData(@Param("id") String id, @Param("processedJson") String processedJson,
             @Param("status") String status);
+
+    /**
+     * BUG-6/BUG-10: Fetch assignment activity logs for a user within a date range,
+     * with assignmentSlideTracked JOIN FETCHed in-session so the collection is
+     * initialized when the collector runs in a CompletableFuture worker thread.
+     * Uses JPQL (not native), no LIMIT, no status filter.
+     */
+    @Query("SELECT DISTINCT a FROM ActivityLog a JOIN FETCH a.assignmentSlideTracked ast " +
+           "WHERE a.userId = :userId AND a.createdAt BETWEEN :start AND :end")
+    List<ActivityLog> findAssignmentActivityLogsForUserInRange(
+            @Param("userId") String userId,
+            @Param("start") java.sql.Timestamp start,
+            @Param("end") java.sql.Timestamp end);
+
+    // ── Student report v2: content-type engagement counts (READ-ONLY) ─────────
+
+    /**
+     * Returns rows of [source_type, count] for a user's activity logs in the date range.
+     * Used by ActivityCollector to populate content_engagement in StudyHabitsSection.
+     * READ-ONLY: SELECT only, no mutations.
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+            SELECT al.source_type AS sourceType, COUNT(al.id) AS cnt
+            FROM activity_log al
+            WHERE al.user_id = :userId
+              AND al.created_at BETWEEN :start AND :end
+              AND al.source_type IS NOT NULL
+            GROUP BY al.source_type
+            """, nativeQuery = true)
+    List<Object[]> getContentTypeCountsForUser(
+            @org.springframework.data.repository.query.Param("userId") String userId,
+            @org.springframework.data.repository.query.Param("start") java.sql.Timestamp start,
+            @org.springframework.data.repository.query.Param("end") java.sql.Timestamp end);
 
 }

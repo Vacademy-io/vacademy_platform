@@ -13,19 +13,23 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Mints + caches VBC OAuth bearer tokens (password grant). One token per OAuth
- * application (keyed by consumerKey), cached until ~2 min before expiry.
+ * Mints + caches VBC end-user bearer tokens (password grant), cached until ~2 min
+ * before expiry.
  *
- * Defaults match the live Airtel/Vonage tenant: a WSO2 token host that is
- * SEPARATE from the API gateway. Both are overridable per-institute via the
- * provider config (tokenUrl).
+ * CRITICAL: the Telephony (click2dial) API requires a token for a real VBC USER —
+ * one stamped with {@code eAuthStatus:true} + {@code eClaims(accountNumber)}. That
+ * only comes from the {@code api.vonage.com/token} gateway authenticating the VBC
+ * user's email + VBC password. The raw WSO2 {@code oauth2/token} endpoint mints a
+ * token for the OAuth APPLICATION only (no end-user auth), and the Telephony API
+ * silently rejects it (an empty 202). So {@code vbcUsername}/{@code vbcPassword}
+ * must be a VBC user login, NOT the API service account. The token is
+ * account-scoped, so one VBC user can place click2dial from any extension.
  */
 @Component
 public class AirtelVbcTokenService {
 
-    static final String DEFAULT_TOKEN_URL =
-            "https://apimanager.auth.prod.vonagenetworks.net:443/t/vbc.prod/oauth2/token";
-    /** VBC appends this realm suffix to the username for the password grant. */
+    static final String DEFAULT_TOKEN_URL = "https://api.vonage.com/token";
+    /** VBC realm suffix appended to the username for the password grant. */
     private static final String VBC_REALM_SUFFIX = "@vbc.prod";
 
     private final RestTemplate rest = new RestTemplate();
@@ -65,16 +69,23 @@ public class AirtelVbcTokenService {
     @SuppressWarnings("unchecked")
     private String mint(ProviderCredentials creds, String key) {
         String tokenUrl = firstNonBlank(creds.conf("tokenUrl"), DEFAULT_TOKEN_URL);
+        // Append the @vbc.prod realm. endsWith (not "contains '@'") so a VBC login
+        // EMAIL like "name@org.com" becomes "name@org.com@vbc.prod" rather than
+        // being left unsuffixed (which fails auth).
         String username = creds.secret("vbcUsername");
-        if (username != null && !username.contains("@")) username += VBC_REALM_SUFFIX;
+        if (username != null && !username.endsWith(VBC_REALM_SUFFIX)) username += VBC_REALM_SUFFIX;
 
+        // client_id/client_secret go in the BODY — the api.vonage.com/token gateway
+        // takes them as form params, not HTTP Basic. username/password are the VBC
+        // end-user's login.
         String form = "grant_type=password&scope=openid"
                 + "&username=" + enc(username)
-                + "&password=" + enc(creds.secret("vbcPassword"));
+                + "&password=" + enc(creds.secret("vbcPassword"))
+                + "&client_id=" + enc(creds.secret("consumerKey"))
+                + "&client_secret=" + enc(creds.secret("consumerSecret"));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setBasicAuth(nz(creds.secret("consumerKey")), nz(creds.secret("consumerSecret")));
 
         Map<String, Object> body;
         try {
@@ -94,10 +105,6 @@ public class AirtelVbcTokenService {
 
     private static String enc(String s) {
         return URLEncoder.encode(s == null ? "" : s, StandardCharsets.UTF_8);
-    }
-
-    private static String nz(String s) {
-        return s == null ? "" : s;
     }
 
     private static String firstNonBlank(String a, String b) {

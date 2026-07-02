@@ -26,8 +26,8 @@ export function NotificationHubPage() {
                 onValueChange={(v) => setActiveTab(v as HubTab)}
                 className="flex flex-col flex-1 min-h-0"
             >
-                <div className="px-4 pt-3 border-b bg-white shrink-0">
-                    <TabsList>
+                <div className="px-4 pt-3 border-b bg-white shrink-0 overflow-x-auto">
+                    <TabsList className="w-max">
                         <TabsTrigger value="overview" className="gap-2">
                             <ChartLine size={16} /> Overview
                         </TabsTrigger>

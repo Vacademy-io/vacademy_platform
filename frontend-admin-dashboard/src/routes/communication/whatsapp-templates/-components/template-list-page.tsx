@@ -116,7 +116,7 @@ export function TemplateListPage() {
 
     return (
         <div className="p-4 sm:p-6 w-full max-w-6xl mx-auto">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">Message Templates</h1>
                     <p className="text-sm text-gray-500 mt-1">
@@ -125,7 +125,7 @@ export function TemplateListPage() {
                             : 'View synced templates. Create new templates in WATI Dashboard.'}
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <button onClick={handleSync} disabled={syncing}
                         className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
                         <ArrowClockwise size={16} className={syncing ? 'animate-spin' : ''} />
@@ -195,8 +195,8 @@ export function TemplateListPage() {
                     {filtered.map((t) => (
                         <div key={t.id} className="flex items-center justify-between p-4 bg-white rounded-lg border hover:border-blue-200 transition">
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-mono text-sm font-medium text-gray-800">{t.name}</span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono text-sm font-medium text-gray-800 break-all">{t.name}</span>
                                     {statusBadge(t.status || 'DRAFT')}
                                     {categoryBadge(t.category)}
                                     <span className="text-xs text-gray-400">{t.language}</span>

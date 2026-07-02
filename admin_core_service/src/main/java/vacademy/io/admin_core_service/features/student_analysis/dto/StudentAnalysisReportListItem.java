@@ -17,11 +17,13 @@ import java.time.LocalDateTime;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class StudentAnalysisReportListItem {
         private String processId;
+        private String name;
         private String userId;
         private String instituteId;
         private LocalDate startDateIso;
         private LocalDate endDateIso;
         private String status;
+        private String reportVersion;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
         private StudentReportData report;

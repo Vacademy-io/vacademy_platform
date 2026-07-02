@@ -24,6 +24,10 @@ class AssistantInitResponse(BaseModel):
 
 class AssistantMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, description="The user's message.")
+    context_meta: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Current page context (route + selected student) so 'this student' resolves.",
+    )
 
 
 class AssistantMessageResponse(BaseModel):

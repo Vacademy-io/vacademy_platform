@@ -52,7 +52,7 @@ export function RecentActivity({ items, loading, hasMore, loadingMore, onLoadMor
                                                 )}
                                                 <Badge
                                                     variant="secondary"
-                                                    className="text-[10px] uppercase"
+                                                    className="text-[10px] uppercase shrink-0"
                                                 >
                                                     {item.channel}
                                                 </Badge>

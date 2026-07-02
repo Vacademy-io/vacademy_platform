@@ -78,3 +78,23 @@ export function getMainDomain(url?: string): string {
         return '';
     }
 }
+
+/**
+ * True when the app is served from a Vacademy-owned host — any `*.vacademy.io`
+ * (e.g. dash.vacademy.io, learner.vacademy.io) plus localhost for local dev.
+ * White-labelled custom domains return false.
+ *
+ * Used to decide whether the Vacademy logo may be shown as a branding fallback:
+ * it is allowed on Vacademy's own domains but must NEVER appear on a
+ * white-labelled domain.
+ */
+export function isVacademyOwnedDomain(hostname?: string): boolean {
+    try {
+        const host = (hostname ?? window.location.hostname).toLowerCase();
+        return (
+            /(^|\.)vacademy\.io$/.test(host) || host === 'localhost' || host === '127.0.0.1'
+        );
+    } catch {
+        return false;
+    }
+}

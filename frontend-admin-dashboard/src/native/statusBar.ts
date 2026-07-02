@@ -25,7 +25,25 @@ export async function setStatusBar(opts: {
     }
 }
 
+function deviceIsDark(): boolean {
+    return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+}
+
 export async function initStatusBar(): Promise<void> {
-    // Vimotion default — paper white topbar, dark icons.
-    await setStatusBar({ backgroundColor: '#FFFFFF', theme: 'dark-content' });
+    // Follow the DEVICE/OS theme (not the app theme) so the status-bar icons stay
+    // readable against the cover strip (src/index.css --system-bar-cover): dark
+    // icons on a white strip in light mode, light icons on a black strip in dark
+    // mode. Re-applies when the device theme is toggled while the app is open.
+    const applyForDevice = () =>
+        setStatusBar(
+            deviceIsDark()
+                ? { backgroundColor: '#000000', theme: 'light-content' } // design-lint-ignore: native StatusBar API requires a hex string
+                : { backgroundColor: '#FFFFFF', theme: 'dark-content' } // design-lint-ignore: native StatusBar API requires a hex string
+        );
+    await applyForDevice();
+    if (typeof window !== 'undefined') {
+        window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            void applyForDevice();
+        });
+    }
 }

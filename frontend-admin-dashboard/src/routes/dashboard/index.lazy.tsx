@@ -48,6 +48,7 @@ import {
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getUserId } from '@/utils/userDetails';
 import { fetchSystemAlerts } from '@/services/notifications/system-alerts';
+import SuperAdminWidgetsRegion from './-components/SuperAdminWidgetsRegion';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -556,6 +557,11 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
             )}
             {/* Main content */}
             <div className="mt-5 flex w-full flex-col gap-4">
+                {/* Super-admin-managed widgets (onboarding tracker / info cards) — additive, renders
+                    nothing when none are configured. Role filtering is enforced server-side. */}
+                <TrackedWidget widgetId="superAdminWidgets">
+                    <SuperAdminWidgetsRegion />
+                </TrackedWidget>
                 {/* Role-shaped KPI band - operational metrics above the fold */}
                 {roleBundle.showKpiBand && isWidgetVisible('kpiBand') && !isFreshTenant && (
                     <TrackedWidget widgetId="kpiBand">

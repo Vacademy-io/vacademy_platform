@@ -116,7 +116,7 @@ export const LayoutContainer = ({
                     className={cn(
                         isMobile || isTablet
                             ? 'w-0 overflow-visible'
-                            : 'sticky top-0 h-screen flex-shrink-0',
+                            : 'sticky top-0 top-safe-native h-screen h-screen-safe-native flex-shrink-0',
                         isTablet && 'lg:hidden xl:block'
                     )}
                 >
@@ -133,8 +133,12 @@ export const LayoutContainer = ({
                 </div>
             )}
 
-            {/* Main Content Area */}
-            <div className="flex w-full min-w-0 flex-1 flex-col text-neutral-600">
+            {/* Main Content Area.
+                md:pr-14 reserves the right gutter for the Assist Dock rail (a fixed
+                w-14 column mounted globally in __root) on desktop, so page content/
+                navbar never slide under it. On mobile the dock is hidden, so there's
+                no gutter — content uses the full width. */}
+            <div className="flex w-full min-w-0 flex-1 flex-col text-neutral-600 md:pr-14">
                 <Navbar showMobileBackButton={showMobileBackButton} />
                 <StudentSidebarProvider>
                     <div

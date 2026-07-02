@@ -16,5 +16,6 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 public class AdminCoreServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
+
     }
 }

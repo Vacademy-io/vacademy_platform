@@ -20,8 +20,10 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
+import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -58,6 +60,7 @@ public class CallAiNodeHandler implements NodeHandler {
     private final UserLeadProfileRepository userLeadProfileRepository;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
+    private final SpelEvaluator spelEvaluator;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
@@ -79,6 +82,15 @@ public class CallAiNodeHandler implements NodeHandler {
     public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson,
                                       Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         Map<String, Object> out = new HashMap<>();
+
+        // Cohort (forEach) mode: when the node config carries a "forEach" block, iterate a
+        // source list from context (e.g. a QUERY node's ssigm_list) and enqueue one paced AI
+        // call per item — a provider-agnostic broadcast. Distinct from the single-subject
+        // retry flow below (which runs whenever there is no forEach). No per-item pause/retry.
+        JsonNode forEach = readConfigNode(nodeConfigJson, "forEach");
+        if (forEach != null && forEach.isObject()) {
+            return handleCohort(context, nodeConfigJson, forEach, out);
+        }
 
         String instituteId = str(context.get("instituteId"));
         String userId = firstNonBlank(str(context.get("leadUserId")), str(context.get("userId")));
@@ -242,6 +254,106 @@ public class CallAiNodeHandler implements NodeHandler {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** Read a raw JSON node from the node config (for nested config blocks like forEach). */
+    private JsonNode readConfigNode(String json, String key) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode v = mapper.readTree(json).get(key);
+            return (v == null || v.isNull()) ? null : v;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Cohort broadcast: enqueue one paced AI call per item in a source list (e.g. a QUERY
+     * node's {@code ssigm_list}). Each item's fields map to the call — defaults match
+     * fetch_ssigm_by_package (userId / mobileNumber / packageSessionId / fullName); override
+     * via the forEach config. Fire-and-forget + paced (no per-item pause/retry); each call's
+     * answers land on ai_call_result, subject-tagged. The node then completes so the workflow
+     * continues to its next node. Provider-agnostic: agent name + provider come from node
+     * config (or context), exactly like the single-subject path.
+     *
+     * Config shape:
+     * {
+     *   "forEach": { "source": "#ctx['ssigm_list']", "subjectType": "PACKAGE_SESSION_STUDENT",
+     *                "userIdField": "userId", "phoneField": "mobileNumber",
+     *                "subjectIdField": "packageSessionId", "nameField": "fullName" },
+     *   "campaignName": "Class Feedback", "provider": "MOCK",
+     *   "metadata": { "sessionName": "..." }
+     * }
+     */
+    private Map<String, Object> handleCohort(Map<String, Object> context, String nodeConfigJson,
+                                             JsonNode forEach, Map<String, Object> out) {
+        String source = forEach.path("source").asText("");
+        if (isBlank(source)) {
+            out.put("aiCallCohortError", "forEach.source is required");
+            return out;
+        }
+        Object listObj;
+        try {
+            listObj = spelEvaluator.evaluate(source, context);
+        } catch (Exception e) {
+            out.put("aiCallCohortError", "could not evaluate forEach.source: " + e.getMessage());
+            return out;
+        }
+        if (!(listObj instanceof Collection)) {
+            out.put("aiCallCohortError", "forEach.source did not resolve to a list");
+            return out;
+        }
+
+        String instituteId = str(context.get("instituteId"));
+        // Agent + provider — same resolution as the single-subject path (config wins, else context).
+        String campaignName = firstNonBlank(readConfig(nodeConfigJson, "campaignName"), str(context.get("campaignName")));
+        String campaignId = firstNonBlank(readConfig(nodeConfigJson, "campaignId"), str(context.get("campaignId")));
+        String provider = firstNonBlank(readConfig(nodeConfigJson, "provider"), str(context.get("provider")));
+
+        // Subject + per-item field mapping (defaults align with fetch_ssigm_by_package output).
+        String subjectType = firstNonBlank(forEach.path("subjectType").asText(null), "PACKAGE_SESSION_STUDENT");
+        String userIdField = forEach.path("userIdField").asText("userId");
+        String phoneField = forEach.path("phoneField").asText("mobileNumber");
+        String subjectIdField = forEach.path("subjectIdField").asText("packageSessionId");
+        String nameField = forEach.path("nameField").asText("fullName");
+        Map<String, Object> metaTemplate = readConfigMap(nodeConfigJson, "metadata");
+
+        int queued = 0, skipped = 0;
+        for (Object it : (Collection<?>) listObj) {
+            if (!(it instanceof Map<?, ?> item)) { skipped++; continue; }
+            String userId = str(item.get(userIdField));
+            if (isBlank(userId)) { skipped++; continue; } // telephony_call_log.user_id is NOT NULL
+            String phone = str(item.get(phoneField));
+            String subjectId = firstNonBlank(str(item.get(subjectIdField)), str(context.get("subjectId")));
+            String name = str(item.get(nameField));
+
+            AiCallRequestDTO req = new AiCallRequestDTO();
+            req.setInstituteId(instituteId);
+            req.setUserId(userId);
+            req.setPhoneNumber(phone);          // blank ⇒ AiCallService resolves from the user profile
+            req.setProvider(provider);
+            req.setCampaignName(campaignName);
+            req.setCampaignId(campaignId);
+            req.setSubjectType(subjectType);
+            req.setSubjectId(subjectId);
+            req.setCustomerName(name);
+
+            Map<String, Object> meta = new HashMap<>();
+            if (metaTemplate != null) meta.putAll(metaTemplate);
+            if (name != null) meta.put("studentName", name);
+            if (subjectId != null) meta.put("packageSessionId", subjectId);
+            req.setMetadata(meta.isEmpty() ? null : meta);
+
+            aiCallDispatcher.enqueue(req);      // paced, async; placeCall records + dials (or MOCKs)
+            queued++;
+        }
+
+        out.put("aiCallCohortQueued", queued);
+        out.put("aiCallCohortSkipped", skipped);
+        out.put("aiCallDone", true);            // node completes; workflow continues to the next node
+        log.info("CALL_AI cohort: source='{}' subjectType={} -> {} queued, {} skipped (agent='{}', provider='{}')",
+                source, subjectType, queued, skipped, campaignName, provider);
+        return out;
     }
 
     private int asInt(Object o) {

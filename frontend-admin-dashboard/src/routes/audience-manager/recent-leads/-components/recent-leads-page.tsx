@@ -46,6 +46,10 @@ import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-f
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
+import { MyButton } from '@/components/design-system/button';
+import { UserPlus } from '@phosphor-icons/react';
 import {
     LeadEmptyState,
     LeadTable,
@@ -487,6 +491,43 @@ const RecentLeadsContent = () => {
         queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
         queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
         queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+    };
+
+    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
+    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+        new Map()
+    );
+    const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+
+    // Selection is only meaningful on the Unassigned view; drop it when the
+    // counsellor filter changes so stale ids can't leak into an assign.
+    useEffect(() => {
+        setSelectedLeads(new Map());
+    }, [counsellorFilter]);
+
+    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.set(userId, { userId, name: vm.name });
+            return next;
+        });
+
+    const toggleAllLeads = (checked: boolean, selectableVms: LeadCardVM[]) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            selectableVms.forEach((v) => {
+                if (!v.userId) return;
+                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
+                else next.delete(v.userId);
+            });
+            return next;
+        });
+
+    const handleBulkAssignSuccess = () => {
+        setSelectedLeads(new Map());
+        handleStatusUpdated();
     };
 
     const toggleColumn = (id: string) =>
@@ -1013,6 +1054,31 @@ const RecentLeadsContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
+                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
+                    {isUnassignedView && selectedLeads.size > 0 && (
+                        <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                            <span className="text-body font-medium text-primary-700">
+                                {selectedLeads.size} selected
+                            </span>
+                            <div className="flex gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => setSelectedLeads(new Map())}
+                                >
+                                    Clear
+                                </MyButton>
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="small"
+                                    onClick={() => setBulkAssignOpen(true)}
+                                >
+                                    <UserPlus className="size-3.5" />
+                                    Assign counsellor
+                                </MyButton>
+                            </div>
+                        </div>
+                    )}
                     {error ? (
                         <LeadEmptyState
                             title="Couldn't load leads"
@@ -1030,6 +1096,10 @@ const RecentLeadsContent = () => {
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            selectable={isUnassignedView}
+                            selectedIds={new Set(selectedLeads.keys())}
+                            onToggleRow={toggleLeadRow}
+                            onToggleAll={toggleAllLeads}
                             emptyState={
                                 <LeadEmptyState
                                     onClear={isFilterActive ? handleClearFilter : undefined}
@@ -1043,6 +1113,15 @@ const RecentLeadsContent = () => {
                     examType="EXAM"
                     isStudentList={false}
                     defaultLeadProfile
+                />
+
+                <BulkAssignCounsellorDialog
+                    open={bulkAssignOpen}
+                    onOpenChange={setBulkAssignOpen}
+                    instituteId={instituteId ?? ''}
+                    leads={Array.from(selectedLeads.values())}
+                    counsellorOptions={counsellorOptions}
+                    onSuccess={handleBulkAssignSuccess}
                 />
 
                 {noteTarget && (

@@ -19,10 +19,13 @@ import {
     Phone,
     SquaresFour,
     List as ListIcon,
+    Sparkle,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
 import { CounsellorCallsTab } from './-components/CounsellorCallsTab';
+import { CounsellorInsightsTab } from './-components/CounsellorInsightsTab';
+import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -45,7 +48,7 @@ export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
 });
 
-type DetailTab = 'leads' | 'activity' | 'calls' | 'performance';
+type DetailTab = 'leads' | 'activity' | 'calls' | 'coaching' | 'performance';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type ViewMode = 'cards' | 'list';
 
@@ -246,8 +249,7 @@ export function WorkbenchPage() {
     // ACTIVE direction: legacy direct flip — no leads to move, no dialog
     // needed. (For INACTIVE we go through the reassign-first flow below.)
     const setActiveMutation = useMutation({
-        mutationFn: (userId: string) =>
-            setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
+        mutationFn: (userId: string) => setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
         onSuccess: () => {
             // BOTH lists need to refetch:
             //   * `workbench-counsellors`           — the paginated display list
@@ -399,11 +401,7 @@ export function WorkbenchPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <StatChip
-                        icon={UsersThree}
-                        label="Counsellors"
-                        value={totalCounsellors}
-                    />
+                    <StatChip icon={UsersThree} label="Counsellors" value={totalCounsellors} />
                     <StatChip icon={Crown} label="Active" value={activeCount} tone="success" />
                     <StatChip
                         icon={ChatCircleText}
@@ -498,9 +496,7 @@ export function WorkbenchPage() {
                     instituteId={instituteId}
                     statusPendingId={
                         pendingMarkInactiveId ??
-                        (setActiveMutation.isPending
-                            ? setActiveMutation.variables ?? null
-                            : null)
+                        (setActiveMutation.isPending ? setActiveMutation.variables ?? null : null)
                     }
                     onOpen={(uid) => {
                         const c = counsellors.find((x) => x.user_id === uid);
@@ -594,8 +590,8 @@ function StatChip({
         tone === 'primary'
             ? 'bg-primary-50 text-primary-700'
             : tone === 'success'
-            ? 'bg-success-50 text-success-700'
-            : 'bg-neutral-100 text-neutral-700';
+              ? 'bg-success-50 text-success-700'
+              : 'bg-neutral-100 text-neutral-700';
     return (
         <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 ${toneClass}`}>
             <Icon size={16} />
@@ -633,17 +629,12 @@ function CounsellorCard({
             )}
         >
             <div
-                className={cn(
-                    'h-1',
-                    counsellor.is_active ? 'bg-primary-500' : 'bg-neutral-300'
-                )}
+                className={cn('h-1', counsellor.is_active ? 'bg-primary-500' : 'bg-neutral-300')}
             />
             <div className="flex items-start gap-3 px-4 py-3">
                 <Avatar name={name} large />
                 <div className="min-w-0 flex-1 leading-tight">
-                    <div className="truncate text-body font-semibold text-neutral-900">
-                        {name}
-                    </div>
+                    <div className="truncate text-body font-semibold text-neutral-900">{name}</div>
                     {counsellor.role_label ? (
                         <div className="truncate text-caption italic text-neutral-700">
                             {counsellor.role_label}
@@ -656,7 +647,11 @@ function CounsellorCard({
                         )
                     )}
                 </div>
-                <CounsellorRatingBadge instituteId={instituteId} userId={counsellor.user_id} size="md" />
+                <CounsellorRatingBadge
+                    instituteId={instituteId}
+                    userId={counsellor.user_id}
+                    size="md"
+                />
             </div>
 
             <div className="grid grid-cols-2 gap-3 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 text-caption">
@@ -710,11 +705,7 @@ function CounsellorCard({
                             : 'text-success-700 hover:bg-success-50'
                     )}
                 >
-                    {statusLoading
-                        ? '…'
-                        : counsellor.is_active
-                        ? 'Mark inactive'
-                        : 'Mark active'}
+                    {statusLoading ? '…' : counsellor.is_active ? 'Mark inactive' : 'Mark active'}
                 </button>
             </div>
         </button>
@@ -834,8 +825,8 @@ function CounsellorTable({
                                         {pending
                                             ? '…'
                                             : c.is_active
-                                            ? 'Mark inactive'
-                                            : 'Mark active'}
+                                              ? 'Mark inactive'
+                                              : 'Mark active'}
                                     </button>
                                 </td>
                             </tr>
@@ -866,6 +857,9 @@ function DetailDrawer({
     instituteId: string;
     onReassign: (lead: WorkbenchLead) => void;
 }) {
+    // Coaching tab only exists when the institute has Call Intelligence on.
+    // (Hook must run before the early return below — Rules of Hooks.)
+    const callIntelligenceEnabled = useCallIntelligenceEnabled();
     // Sheet handles focus trap, Escape, overlay click — we just supply the
     // content. `counsellor` can be null briefly during the close animation
     // (state cleared as the sheet starts to fade out); the early-return
@@ -874,16 +868,11 @@ function DetailDrawer({
     const name = counsellor.full_name || 'Unnamed';
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent
-                side="right"
-                className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl"
-            >
+            <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl">
                 <div className="flex items-center gap-3 border-b border-neutral-200 px-5 py-4">
                     <Avatar name={name} large />
                     <div className="min-w-0 flex-1 leading-tight">
-                        <div className="truncate text-h3 font-medium text-neutral-900">
-                            {name}
-                        </div>
+                        <div className="truncate text-h3 font-medium text-neutral-900">{name}</div>
                         <div className="truncate text-caption text-neutral-500">
                             {counsellor.email ?? counsellor.role_label ?? '—'}
                         </div>
@@ -912,6 +901,11 @@ function DetailDrawer({
                         <TabsTrigger value="calls">
                             <Phone size={14} className="mr-1.5" /> Calls
                         </TabsTrigger>
+                        {callIntelligenceEnabled && (
+                            <TabsTrigger value="coaching">
+                                <Sparkle size={14} className="mr-1.5" /> Coaching
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="performance">
                             <ChartLineUp size={14} className="mr-1.5" /> Performance
                         </TabsTrigger>
@@ -932,6 +926,12 @@ function DetailDrawer({
                         )}
                         {tab === 'calls' && (
                             <CounsellorCallsTab
+                                instituteId={instituteId}
+                                counsellorUserId={counsellor.user_id}
+                            />
+                        )}
+                        {tab === 'coaching' && callIntelligenceEnabled && (
+                            <CounsellorInsightsTab
                                 instituteId={instituteId}
                                 counsellorUserId={counsellor.user_id}
                             />
@@ -963,7 +963,7 @@ function Avatar({ name, large = false }: { name: string; large?: boolean }) {
         <div
             className={cn(
                 'flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-semibold text-primary-700',
-                large ? 'size-11 text-h3' : 'size-9 text-h4'
+                large ? 'size-11 text-h3' : 'text-h4 size-9'
             )}
             aria-hidden="true"
         >

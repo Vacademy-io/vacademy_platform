@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver
 import vacademy.io.admin_core_service.features.telephony.enums.IvrNodeType;
 import vacademy.io.admin_core_service.features.telephony.ivr.IvrMenuService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrNode;
+import vacademy.io.admin_core_service.features.telephony.providers.vacademy_ai.VacademyAiAnswerUrls;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,24 +27,28 @@ public class PlivoIvrRenderer {
 
     private final IvrMenuService ivrMenuService;
     private final UserMobileResolver userMobileResolver;
+    private final VacademyAiAnswerUrls aiAnswerUrls;
 
     @Value("${telephony.webhook.callback-base:}")
     private String webhookBase;
 
-    public PlivoIvrRenderer(IvrMenuService ivrMenuService, UserMobileResolver userMobileResolver) {
+    public PlivoIvrRenderer(IvrMenuService ivrMenuService, UserMobileResolver userMobileResolver,
+                            VacademyAiAnswerUrls aiAnswerUrls) {
         this.ivrMenuService = ivrMenuService;
         this.userMobileResolver = userMobileResolver;
+        this.aiAnswerUrls = aiAnswerUrls;
     }
 
     /** Full {@code <Response>} for an inbound call positioned at {@code start}. */
-    public String render(IvrNode start, String callLogId, boolean record, String webhookToken) {
+    public String render(IvrNode start, String callLogId, String instituteId,
+                         boolean record, String webhookToken) {
         StringBuilder body = new StringBuilder();
-        appendNode(body, start, callLogId, record, webhookToken, 0);
+        appendNode(body, start, callLogId, instituteId, record, webhookToken, 0);
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>" + body + "</Response>";
     }
 
-    private void appendNode(StringBuilder b, IvrNode node, String corr, boolean record,
-                            String token, int depth) {
+    private void appendNode(StringBuilder b, IvrNode node, String corr, String instituteId,
+                            boolean record, String token, int depth) {
         if (node == null || depth > 12) {
             b.append("<Hangup/>");
             return;
@@ -58,7 +63,7 @@ public class PlivoIvrRenderer {
                 speak(b, node);
                 IvrNode next = node.getNextNodeId() == null ? null
                         : ivrMenuService.getNode(node.getNextNodeId()).orElse(null);
-                if (next != null) appendNode(b, next, corr, record, token, depth + 1);
+                if (next != null) appendNode(b, next, corr, instituteId, record, token, depth + 1);
                 else b.append("<Hangup/>");
             }
             case GATHER -> {
@@ -114,6 +119,23 @@ public class PlivoIvrRenderer {
             case HANGUP -> {
                 speak(b, node);
                 b.append("<Hangup/>");
+            }
+            case AI_AGENT -> {
+                // Hand the live call to a Vacademy AI agent: redirect Plivo to the
+                // voice-bot's /answer, which serves the same
+                // [<Record recordSession>]<Stream>wss…</Stream><Redirect>/plivo/ai-next</Redirect>
+                // XML the outbound AI path uses — recording, mid-call human handoff
+                // and the end-of-call report pipeline all behave identically.
+                if (!aiAnswerUrls.isConfigured() || isBlank(node.getAiAgentId())) {
+                    speak(b, node);
+                    b.append("<Speak>Sorry, our assistant is unavailable right now. ")
+                            .append("Please call back later.</Speak><Hangup/>");
+                    return;
+                }
+                speak(b, node); // optional bridge prompt ("Connecting you to our assistant…")
+                String answerUrl = aiAnswerUrls.answerUrl(
+                        corr, node.getAiAgentId(), instituteId, token, record);
+                b.append("<Redirect method=\"POST\">").append(esc(answerUrl)).append("</Redirect>");
             }
         }
     }

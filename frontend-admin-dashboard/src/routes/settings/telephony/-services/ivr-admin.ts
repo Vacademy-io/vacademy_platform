@@ -6,7 +6,7 @@ import {
 } from '@/constants/urls';
 
 /** The node kinds an IVR tree is built from (mirrors backend IvrNodeType). */
-export type IvrNodeType = 'PLAY' | 'GATHER' | 'DIAL' | 'VOICEMAIL' | 'HANGUP';
+export type IvrNodeType = 'PLAY' | 'GATHER' | 'DIAL' | 'VOICEMAIL' | 'HANGUP' | 'AI_AGENT';
 
 /** One node in an IVR tree. `id` is a client-generated UUID that other nodes and
  *  the menu's `rootNodeId` reference, so the tree's links survive reloads. */
@@ -26,6 +26,8 @@ export interface IvrNodeDTO {
     dialUserIds?: string[] | null;
     /** PLAY: next node after the prompt. */
     nextNodeId?: string | null;
+    /** AI_AGENT: the AI agent (Settings > AI Calling > AI Agents) that takes the call. */
+    aiAgentId?: string | null;
     timeoutSeconds?: number | null;
     maxRetries?: number | null;
 }
@@ -50,6 +52,7 @@ export const IVR_NODE_TYPE_LABELS: Record<IvrNodeType, string> = {
     DIAL: 'Connect to a number',
     VOICEMAIL: 'Take a voicemail',
     HANGUP: 'Hang up',
+    AI_AGENT: 'Talk to AI agent',
 };
 
 export const fetchIvrMenus = async (instituteId: string): Promise<IvrMenuDTO[]> => {

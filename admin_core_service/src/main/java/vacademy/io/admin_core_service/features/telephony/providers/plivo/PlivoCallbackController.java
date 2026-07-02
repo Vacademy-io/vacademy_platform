@@ -143,7 +143,7 @@ public class PlivoCallbackController {
         if (menu != null && menu.getRootNodeId() != null) {
             IvrNode root = ivrMenuService.getNode(menu.getRootNodeId()).orElse(null);
             if (root != null) {
-                return xml(ivrRenderer.render(root, corr, record, token));
+                return xml(ivrRenderer.render(root, corr, instituteId, record, token));
             }
         }
         // No IVR authored — route straight to a counsellor / voicemail leg.
@@ -188,7 +188,8 @@ public class PlivoCallbackController {
 
         // Invalid / no match → replay the current menu so the caller can retry.
         IvrNode toRender = next != null ? next : current;
-        return xml(ivrRenderer.render(toRender, corr, record, resolved.getWebhookToken()));
+        return xml(ivrRenderer.render(toRender, corr, row.getInstituteId(), record,
+                resolved.getWebhookToken()));
     }
 
     /**

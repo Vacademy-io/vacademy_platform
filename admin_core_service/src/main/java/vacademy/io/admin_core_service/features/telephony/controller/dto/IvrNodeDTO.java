@@ -35,6 +35,8 @@ public class IvrNodeDTO {
     private List<String> dialUserIds;
     /** PLAY: next node after the prompt. */
     private String nextNodeId;
+    /** AI_AGENT: the AI agent (registry id) that takes over the call. */
+    private String aiAgentId;
     private Integer timeoutSeconds;
     private Integer maxRetries;
 }

@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
+import { useAiAgentOptions } from '@/hooks/use-ai-agent-options';
 import { cn } from '@/lib/utils';
 import {
     type IvrMenuDTO,
@@ -38,6 +39,7 @@ const PROMPT_LABEL: Record<IvrNodeType, string> = {
     DIAL: 'Message before connecting (optional)',
     VOICEMAIL: 'Voicemail greeting',
     HANGUP: 'Goodbye message (optional)',
+    AI_AGENT: 'Message before the AI assistant joins (optional)',
 };
 
 function blankMenu(instituteId: string): IvrMenuDTO {
@@ -95,6 +97,11 @@ export function IvrMenuEditor({
 
     const { options: counsellorRaw } = useLeadCounsellorOptions();
     const counsellorOptions = counsellorRaw.map((c) => ({ label: c.full_name, value: c.id }));
+
+    const { agents } = useAiAgentOptions();
+    const agentOptions = agents.map((a) => ({ label: a.name, value: a.id }));
+    const agentNameFor = (id?: string | null): string =>
+        agents.find((a) => a.id === id)?.name ?? '';
 
     const nodes = draft.nodes;
     const refOptions = nodes.map((n, i) => ({ label: nodeDisplay(n, i), value: n.id }));
@@ -162,6 +169,10 @@ export function IvrMenuEditor({
         }
         if (!draft.rootNodeId) {
             toast.error('Pick the step the call starts at');
+            return;
+        }
+        if (draft.nodes.some((n) => n.nodeType === 'AI_AGENT' && !n.aiAgentId)) {
+            toast.error('Pick an AI agent for the “Talk to AI agent” step');
             return;
         }
         const cleaned: IvrMenuDTO = {
@@ -455,6 +466,29 @@ export function IvrMenuEditor({
                                         onChange={(ids) => patchNode(node.id, { dialUserIds: ids })}
                                         placeholder="Pick team members to ring"
                                     />
+                                </div>
+                            )}
+
+                            {/* AI_AGENT: which agent takes the call */}
+                            {node.nodeType === 'AI_AGENT' && (
+                                <div className="flex flex-col gap-1">
+                                    <Label className="text-subtitle font-regular">AI agent</Label>
+                                    <MyDropdown
+                                        placeholder={
+                                            agentOptions.length
+                                                ? 'Pick the AI agent'
+                                                : 'No AI agents yet — create one in AI Calling settings'
+                                        }
+                                        currentValue={agentNameFor(node.aiAgentId)}
+                                        dropdownList={agentOptions}
+                                        handleChange={(v) => patchNode(node.id, { aiAgentId: v })}
+                                        className="w-64"
+                                    />
+                                    <p className="text-caption text-neutral-500">
+                                        The caller talks to this AI assistant. If the caller asks for
+                                        a person, the call is transferred to the agent’s handoff
+                                        number.
+                                    </p>
                                 </div>
                             )}
 

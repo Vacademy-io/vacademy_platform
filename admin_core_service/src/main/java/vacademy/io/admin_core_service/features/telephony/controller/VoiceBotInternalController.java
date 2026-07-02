@@ -98,7 +98,13 @@ public class VoiceBotInternalController {
         out.put("instituteId", instituteId);
         out.put("instituteName", instituteName);
         out.put("direction", row.getDirection());
-        out.put("leadPhone", row.getToNumber() != null ? row.getToNumber() : row.getFromNumber());
+        // INBOUND (IVR AI_AGENT node): the person on the line is the CALLER —
+        // to_number is our own DID there, so prefer from_number.
+        boolean inbound = vacademy.io.admin_core_service.features.telephony.enums
+                .CallDirection.INBOUND.name().equalsIgnoreCase(row.getDirection());
+        out.put("leadPhone", inbound
+                ? (row.getFromNumber() != null ? row.getFromNumber() : row.getToNumber())
+                : (row.getToNumber() != null ? row.getToNumber() : row.getFromNumber()));
         out.put("leadName", leadName);
         out.put("responseId", row.getResponseId());
         out.put("userId", row.getUserId());

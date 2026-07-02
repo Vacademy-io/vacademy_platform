@@ -159,6 +159,7 @@ public class IvrMenuService {
                     .dialTargets(writeJson(n.getDialTargets()))
                     .dialUserIds(writeJson(n.getDialUserIds()))
                     .nextNodeId(blankToNull(n.getNextNodeId()))
+                    .aiAgentId(blankToNull(n.getAiAgentId()))
                     .timeoutSeconds(n.getTimeoutSeconds() == null ? 6 : n.getTimeoutSeconds())
                     .maxRetries(n.getMaxRetries() == null ? 2 : n.getMaxRetries())
                     .build());
@@ -187,6 +188,10 @@ public class IvrMenuService {
             }
             if (IvrNodeType.parseOrNull(n.getNodeType()) == null) {
                 throw new VacademyException("Unknown IVR node type: " + n.getNodeType());
+            }
+            if (IvrNodeType.parseOrNull(n.getNodeType()) == IvrNodeType.AI_AGENT
+                    && (n.getAiAgentId() == null || n.getAiAgentId().isBlank())) {
+                throw new VacademyException("AI agent node needs an agent selected");
             }
         }
         // Referenced ids (root, digit targets, next) must exist in the tree.
@@ -221,6 +226,7 @@ public class IvrMenuService {
                     .dialTargets(readList(n.getDialTargets()))
                     .dialUserIds(readList(n.getDialUserIds()))
                     .nextNodeId(n.getNextNodeId())
+                    .aiAgentId(n.getAiAgentId())
                     .timeoutSeconds(n.getTimeoutSeconds())
                     .maxRetries(n.getMaxRetries())
                     .build());

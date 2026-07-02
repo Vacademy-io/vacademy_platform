@@ -14,7 +14,9 @@ public enum IvrNodeType {
     /** Speak a prompt and record a voicemail message, then hang up. */
     VOICEMAIL,
     /** Speak an optional prompt and end the call. */
-    HANGUP;
+    HANGUP,
+    /** Hand the call to a Vacademy AI agent ({@code ai_agent_id}) via the voice bot. */
+    AI_AGENT;
 
     public static IvrNodeType parseOrNull(String s) {
         if (s == null) return null;

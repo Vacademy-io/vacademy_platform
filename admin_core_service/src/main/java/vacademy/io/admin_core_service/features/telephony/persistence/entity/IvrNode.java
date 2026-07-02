@@ -52,6 +52,10 @@ public class IvrNode {
     @Column(name = "next_node_id", length = 36)
     private String nextNodeId;
 
+    /** AI_AGENT: the ai_agent registry row the call is handed to (V357). */
+    @Column(name = "ai_agent_id", length = 36)
+    private String aiAgentId;
+
     @Column(name = "timeout_seconds", nullable = false)
     @Builder.Default
     private Integer timeoutSeconds = 6;

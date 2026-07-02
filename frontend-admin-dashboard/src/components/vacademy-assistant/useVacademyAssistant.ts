@@ -169,6 +169,23 @@ export function useVacademyAssistant() {
                             const data = frame.data as AssistantMessageData;
                             // tool_call / tool_result are intermediate — not shown as bubbles in v1.
                             if (data?.type === 'assistant') finalizeAssistant(data.content || '');
+                        } else if (frame.event === 'action_request') {
+                            const data = frame.data as AssistantActionRequestData;
+                            if (data?.action_id) {
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        id: `action-${data.action_id}`,
+                                        role: 'action',
+                                        content: data.summary || 'Confirm this change?',
+                                        action: {
+                                            actionId: data.action_id,
+                                            summary: data.summary || '',
+                                            status: 'pending',
+                                        },
+                                    },
+                                ]);
+                            }
                         } else if (frame.event === 'error') {
                             const data = frame.data as AssistantErrorData;
                             setError(
@@ -234,6 +251,52 @@ export function useVacademyAssistant() {
         [runStream, status]
     );
 
+    const setActionStatus = useCallback((actionId: string, status: AssistantActionStatus) => {
+        setMessages((prev) =>
+            prev.map((m) =>
+                m.action?.actionId === actionId ? { ...m, action: { ...m.action, status } } : m
+            )
+        );
+    }, []);
+
+    /** Confirm or cancel a pending write action (the nonce-backed card). */
+    const resolveAction = useCallback(
+        async (actionId: string, decision: 'confirm' | 'cancel') => {
+            const sessionId = sessionIdRef.current;
+            if (!sessionId) return;
+            setActionStatus(actionId, 'working');
+            try {
+                const url =
+                    decision === 'confirm'
+                        ? ASSISTANT_ACTION_CONFIRM(sessionId, actionId)
+                        : ASSISTANT_ACTION_CANCEL(sessionId, actionId);
+                const resp = await authenticatedAxiosInstance.post(url);
+                const status = String(resp.data?.status || '').toLowerCase();
+                const mapped: AssistantActionStatus =
+                    status === 'executed'
+                        ? 'executed'
+                        : status === 'cancelled'
+                          ? 'cancelled'
+                          : 'failed';
+                setActionStatus(actionId, mapped);
+                if (resp.data?.message) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: crypto.randomUUID(),
+                            role: 'assistant',
+                            content: String(resp.data.message),
+                        },
+                    ]);
+                }
+            } catch {
+                setActionStatus(actionId, 'pending');
+                setError('Could not process that action. Please try again.');
+            }
+        },
+        [setActionStatus]
+    );
+
     const reset = useCallback(async () => {
         abortRef.current?.abort();
         const sid = sessionIdRef.current;
@@ -250,5 +313,5 @@ export function useVacademyAssistant() {
         }
     }, []);
 
-    return { messages, status, error, sendMessage, reset };
+    return { messages, status, error, sendMessage, reset, resolveAction };
 }

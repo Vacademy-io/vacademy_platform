@@ -77,6 +77,16 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         defaultEnabled: false,
         defaultRoles: ['ADMIN'],
     },
+    {
+        key: 'learner_edits',
+        label: 'Learner edits (actions)',
+        description:
+            'Let the assistant PROPOSE changes — edit a learner’s details, extend access, move ' +
+            'batch, activate/deactivate. Every change requires the user to press Confirm on a card ' +
+            'before anything is applied. Off for everyone by default.',
+        phase: 3,
+        defaultEnabled: false,
+    },
 ];
 
 // Non-learner system roles, by their JWT role-name. Custom roles are appended at

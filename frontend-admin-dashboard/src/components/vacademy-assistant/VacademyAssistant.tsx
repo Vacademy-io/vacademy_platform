@@ -17,7 +17,7 @@ import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useVacademyAssistant } from './useVacademyAssistant';
 import { useAssistDock } from '@/components/assist-dock/store';
-import type { AssistantMessage } from './types';
+import type { AssistantAction, AssistantMessage } from './types';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import type { ReactNode } from 'react';
@@ -48,7 +48,7 @@ export function VacademyAssistant() {
     const panel = useAssistDock((s) => s.panel);
     const setPanel = useAssistDock((s) => s.setPanel);
     const open = panel === 'assistant';
-    const { messages, status, error, sendMessage, reset } = useVacademyAssistant();
+    const { messages, status, error, sendMessage, reset, resolveAction } = useVacademyAssistant();
     const scrollEndRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
 
@@ -164,13 +164,21 @@ export function VacademyAssistant() {
                         </div>
                     )}
 
-                    {messages.map((message) => (
-                        <MessageBubble
-                            key={message.id}
-                            message={message}
-                            mdComponents={mdComponents}
-                        />
-                    ))}
+                    {messages.map((message) =>
+                        message.role === 'action' && message.action ? (
+                            <ActionCard
+                                key={message.id}
+                                action={message.action}
+                                onResolve={resolveAction}
+                            />
+                        ) : (
+                            <MessageBubble
+                                key={message.id}
+                                message={message}
+                                mdComponents={mdComponents}
+                            />
+                        )
+                    )}
 
                     {awaitingFirstToken && (
                         <div className="flex items-center gap-2 py-1 text-neutral-500">
@@ -268,6 +276,69 @@ function createMdComponents(onInternalLink: (to: string) => void): Components {
         h2: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
         h3: ({ children }: MdProps) => <p className="mb-1 text-body font-semibold">{children}</p>,
     };
+}
+
+/**
+ * Nonce-backed confirmation card for a proposed write. The change only executes
+ * when Confirm posts the server-held nonce back — the model cannot trigger it.
+ */
+function ActionCard({
+    action,
+    onResolve,
+}: {
+    action: AssistantAction;
+    onResolve: (actionId: string, decision: 'confirm' | 'cancel') => void;
+}) {
+    const isPending = action.status === 'pending';
+    const isWorking = action.status === 'working';
+    return (
+        <div className="rounded-lg border border-warning-300 bg-warning-50 p-3">
+            <div className="flex items-start gap-2">
+                <Warning size={18} weight="fill" className="mt-0.5 shrink-0 text-warning-600" />
+                <div className="min-w-0 flex-1">
+                    <p className="text-caption font-semibold text-neutral-800">
+                        Confirm this change
+                    </p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-caption text-neutral-700">
+                        {action.summary}
+                    </p>
+                </div>
+            </div>
+            {isPending || isWorking ? (
+                <div className="mt-3 flex items-center justify-end gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        disable={isWorking}
+                        onClick={() => onResolve(action.actionId, 'cancel')}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        disable={isWorking}
+                        onClick={() => onResolve(action.actionId, 'confirm')}
+                    >
+                        {isWorking ? 'Working…' : 'Confirm'}
+                    </MyButton>
+                </div>
+            ) : (
+                <p
+                    className={cn(
+                        'mt-2 text-right text-caption font-medium',
+                        action.status === 'executed' ? 'text-success-600' : 'text-neutral-500'
+                    )}
+                >
+                    {action.status === 'executed'
+                        ? 'Confirmed & applied'
+                        : action.status === 'cancelled'
+                          ? 'Cancelled'
+                          : 'Not applied'}
+                </p>
+            )}
+        </div>
+    );
 }
 
 function MessageBubble({

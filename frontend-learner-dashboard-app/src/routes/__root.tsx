@@ -135,6 +135,14 @@ const isPublicRoute = (pathname: string): boolean => {
     return false;
   }
 
+  // Public shareable leaderboard — course (/leaderboard/{id}) AND institute
+  // (/leaderboard/institute/{id}). Explicit so 3-segment institute links don't
+  // fall through to the auth redirect (the 2-segment "course details" fallback
+  // only covered the course link).
+  if (pathname === "/leaderboard" || pathname.startsWith("/leaderboard/")) {
+    return true;
+  }
+
   // Check for exact matches and startsWith matches
   const directMatch = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 

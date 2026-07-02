@@ -33,15 +33,21 @@ const PLACE = {
   3: { ring: "ring-warning-600", pedestal: "bg-warning-50 text-warning-700", height: "h-12" },
 } as const;
 
+/** First character of a name (works for full names and anonymized initials alike). */
+function firstChar(name: string): string {
+  const c = name.trim().charAt(0);
+  return c ? c.toUpperCase() : "?";
+}
+
 function InitialAvatar({ name, className }: { name: string; className?: string }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold text-primary-600",
+        "flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold uppercase text-primary-600",
         className
       )}
     >
-      {name}
+      {firstChar(name)}
     </div>
   );
 }

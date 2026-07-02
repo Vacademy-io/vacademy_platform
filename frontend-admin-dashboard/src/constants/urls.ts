@@ -167,6 +167,19 @@ export const CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS = (
     const qs = p.toString();
     return `${BASE_URL}/admin-core-service/call-intelligence/analytics/counsellor${qs ? `?${qs}` : ''}`;
 };
+/** Per-counsellor coaching insights (quality gaps, recurring tips, common objections). */
+export const CALL_INTELLIGENCE_COUNSELLOR_COACHING = (
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams();
+    if (counsellorUserId) p.set('counsellorUserId', counsellorUserId);
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    const qs = p.toString();
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/counsellor/coaching${qs ? `?${qs}` : ''}`;
+};
 /** Acting user's whole-team roll-up (sales-head view). */
 export const CALL_INTELLIGENCE_TEAM_ANALYTICS = (
     instituteId: string,

@@ -21,6 +21,15 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
     List<CallIntelligence> findByResponseIdOrderByCallStartedAtDesc(String responseId);
 
     /**
+     * A counsellor's COMPLETED analyses in a window — the source rows for the
+     * coaching insights (per-quality averages, recurring tips, common objections),
+     * aggregated in-memory from each row's analysis_json.
+     */
+    List<CallIntelligence> findByCounsellorUserIdAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
+            String counsellorUserId, String status,
+            java.sql.Timestamp from, java.sql.Timestamp to);
+
+    /**
      * The poller's claim query: oldest PENDING work first. Matches the partial
      * index idx_ci_queue. Pageable caps the batch size per tick.
      */

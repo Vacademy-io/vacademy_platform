@@ -46,6 +46,36 @@ const DEFAULT_RUBRIC: RubricSettings = {
     weights: null,
 };
 
+/**
+ * Plain-English, sales-team definitions for the common rubric qualities — shown
+ * under each field so admins know exactly what the AI grades. Keyed by the
+ * normalized quality (lowercase, spaces → underscores). Custom qualities an
+ * institute adds simply won't have a hint (that's fine — the term itself guides
+ * the AI). Add new well-known sales terms here as they come up.
+ */
+const QUALITY_DESCRIPTIONS: Record<string, string> = {
+    rapport: 'Building trust early — warm opening, using the lead’s name, matching their tone.',
+    needs_discovery:
+        'Asking questions to uncover the lead’s goals, situation and pain before pitching.',
+    objection_handling:
+        'Acknowledging and resolving concerns (price, timing, trust) instead of talking past them.',
+    next_step_secured:
+        'Locking a concrete next action — demo booked, callback time set, payment link sent.',
+    value_articulation: 'Explaining the offering’s value in terms relevant to this lead’s needs.',
+    pitch_clarity: 'Presenting the course/offer clearly and concisely, without rambling.',
+    active_listening:
+        'Letting the lead speak, not interrupting, and reflecting back what they said.',
+    urgency_creation:
+        'Giving a genuine reason to act now (limited seats, deadline, current offer).',
+    closing: 'Asking for the commitment and driving toward a clear decision.',
+    talk_listen_balance: 'A healthy talk-vs-listen ratio — not dominating the call.',
+    follow_up_commitment: 'Getting the lead to agree to a specific follow-up, not a vague “maybe”.',
+    tone_confidence: 'Speaking with confidence, energy and professionalism throughout.',
+};
+
+const qualityDescription = (q: string): string | undefined =>
+    QUALITY_DESCRIPTIONS[q.trim().toLowerCase().replace(/\s+/g, '_')];
+
 const DEFAULT_CALLS: CallsSettings = {
     enabled: false,
     sources: { MANUAL: true, TELEPHONY: true, AI: true },
@@ -333,9 +363,12 @@ export default function CrmIntelligenceSettings() {
                             <CardHeader>
                                 <CardTitle>Scoring Rubric</CardTitle>
                                 <CardDescription>
-                                    The call objective is inferred from the conversation; an
-                                    optional hint nudges that. The qualities below are scored
-                                    individually within the caller’s self-goal rating.
+                                    These are the sales-call skills the AI grades each rep on. The
+                                    call objective is inferred from the conversation (an optional
+                                    hint nudges it); each quality below is scored 0–10 within the
+                                    caller’s rating, and drives the “Skill breakdown” in Coaching.
+                                    Changes apply to calls analyzed after you save — use
+                                    “Re-analyze” on a past call to rescore it against a new rubric.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -353,25 +386,36 @@ export default function CrmIntelligenceSettings() {
                                     />
                                 </div>
 
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     <Label>Rated qualities</Label>
-                                    {settings.calls.rubric.qualities.map((q, i) => (
-                                        <div key={i} className="flex items-center gap-2">
-                                            <Input
-                                                value={q}
-                                                placeholder="e.g. objection_handling"
-                                                onChange={(e) => setQuality(i, e.target.value)}
-                                                className="max-w-md flex-1"
-                                            />
-                                            <MyButton
-                                                buttonType="secondary"
-                                                scale="medium"
-                                                onClick={() => removeQuality(i)}
-                                            >
-                                                <Trash className="size-4" />
-                                            </MyButton>
-                                        </div>
-                                    ))}
+                                    {settings.calls.rubric.qualities.map((q, i) => {
+                                        const desc = qualityDescription(q);
+                                        return (
+                                            <div key={i} className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        value={q}
+                                                        placeholder="e.g. objection_handling"
+                                                        onChange={(e) =>
+                                                            setQuality(i, e.target.value)
+                                                        }
+                                                        className="max-w-md flex-1"
+                                                    />
+                                                    <MyButton
+                                                        buttonType="secondary"
+                                                        scale="medium"
+                                                        onClick={() => removeQuality(i)}
+                                                    >
+                                                        <Trash className="size-4" />
+                                                    </MyButton>
+                                                </div>
+                                                <p className="max-w-md text-caption text-muted-foreground">
+                                                    {desc ??
+                                                        'Custom skill — the AI grades it by the term itself. Use a clear sales term (e.g. closing, urgency_creation).'}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
                                     <MyButton
                                         buttonType="secondary"
                                         scale="medium"

@@ -32,8 +32,47 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         label: 'Learner data lookup',
         description:
             'Find learners by name/email/phone and answer questions about their attendance, ' +
-            'assessment scores, activity, course progress and login summary. On by default for Admins; ' +
-            'grant to other roles below.',
+            'assessment scores, activity, course progress and login summary — and generate their ' +
+            'full analysis report. On by default for Admins; grant to other roles below.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'payments',
+        label: 'Payments & fees',
+        description:
+            'Answer questions about a learner’s payment history, outstanding/overdue fees, and ' +
+            'payment plans. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'batch_data',
+        label: 'Batch rosters',
+        description:
+            'List the learners in a batch and answer batch headcount questions. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'schedule',
+        label: 'Class schedule',
+        description:
+            'Answer “what classes are live/upcoming” and “what do I have today” from the live-session ' +
+            'schedule. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'institute_overview',
+        label: 'Institute overview',
+        description:
+            'Institute-wide snapshots: total overdue fees, live classes right now, active learner ' +
+            'counts. On by default for Admins.',
         phase: 2,
         defaultEnabled: false,
         defaultRoles: ['ADMIN'],

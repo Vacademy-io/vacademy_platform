@@ -432,6 +432,8 @@ class AssistantAgentService:
             "- With `get_student_360`, request ONLY the modules the question needs (usually 1-3). "
             "`academics` is slow — include it only when asked about tests/scores/results. Default "
             "period is the last 30 days unless the user asks otherwise.\n"
+            "- Fees: `get_fee_dues` answers 'what's outstanding/overdue'; `get_payment_history` "
+            "answers 'what did they actually pay and when'. Pick the one the question needs.\n"
             "- Answer from the returned data only. If a section has available=false, say that data "
             "isn't available right now — never fabricate numbers. Summarize; don't dump raw records, "
             "and don't volunteer PII (contact details, parents' info) unless explicitly asked.\n"

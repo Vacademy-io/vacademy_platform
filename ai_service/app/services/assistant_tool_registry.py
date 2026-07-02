@@ -302,7 +302,7 @@ async def _execute_find_learner(args: Dict[str, Any], ctx: ToolContext) -> str:
                 url,
                 params={"pageNo": 0, "pageSize": 10},
                 json=body,
-                headers={"Authorization": f"Bearer {ctx.bearer_token}"},
+                headers=_jwt_headers(ctx),
             )
         if resp.status_code != 200:
             logger.warning("find_learner: %s from students-list (%s)", resp.status_code, resp.text[:200])
@@ -395,6 +395,443 @@ async def _execute_get_student_360(args: Dict[str, Any], ctx: ToolContext) -> st
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Phase-2b tools: payments, batch roster, schedule, institute overview,
+# trigger-full-report. All call EXISTING admin endpoints with the caller's own
+# JWT (institute/user identity forced from the pinned principal).
+# ──────────────────────────────────────────────────────────────────────────
+
+def _jwt_headers(ctx: ToolContext) -> Dict[str, str]:
+    """Auth headers for normal (JWT) admin endpoints: the caller's own token plus
+    the pinned institute as clientId (Java's JwtAuthFilter keys the user lookup
+    on `${clientId}@${username}`)."""
+    return {
+        "Authorization": f"Bearer {ctx.bearer_token}",
+        "clientId": ctx.principal.institute_id,
+    }
+
+
+def _compact(obj: Any, max_items: int = 15, max_str: int = 300) -> Any:
+    """Shape-agnostic trim for tool results: drop nulls, cap list lengths, and
+    truncate long strings so unverified response shapes can't flood the context."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            c = _compact(v, max_items, max_str)
+            if c not in (None, {}, []):
+                out[k] = c
+        return out
+    if isinstance(obj, list):
+        trimmed = [_compact(v, max_items, max_str) for v in obj[:max_items]]
+        trimmed = [v for v in trimmed if v not in (None, {}, [])]
+        if len(obj) > max_items:
+            trimmed.append({"_truncated": f"{len(obj) - max_items} more items omitted"})
+        return trimmed
+    if isinstance(obj, str) and len(obj) > max_str:
+        return obj[:max_str] + "…"
+    return obj
+
+
+async def _admin_core_json(
+    ctx: ToolContext,
+    method: str,
+    path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    body: Optional[Dict[str, Any]] = None,
+    timeout: float = 20.0,
+) -> Any:
+    """One JWT-authenticated call to admin_core; returns parsed JSON or an error dict."""
+    import httpx
+    from ..config import get_settings
+
+    if not ctx.bearer_token:
+        return {"error": "no_auth", "message": "This lookup is unavailable right now."}
+    url = f"{get_settings().admin_core_service_base_url}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(
+                method, url, params=params, json=body, headers=_jwt_headers(ctx)
+            )
+        if resp.status_code != 200:
+            logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
+            return {"error": "fetch_failed", "status": resp.status_code}
+        return resp.json()
+    except Exception as e:
+        logger.warning("assistant %s %s failed: %s", method, path, e)
+        return {"error": "fetch_failed"}
+
+
+_GET_PAYMENT_HISTORY_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_payment_history",
+        "description": (
+            "A learner's payment TRANSACTIONS (what was actually paid, when, via which "
+            "gateway). Use for 'did they pay / when / how much was the last payment'. "
+            "For outstanding balance or overdue installments use get_fee_dues instead."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "payment_statuses": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Optional filter, e.g. ['PAID','FAILED','PENDING'].",
+                },
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_payment_history(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    body: Dict[str, Any] = {
+        "institute_id": ctx.principal.institute_id,  # forced
+        "user_id": target,
+    }
+    if args.get("payment_statuses"):
+        body["payment_statuses"] = [str(s) for s in args["payment_statuses"]][:6]
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/user-plan/payment-logs",
+        params={"pageNo": 0, "pageSize": 10}, body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    items = []
+    for row in (data.get("content") or [])[:10]:
+        log_ = row.get("payment_log") or {}
+        plan = (row.get("user_plan") or {}).get("payment_plan_dto") or {}
+        items.append({
+            "date": log_.get("date"),
+            "amount": log_.get("payment_amount"),
+            "currency": log_.get("currency"),
+            "status": log_.get("payment_status") or log_.get("status"),
+            "vendor": log_.get("vendor"),
+            "transaction_id": log_.get("transaction_id"),
+            "plan": plan.get("name"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(items)))
+    return json.dumps({"payments": items, "total_transactions": total})
+
+
+_GET_FEE_DUES_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_fee_dues",
+        "description": (
+            "A learner's fee DUES: total expected/paid/outstanding and per-installment "
+            "rows with due dates and overdue flags. Use for 'has X cleared fees / what's "
+            "outstanding / is anything overdue'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "status": {
+                    "type": "string",
+                    "description": "Optional: 'OVERDUE' to list only overdue installments.",
+                },
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_fee_dues(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    body: Dict[str, Any] = {"fetch_all": True}
+    if args.get("status"):
+        body["status"] = str(args["status"])
+    data = await _admin_core_json(
+        ctx, "POST", f"/admin-core-service/v1/admin/student-fee/{target}/dues",
+        params={"instituteId": ctx.principal.institute_id}, body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    installments = []
+    for r in (data.get("content") or [])[:15]:
+        installments.append({
+            "fee": r.get("fee_type_name") or r.get("cpo_name"),
+            "expected": r.get("amount_expected"),
+            "paid": r.get("amount_paid"),
+            "due": r.get("amount_due"),
+            "due_date": r.get("due_date"),
+            "status": r.get("status"),
+            "is_overdue": r.get("is_overdue"),
+            "days_overdue": r.get("days_overdue"),
+        })
+    return json.dumps({
+        "total_fee": data.get("total_fee"),
+        "total_paid": data.get("total_paid"),
+        "total_due": data.get("total_due"),
+        "installments": installments,
+    })
+
+
+_GET_SUBSCRIPTION_PLANS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_subscription_plans",
+        "description": (
+            "A learner's enrollment payment plans/subscriptions (plan name, price, "
+            "status, validity window). Use for 'what plan is X on / when does it end'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_subscription_plans(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/user-plan/all",
+        params={"pageNo": 0, "pageSize": 10},
+        body={"user_id": target, "institute_id": ctx.principal.institute_id},
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    plans = []
+    for row in (data.get("content") or [])[:10]:
+        plan = row.get("payment_plan_dto") or {}
+        option = row.get("payment_option") or {}
+        plans.append({
+            "plan": plan.get("name"),
+            "price": plan.get("actual_price"),
+            "currency": plan.get("currency"),
+            "option": option.get("name"),
+            "option_type": option.get("type"),
+            "status": row.get("status"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+        })
+    return json.dumps({"plans": plans})
+
+
+_LIST_BATCH_LEARNERS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "list_batch_learners",
+        "description": (
+            "The learners enrolled in one batch (roster + total count). Use for 'who is "
+            "in batch X / how many active learners'. Needs the batch's "
+            "package_session_id (from page context or a find_learner result)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "package_session_id": {"type": "string", "description": "The batch id."},
+                "statuses": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Default ['ACTIVE'].",
+                },
+                "page": {"type": "integer", "description": "0-based page (20 per page)."},
+            },
+            "required": ["package_session_id"],
+        },
+    },
+}
+
+
+async def _execute_list_batch_learners(args: Dict[str, Any], ctx: ToolContext) -> str:
+    batch = str((args or {}).get("package_session_id") or "").strip()
+    if not batch:
+        return json.dumps({"error": "missing_batch"})
+    statuses = [str(s) for s in (args.get("statuses") or ["ACTIVE"])][:6]
+    page = int(args.get("page") or 0)
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/institute/institute_learner/get/v2/all",
+        params={"pageNo": page, "pageSize": 20},
+        body={
+            "institute_ids": [ctx.principal.institute_id],  # forced
+            "package_session_ids": [batch],
+            "statuses": statuses,
+            "group_ids": [], "gender": [], "sort_columns": {},
+        },
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    learners = []
+    for row in (data.get("content") or [])[:20]:
+        learners.append({
+            "user_id": row.get("user_id"),
+            "full_name": row.get("full_name"),
+            "enrollment_no": row.get("institute_enrollment_number"),
+            "status": row.get("status"),
+            "payment_status": row.get("payment_status"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(learners)))
+    return json.dumps({"learners": learners, "total": total, "page": page})
+
+
+_GET_CLASS_SCHEDULE_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_class_schedule",
+        "description": (
+            "Live-class schedule for this institute: scope 'live' = classes running "
+            "right now, 'upcoming' = the upcoming schedule (grouped by date), 'mine' = "
+            "the classes assigned to the person asking. Use for 'what classes are on "
+            "today / what do I have today / is anything live right now'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["live", "upcoming", "mine"]},
+            },
+            "required": ["scope"],
+        },
+    },
+}
+
+
+async def _execute_get_class_schedule(args: Dict[str, Any], ctx: ToolContext) -> str:
+    scope = str((args or {}).get("scope") or "upcoming")
+    if scope == "mine":
+        path, params = "/admin-core-service/get-sessions/by-user-id", {"userId": ctx.principal.user_id}
+    elif scope == "live":
+        path, params = "/admin-core-service/get-sessions/live", {"instituteId": ctx.principal.institute_id}
+    else:
+        path, params = "/admin-core-service/get-sessions/upcoming", {"instituteId": ctx.principal.institute_id}
+    data = await _admin_core_json(ctx, "GET", path, params=params)
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    return json.dumps({"scope": scope, "schedule": _compact(data, max_items=12, max_str=200)})
+
+
+_GET_INSTITUTE_OVERVIEW_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_institute_overview",
+        "description": (
+            "Institute-level snapshot. sections: 'outstanding_fees' (total overdue "
+            "amount + count across the institute), 'live_now' (classes running right "
+            "now), 'enrollment_counts' (active learner count). Use for 'how much fees "
+            "is pending overall / how many active learners do we have'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "sections": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["outstanding_fees", "live_now", "enrollment_counts"]},
+                },
+            },
+            "required": ["sections"],
+        },
+    },
+}
+
+
+async def _execute_get_institute_overview(args: Dict[str, Any], ctx: ToolContext) -> str:
+    sections = [s for s in (args.get("sections") or []) if isinstance(s, str)]
+    out: Dict[str, Any] = {}
+    if "outstanding_fees" in sections:
+        rows = await _admin_core_json(
+            ctx, "POST", "/admin-core-service/v1/admin/student-fee/adjustment/pending",
+            params={"instituteId": ctx.principal.institute_id}, body={}, timeout=30.0,
+        )
+        if isinstance(rows, list):
+            overdue = [r for r in rows if r.get("is_overdue") or r.get("status") == "OVERDUE"]
+            out["outstanding_fees"] = {
+                "overdue_total": round(sum(float(r.get("amount_due") or 0) for r in overdue), 2),
+                "overdue_installments": len(overdue),
+                "learners_affected": len({r.get("user_id") for r in overdue if r.get("user_id")}),
+            }
+        else:
+            out["outstanding_fees"] = rows  # error dict
+    if "live_now" in sections:
+        data = await _admin_core_json(
+            ctx, "GET", "/admin-core-service/get-sessions/live",
+            params={"instituteId": ctx.principal.institute_id},
+        )
+        out["live_now"] = _compact(data, max_items=8, max_str=150)
+    if "enrollment_counts" in sections:
+        data = await _admin_core_json(
+            ctx, "POST", "/admin-core-service/institute/institute_learner/get/v2/all",
+            params={"pageNo": 0, "pageSize": 1},
+            body={"institute_ids": [ctx.principal.institute_id], "statuses": ["ACTIVE"],
+                  "package_session_ids": [], "group_ids": [], "gender": [], "sort_columns": {}},
+        )
+        if isinstance(data, dict) and not data.get("error"):
+            out["enrollment_counts"] = {
+                "active_learners": data.get("totalElements", data.get("total_elements"))
+            }
+        else:
+            out["enrollment_counts"] = data
+    return json.dumps(out or {"error": "no_sections"})
+
+
+_TRIGGER_FULL_REPORT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "trigger_full_report",
+        "description": (
+            "Start generating a learner's FULL analysis report (all modules, with AI "
+            "narrative — runs in the background, takes a few minutes, may spend AI "
+            "credits). Offer this when a quick answer isn't enough. The report appears "
+            "under the learner's Reports tab and notifies when ready."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "batch_id": {"type": "string", "description": "Optional package_session_id."},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD. Default: 30 days ago."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD. Default: today."},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_trigger_full_report(args: Dict[str, Any], ctx: ToolContext) -> str:
+    from datetime import date, timedelta
+
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    end = str(args.get("end_date") or date.today().isoformat())
+    start = str(args.get("start_date") or (date.today() - timedelta(days=30)).isoformat())
+    body: Dict[str, Any] = {
+        "user_id": target,
+        "institute_id": ctx.principal.institute_id,  # forced
+        "start_date_iso": start,
+        "end_date_iso": end,
+        "report_version": "v2",
+        "send_email": True,
+    }
+    if args.get("batch_id"):
+        body["package_session_id"] = str(args["batch_id"])
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/student-analysis/initiate", body=body
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    return json.dumps({
+        "process_id": data.get("process_id"),
+        "status": data.get("status"),
+        "note": "Report generation started in the background — it will appear in the learner's "
+                "Reports tab and the requester is notified when it's ready.",
+    })
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # The registry. Phase-3 (write) tools register here later,
 # each with its own required_permission + default_enabled=False.
 # ──────────────────────────────────────────────────────────────────────────
@@ -431,6 +868,84 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         executor=_execute_get_student_360,
         required_permission=None,
         setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "trigger_full_report": ToolSpec(
+        name="trigger_full_report",
+        schema=_TRIGGER_FULL_REPORT_SCHEMA,
+        executor=_execute_trigger_full_report,
+        required_permission=None,
+        setting_key="learner_data",   # rides the learner-data grant
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    # Payments group — one settings key controls all three.
+    "get_payment_history": ToolSpec(
+        name="get_payment_history",
+        schema=_GET_PAYMENT_HISTORY_SCHEMA,
+        executor=_execute_get_payment_history,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_fee_dues": ToolSpec(
+        name="get_fee_dues",
+        schema=_GET_FEE_DUES_SCHEMA,
+        executor=_execute_get_fee_dues,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_subscription_plans": ToolSpec(
+        name="get_subscription_plans",
+        schema=_GET_SUBSCRIPTION_PLANS_SCHEMA,
+        executor=_execute_get_subscription_plans,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "list_batch_learners": ToolSpec(
+        name="list_batch_learners",
+        schema=_LIST_BATCH_LEARNERS_SCHEMA,
+        executor=_execute_list_batch_learners,
+        required_permission=None,
+        setting_key="batch_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_class_schedule": ToolSpec(
+        name="get_class_schedule",
+        schema=_GET_CLASS_SCHEDULE_SCHEMA,
+        executor=_execute_get_class_schedule,
+        required_permission=None,
+        setting_key="schedule",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_institute_overview": ToolSpec(
+        name="get_institute_overview",
+        schema=_GET_INSTITUTE_OVERVIEW_SCHEMA,
+        executor=_execute_get_institute_overview,
+        required_permission=None,
+        setting_key="institute_overview",
         default_enabled=False,
         default_roles=["ADMIN"],
         phase=2,
@@ -584,10 +1099,20 @@ async def execute_tool(
     safe_args["user_id"] = ctx.principal.user_id
     safe_args["institute_id"] = ctx.principal.institute_id
 
+    import time
+    started = time.monotonic()
     try:
-        return await spec.executor(safe_args, ctx)
+        result = await spec.executor(safe_args, ctx)
+        logger.info(
+            "assistant tool '%s' ok in %dms (institute=%s)",
+            tool_name, int((time.monotonic() - started) * 1000), ctx.principal.institute_id,
+        )
+        return result
     except Exception as e:
-        logger.exception("Assistant tool '%s' raised: %s", tool_name, e)
+        logger.exception(
+            "Assistant tool '%s' raised after %dms: %s",
+            tool_name, int((time.monotonic() - started) * 1000), e,
+        )
         return json.dumps({"error": "tool_failed", "tool": tool_name})
 
 

@@ -336,7 +336,10 @@ public class SlideService {
 
         Slide newSlide = copySlideByType(slide);
 
-        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
+        // Keep the chapter_to_slides link status in sync with the (now
+        // source-preserving) slide status so a copied PUBLISHED slide is actually
+        // published end-to-end, not stuck in DRAFT and hidden from learners.
+        chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, newSlide.getStatus()));
 
         // A copied ASSESSMENT slide keeps the same assessmentId but lands in a new
         // batch. Register that assessment to the target batch so it shows up for
@@ -510,7 +513,18 @@ public class SlideService {
     private Slide createNewSlide(Slide slide, String newSourceId) {
         Slide newSlide = new Slide();
         newSlide.setId(UUID.randomUUID().toString());
-        newSlide.setStatus(SlideStatus.DRAFT.name());
+        // Preserve the source slide's status so a copy of PUBLISHED content is
+        // itself PUBLISHED — DRAFT slides are hidden from the learner list
+        // (LearnerSlideService only serves PUBLISHED/UNSYNC), so the previous
+        // hardcoded DRAFT meant copied slides silently never reached learners.
+        // Falls back to DRAFT only when the source has no status.
+        String status = (slide.getStatus() == null || slide.getStatus().isBlank())
+                ? SlideStatus.DRAFT.name()
+                : slide.getStatus();
+        newSlide.setStatus(status);
+        if (SlideStatus.PUBLISHED.name().equalsIgnoreCase(status)) {
+            newSlide.setLastSyncDate(new Timestamp(System.currentTimeMillis()));
+        }
         newSlide.setTitle(slide.getTitle());
         newSlide.setDescription(slide.getDescription());
         newSlide.setSourceType(slide.getSourceType());

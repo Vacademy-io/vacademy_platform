@@ -9,6 +9,7 @@ import vacademy.io.assessment_service.features.assessment.enums.AssessmentStatus
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
 import vacademy.io.assessment_service.features.auth_service.service.AuthService;
+import vacademy.io.assessment_service.features.client.AdminCoreServiceClient;
 import vacademy.io.assessment_service.features.notification.dto.NotificationDTO;
 import vacademy.io.assessment_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.assessment_service.features.notification.enums.NotificationSourceEnum;
@@ -29,6 +30,7 @@ public class AssessmentNotificationService {
     private final AssessmentRepository assessmentRepository;
     private final NotificationService notificationService;
     private final AuthService authService;
+    private final AdminCoreServiceClient adminCoreServiceClient;
 
     @Value("${scheduling.time.frame}")
     private Integer timeFrameInMinutes;
@@ -64,6 +66,11 @@ public class AssessmentNotificationService {
 
     public void sendNotificationsToAdminsAfterReleasingTheResult(Assessment assessment, String instituteId) {
         NotificationDTO notificationDTO = buildAdminNotificationDTO(assessment, instituteId);
+        // null => no staff role is enabled to receive result emails (ADMIN is OFF
+        // by default; institutes opt roles in via Assessment Settings). Skip send.
+        if (notificationDTO == null) {
+            return;
+        }
         notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
@@ -121,7 +128,14 @@ public class AssessmentNotificationService {
     }
 
     private NotificationDTO buildAdminNotificationDTO(Assessment assessment, String instituteId) {
-        List<UserWithRolesDTO> users = authService.getUsersByRoles(List.of("ADMIN"), instituteId);
+        List<String> staffRoles = adminCoreServiceClient.enabledStaffResultRoles(instituteId);
+        if (staffRoles.isEmpty()) {
+            return null; // nobody opted in (ADMIN is OFF by default)
+        }
+        List<UserWithRolesDTO> users = authService.getUsersByRoles(staffRoles, instituteId);
+        if (users == null || users.isEmpty()) {
+            return null;
+        }
         return NotificationDTO.builder()
                 .subject("Assessment result released")
                 .body(AssessmentNotificaionEmailBody.getEmailBodyForAdminsForResultRelease(
@@ -146,11 +160,21 @@ public class AssessmentNotificationService {
 
     public void sendNotificationsToAdminsAfterReevaluating(Assessment assessment, String instituteId) {
         NotificationDTO notificationDTO = buildAdminNotificationDTO(assessment, instituteId);
+        if (notificationDTO == null) {
+            return; // no staff role enabled to receive result emails
+        }
         notificationService.sendEmailToUsers(notificationDTO, instituteId);
     }
 
     private NotificationDTO buildAdminNotificationDTOAfterReevaluating(Assessment assessment, String instituteId) {
-        List<UserWithRolesDTO> users = authService.getUsersByRoles(List.of("ADMIN"), instituteId);
+        List<String> staffRoles = adminCoreServiceClient.enabledStaffResultRoles(instituteId);
+        if (staffRoles.isEmpty()) {
+            return null;
+        }
+        List<UserWithRolesDTO> users = authService.getUsersByRoles(staffRoles, instituteId);
+        if (users == null || users.isEmpty()) {
+            return null;
+        }
         return NotificationDTO.builder()
                 .subject("Assessment reevaluated!!!")
                 .body(AssessmentNotificaionEmailBody.getEmailBodyForAdminsForReevaluation(

@@ -9,6 +9,7 @@ import {
     CampaignFormCustomField,
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { LeadConversionBadge } from '@/components/shared/leads';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
 import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
 import { LeadStatusChip } from '@/components/shared/lead-status-chip';
@@ -375,6 +376,9 @@ export const generateDynamicColumns = (
                                                 size="sm"
                                             />
                                         )}
+                                        <LeadConversionBadge
+                                            conversionStatus={leadProfile?.conversion_status}
+                                        />
                                         <TatStatusBadge
                                             tatOverdue={row.original._tat_overdue}
                                             tatDueSoon={row.original._tat_due_soon}

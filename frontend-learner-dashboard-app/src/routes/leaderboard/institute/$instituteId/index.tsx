@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useTheme } from "@/providers/theme/theme-provider";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
   fetchPublicInstituteLeaderboard,
@@ -13,26 +14,16 @@ export const Route = createFileRoute("/leaderboard/institute/$instituteId/")({
 });
 
 function PublicInstituteLeaderboardPage() {
-  // The institute is identified by the shared URL; branding (logo/name) comes
-  // from the white-label domain the link is opened on.
+  // The institute is in the URL, so this already works on any domain; branding comes
+  // from the white-label domain when present, else from the response.
   const { instituteId } = Route.useParams();
-  const { instituteName, instituteLogoFileId, isLoading: brandingLoading } = useDomainRouting();
+  const { instituteName: domainName, instituteLogoFileId: domainLogo } = useDomainRouting();
+  const { setPrimaryColor } = useTheme();
 
-  const [logoUrl, setLogoUrl] = useState<string>("");
   const [data, setData] = useState<CourseLeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!instituteLogoFileId) return;
-    let active = true;
-    getPublicUrlWithoutLogin(instituteLogoFileId)
-      .then((u) => active && setLogoUrl(u || ""))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [instituteLogoFileId]);
+  const [logoUrl, setLogoUrl] = useState("");
 
   useEffect(() => {
     if (!instituteId) {
@@ -56,13 +47,35 @@ function PublicInstituteLeaderboardPage() {
     };
   }, [instituteId]);
 
+  const instituteName = domainName || data?.instituteName || null;
+  const logoFileId = domainLogo || data?.instituteLogoFileId || "";
+  const themeCode = data?.instituteThemeCode;
+
+  useEffect(() => {
+    if (!logoFileId) {
+      setLogoUrl("");
+      return;
+    }
+    let active = true;
+    getPublicUrlWithoutLogin(logoFileId)
+      .then((u) => active && setLogoUrl(u || ""))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [logoFileId]);
+
+  useEffect(() => {
+    if (themeCode) setPrimaryColor(themeCode);
+  }, [themeCode, setPrimaryColor]);
+
   return (
     <PublicLeaderboardView
       logoUrl={logoUrl}
       instituteName={instituteName}
       subtitle="All courses"
       data={data}
-      loading={brandingLoading || loading}
+      loading={loading}
       error={error}
     />
   );

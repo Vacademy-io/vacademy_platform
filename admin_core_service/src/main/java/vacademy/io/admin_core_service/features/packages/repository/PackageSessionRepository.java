@@ -211,7 +211,10 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     @Query("""
                 SELECT
                     CONCAT(l.levelName, ' ', p.packageName) AS batchName,
-                    i.instituteName AS instituteName
+                    i.instituteName AS instituteName,
+                    i.id AS instituteId,
+                    i.logoFileId AS instituteLogoFileId,
+                    i.instituteThemeCode AS instituteThemeCode
                 FROM PackageSession ps
                 JOIN ps.level l
                 JOIN ps.packageEntity p

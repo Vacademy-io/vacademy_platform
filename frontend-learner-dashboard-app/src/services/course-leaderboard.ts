@@ -29,6 +29,10 @@ export interface CourseLeaderboardData {
   currentUser: LeaderboardEntry | null;
   /** Course/batch name — present on the public shareable response. */
   courseName?: string | null;
+  /** Institute branding — present on the public response so the page renders on ANY domain. */
+  instituteName?: string | null;
+  instituteLogoFileId?: string | null;
+  instituteThemeCode?: string | null;
 }
 
 /** The learner's own gamification summary for their profile. */
@@ -61,13 +65,15 @@ export async function fetchCourseLeaderboard(
  */
 export async function fetchPublicCourseLeaderboard(
   packageSessionId: string,
-  instituteId: string
+  instituteId?: string | null
 ): Promise<CourseLeaderboardData | null> {
   try {
-    if (!packageSessionId || !instituteId) return null;
+    if (!packageSessionId) return null;
+    // instituteId is an optional hint — the backend derives the institute from the
+    // packageSessionId, so the link works on ANY domain (generic learner.vacademy.io too).
     const { data } = await axios.get(
       `${BASE_URL}/admin-core-service/public/leaderboard/v1/course/${packageSessionId}`,
-      { params: { instituteId } }
+      { params: instituteId ? { instituteId } : {} }
     );
     return (data as CourseLeaderboardData) ?? null;
   } catch (error) {

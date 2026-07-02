@@ -17,4 +17,8 @@ public class LeaderboardResponseDTO {
     private LeaderboardEntryDTO currentUser;
     /** Course/batch name — populated for the public shareable page (null otherwise). */
     private String courseName;
+    /** Institute branding — populated for the public page so it renders on ANY domain. */
+    private String instituteName;
+    private String instituteLogoFileId;
+    private String instituteThemeCode;
 }

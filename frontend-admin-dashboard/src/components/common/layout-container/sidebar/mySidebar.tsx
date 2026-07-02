@@ -338,17 +338,35 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         const baseIds = new Set(base.map((b) => b.id));
         const customTabs: SidebarItemsType[] = roleDisplay.sidebar
             .filter((t) => t.isCustom && t.visible !== false && !baseIds.has(t.id))
-            .map((t) => ({
-                icon: (() => null) as unknown as SidebarItemsType['icon'],
-                title: t.label || t.id,
-                to: t.route,
-                id: t.id,
-                locked: t.locked,
-                // Honor the category the admin chose when creating the custom tab.
-                // Without this, the panel filter defaults to 'CRM' and hides
-                // LMS/AI custom tabs even when they were saved with the right category.
-                category: t.category,
-            }));
+            .map((t) => {
+                // Convert the admin-configured sub-tabs into the sidebar's
+                // subItems shape so custom tabs render as collapsible groups.
+                // Mirror the built-in flow: drop hidden subs, order by `order`.
+                const subItems = (t.subTabs || [])
+                    .filter((s) => s.visible !== false)
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((s) => ({
+                        subItem: s.label || s.id,
+                        subItemLink: s.route,
+                        subItemId: s.id,
+                        locked: s.locked,
+                    }));
+                return {
+                    icon: (() => null) as unknown as SidebarItemsType['icon'],
+                    title: t.label || t.id,
+                    to: t.route,
+                    id: t.id,
+                    locked: t.locked,
+                    // Honor the category the admin chose when creating the custom tab.
+                    // Without this, the panel filter defaults to 'CRM' and hides
+                    // LMS/AI custom tabs even when they were saved with the right category.
+                    category: t.category,
+                    // Only attach subItems when there are visible sub-tabs — an
+                    // empty array would force an empty collapsible (SidebarItem
+                    // switches on truthiness, not length).
+                    ...(subItems.length > 0 ? { subItems } : {}),
+                };
+            });
         return ([...mapped, ...customTabs] as SidebarItemsType[]).sort((a, b) => {
             const ao = tabVis.get(a.id)?.order ?? 0;
             const bo = tabVis.get(b.id)?.order ?? 0;

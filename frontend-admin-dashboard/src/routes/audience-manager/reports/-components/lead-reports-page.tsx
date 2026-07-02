@@ -36,7 +36,6 @@ import {
     User,
     Users,
     UsersThree,
-    Sparkle,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,12 +70,10 @@ import { CohortTab } from './cohort-tab';
 import { ForecastTab } from './forecast-tab';
 import { CustomReportTab } from './custom-report-tab';
 import { ReportTabSkeleton, type ReportTabProps } from './report-shared';
-import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 
 // Inter-agent contract: the Calling tab module lives at exactly this path and
 // default-exports CallingTab(props: ReportTabProps). Built by a sibling agent.
 const CallingTab = lazy(() => import('./calling/CallingTab'));
-const CallIntelligenceTab = lazy(() => import('./call-intelligence-tab'));
 
 // ── Date helpers ───────────────────────────────────────────────────────
 
@@ -190,9 +187,6 @@ export function LeadReportsPage() {
         teamId,
         counsellorUserId,
     };
-
-    // The Call Intelligence tab only exists when the institute has the feature on.
-    const callIntelligenceEnabled = useCallIntelligenceEnabled();
 
     return (
         <div className="flex min-h-full flex-col gap-6 bg-neutral-50 p-6">
@@ -311,12 +305,6 @@ export function LeadReportsPage() {
                         <Phone size={14} weight="bold" />
                         Calling
                     </TabsTrigger>
-                    {callIntelligenceEnabled && (
-                        <TabsTrigger value="call-intelligence" className="gap-1.5">
-                            <Sparkle size={14} weight="bold" />
-                            Call Intelligence
-                        </TabsTrigger>
-                    )}
                     <TabsTrigger value="activity" className="gap-1.5">
                         <ListChecks size={14} weight="bold" />
                         Activity
@@ -362,13 +350,6 @@ export function LeadReportsPage() {
                         <CallingTab {...tabProps} />
                     </Suspense>
                 </TabsContent>
-                {callIntelligenceEnabled && (
-                    <TabsContent value="call-intelligence">
-                        <Suspense fallback={<ReportTabSkeleton />}>
-                            <CallIntelligenceTab {...tabProps} />
-                        </Suspense>
-                    </TabsContent>
-                )}
                 <TabsContent value="funnel">
                     <FunnelTab {...tabProps} />
                 </TabsContent>

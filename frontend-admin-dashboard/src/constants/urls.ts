@@ -1193,6 +1193,9 @@ export const COUNSELLOR_WORKBENCH_SET_STATUS = (userId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/status`;
 export const COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/reassign/preview`;
 export const COUNSELLOR_WORKBENCH_REASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/reassign`;
+// Bulk-assign a caller-selected set of leads (multi-select in the leads list).
+export const COUNSELLOR_WORKBENCH_ASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/assign/preview`;
+export const COUNSELLOR_WORKBENCH_ASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/assign`;
 export const COUNSELLOR_WORKBENCH_ACTIVITY = (
     userId: string,
     instituteId: string,

@@ -50,6 +50,9 @@ import { SendMessageDialog } from './SendMessageDialog';
 import { CommunicationHistory } from './CommunicationHistory';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
+import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
+import { MyButton } from '@/components/design-system/button';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
     LeadEmptyState,
@@ -425,6 +428,42 @@ const CampaignUsersContent = ({
     );
     const handleStatusUpdated = () =>
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
+
+    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
+    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+        new Map()
+    );
+    const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+
+    // Selection only applies to the Unassigned view; drop it on filter change.
+    useEffect(() => {
+        setSelectedLeads(new Map());
+    }, [counsellorFilter]);
+
+    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.set(userId, { userId, name: vm.name });
+            return next;
+        });
+
+    const toggleAllLeads = (checked: boolean, selectableVms: LeadCardVM[]) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            selectableVms.forEach((v) => {
+                if (!v.userId) return;
+                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
+                else next.delete(v.userId);
+            });
+            return next;
+        });
+
+    const handleBulkAssignSuccess = () => {
+        setSelectedLeads(new Map());
+        handleStatusUpdated();
+    };
 
     // Hide the "Lead source" column — every row in this view is from the same audience.
     const hiddenColumns = useMemo(() => new Set(['source']), []);
@@ -901,6 +940,31 @@ const CampaignUsersContent = ({
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
+                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
+                    {isUnassignedView && selectedLeads.size > 0 && (
+                        <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                            <span className="text-body font-medium text-primary-700">
+                                {selectedLeads.size} selected
+                            </span>
+                            <div className="flex gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => setSelectedLeads(new Map())}
+                                >
+                                    Clear
+                                </MyButton>
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="small"
+                                    onClick={() => setBulkAssignOpen(true)}
+                                >
+                                    <UserPlus className="size-3.5" />
+                                    Assign counsellor
+                                </MyButton>
+                            </div>
+                        </div>
+                    )}
                     {error ? (
                         <LeadEmptyState
                             title="Couldn't load respondents"
@@ -918,6 +982,10 @@ const CampaignUsersContent = ({
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            selectable={isUnassignedView}
+                            selectedIds={new Set(selectedLeads.keys())}
+                            onToggleRow={toggleLeadRow}
+                            onToggleAll={toggleAllLeads}
                             emptyState={
                                 <LeadEmptyState
                                     title={
@@ -941,6 +1009,15 @@ const CampaignUsersContent = ({
                     examType="EXAM"
                     isStudentList={false}
                     defaultLeadProfile
+                />
+
+                <BulkAssignCounsellorDialog
+                    open={bulkAssignOpen}
+                    onOpenChange={setBulkAssignOpen}
+                    instituteId={instituteId ?? ''}
+                    leads={Array.from(selectedLeads.values())}
+                    counsellorOptions={counsellorOptions}
+                    onSuccess={handleBulkAssignSuccess}
                 />
 
                 {noteTarget && (

@@ -7,6 +7,8 @@ import {
     COUNSELLOR_WORKBENCH_LEAD_TRANSFERS,
     COUNSELLOR_WORKBENCH_MY_LEADS,
     COUNSELLOR_WORKBENCH_MY_TEAM,
+    COUNSELLOR_WORKBENCH_ASSIGN,
+    COUNSELLOR_WORKBENCH_ASSIGN_PREVIEW,
     COUNSELLOR_WORKBENCH_REASSIGN,
     COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW,
     COUNSELLOR_WORKBENCH_SET_STATUS,
@@ -228,6 +230,52 @@ export async function previewReassign(payload: ReassignPayload) {
 export async function commitReassign(payload: ReassignPayload) {
     const res = await authenticatedAxiosInstance.post<ReassignResult>(
         COUNSELLOR_WORKBENCH_REASSIGN,
+        payload
+    );
+    return res.data;
+}
+
+// ── Bulk assign a selected set of leads (multi-select in the leads list) ──
+
+export interface AssignLeadsAssignment {
+    user_id: string;
+    to_user_id: string;
+}
+
+export interface AssignLeadsPayload {
+    institute_id: string;
+    /** Lead user ids to assign (WorkbenchLead/campaign-user user_id values). */
+    user_ids: string[];
+    mode: ReassignMode;
+    /** SINGLE mode. */
+    target_user_id?: string;
+    /** ROUND_ROBIN participants. Omit to use all active counsellors in scope. */
+    candidate_user_ids?: string[];
+    /** MANUAL mode. */
+    assignments?: AssignLeadsAssignment[];
+}
+
+export interface AssignLeadsResult {
+    dry_run: boolean;
+    total_leads: number;
+    assignments: Array<{
+        user_id: string;
+        to_user_id: string;
+        to_user_name: string | null;
+    }>;
+}
+
+export async function previewAssignLeads(payload: AssignLeadsPayload) {
+    const res = await authenticatedAxiosInstance.post<AssignLeadsResult>(
+        COUNSELLOR_WORKBENCH_ASSIGN_PREVIEW,
+        payload
+    );
+    return res.data;
+}
+
+export async function assignLeads(payload: AssignLeadsPayload) {
+    const res = await authenticatedAxiosInstance.post<AssignLeadsResult>(
+        COUNSELLOR_WORKBENCH_ASSIGN,
         payload
     );
     return res.data;

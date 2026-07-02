@@ -11,6 +11,7 @@ import {
     NotePencil,
 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
@@ -64,6 +65,14 @@ interface LeadTableProps {
      *  "Mark complete" action). Cells are interactive — clicks don't bubble
      *  to the row's open-side-view handler. */
     extraColumns?: LeadTableExtraColumn[];
+    /** Enables a leading checkbox column for multi-select (bulk actions). */
+    selectable?: boolean;
+    /** Selected lead user ids (selection is keyed on vm.userId). */
+    selectedIds?: Set<string>;
+    /** Toggle a single row. Only fired for rows that have a userId. */
+    onToggleRow?: (userId: string, vm: LeadCardVM) => void;
+    /** Toggle all selectable (userId-bearing) rows currently rendered. */
+    onToggleAll?: (checked: boolean, selectableVms: LeadCardVM[]) => void;
 }
 
 /** Shape of a caller-supplied trailing column. */
@@ -205,11 +214,37 @@ export function LeadTable({
     hiddenColumns,
     emptyState,
     extraColumns,
+    selectable = false,
+    selectedIds,
+    onToggleRow,
+    onToggleAll,
 }: LeadTableProps) {
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
 
+    // Rows that can participate in bulk selection (need a user id to assign).
+    const selectableVms = vms.filter((v) => !!v.userId);
+    const allSelected =
+        selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.userId!));
+
     const allCols: Col[] = [
+        {
+            id: 'select',
+            header: '',
+            thClass: 'w-10',
+            show: selectable,
+            interactive: true,
+            render: (vm) =>
+                vm.userId ? (
+                    <Checkbox
+                        checked={!!selectedIds?.has(vm.userId)}
+                        onCheckedChange={() => onToggleRow?.(vm.userId!, vm)}
+                        aria-label={`Select ${vm.name}`}
+                    />
+                ) : (
+                    <span className="text-neutral-300">—</span>
+                ),
+        },
         {
             id: 'name',
             header: 'Lead name',
@@ -526,12 +561,27 @@ export function LeadTable({
                                 key={c.id}
                                 className={cn(
                                     'whitespace-nowrap border-r border-neutral-200 px-4 py-3 text-xs font-semibold text-neutral-600 last:border-r-0',
+                                    c.id === 'select' && 'sticky left-0 z-20 bg-primary-50 !px-2',
                                     c.id === 'name' &&
-                                        'sticky left-0 z-20 border-r border-neutral-200 bg-primary-50',
+                                        cn(
+                                            'sticky z-20 border-r border-neutral-200 bg-primary-50',
+                                            selectable ? 'left-10' : 'left-0'
+                                        ),
                                     c.thClass
                                 )}
                             >
-                                {c.header}
+                                {c.id === 'select' ? (
+                                    <Checkbox
+                                        checked={allSelected}
+                                        disabled={selectableVms.length === 0}
+                                        onCheckedChange={(checked) =>
+                                            onToggleAll?.(checked === true, selectableVms)
+                                        }
+                                        aria-label="Select all"
+                                    />
+                                ) : (
+                                    c.header
+                                )}
                             </th>
                         ))}
                     </tr>
@@ -545,8 +595,13 @@ export function LeadTable({
                                           key={c.id}
                                           className={cn(
                                               'border-r border-neutral-100 px-4 py-3.5 last:border-r-0',
+                                              c.id === 'select' &&
+                                                  'sticky left-0 z-10 bg-white !px-2',
                                               c.id === 'name' &&
-                                                  'sticky left-0 z-10 border-r border-neutral-200 bg-white'
+                                                  cn(
+                                                      'sticky z-10 border-r border-neutral-200 bg-white',
+                                                      selectable ? 'left-10' : 'left-0'
+                                                  )
                                           )}
                                       >
                                           <Skeleton className="h-6 w-40" />
@@ -567,8 +622,13 @@ export function LeadTable({
                                               key={c.id}
                                               className={cn(
                                                   'border-r border-neutral-100 px-4 py-3.5 align-middle last:border-r-0',
+                                                  c.id === 'select' &&
+                                                      'sticky left-0 z-10 bg-white !px-2 group-hover/row:bg-neutral-50',
                                                   c.id === 'name' &&
-                                                      'sticky left-0 z-10 border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50'
+                                                      cn(
+                                                          'sticky z-10 border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50',
+                                                          selectable ? 'left-10' : 'left-0'
+                                                      )
                                               )}
                                               onClick={
                                                   c.interactive

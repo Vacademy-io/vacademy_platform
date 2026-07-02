@@ -30,6 +30,8 @@ import {
     fetchTeamCounsellors,
 } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
+import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
+import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 
 // ── Date helpers (mirror the Reports shell) ────────────────────────────────
 
@@ -66,6 +68,8 @@ export function CallLogPage() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
     const queryClient = useQueryClient();
+    // Call Intelligence analytics show here only when the institute has the feature on.
+    const callIntelligenceEnabled = useCallIntelligenceEnabled();
 
     const defaults = useMemo(() => computeRange(DEFAULT_DAYS), []);
     const [fromDate, setFromDate] = useState(defaults.from);
@@ -184,7 +188,11 @@ export function CallLogPage() {
                     Reset
                 </Button>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <TeamPicker instituteId={instituteId} value={teamId} onChange={handleTeamChange} />
+                    <TeamPicker
+                        instituteId={instituteId}
+                        value={teamId}
+                        onChange={handleTeamChange}
+                    />
                     <CounsellorScopePicker
                         instituteId={instituteId}
                         teamId={teamId}
@@ -206,6 +214,21 @@ export function CallLogPage() {
                     teamId={teamId}
                     counsellorUserId={counsellorUserId}
                 />
+            )}
+
+            {/* AI Call Intelligence analytics — team quality, outcome/sentiment mix,
+                per-counsellor leaderboard. Only when the institute has it enabled. */}
+            {instituteId && callIntelligenceEnabled && (
+                <div className="flex flex-col gap-3">
+                    <h2 className="text-base font-semibold text-neutral-900">Call Intelligence</h2>
+                    <CallIntelligenceTab
+                        instituteId={instituteId}
+                        fromDate={applied.from}
+                        toDate={applied.to}
+                        teamId={teamId}
+                        counsellorUserId={counsellorUserId}
+                    />
+                </div>
             )}
         </div>
     );

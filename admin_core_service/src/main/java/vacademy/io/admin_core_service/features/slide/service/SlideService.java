@@ -52,6 +52,7 @@ public class SlideService {
     private final SlideNotificationService slideNotificationService;
     private final ObjectMapper objectMapper;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+    private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
 
     @Transactional
     public String addOrUpdateDocumentSlide(AddDocumentSlideDTO addDocumentSlideDTO,
@@ -337,6 +338,15 @@ public class SlideService {
 
         chapterToSlidesRepository.save(new ChapterToSlides(chapter, newSlide, null, SlideStatus.DRAFT.name()));
 
+        // A copied ASSESSMENT slide keeps the same assessmentId but lands in a new
+        // batch. Register that assessment to the target batch so it shows up for
+        // those learners / in that course's assessment list — not just the slide.
+        // Best-effort: the registration service swallows its own failures.
+        if (SlideTypeEnum.ASSESSMENT.name().equalsIgnoreCase(slide.getSourceType())) {
+            assessmentSlideBatchRegistrationService
+                    .registerChapterAssessmentsToBatches(newChapterId, List.of(newPackageSessionId));
+        }
+
         // Update learner tracking for all slide types
         updateLearnerTrackingForSlide(slide, oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId,
                 newChapterId, newModuleId, newSubjectId, newPackageSessionId);
@@ -469,6 +479,18 @@ public class SlideService {
         chapterToSlidesRepository.save(newMapping);
 
         deleteMapping(slideId, oldChapterId);
+
+        // A moved ASSESSMENT slide now lives in a new batch. Register its assessment
+        // to the target batch so it appears for those learners / in that course's
+        // assessment list. Best-effort (the registration service swallows failures).
+        // We intentionally do not de-register the old batch here: the same
+        // assessment may still be reachable there via another slide, and dropping a
+        // live registration risks hiding an in-flight assessment.
+        if (existingMapping.getSlide() != null
+                && SlideTypeEnum.ASSESSMENT.name().equalsIgnoreCase(existingMapping.getSlide().getSourceType())) {
+            assessmentSlideBatchRegistrationService
+                    .registerChapterAssessmentsToBatches(newChapterId, List.of(newPackageSessionId));
+        }
 
         // Update learner tracking for all slide types
         updateLearnerTrackingForSlide(existingMapping.getSlide(), oldChapterId, oldModuleId, oldSubjectId,

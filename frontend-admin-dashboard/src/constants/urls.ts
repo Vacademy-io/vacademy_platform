@@ -30,6 +30,10 @@ export const ASSISTANT_SESSION_STREAM = (sessionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/stream`;
 export const ASSISTANT_SESSION_CLOSE = (sessionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/close`;
+export const ASSISTANT_ACTION_CONFIRM = (sessionId: string, actionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/confirm`;
+export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 
 // PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
 // {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.

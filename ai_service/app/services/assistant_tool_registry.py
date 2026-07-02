@@ -71,6 +71,14 @@ class ToolContext:
     # admin endpoints — so the REAL user identity reaches Java, and the caller can
     # never do via the assistant what they couldn't do directly in the UI.
     bearer_token: Optional[str] = None
+    # The chat session this call belongs to — write tools persist their pending
+    # confirmation row against it.
+    session_id: Optional[str] = None
+    # OUT-parameter: a WRITE tool's proposer sets this so the agent loop can emit
+    # an `action_request` SSE event (incl. the nonce) to the FE. Deliberately NOT
+    # part of the tool result string — the model never sees the nonce, so it can
+    # never fabricate a confirmation.
+    pending_action: Optional[Dict[str, Any]] = None
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str
@@ -832,8 +840,255 @@ async def _execute_trigger_full_report(args: Dict[str, Any], ctx: ToolContext) -
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# The registry. Phase-3 (write) tools register here later,
-# each with its own required_permission + default_enabled=False.
+# Phase-3 WRITE tools — confirmation-card protocol.
+#
+# A WRITE tool's executor NEVER hits Java. It validates, verifies the target
+# belongs to the pinned institute, persists a `pending_action` row (nonce + TTL,
+# in chat_messages) and sets ctx.pending_action so the loop shows the FE a
+# confirmation card. Only the /action/{nonce}/confirm endpoint — a separate
+# authenticated request from the human — executes the change, re-checking the
+# AND-gate first. The model never sees the nonce, so "the user already said yes"
+# can never bypass the card.
+# ──────────────────────────────────────────────────────────────────────────
+
+#: Pending write confirmations expire after this many minutes.
+PENDING_ACTION_TTL_MINUTES = 10
+
+#: message_type used for pending-confirmation rows in chat_messages.
+PENDING_ACTION_MESSAGE_TYPE = "pending_action"
+
+
+def _target_in_institute(ctx: ToolContext, target_user_id: str) -> bool:
+    """Membership pre-check: the write endpoints trust the request body, so WE
+    must ensure the target learner belongs to the pinned institute."""
+    from sqlalchemy import text as sql_text
+    try:
+        row = ctx.db.execute(
+            sql_text(
+                "SELECT 1 FROM student_session_institute_group_mapping "
+                "WHERE user_id = :u AND institute_id = :i LIMIT 1"
+            ),
+            {"u": target_user_id, "i": ctx.principal.institute_id},
+        ).first()
+        return row is not None
+    except Exception as e:
+        logger.warning("membership pre-check failed (deny): %s", e)
+        return False
+
+
+async def _propose_action(
+    ctx: ToolContext,
+    tool: str,
+    perform_args: Dict[str, Any],
+    summary: str,
+) -> str:
+    """Persist a pending action (nonce + TTL) and hand the card to the FE."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from ..repositories.chat_message_repository import ChatMessageRepository
+
+    if not ctx.session_id:
+        return json.dumps({"error": "no_session"})
+
+    nonce = str(uuid.uuid4())
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=PENDING_ACTION_TTL_MINUTES)
+    ).isoformat()
+    ChatMessageRepository(ctx.db).create_message(
+        session_id=ctx.session_id,
+        message_type=PENDING_ACTION_MESSAGE_TYPE,
+        content=summary,
+        metadata={
+            "nonce": nonce,
+            "tool": tool,
+            "args": perform_args,
+            "status": "PENDING",
+            "expires_at": expires_at,
+            "proposed_by": ctx.principal.user_id,
+            "institute_id": ctx.principal.institute_id,
+        },
+    )
+    ctx.pending_action = {
+        "action_id": nonce,
+        "tool": tool,
+        "summary": summary,
+        "expires_at": expires_at,
+    }
+    return json.dumps({
+        "status": "awaiting_user_confirmation",
+        "summary": summary,
+        "note": (
+            "A confirmation card has been shown to the user. The change has NOT been made. "
+            "Tell the user to press Confirm on the card (or Cancel). Do not claim it is done."
+        ),
+    })
+
+
+# Editable profile fields (schema-level whitelist). Deliberately EXCLUDES
+# user_name / password / face_file_id / institute_name even though the backend
+# accepts them — the assistant must not touch credentials.
+_PROFILE_EDITABLE_FIELDS = [
+    "email", "full_name", "contact_number", "gender", "address_line",
+    "state", "pin_code", "father_name", "mother_name",
+    "parents_mobile_number", "parents_email",
+]
+
+_UPDATE_LEARNER_PROFILE_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "update_learner_profile",
+        "description": (
+            "PROPOSE an edit to a learner's profile details (name, contact, address, "
+            "parent info). The user gets a confirmation card and the change only "
+            "happens after they press Confirm. Supply ONLY the fields to change."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                **{f: {"type": "string"} for f in _PROFILE_EDITABLE_FIELDS},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_update_learner_profile(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    changes = {
+        f: str(args[f]).strip()
+        for f in _PROFILE_EDITABLE_FIELDS
+        if args.get(f) is not None and str(args[f]).strip() != ""
+    }
+    if not changes:
+        return json.dumps({"error": "no_changes", "message": "No editable fields were provided."})
+    if not _target_in_institute(ctx, target):
+        return json.dumps({"error": "not_found",
+                           "message": "This learner has no enrollment in your institute."})
+    pretty = ", ".join(f"{k.replace('_', ' ')} → “{v}”" for k, v in changes.items())
+    summary = f"Update learner profile ({len(changes)} field{'s' if len(changes) > 1 else ''}): {pretty}"
+    return await _propose_action(
+        ctx, "update_learner_profile", {"target_user_id": target, "changes": changes}, summary
+    )
+
+
+async def _perform_update_learner_profile(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    body = {"user_id": args["target_user_id"], **(args.get("changes") or {})}
+    data = await _admin_core_json(
+        ctx, "PUT", "/admin-core-service/learner/info/v1/edit", body=body
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return {"ok": False, "detail": data}
+    return {"ok": True, "detail": "profile updated"}
+
+
+#: Enrollment operations the assistant may propose. TERMINATE is deliberately
+#: excluded (destructive) — Phase 3b at the earliest.
+_ENROLLMENT_OPERATIONS = {
+    "ADD_EXPIRY": "extend/set access expiry (new_state = date as dd-MM-yyyy)",
+    "UPDATE_BATCH": "move to another batch (new_state = target package_session_id)",
+    "MAKE_INACTIVE": "deactivate the learner in the batch",
+    "MAKE_ACTIVE": "re-activate the learner in the batch",
+    "UPDATE_STATUS": "set enrollment status (new_state = status value)",
+}
+
+_MANAGE_ENROLLMENT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "manage_enrollment",
+        "description": (
+            "PROPOSE an enrollment change for a learner — extend access expiry, move "
+            "batch, activate/deactivate. The user gets a confirmation card; nothing "
+            "changes until they press Confirm. Operations: "
+            + "; ".join(f"{k} = {v}" for k, v in _ENROLLMENT_OPERATIONS.items())
+            + ". IMPORTANT: ADD_EXPIRY dates must be dd-MM-yyyy (e.g. 31-08-2026)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "operation": {"type": "string", "enum": sorted(_ENROLLMENT_OPERATIONS.keys())},
+                "new_state": {
+                    "type": "string",
+                    "description": "Meaning depends on operation (see description).",
+                },
+                "current_package_session_id": {
+                    "type": "string",
+                    "description": "The learner's current batch id (from context or find_learner).",
+                },
+            },
+            "required": ["target_user_id", "operation", "current_package_session_id"],
+        },
+    },
+}
+
+
+async def _execute_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> str:
+    import re
+    target = str((args or {}).get("target_user_id") or "").strip()
+    operation = str(args.get("operation") or "").strip().upper()
+    new_state = str(args.get("new_state") or "").strip()
+    batch = str(args.get("current_package_session_id") or "").strip()
+    if not target or not batch:
+        return json.dumps({"error": "missing_target"})
+    if operation not in _ENROLLMENT_OPERATIONS:
+        return json.dumps({"error": "bad_operation",
+                           "message": f"Allowed: {', '.join(sorted(_ENROLLMENT_OPERATIONS))}."})
+    if operation == "ADD_EXPIRY" and not re.fullmatch(r"\d{2}-\d{2}-\d{4}", new_state):
+        return json.dumps({"error": "bad_date",
+                           "message": "ADD_EXPIRY needs new_state as dd-MM-yyyy (e.g. 31-08-2026)."})
+    if operation in ("ADD_EXPIRY", "UPDATE_BATCH", "UPDATE_STATUS") and not new_state:
+        return json.dumps({"error": "missing_new_state"})
+    if not _target_in_institute(ctx, target):
+        return json.dumps({"error": "not_found",
+                           "message": "This learner has no enrollment in your institute."})
+    nice = {
+        "ADD_EXPIRY": f"Extend access expiry to {new_state}",
+        "UPDATE_BATCH": f"Move to batch {new_state}",
+        "MAKE_INACTIVE": "Mark INACTIVE in the current batch",
+        "MAKE_ACTIVE": "Mark ACTIVE in the current batch",
+        "UPDATE_STATUS": f"Set enrollment status to {new_state}",
+    }[operation]
+    summary = f"Enrollment change: {nice}"
+    return await _propose_action(
+        ctx, "manage_enrollment",
+        {"target_user_id": target, "operation": operation, "new_state": new_state,
+         "current_package_session_id": batch},
+        summary,
+    )
+
+
+async def _perform_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    body = {
+        "operation": args["operation"],
+        "requests": [{
+            "user_id": args["target_user_id"],
+            "new_state": args.get("new_state") or None,
+            "institute_id": ctx.principal.institute_id,  # forced
+            "current_package_session_id": args["current_package_session_id"],
+        }],
+    }
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/institute/institute_learner-operation/v1/update",
+        body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return {"ok": False, "detail": data}
+    return {"ok": True, "detail": "enrollment updated"}
+
+
+#: perform-side dispatch used by the confirm endpoint (NOT reachable by the LLM).
+WRITE_PERFORMERS: Dict[str, Callable[[Dict[str, Any], ToolContext], Awaitable[Dict[str, Any]]]] = {
+    "update_learner_profile": _perform_update_learner_profile,
+    "manage_enrollment": _perform_manage_enrollment,
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The registry.
 # ──────────────────────────────────────────────────────────────────────────
 
 ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
@@ -950,6 +1205,30 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         default_roles=["ADMIN"],
         phase=2,
         mode="READ",
+    ),
+    # Phase-3 WRITE tools — OFF for everyone by default (founder decision:
+    # writes are never default-on); grantable per-role via the "learner_edits"
+    # settings group. Executors only PROPOSE; execution happens exclusively via
+    # the nonce-confirmed /action endpoint.
+    "update_learner_profile": ToolSpec(
+        name="update_learner_profile",
+        schema=_UPDATE_LEARNER_PROFILE_SCHEMA,
+        executor=_execute_update_learner_profile,
+        required_permission=None,
+        setting_key="learner_edits",
+        default_enabled=False,
+        phase=3,
+        mode="WRITE",
+    ),
+    "manage_enrollment": ToolSpec(
+        name="manage_enrollment",
+        schema=_MANAGE_ENROLLMENT_SCHEMA,
+        executor=_execute_manage_enrollment,
+        required_permission=None,
+        setting_key="learner_edits",
+        default_enabled=False,
+        phase=3,
+        mode="WRITE",
     ),
 }
 

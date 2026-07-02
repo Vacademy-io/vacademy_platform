@@ -124,6 +124,52 @@ async def stream_session(
 
 
 @router.post(
+    "/session/{session_id}/action/{action_id}/confirm",
+    summary="Confirm a pending assistant write action",
+)
+async def confirm_action(
+    session_id: str,
+    action_id: str,
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+    authorization: Optional[str] = Header(None),
+):
+    bearer_token = (
+        authorization[len("Bearer "):] if authorization and authorization.startswith("Bearer ") else None
+    )
+    try:
+        return await service.confirm_action(session_id, principal, action_id, bearer_token)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="You do not have access to this session.")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Error confirming assistant action: %s", e)
+        raise HTTPException(status_code=500, detail="Could not confirm the action.")
+
+
+@router.post(
+    "/session/{session_id}/action/{action_id}/cancel",
+    summary="Cancel a pending assistant write action",
+)
+async def cancel_action(
+    session_id: str,
+    action_id: str,
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+):
+    try:
+        return await service.cancel_action(session_id, principal, action_id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="You do not have access to this session.")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Error cancelling assistant action: %s", e)
+        raise HTTPException(status_code=500, detail="Could not cancel the action.")
+
+
+@router.post(
     "/session/{session_id}/close",
     response_model=AssistantCloseResponse,
     summary="Close an Assistant session",

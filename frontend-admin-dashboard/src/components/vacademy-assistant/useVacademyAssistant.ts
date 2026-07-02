@@ -8,9 +8,13 @@ import {
     ASSISTANT_SESSION_MESSAGE,
     ASSISTANT_SESSION_STREAM,
     ASSISTANT_SESSION_CLOSE,
+    ASSISTANT_ACTION_CONFIRM,
+    ASSISTANT_ACTION_CANCEL,
 } from '@/constants/urls';
 import { useSelectedStudentMirrorStore } from '@/stores/assistant/selected-student-mirror';
 import type {
+    AssistantActionRequestData,
+    AssistantActionStatus,
     AssistantErrorData,
     AssistantMessage,
     AssistantMessageData,

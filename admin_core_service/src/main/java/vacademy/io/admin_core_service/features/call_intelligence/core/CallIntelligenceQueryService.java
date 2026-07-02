@@ -8,14 +8,19 @@ import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelli
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.entity.CallIntelligence;
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.repository.CallIntelligenceRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Read side of Call Intelligence: per-call and per-lead detail, plus the
@@ -31,6 +36,7 @@ public class CallIntelligenceQueryService {
 
     private final CallIntelligenceRepository repo;
     private final CounsellorScopeService counsellorScopeService;
+    private final AuthService authService;
 
     public Optional<CallIntelligenceDto> getByCallLogId(String callLogId) {
         return repo.findByCallLogId(callLogId).map(CallIntelligenceDto::from);
@@ -80,6 +86,8 @@ public class CallIntelligenceQueryService {
         int callerN = 0, outputN = 0;
         // key -> [sumScore, count]
         Map<String, double[]> qualityAcc = new LinkedHashMap<>();
+        // quality key -> counsellorUserId -> [sumScore, count] (team coaching only)
+        Map<String, Map<String, double[]>> qualityByCounsellor = new LinkedHashMap<>();
         // normalized text -> [displayText, count]
         Map<String, Object[]> tipAcc = new LinkedHashMap<>();
         // normalized objection -> [displayText, count, handledCount]
@@ -105,6 +113,15 @@ public class CallIntelligenceQueryService {
                         if (key == null || score == null) continue;
                         double[] acc = qualityAcc.computeIfAbsent(key, k -> new double[2]);
                         acc[0] += score; acc[1] += 1;
+                        // Attribute the score to its counsellor so team coaching can
+                        // name who's weakest in each quality.
+                        String cid = c.getCounsellorUserId();
+                        if (cid != null) {
+                            double[] cAcc = qualityByCounsellor
+                                    .computeIfAbsent(key, k -> new LinkedHashMap<>())
+                                    .computeIfAbsent(cid, k -> new double[2]);
+                            cAcc[0] += score; cAcc[1] += 1;
+                        }
                     }
                 }
                 for (Object t : asList(a.get("coaching_tips"))) {
@@ -147,7 +164,48 @@ public class CallIntelligenceQueryService {
                         .build())
                 // Weakest first — that's where the coaching value is.
                 .sorted(Comparator.comparing(q -> q.getAvgScore() == null ? Double.MAX_VALUE : q.getAvgScore()))
-                .toList();
+                .collect(Collectors.toList());
+
+        // Team coaching only: for each quality, name the counsellors scoring below
+        // the team average for it ("X can improve in this field"). One name batch.
+        if (counsellorUserId == null && !qualityByCounsellor.isEmpty()) {
+            Map<CallIntelligenceCoachingDto.QualityAvg,
+                    List<CallIntelligenceCoachingDto.WeakCounsellor>> pending = new LinkedHashMap<>();
+            List<String> idsToResolve = new ArrayList<>();
+            for (CallIntelligenceCoachingDto.QualityAvg q : qualities) {
+                Double teamAvg = q.getAvgScore();
+                Map<String, double[]> perC = qualityByCounsellor.get(q.getKey());
+                if (teamAvg == null || perC == null) continue;
+                List<CallIntelligenceCoachingDto.WeakCounsellor> weak = new ArrayList<>();
+                for (Map.Entry<String, double[]> e : perC.entrySet()) {
+                    double[] v = e.getValue();
+                    if (v[1] == 0) continue;
+                    double avg = round1(v[0] / v[1]);
+                    if (avg < teamAvg) {
+                        weak.add(CallIntelligenceCoachingDto.WeakCounsellor.builder()
+                                .counsellorUserId(e.getKey()).avgScore(avg).build());
+                    }
+                }
+                weak.sort(Comparator.comparingDouble(
+                        w -> w.getAvgScore() == null ? Double.MAX_VALUE : w.getAvgScore()));
+                if (weak.size() > 3) weak = new ArrayList<>(weak.subList(0, 3));
+                if (!weak.isEmpty()) {
+                    pending.put(q, weak);
+                    for (CallIntelligenceCoachingDto.WeakCounsellor w : weak) {
+                        idsToResolve.add(w.getCounsellorUserId());
+                    }
+                }
+            }
+            Map<String, String> names = resolveNames(idsToResolve);
+            for (Map.Entry<CallIntelligenceCoachingDto.QualityAvg,
+                    List<CallIntelligenceCoachingDto.WeakCounsellor>> entry : pending.entrySet()) {
+                for (CallIntelligenceCoachingDto.WeakCounsellor w : entry.getValue()) {
+                    w.setName(Optional.ofNullable(names.get(w.getCounsellorUserId()))
+                            .filter(s -> !s.isBlank()).orElse(w.getCounsellorUserId()));
+                }
+                entry.getKey().setWeakCounsellors(entry.getValue());
+            }
+        }
 
         List<CallIntelligenceCoachingDto.CoachingTip> tips = tipAcc.values().stream()
                 .map(v -> CallIntelligenceCoachingDto.CoachingTip.builder()
@@ -269,5 +327,24 @@ public class CallIntelligenceQueryService {
 
     private static double round1(double v) {
         return Math.round(v * 10.0) / 10.0;
+    }
+
+    /** One auth-service batch; failures degrade to id-as-name instead of failing the roll-up. */
+    private Map<String, String> resolveNames(Collection<String> userIds) {
+        List<String> ids = userIds.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (ids.isEmpty()) return Collections.emptyMap();
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(ids);
+            if (users == null || users.isEmpty()) return Collections.emptyMap();
+            return users.stream()
+                    .filter(u -> u != null && u.getId() != null)
+                    .collect(Collectors.toMap(UserDTO::getId,
+                            u -> Optional.ofNullable(u.getFullName()).orElse(u.getId()), (a, b) -> a));
+        } catch (Exception ex) {
+            return Collections.emptyMap();
+        }
     }
 }

@@ -89,25 +89,49 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                                 const pct =
                                     q.avgScore == null ? 0 : Math.max(4, (q.avgScore / 10) * 100);
                                 const tone = scoreTone(q.avgScore);
+                                const weak = (q.weakCounsellors ?? []).filter((w) =>
+                                    (w.name ?? w.counsellorUserId)?.trim()
+                                );
                                 return (
-                                    <div key={q.key} className="flex items-center gap-3">
-                                        <span className="w-36 shrink-0 truncate text-caption text-neutral-600">
-                                            {prettify(q.key)}
-                                        </span>
-                                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white">
-                                            <div
-                                                className={cn('h-full rounded-full', tone.bar)}
-                                                style={{ width: `${pct}%` }}
-                                            />
+                                    <div key={q.key} className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-36 shrink-0 truncate text-caption text-neutral-600">
+                                                {prettify(q.key)}
+                                            </span>
+                                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white">
+                                                <div
+                                                    className={cn('h-full rounded-full', tone.bar)}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
+                                            <span
+                                                className={cn(
+                                                    'w-8 shrink-0 text-right text-caption font-medium',
+                                                    tone.text
+                                                )}
+                                            >
+                                                {fmt(q.avgScore)}
+                                            </span>
                                         </div>
-                                        <span
-                                            className={cn(
-                                                'w-8 shrink-0 text-right text-caption font-medium',
-                                                tone.text
-                                            )}
-                                        >
-                                            {fmt(q.avgScore)}
-                                        </span>
+                                        {weak.length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-1 pl-36 text-caption text-neutral-500">
+                                                <span>Can improve:</span>
+                                                {weak.map((w) => (
+                                                    <span
+                                                        key={w.counsellorUserId}
+                                                        className="rounded-full bg-white px-2 py-0.5 text-neutral-600"
+                                                    >
+                                                        {w.name ?? w.counsellorUserId}
+                                                        {w.avgScore != null && (
+                                                            <span className="text-neutral-400">
+                                                                {' '}
+                                                                · {w.avgScore.toFixed(1)}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}

@@ -625,7 +625,16 @@ function CounsellorBreakdown({
     current: Win;
     previous: Win;
 }) {
-    const [expanded, setExpanded] = useState<string | null>(null);
+    // Rows are expanded by default (coaching visible without a click); a row is
+    // open unless the user has explicitly collapsed it.
+    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    const toggle = (userId: string) =>
+        setCollapsed((prev) => {
+            const next = new Set(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.add(userId);
+            return next;
+        });
 
     const curTeam = useQuery({
         queryKey: ['ai-intel-team', instituteId, current.from, current.to],
@@ -755,12 +764,12 @@ function CounsellorBreakdown({
                         </thead>
                         <tbody>
                             {rows.map((r) => {
-                                const open = expanded === r.userId;
+                                const open = !collapsed.has(r.userId);
                                 return (
                                     <Fragment key={r.userId}>
                                         <tr
                                             className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
-                                            onClick={() => setExpanded(open ? null : r.userId)}
+                                            onClick={() => toggle(r.userId)}
                                         >
                                             <td className="py-2.5 pl-3 text-neutral-400">
                                                 {open ? (

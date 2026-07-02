@@ -109,10 +109,17 @@ export interface CallIntelligenceAnalyticsDto {
     perCounsellor?: CounsellorStat[] | null;
 }
 
+export interface CoachingWeakCounsellor {
+    counsellorUserId: string;
+    name?: string | null;
+    avgScore?: number | null;
+}
 export interface CoachingQualityAvg {
     key: string;
     avgScore?: number | null;
     count: number;
+    /** Team coaching only: counsellors weakest in this quality. */
+    weakCounsellors?: CoachingWeakCounsellor[] | null;
 }
 export interface CoachingTipStat {
     text: string;

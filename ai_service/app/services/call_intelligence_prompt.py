@@ -29,20 +29,34 @@ def build_prompt(
     *,
     rating_scale: int = 10,
     objective_hint: Optional[str] = None,
-    qualities: Optional[List[str]] = None,
+    qualities: Optional[List[Any]] = None,
     weights: Optional[Dict[str, float]] = None,
     direction: Optional[str] = None,
     source: Optional[str] = None,
     duration_seconds: Optional[int] = None,
 ) -> str:
-    """Build the analysis prompt. `transcript` is the (possibly Hinglish) call text."""
-    qualities = qualities or DEFAULT_QUALITIES
+    """Build the analysis prompt. `transcript` is the (possibly Hinglish) call text.
+
+    `qualities` items may be a bare string (the metric key) or a dict
+    {"key": ..., "description": ...} — the description is an institute-authored
+    definition of a (possibly custom) metric, so the model grades it as intended.
+    """
+    raw_qualities = qualities if qualities else DEFAULT_QUALITIES
     scale = rating_scale if rating_scale and rating_scale > 0 else 10
 
-    quality_lines = "\n".join(
-        f'      - "{q}"' + (f" (weight {weights[q]})" if weights and q in weights else "")
-        for q in qualities
-    )
+    def _line(q: Any) -> str:
+        if isinstance(q, dict):
+            key = str(q.get("key") or q.get("term") or "").strip()
+            desc = (q.get("description") or "").strip()
+        else:
+            key = str(q).strip()
+            desc = ""
+        if not key:
+            return ""
+        w = f" (weight {weights[key]})" if weights and key in weights else ""
+        return f'      - "{key}"{w}' + (f" — {desc}" if desc else "")
+
+    quality_lines = "\n".join(line for q in raw_qualities if (line := _line(q)))
 
     context_bits = []
     if direction:

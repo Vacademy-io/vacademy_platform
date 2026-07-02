@@ -31,7 +31,7 @@ import {
 } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
 import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
-import { useCallIntelligenceEnabled } from '@/components/shared/leads';
+import { useCallIntelligenceEnabled, TeamCoachingSection } from '@/components/shared/leads';
 
 // ── Date helpers (mirror the Reports shell) ────────────────────────────────
 
@@ -227,6 +227,13 @@ export function CallLogPage() {
                         toDate={applied.to}
                         teamId={teamId}
                         counsellorUserId={counsellorUserId}
+                    />
+                    {/* Whole-team coaching from all analyzed calls — weakest skills,
+                        recurring themes and objections across the team. */}
+                    <TeamCoachingSection
+                        instituteId={instituteId}
+                        fromMillis={new Date(applied.from).getTime()}
+                        toMillis={new Date(`${applied.to}T23:59:59`).getTime()}
                     />
                 </div>
             )}

@@ -1,22 +1,37 @@
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { Sparkle, Star, Lightbulb, Warning, Target, ChartBar } from '@phosphor-icons/react';
+import { format, subDays } from 'date-fns';
+import {
+    Sparkle,
+    Star,
+    Lightbulb,
+    Warning,
+    Target,
+    ChartBar,
+    ArrowsLeftRight,
+    PhoneCall,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CallIntelligencePanel } from '@/components/shared/leads';
 import { fetchCounsellorCoaching } from '@/components/shared/leads/services/call-intelligence';
+import { fetchDispositions } from '@/routes/audience-manager/reports/-services/get-crm-reports';
 
 /**
- * CounsellorInsightsTab — the "what can this counsellor improve" coaching view,
- * built from the transcript analysis of their calls: overall ratings, weakest
- * rubric qualities (focus areas), the coaching tips that recur most, the
- * objections they hit most, and recent calls to drill into (each expands the
- * per-call AI analysis + transcript-derived detail).
+ * CounsellorInsightsTab — the team-head coaching view for one counsellor. Two
+ * halves:
+ *   1. Work summary (always shown): what they DID over the window — leads
+ *      dispositioned (status changes, broken down by the status moved to) and
+ *      call reach (dials / connected). From the dispositions report endpoint.
+ *   2. AI coaching (when calls have been analyzed): overall ratings, weakest
+ *      rubric skills, recurring coaching tips, common objections, and recent
+ *      calls to drill into.
  */
 
 interface Props {
     instituteId: string;
     counsellorUserId: string;
 }
+
+const WINDOW_DAYS = 30;
 
 const fmt = (n?: number | null) => (n == null ? '—' : n.toFixed(1));
 
@@ -40,6 +55,104 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: s
 }
 
 export function CounsellorInsightsTab({ instituteId, counsellorUserId }: Props) {
+    return (
+        <div className="flex flex-col gap-5">
+            <WorkSummarySection instituteId={instituteId} counsellorUserId={counsellorUserId} />
+            <CoachingInsights instituteId={instituteId} counsellorUserId={counsellorUserId} />
+        </div>
+    );
+}
+
+// ── Work summary: what the counsellor DID (dispositions + call reach) ──────────
+
+function WorkSummarySection({ instituteId, counsellorUserId }: Props) {
+    // Stable yyyy-MM-dd strings (constant within the day) so the query key doesn't
+    // churn every render.
+    const toDate = format(new Date(), 'yyyy-MM-dd');
+    const fromDate = format(subDays(new Date(), WINDOW_DAYS - 1), 'yyyy-MM-dd');
+    const { data } = useQuery({
+        queryKey: ['counsellor-work-summary', instituteId, counsellorUserId, fromDate, toDate],
+        queryFn: () => fetchDispositions({ instituteId, counsellorUserId, fromDate, toDate }),
+        enabled: !!instituteId && !!counsellorUserId,
+        staleTime: 60 * 1000,
+    });
+
+    if (!data) return null;
+    const row = data.rows.find((r) => r.user_id === counsellorUserId);
+    const co = data.call_outcomes.find((r) => r.user_id === counsellorUserId);
+    const dials = co ? Object.values(co.outcomes).reduce((s, n) => s + n, 0) : 0;
+    const connected = co?.outcomes.COMPLETED ?? 0;
+    const reach = dials > 0 ? Math.round((connected / dials) * 100) : null;
+    const totalChanges = row?.total_changes ?? 0;
+    const changes = row?.changes ?? {};
+    if (totalChanges === 0 && dials === 0) return null;
+
+    const statusLabel = new Map(data.statuses.map((s) => [s.status_key, s.label]));
+    const changeRows = Object.entries(changes).sort((a, b) => b[1] - a[1]);
+
+    return (
+        <section className="rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-1.5 text-body font-medium text-neutral-800">
+                <ArrowsLeftRight size={16} className="text-primary-500" />
+                Work summary
+                <span className="text-caption font-normal text-neutral-400">
+                    · last {WINDOW_DAYS} days
+                </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Status changes" value={String(totalChanges)} />
+                <Metric label="Calls made" value={String(dials)} />
+                <Metric label="Connected" value={String(connected)} />
+                <Metric
+                    label="Reach"
+                    value={reach == null ? '—' : `${reach}%`}
+                    tone={
+                        reach == null
+                            ? undefined
+                            : reach >= 40
+                              ? 'text-success-600'
+                              : reach >= 20
+                                ? 'text-warning-600'
+                                : 'text-danger-600'
+                    }
+                />
+            </div>
+            {changeRows.length > 0 && (
+                <div className="mt-4">
+                    <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                        <PhoneCall size={13} /> Statuses moved to
+                    </p>
+                    <div className="space-y-2">
+                        {changeRows.map(([key, count]) => {
+                            const pct =
+                                totalChanges > 0 ? Math.max(4, (count / totalChanges) * 100) : 0;
+                            return (
+                                <div key={key} className="flex items-center gap-3">
+                                    <span className="w-40 shrink-0 truncate text-caption text-neutral-600">
+                                        {statusLabel.get(key) ?? prettify(key)}
+                                    </span>
+                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100">
+                                        <div
+                                            className="h-full rounded-full bg-primary-500"
+                                            style={{ width: `${pct}%` }}
+                                        />
+                                    </div>
+                                    <span className="w-8 shrink-0 text-right text-caption font-medium text-neutral-700">
+                                        {count}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </section>
+    );
+}
+
+// ── AI coaching from call transcripts ─────────────────────────────────────────
+
+function CoachingInsights({ instituteId, counsellorUserId }: Props) {
     const { data, isLoading, isError } = useQuery({
         queryKey: ['counsellor-coaching', counsellorUserId, instituteId],
         queryFn: () => fetchCounsellorCoaching(counsellorUserId),
@@ -62,9 +175,9 @@ export function CounsellorInsightsTab({ instituteId, counsellorUserId }: Props) 
         return (
             <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-neutral-300 p-8 text-center text-subtitle text-neutral-500">
                 <Sparkle size={22} className="text-neutral-400" />
-                No analyzed calls yet for this counsellor.
+                No AI-analyzed calls yet for this counsellor.
                 <span className="text-caption text-neutral-400">
-                    Enable CRM Intelligence and analyze some calls to see coaching insights.
+                    Enable CRM Intelligence and analyze some calls to see call-quality coaching.
                 </span>
             </div>
         );

@@ -29,6 +29,11 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
             String counsellorUserId, String status,
             java.sql.Timestamp from, java.sql.Timestamp to);
 
+    /** Same, but across a set of counsellors — powers the whole-team coaching view. */
+    List<CallIntelligence> findByCounsellorUserIdInAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
+            List<String> counsellorUserIds, String status,
+            java.sql.Timestamp from, java.sql.Timestamp to);
+
     /**
      * The poller's claim query: oldest PENDING work first. Matches the partial
      * index idx_ci_queue. Pageable caps the batch size per tick.

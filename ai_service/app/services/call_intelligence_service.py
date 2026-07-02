@@ -82,7 +82,21 @@ def _read_call_settings(institute_id: str) -> Dict[str, Any]:
         if rubric.get("objectiveHint"):
             out["objective_hint"] = str(rubric["objectiveHint"])
         if isinstance(rubric.get("qualities"), list) and rubric["qualities"]:
-            out["qualities"] = [str(q) for q in rubric["qualities"]]
+            # Each metric may be a bare string (legacy) or {"key","description"}
+            # (current — an institute-authored definition of a custom metric).
+            # Normalize to {key, description} and pass through to the prompt so the
+            # AI grades custom metrics exactly as defined.
+            parsed = []
+            for q in rubric["qualities"]:
+                if isinstance(q, dict):
+                    key = str(q.get("key") or q.get("term") or "").strip()
+                    desc = str(q.get("description") or "").strip()
+                    if key:
+                        parsed.append({"key": key, "description": desc})
+                elif str(q).strip():
+                    parsed.append({"key": str(q).strip(), "description": ""})
+            if parsed:
+                out["qualities"] = parsed
         if isinstance(rubric.get("weights"), dict):
             out["weights"] = {str(k): float(v) for k, v in rubric["weights"].items()}
     except Exception:

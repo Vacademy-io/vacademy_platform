@@ -6,6 +6,7 @@ import {
     CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS,
     CALL_INTELLIGENCE_COUNSELLOR_COACHING,
     CALL_INTELLIGENCE_TEAM_ANALYTICS,
+    CALL_INTELLIGENCE_TEAM_COACHING,
 } from '@/constants/urls';
 
 // ─── Types (mirror the admin-core CallIntelligenceDto / AnalyticsDto) ──────────
@@ -193,6 +194,17 @@ export const fetchCounsellorCoaching = async (
 ): Promise<CallIntelligenceCoachingDto> => {
     const { data } = await authenticatedAxiosInstance.get<CallIntelligenceCoachingDto>(
         CALL_INTELLIGENCE_COUNSELLOR_COACHING(counsellorUserId, from, to)
+    );
+    return data;
+};
+
+export const fetchTeamCoaching = async (
+    instituteId: string,
+    from?: number,
+    to?: number
+): Promise<CallIntelligenceCoachingDto> => {
+    const { data } = await authenticatedAxiosInstance.get<CallIntelligenceCoachingDto>(
+        CALL_INTELLIGENCE_TEAM_COACHING(instituteId, from, to)
     );
     return data;
 };

@@ -85,6 +85,8 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { extractTextFromHTML } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
+import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
+import { SubOrgAssociatedToggle } from './sub-org-associated-toggle';
 
 type SlideType = {
     id: string;
@@ -2081,6 +2083,26 @@ export const CourseDetailsPage = () => {
                                 )}
                             </div>
                         </div>
+                        {/* Course setting: mark this batch as sub-org associated
+                            (reuses package_session.is_org_associated). Admin only. */}
+                        {isAdmin && packageSessionIds && (
+                            <SubOrgAssociatedToggle
+                                packageSessionId={packageSessionIds}
+                                initialValue={
+                                    batches.find((b) => b.id === packageSessionIds)
+                                        ?.is_org_associated ?? false
+                                }
+                                disabled={!canEdit}
+                            />
+                        )}
+                        {/* Enrollment workflow run(s) for the selected batch —
+                            renders nothing when no workflow is attached. */}
+                        {packageSessionIds && (
+                            <EnrollmentWorkflowStatus
+                                instituteId={instituteDetails?.id || ''}
+                                packageSessionIds={[packageSessionIds]}
+                            />
+                        )}
                         {dripConditionsEnabled && (
                             <div className="sticky top-4 rounded-md border bg-white p-3 shadow-sm lg:p-4">
                                 <PackageDripConditionsCard

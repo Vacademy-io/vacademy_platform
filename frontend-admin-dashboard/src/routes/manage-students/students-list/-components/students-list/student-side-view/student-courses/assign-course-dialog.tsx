@@ -18,6 +18,7 @@ import {
 } from './invite-picker-row';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
 import { formatPlanPrice } from '@/utils/finance-utils';
 
 type WizardStep = 'SELECT_COURSES' | 'CONFIGURE' | 'PREVIEW' | 'RESULTS';
@@ -513,6 +514,10 @@ export const AssignCourseDialog = ({
     const renderResults = () => {
         if (!finalResults) return null;
         const { summary, results } = finalResults;
+        const enrolledPackageSessionIds = results
+            .filter((r) => r.status === 'SUCCESS')
+            .map((r) => r.package_session_id)
+            .filter(Boolean);
         return (
             <div className="flex flex-col gap-4">
                 <p className="text-sm font-semibold text-neutral-800">Assignment Complete</p>
@@ -579,6 +584,18 @@ export const AssignCourseDialog = ({
                         </tbody>
                     </table>
                 </div>
+
+                {/* Enrollment workflow steps for the just-enrolled batches.
+                    The workflow fires asynchronously post-commit, so poll until
+                    the run appears. Renders nothing when no workflow is attached. */}
+                {enrolledPackageSessionIds.length > 0 && (
+                    <EnrollmentWorkflowStatus
+                        instituteId={instituteId}
+                        packageSessionIds={enrolledPackageSessionIds}
+                        embedded
+                        pollMs={5000}
+                    />
+                )}
             </div>
         );
     };

@@ -7,6 +7,7 @@ import { EditableBulkUploadTable } from './bulk-upload-table';
 import { UploadResultsTable } from './upload-results-table';
 import { ErrorDetailsDialog } from './error-details-dialog';
 import { MyDialog } from '@/components/design-system/dialog';
+import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
 
 interface PreviewDialogProps {
     isOpen: boolean;
@@ -18,6 +19,10 @@ interface PreviewDialogProps {
     uploadResponse?: SchemaFields[] | null;
     onDownloadResponse?: () => void;
     closeAllDialogs?: () => void; // New prop to close all dialogs
+    /** Institute + package session the CSV enrolled into — used to show the
+        enrollment workflow steps on the result screen. */
+    instituteId?: string;
+    packageSessionId?: string;
 }
 
 export const PreviewDialog: React.FC<PreviewDialogProps> = ({
@@ -29,6 +34,8 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     uploadResponse = null,
     onDownloadResponse,
     closeAllDialogs,
+    instituteId,
+    packageSessionId,
 }) => {
     const { csvErrors, setIsEditing } = useBulkUploadStore();
     const [selectedErrorRow, setSelectedErrorRow] = useState<number | null>(null);
@@ -88,12 +95,23 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
             <div className="no-scrollbar max-h-[80vh] w-[80vw] overflow-x-hidden p-0 font-normal">
                 {uploadCompleted && uploadResponse ? (
                     // Show upload results using the new component
-                    <div className="no-scrollbar flex flex-col">
+                    <div className="no-scrollbar flex flex-col gap-4">
                         <UploadResultsTable
                             data={uploadResponse}
                             onViewError={handleViewError}
                             onDownloadResponse={onDownloadResponse}
                         />
+                        {/* Enrollment workflow steps for the batch the CSV enrolled
+                            into. Fires async post-commit, so poll. Renders nothing
+                            when no workflow is attached. */}
+                        {instituteId && packageSessionId && (
+                            <EnrollmentWorkflowStatus
+                                instituteId={instituteId}
+                                packageSessionIds={[packageSessionId]}
+                                embedded
+                                pollMs={5000}
+                            />
+                        )}
                     </div>
                 ) : (
                     <div className="flex flex-col gap-4">

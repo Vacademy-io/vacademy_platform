@@ -429,6 +429,8 @@ export const UploadCSVButton = ({
                     uploadResponse={uploadResponse}
                     onDownloadResponse={handleDownloadResponse}
                     closeAllDialogs={closeAllDialogs}
+                    instituteId={INSTITUTE_ID || ''}
+                    packageSessionId={packageSessionId || ''}
                 />
             )}
 

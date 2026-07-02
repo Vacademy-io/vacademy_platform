@@ -39,6 +39,7 @@ import {
     ProfileHeroStat,
     ProfileMiniBar,
 } from '../profile-ui';
+import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -131,6 +132,20 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         ...(completedCourses?.content || []),
     ];
 
+    // Package sessions this learner is enrolled into — used to surface the
+    // enrollment workflow run(s) (tick/cross per step) attached to them.
+    const learnerPackageSessionIds = Array.from(
+        new Set(
+            [
+                ...(progressCourses?.content || []),
+                ...(completedCourses?.content || []),
+                ...(pastCourses?.content || []),
+            ]
+                .map((course) => course.package_session_id)
+                .filter((id): id is string => !!id)
+        )
+    );
+
     // Hero stat counts — derived from paginated totals (totalElements) when available,
     // falling back to the length of the current page content.
     const progressCount = progressCourses?.totalElements ?? progressCourses?.content?.length ?? 0;
@@ -222,6 +237,12 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     return (
         <div className="flex flex-col gap-3">
+            {/* Enrollment workflow run(s) for this learner's enrolments — renders
+                nothing when no workflow is attached. */}
+            <EnrollmentWorkflowStatus
+                instituteId={instituteId}
+                packageSessionIds={learnerPackageSessionIds}
+            />
             {/* Hero stat grid — passive counters per handoff CoursesSection.
                 Click-to-filter has been dropped: the 3 sections below always
                 render, so these tiles are purely orientation/status read-outs. */}

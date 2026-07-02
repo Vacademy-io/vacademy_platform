@@ -69,6 +69,10 @@ class Settings:
     vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
     agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.2")))
 
+    # Bulbul speaking pace: 1.0 = native. Founder feedback on the live calls:
+    # 0.95 sounded noticeably slow on the phone; 1.1 is brisk but natural.
+    tts_pace: float = field(default_factory=lambda: float(_env("TTS_PACE", "1.1")))
+
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).
     idle_timeout_secs: float = 7.0

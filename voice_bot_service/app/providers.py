@@ -53,5 +53,5 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session):
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
         aiohttp_session=aiohttp_session,
-        params=SarvamTTSService.InputParams(pace=0.95),
+        params=SarvamTTSService.InputParams(pace=s.tts_pace),
     )

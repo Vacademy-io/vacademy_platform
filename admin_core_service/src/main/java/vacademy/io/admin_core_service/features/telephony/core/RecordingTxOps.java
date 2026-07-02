@@ -100,11 +100,13 @@ public class RecordingTxOps {
                 "call-recording-" + callLogId + ".mp3",
                 "audio/mpeg",
                 bytes);
-        // Vacademy Voice (Plivo) recordings are PII (parents/minors) → store in the
-        // private, SSE-encrypted bucket; playback presigns via the private getter.
-        // Every other provider keeps the existing public-bucket path unchanged.
+        // Vacademy Voice (Plivo) + Vacademy AI recordings are PII (parents/minors) →
+        // store in the private, SSE-encrypted bucket; playback presigns via the
+        // private getter. Every other provider keeps the public-bucket path unchanged.
         boolean usePrivate = vacademy.io.admin_core_service.features.telephony.enums.ProviderType.PLIVO
-                .equals(row.getProviderType());
+                .equals(row.getProviderType())
+                || vacademy.io.admin_core_service.features.telephony.enums.ProviderType.VACADEMY_AI
+                        .equals(row.getProviderType());
         FileDetailsDTO uploaded = usePrivate
                 ? mediaService.uploadPrivateFileV2(multipart)
                 : mediaService.uploadFileV2(multipart);

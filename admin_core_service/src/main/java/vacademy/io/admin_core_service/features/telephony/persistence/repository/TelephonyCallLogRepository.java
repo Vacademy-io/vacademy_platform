@@ -37,6 +37,25 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
                                                 @Param("since") java.sql.Timestamp since);
 
     /**
+     * Prior VACADEMY_AI dial attempts to the same lead in a recent window,
+     * excluding the current call. Feeds the bot's {@code callRetry} (the
+     * classifier's exhaustion counter — Aavtaar sends its own, our bot can't
+     * know it). Window-bounded so an old exhausted sequence doesn't poison a
+     * fresh campaign months later.
+     */
+    @Query("""
+            SELECT COUNT(t) FROM TelephonyCallLog t
+            WHERE t.instituteId = :instituteId AND t.userId = :userId
+              AND t.providerType = :providerType AND t.direction = 'OUTBOUND'
+              AND t.createdAt >= :since AND t.id <> :excludeId
+            """)
+    long countRecentOutboundAttempts(@Param("instituteId") String instituteId,
+                                     @Param("userId") String userId,
+                                     @Param("providerType") String providerType,
+                                     @Param("since") java.sql.Timestamp since,
+                                     @Param("excludeId") String excludeId);
+
+    /**
      * Link an AI-voice end-of-call report to the call we placed, for providers that
      * neither echo our correlationId nor return a provider call id at placement
      * (Aavtaar): the most-recent OUTBOUND call to this phone in this institute.

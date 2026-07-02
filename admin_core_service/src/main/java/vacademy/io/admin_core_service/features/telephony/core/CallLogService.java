@@ -42,11 +42,19 @@ public class CallLogService {
             CallStatus current = CallStatus.parseOrDefault(row.getStatus());
             CallStatus incoming = ev.getStatus();
             // Apply only forward transitions. == lets us still update other
-            // fields (duration, recordingUrl) without bumping status.
-            if (incoming.rank() >= current.rank()) {
+            // fields (duration, recordingUrl) without bumping status — EXCEPT
+            // once terminal: all terminals share rank 100, so the first one
+            // received wins (the documented invariant). Matters for VACADEMY_AI,
+            // where the hangup callback, the recordSession callback (mapped
+            // COMPLETED whenever a RecordUrl is present) and the bot report race;
+            // without stickiness a late COMPLETED overwrote a real NO_ANSWER.
+            boolean apply = current.isTerminal()
+                    ? incoming.rank() > current.rank()
+                    : incoming.rank() >= current.rank();
+            if (apply) {
                 row.setStatus(incoming.name());
             } else {
-                log.debug("ignoring backwards status {} → {} for call {}",
+                log.debug("ignoring non-forward status {} → {} for call {}",
                         current, incoming, row.getId());
             }
         }

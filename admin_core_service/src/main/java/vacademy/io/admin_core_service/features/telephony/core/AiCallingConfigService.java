@@ -39,6 +39,27 @@ public class AiCallingConfigService {
                         isBlank(c.getWebhookSecretEnc()) ? null : enc.decrypt(c.getWebhookSecretEnc())));
     }
 
+    @org.springframework.beans.factory.annotation.Value("${aavtaar.webhook.secret:}")
+    private String globalWebhookSecret;
+
+    /**
+     * The ONE effective secret guarding the AI-voice report webhook for an
+     * institute: the institute-level webhookSecret if set, else the global
+     * property, else null (open mode). Both the webhook receiver
+     * ({@code AiVoiceWebhookController.authorized}) and the token minted to our
+     * own voice bot ({@code VoiceBotInternalController.callContext}) MUST read
+     * this same method — a VACADEMY_AI institute typically has no Aavtaar config
+     * row, and reading different sources 401-drops every report.
+     */
+    public String getEffectiveWebhookSecret(String instituteId) {
+        String instituteSecret = getDecrypted(instituteId)
+                .map(DecryptedCreds::webhookSecret)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(null);
+        if (instituteSecret != null) return instituteSecret;
+        return isBlank(globalWebhookSecret) ? null : globalWebhookSecret;
+    }
+
     public ConfigView getView(String instituteId) {
         AiCallingConfig c = active(instituteId).orElse(null);
         if (c == null) return new ConfigView(null, false, false, false);

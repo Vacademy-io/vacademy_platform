@@ -125,6 +125,12 @@ public class TelephonyCallLog implements Persistable<String> {
     @Builder.Default
     private Boolean recordingPrivate = false;
 
+    // V354: mid-call human-handoff target the AI bot registered before closing its
+    // stream; /telephony/plivo/ai-next reads it to serve the <Dial>. JSON:
+    // {"number":"+91..."} or {"userId":"<uuid>"}. Null = no handoff requested.
+    @Column(name = "ai_handoff_target", columnDefinition = "TEXT")
+    private String aiHandoffTarget;
+
     @Column(name = "raw_payload_json", columnDefinition = "TEXT")
     private String rawPayloadJson;
 

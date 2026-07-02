@@ -34,6 +34,14 @@ public final class ProviderType {
      * compliance gate — all behind the per-institute VOICE_CALLING_SETTING flag.
      */
     public static final String PLIVO = "PLIVO";
+    /**
+     * Vacademy AI Agent — our first-party AI voice bot (dedicated Pipecat+Sarvam
+     * voice-bot service streaming over the institute's Vacademy Voice Plivo
+     * subaccount). Registered as an AI-voice provider (AiOutboundCaller +
+     * AiCallReportParser), peer of AAVTAAR; selectable per institute in
+     * AI_CALLING_SETTING.provider.
+     */
+    public static final String VACADEMY_AI = "VACADEMY_AI";
     // Future: TWILIO, KNOWLARITY, KALEYRA, …
 
     private ProviderType() {}

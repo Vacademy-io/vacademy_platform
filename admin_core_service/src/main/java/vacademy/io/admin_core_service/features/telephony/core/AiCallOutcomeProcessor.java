@@ -90,6 +90,12 @@ public class AiCallOutcomeProcessor {
 
     @Transactional
     public void process(String aiCallResultId) {
+        // Atomic claim FIRST (status-guarded UPDATE, same transaction): providers
+        // retry report POSTs and the webhook runs this synchronously — two requests
+        // must not both process the same result (double counsellor-assignment). A
+        // duplicate blocks on the row lock, re-evaluates after our commit and
+        // no-ops; a rollback restores the prior status so genuine retries heal.
+        if (aiCallResultRepo.claimForProcessing(aiCallResultId) == 0) return;
         AiCallResult r = aiCallResultRepo.findById(aiCallResultId).orElse(null);
         if (r == null) return;
         if ("PROCESSED".equals(r.getProcessingStatus())) return;

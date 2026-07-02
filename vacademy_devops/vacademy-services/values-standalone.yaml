@@ -48,3 +48,4 @@ services:
   ai_service: { enabled: false }
   notification_service: { enabled: false }
   community_service: { enabled: false }
+  voice_bot_service: { enabled: false }

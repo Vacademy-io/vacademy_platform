@@ -181,6 +181,56 @@ public class PlivoCallbackController {
         return xml(ivrRenderer.render(toRender, corr, record, resolved.getWebhookToken()));
     }
 
+    /**
+     * Continuation point after a Vacademy AI bot stream ends. The bot's answer XML
+     * is {@code <Stream>…</Stream><Redirect>THIS</Redirect>}: when the WebSocket
+     * closes, Plivo falls through here. If the bot registered a human-handoff
+     * target (V354 {@code ai_handoff_target}, set via the internal handoff
+     * endpoint), we bridge the caller to that person; otherwise the conversation
+     * is over — hang up. Auth: unguessable {@code ?corr=} + optional {@code ?token=}.
+     */
+    @RequestMapping(value = "/ai-next",
+            method = { RequestMethod.POST, RequestMethod.GET },
+            produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> aiNext(
+            @RequestParam("corr") String corr,
+            @RequestParam(value = "token", required = false) String token) {
+
+        TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
+        if (row == null) return xml(HANGUP_XML);
+        TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
+        if (resolved == null) return xml(HANGUP_XML);
+        if (!verifyToken(resolved.getWebhookToken(), token)) return xml(HANGUP_XML);
+
+        String target = parseHandoffNumber(row.getAiHandoffTarget());
+        if (target == null) {
+            return xml(HANGUP_XML);
+        }
+        // Caller-ID: inbound rows carry the dialled DID; outbound AI rows have no
+        // caller_id, so fall back to the institute's first enabled Voice number.
+        String callerId = firstNonBlank(row.getCallerId(),
+                resolved.getEnabledNumbers().stream()
+                        .filter(n -> Boolean.TRUE.equals(n.getEnabled()))
+                        .findFirst().map(n -> n.getPhoneNumber()).orElse(null));
+        String statusBase = buildStatusUrl(ProviderType.PLIVO, resolved.getWebhookToken(), corr);
+        log.info("plivo ai-next: corr={} handing off to {}", corr, target);
+        // record=false: the whole session is already captured by the bot's
+        // <Record recordSession> — a second recording would double-store audio.
+        return xml(buildDialXml(callerId, target, statusBase, false));
+    }
+
+    private static String parseHandoffNumber(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            com.fasterxml.jackson.databind.JsonNode n =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            String number = n.path("number").asText(null);
+            return (number == null || number.isBlank()) ? null : number.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String firstNonBlank(String a, String b) {
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;

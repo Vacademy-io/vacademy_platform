@@ -63,8 +63,9 @@ import {
     type LeadActionHandlers,
 } from '@/components/shared/leads';
 
-const ALL_VALUE = '__ALL__';
-const ALL_ACTIVE_VALUE = '__ACTIVE__';
+const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
+const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
+const ALL_CONVERTED_VALUE = '__CONVERTED__'; // only leads enrolled into a course
 const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage (TAT / follow-up)
 type SlaFilter =
     | 'TAT_BEFORE'
@@ -133,7 +134,7 @@ const CampaignUsersContent = ({
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     const [tierFilter, setTierFilter] = useState<string>(ALL_VALUE);
-    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_VALUE);
     // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
     // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
     const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
@@ -207,7 +208,7 @@ const CampaignUsersContent = ({
         setSearchInput('');
         setAppliedSearch('');
         setTierFilter(ALL_VALUE);
-        setLeadStatusFilter(ALL_ACTIVE_VALUE);
+        setLeadStatusFilter(ALL_VALUE);
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
@@ -291,12 +292,16 @@ const CampaignUsersContent = ({
             search_query: appliedSearch || undefined,
             lead_tier: tierFilter === ALL_VALUE ? undefined : tierFilter,
             lead_status_id:
-                leadStatusFilter === ALL_ACTIVE_VALUE || leadStatusFilter === ALL_VALUE
+                leadStatusFilter === ALL_ACTIVE_VALUE ||
+                leadStatusFilter === ALL_VALUE ||
+                leadStatusFilter === ALL_CONVERTED_VALUE
                     ? undefined
                     : leadStatusFilter,
             conversion_status_filter: (leadStatusFilter === ALL_ACTIVE_VALUE
                 ? 'EXCLUDE_CONVERTED'
-                : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL',
+                : leadStatusFilter === ALL_CONVERTED_VALUE
+                  ? 'ONLY_CONVERTED'
+                  : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED',
             sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
             assigned_counselor_id:
                 counsellorFilter === ALL_COUNSELLORS_VALUE ||
@@ -516,7 +521,7 @@ const CampaignUsersContent = ({
         setSearchInput('');
         setAppliedSearch('');
         setTierFilter(ALL_VALUE);
-        setLeadStatusFilter(ALL_ACTIVE_VALUE);
+        setLeadStatusFilter(ALL_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setFromDate('');
@@ -530,7 +535,7 @@ const CampaignUsersContent = ({
         isDateFilterActive ||
         !!appliedSearch ||
         tierFilter !== ALL_VALUE ||
-        leadStatusFilter !== ALL_ACTIVE_VALUE ||
+        leadStatusFilter !== ALL_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
         counsellorFilter !== ALL_COUNSELLORS_VALUE ||
         customFieldFiltersPayload.length > 0;
@@ -785,11 +790,12 @@ const CampaignUsersContent = ({
                     <Select value={leadStatusFilter} onValueChange={handleLeadStatusChange}>
                         <SelectTrigger className="h-10 w-44">
                             <CheckCircle className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="Active leads" />
+                            <SelectValue placeholder="All leads" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value={ALL_ACTIVE_VALUE}>Active leads</SelectItem>
-                            <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
+                            <SelectItem value={ALL_VALUE}>All leads</SelectItem>
+                            <SelectItem value={ALL_ACTIVE_VALUE}>Active (not enrolled)</SelectItem>
+                            <SelectItem value={ALL_CONVERTED_VALUE}>Enrolled / Converted</SelectItem>
                             {leadStatusCatalog.map((s) => (
                                 <SelectItem key={s.id} value={s.status_key}>
                                     {s.label}

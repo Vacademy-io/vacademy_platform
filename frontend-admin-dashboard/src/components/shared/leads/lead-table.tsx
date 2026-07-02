@@ -27,6 +27,7 @@ import { LeadAvatar } from './lead-avatar';
 import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
+import { LeadConversionBadge } from './lead-conversion-badge';
 import { LeadEmptyState } from './lead-empty-state';
 import { CallPickerPopover } from './call-picker-popover';
 
@@ -250,7 +251,7 @@ export function LeadTable({
             header: 'Lead name',
             thClass: 'min-w-56',
             show: true,
-            render: (vm) => (
+            render: (vm, profile) => (
                 <div className="flex items-center gap-2.5">
                     <LeadAvatar name={vm.name} size="md" />
                     <div className="flex min-w-0 flex-col gap-0.5">
@@ -272,6 +273,7 @@ export function LeadTable({
                                     {relativeTime(vm.submittedIso)}
                                 </span>
                             )}
+                            <LeadConversionBadge conversionStatus={profile?.conversion_status} />
                             <TatStatusBadge
                                 tatOverdue={vm.tatOverdue}
                                 tatDueSoon={vm.tatDueSoon}

@@ -39,6 +39,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -253,7 +254,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context)}]
     )
-    aggregators = LLMContextAggregatorPair(llm_context)
+    aggregators = LLMContextAggregatorPair(
+        llm_context,
+        # Default 0.5s waits for late transcript fragments AFTER the VAD already
+        # decided the turn ended — with Saaras finals typically beating the VAD
+        # window, most of it is dead air the caller hears before every reply.
+        user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
+    )
 
     transcript = TranscriptCollector(outcome, on_activity)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking)

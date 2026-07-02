@@ -44,10 +44,13 @@ class Settings:
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
 
-    # LLM provider switch: "sarvam" (default) or "openrouter" fallback. The switch
-    # governs BOTH the live conversation (providers.build_llm) and the end-of-call
+    # LLM provider switch: "sarvam" or "openrouter" (default). The switch governs
+    # BOTH the live conversation (providers.build_llm) and the end-of-call
     # analysis (report._llm_target) — they must never diverge.
-    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "sarvam"))
+    # Default is openrouter because Sarvam's current chat models (sarvam-30b/-105b,
+    # verified 2026-07-02) are ALWAYS-reasoning: 6–14s to the first content token
+    # and content=None when max_tokens is exhausted mid-think — unusable live.
+    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "openrouter"))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
@@ -58,6 +61,13 @@ class Settings:
 
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.
     sample_rate: int = 8000
+
+    # Turn-taking latency knobs (pipecat defaults: 0.8 / 0.5 — a full 1.3s of
+    # dead air before the LLM even starts). vad_stop_secs = silence needed to
+    # decide the caller finished; too low clips slow speakers mid-sentence.
+    # agg_timeout_secs = extra wait for a late-arriving final transcript.
+    vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
+    agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.2")))
 
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).

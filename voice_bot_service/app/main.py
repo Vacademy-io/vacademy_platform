@@ -101,6 +101,7 @@ async def ws_endpoint(websocket: WebSocket):
     socket into Pipecat and run the conversation."""
     # Imported here so /health and /answer work even while heavy audio deps load.
     from pipecat.audio.vad.silero import SileroVADAnalyzer
+    from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.runner.utils import parse_telephony_websocket
     from pipecat.serializers.plivo import PlivoFrameSerializer
     from pipecat.transports.network.fastapi_websocket import (
@@ -146,7 +147,11 @@ async def ws_endpoint(websocket: WebSocket):
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_analyzer=SileroVADAnalyzer(),
+            # stop_secs below the 0.8 default: how much silence ends the caller's
+            # turn — the single biggest chunk of perceived response latency.
+            vad_analyzer=SileroVADAnalyzer(
+                params=VADParams(stop_secs=get_settings().vad_stop_secs)
+            ),
             serializer=serializer,
         ),
     )

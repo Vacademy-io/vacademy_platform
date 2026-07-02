@@ -80,7 +80,9 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
                 },
             )
             resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
+            # `or ""`: reasoning models (e.g. Sarvam-30b/-105b) return content=None
+            # when max_tokens dies mid-think — degrade to the heuristic, don't crash.
+            content = resp.json()["choices"][0]["message"].get("content") or ""
         match = re.search(r"\{.*\}", content, re.DOTALL)
         parsed = json.loads(match.group(0)) if match else {}
         if parsed.get("disposition") not in dispositions:

@@ -363,12 +363,16 @@ class VideoGenerationService:
         except Exception:
             return None
 
-    async def _present_script_boundary_gate(self, video_id, institute_id, assist, gate_type):
+    async def _present_script_boundary_gate(
+        self, video_id, institute_id, assist, gate_type, revision_note=None,
+    ):
         """Build + persist + emit a SCRIPT-boundary decision; pause the leg.
 
         Reads the shot plan / script the pipeline already wrote to S3, builds the
         gate's ``decision_required`` payload, flips the video to AWAITING_INPUT,
         and yields the event. The leg then ends — the user answers via /decision.
+        ``revision_note`` marks a re-presentation after freeform steering was
+        applied — the card tells the user this is the revised draft.
         """
         import logging as _log
         logger = _log.getLogger(__name__)
@@ -399,6 +403,12 @@ class VideoGenerationService:
             concept = shot_plan.get("creative_concept") if isinstance(shot_plan, dict) else {}
             decision = dg.build_creative_concept_decision(video_id, concept or {})
 
+        if revision_note:
+            decision["revision_note"] = str(revision_note)[:300]
+            decision["prompt"] = "Revised per your note — review the update. " + str(
+                decision.get("prompt") or ""
+            )
+
         dg.set_pending(assist, decision)
         try:
             self.repository.update_assist_state(
@@ -411,6 +421,187 @@ class VideoGenerationService:
             f"decision_id={decision.get('decision_id')}"
         )
         yield {"type": "decision_required", **decision}
+
+    async def _apply_freeform_steering(self, video_id, gate_type, note):
+        """Revise the SCRIPT-stage artifacts per a freeform steering note.
+
+        This is what makes the assist chat's free-text box REAL: 'make it
+        punchier' re-runs the stage's LLM against the existing draft with the
+        note, overwrites shot_plan.json (+ derived script.txt), and the caller
+        re-presents the same gate with the revised draft. Best-effort — on any
+        failure the gate is re-presented unchanged with an honest message.
+        Yields progress events for the SSE stream.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        dg = self._decision_gates()  # also puts ai-video-gen-main on sys.path
+        yield {
+            "type": "sub_stage", "sub_stage": "assist_revision",
+            "message": "Revising the draft per your note…", "video_id": video_id,
+        }
+        try:
+            plan = self._download_artifact_json(
+                video_id,
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ) or {}
+            if not (isinstance(plan.get("shots"), list) and plan["shots"]):
+                raise RuntimeError("shot_plan.json missing or has no shots")
+
+            from ..config import get_settings as _gs
+            _settings = _gs()
+            _api_key = _settings.openrouter_api_key or ""
+            if not _api_key:
+                raise RuntimeError("no OpenRouter API key configured")
+            from automation_pipeline import OpenRouterClient  # sys.path set above
+            client = OpenRouterClient(
+                api_key=_api_key, default_model="google/gemini-3-flash-preview"
+            )
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = getattr(rec, "prompt", None)
+
+            if gate_type == dg.GateType.NARRATION.value:
+                from narration_writer import write_narration
+                write_narration(
+                    shot_plan=plan,
+                    llm_chat=client.chat,
+                    regen_note=(
+                        "URGENT REVISION — the user reviewed this narration and asked:\n"
+                        f"\"{note}\"\n"
+                        "Revise the narration to satisfy the note. Keep everything that "
+                        "already works — change what the note names plus whatever each "
+                        "fix forces."
+                    ),
+                    source_request=source_request,
+                )
+            elif gate_type == dg.GateType.SHOT_PLAN.value:
+                plan = self._revise_shot_plan_with_note(client, plan, note)
+            else:  # creative_concept
+                revised = self._revise_concept_with_note(
+                    client, plan.get("creative_concept") or {}, note, source_request
+                )
+                if revised:
+                    plan["creative_concept"] = revised
+
+            body = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+            for _k in (
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ):
+                self.s3_service.upload_file_content(
+                    content=body, filename="shot_plan.json", s3_key=_k,
+                    content_type="application/json",
+                )
+            # Keep the derived script.txt in lockstep (narration gate reads it
+            # as the full_script fallback; downstream stages may too).
+            if gate_type in (dg.GateType.NARRATION.value, dg.GateType.SHOT_PLAN.value):
+                try:
+                    _script_text = dg.narration_full_script_from_shots(plan["shots"])
+                    if _script_text.strip():
+                        self.s3_service.upload_file_content(
+                            content=_script_text.encode("utf-8"),
+                            filename="script.txt",
+                            s3_key=f"ai-videos/{video_id}/script/script.txt",
+                            content_type="text/plain",
+                        )
+                except Exception:
+                    pass
+            logger.info(
+                f"[Assist] steering applied for {video_id} gate={gate_type}: {note[:80]!r}"
+            )
+            yield {
+                "type": "sub_stage", "sub_stage": "assist_revision_done",
+                "message": "Draft revised — review the update.", "video_id": video_id,
+            }
+        except Exception as exc:
+            logger.error(
+                f"[Assist] steering revision failed for {video_id} gate={gate_type}: {exc}",
+                exc_info=True,
+            )
+            yield {
+                "type": "sub_stage", "sub_stage": "assist_revision_failed",
+                "message": (
+                    "Couldn't apply your note automatically — showing the current "
+                    "draft. You can edit it directly instead."
+                ),
+                "video_id": video_id,
+            }
+
+    def _revise_shot_plan_with_note(self, client, plan, note):
+        """One LLM call: revise the existing shot plan per the user's note.
+
+        A revision, not a from-scratch replan — the model receives the current
+        plan and must preserve schema + everything the note doesn't touch.
+        """
+        payload = {
+            k: plan.get(k)
+            for k in ("creative_concept", "shots")
+            if plan.get(k) is not None
+        }
+        system = (
+            "You are the ShotPlanner revising an EXISTING shot plan per a user's note. "
+            "Output the FULL revised JSON object with the same keys and schema you "
+            "received (`creative_concept` and `shots` — keep every per-shot field: "
+            "shot_index, shot_type, intent_role, duration_estimate_s, narration_brief, "
+            "narration_text, transition_in, background_treatment, pacing_role, "
+            "audio_policy, image_prompt / video_query where present). Change ONLY what "
+            "the note requires plus whatever each change forces — if you merge, add, "
+            "or reorder shots, renumber shot_index 0..N-1 sequentially and keep "
+            "narration_text coherent across the cut. Keep total duration within ±5% "
+            "of the original. Output raw JSON only — no markdown fences."
+        )
+        user = (
+            "EXISTING PLAN:\n" + json.dumps(payload, ensure_ascii=False)
+            + "\n\nUSER NOTE:\n" + str(note)
+            + "\n\nOutput the full revised JSON now."
+        )
+        text, _usage = client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.4, max_tokens=16000, response_format={"type": "json_object"},
+        )
+        s, e = text.find("{"), text.rfind("}")
+        if s < 0 or e <= s:
+            raise RuntimeError("shot-plan revision returned no JSON")
+        revised = json.loads(text[s:e + 1])
+        if not (isinstance(revised, dict) and isinstance(revised.get("shots"), list) and revised["shots"]):
+            raise RuntimeError("shot-plan revision returned no shots")
+        plan["shots"] = revised["shots"]
+        if isinstance(revised.get("creative_concept"), dict) and revised["creative_concept"]:
+            plan["creative_concept"] = revised["creative_concept"]
+        return plan
+
+    def _revise_concept_with_note(self, client, concept, note, source_request):
+        """One LLM call: revise the creative concept fields per the user's note."""
+        system = (
+            "You revise a video's creative concept per a user's note. Output ONLY a "
+            "JSON object with these keys: controlling_idea, tonal_register, "
+            "emotional_arc, visual_metaphor, signature_device. One concise line per "
+            "value. Keep whatever the note doesn't ask to change. No markdown fences."
+        )
+        user = (
+            "CURRENT CONCEPT:\n" + json.dumps(concept or {}, ensure_ascii=False)
+            + "\n\nSOURCE REQUEST:\n" + str(source_request or "")[:800]
+            + "\n\nUSER NOTE:\n" + str(note)
+        )
+        text, _usage = client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.5, max_tokens=1000, response_format={"type": "json_object"},
+        )
+        s, e = text.find("{"), text.rfind("}")
+        if s < 0 or e <= s:
+            raise RuntimeError("concept revision returned no JSON")
+        revised = json.loads(text[s:e + 1])
+        if not isinstance(revised, dict):
+            raise RuntimeError("concept revision returned non-object")
+        merged = dict(concept or {})
+        for k in (
+            "controlling_idea", "tonal_register", "emotional_arc",
+            "visual_metaphor", "signature_device",
+        ):
+            v = revised.get(k)
+            if v not in (None, ""):
+                merged[k] = str(v)
+        return merged
 
     def _persist_resume_artifacts(self, video_id, run_dir) -> None:
         """Upload the artifacts a resumed HTML leg needs, so an assist pause
@@ -809,10 +1000,32 @@ class VideoGenerationService:
                 logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
             _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
             if _pending_gate and not _need_script_run:
-                # Script artifacts already exist (resume leg) — present the gate
-                # without running any stage, then end the leg.
+                # Script artifacts already exist (resume leg). If the user left
+                # a freeform steering note for this gate, REVISE the artifacts
+                # per the note first, then re-present the gate with the updated
+                # draft — this is what makes "make it punchier" actually work.
+                _steer = _assist.get("steering") if isinstance(_assist.get("steering"), dict) else None
+                _revision_note = None
+                if (
+                    _steer
+                    and _steer.get("gate_type") == _pending_gate
+                    and str(_steer.get("text") or "").strip()
+                ):
+                    _revision_note = str(_steer.get("text")).strip()
+                    async for _ev in self._apply_freeform_steering(
+                        video_id, _pending_gate, _revision_note
+                    ):
+                        yield _ev
+                    _assist["steering"] = None
+                    try:
+                        self.repository.update_assist_state(video_id, _assist)
+                    except Exception as _se:
+                        logger.warning(
+                            f"[Assist] could not clear steering for {video_id}: {_se}"
+                        )
                 async for _ev in self._present_script_boundary_gate(
-                    video_id, institute_id, _assist, _pending_gate
+                    video_id, institute_id, _assist, _pending_gate,
+                    revision_note=_revision_note,
                 ):
                     yield _ev
                 return

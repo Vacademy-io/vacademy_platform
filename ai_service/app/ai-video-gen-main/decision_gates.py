@@ -56,6 +56,7 @@ class GateType(str, Enum):
     NARRATION = "narration"                  # per-shot narration text (subsumes script review)
     VISUAL_CASTING = "visual_casting"        # stock image/video / AI-image pick per media shot
     SHOT_LOOK = "shot_look"                  # best-of-N HTML look pick for hero/hook/CTA shots
+    CONTACT_SHEET = "contact_sheet"          # per-shot frame review AFTER HTML, before finalize
     VOICE = "voice"                          # TTS voice (needs preview audio)   [phase 2]
     MUSIC = "music"                          # background music track (needs previews) [phase 2]
     AVATAR = "avatar"                        # host/avatar pick (needs previews) [phase 2]
@@ -70,6 +71,7 @@ DEFAULT_ASSIST_GATES: List[str] = [
     GateType.NARRATION.value,
     GateType.VISUAL_CASTING.value,
     GateType.SHOT_LOOK.value,
+    GateType.CONTACT_SHEET.value,
 ]
 
 # Gates that resolve at the end of the SCRIPT stage (the pipeline naturally stops
@@ -459,6 +461,52 @@ def build_visual_casting_decision(
 # Pure answer-application transforms (the service/router calls these, then
 # writes the result to the per-gate S3 sidecar)
 # ---------------------------------------------------------------------------
+
+
+def build_contact_sheet_decision(
+    video_id: str,
+    shots: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Contact-sheet gate — per-shot frame review AFTER the HTML stage.
+
+    ``shots`` = [{shot_index, shot_type?, narration_excerpt?, thumb_url?}].
+    The user approves the whole sheet or sends specific shots back with a note
+    (answer mode ``edit`` with ``regens: [{shot_index, note}]``). Shots without
+    a thumb render as text-only cards (screenshots exist only where the vision
+    reviewer ran).
+    """
+    n = len(shots)
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.CONTACT_SHEET.value,
+        prompt=(
+            f"All {n} shot{'s' if n != 1 else ''} are built — here's the contact "
+            "sheet. Approve to finish, or send any shot back with a note."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=False,
+        allow_edit=True,
+        payload={"shots": shots},
+        seq=seq,
+    )
+
+
+def contact_sheet_regen_notes(answer: Optional[Dict[str, Any]]) -> Dict[int, str]:
+    """Extract {shot_index: note} from a contact_sheet ``edit`` answer."""
+    notes: Dict[int, str] = {}
+    for r in ((answer or {}).get("regens") or []):
+        if not isinstance(r, dict):
+            continue
+        try:
+            idx = int(r.get("shot_index"))
+        except (TypeError, ValueError):
+            continue
+        note = str(r.get("note") or "").strip()
+        if note:
+            notes[idx] = note[:800]
+    return notes
 
 
 def apply_shot_plan_answer(shots: List[Dict[str, Any]], answer: Dict[str, Any]) -> List[Dict[str, Any]]:

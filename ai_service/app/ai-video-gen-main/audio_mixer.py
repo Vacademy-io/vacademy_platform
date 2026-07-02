@@ -122,6 +122,10 @@ class MixSpec:
     video_duration_s: float
     music_path: Optional[Path] = None
     music_volume: float = 0.10
+    # Music envelope — without these the bed enters at full level on frame 0
+    # and stops with a hard cut at the end (reads amateur). 0 = no fade.
+    music_fade_in_s: float = 0.0
+    music_fade_out_s: float = 0.0
     sfx_cues: List[MixCue] = field(default_factory=list)
     stinger_cues: List[MixCue] = field(default_factory=list)
     enable_ducking: bool = True
@@ -445,11 +449,22 @@ def _build_filter_graph(
         # silence past the last frame.
         loop_samples = int(_OUTPUT_SAMPLE_RATE * max(spec.video_duration_s, 0.5))
         vol = max(0.0, min(1.0, float(spec.music_volume)))
+        # Fade envelope — applied AFTER atrim so the fade-out lands on the
+        # actual end of the bed, not the end of the (infinite) loop.
+        fade_filters = ""
+        _fi = max(0.0, float(spec.music_fade_in_s or 0.0))
+        _fo = max(0.0, float(spec.music_fade_out_s or 0.0))
+        if _fi > 0.05:
+            fade_filters += f", afade=t=in:st=0:d={min(_fi, spec.video_duration_s / 2):.2f}"
+        if _fo > 0.05:
+            _fo_eff = min(_fo, spec.video_duration_s / 2)
+            _fo_start = max(0.0, spec.video_duration_s - _fo_eff)
+            fade_filters += f", afade=t=out:st={_fo_start:.2f}:d={_fo_eff:.2f}"
         parts.append(
             f"[{next_input}:a] aloop=loop=-1:size={loop_samples}, "
             f"atrim=duration={spec.video_duration_s}, "
             f"asetpts=PTS-STARTPTS, "
-            f"volume={vol} [bgm_raw]"
+            f"volume={vol}{fade_filters} [bgm_raw]"
         )
         if spec.enable_ducking:
             # sidechaincompress: [bgm_raw] is main, [vo_sc] is sidechain

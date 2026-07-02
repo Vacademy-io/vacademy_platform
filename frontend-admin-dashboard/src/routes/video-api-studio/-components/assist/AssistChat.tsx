@@ -28,6 +28,7 @@ import { NarrationDecision } from './gates/NarrationDecision';
 import { ShotPlanDecision } from './gates/ShotPlanDecision';
 import { VisualCastingDecision } from './gates/VisualCastingDecision';
 import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
+import { ContactSheetDecision } from './gates/ContactSheetDecision';
 
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
@@ -257,6 +258,14 @@ function DecisionCard({
         case 'creative_concept':
             return (
                 <CreativeConceptDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
+        case 'contact_sheet':
+            return (
+                <ContactSheetDecision
                     decision={decision}
                     isSubmitting={isSubmitting}
                     onSubmit={onSubmit}

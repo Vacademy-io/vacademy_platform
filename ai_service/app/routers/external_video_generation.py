@@ -1056,16 +1056,57 @@ async def decision_video_external(
                             content_type="application/json",
                         )
                     artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+        elif mode == "edit" and gate_type == dg.GateType.CONTACT_SHEET.value:
+            # Delete the sent-back shots' cache files so the resume leg
+            # regenerates exactly those shots; the notes ride in the recorded
+            # answer (the pipeline loads them into _shot_regen_notes and
+            # injects each into its shot's system prompt).
+            _regens = dg.contact_sheet_regen_notes(answer)
+            for _sidx in _regens:
+                _cache_url = (
+                    f"https://{_bucket}.s3.amazonaws.com/"
+                    f"ai-videos/{video_id}/checkpoints/shot_cache/shot_{_sidx:03d}.json"
+                )
+                try:
+                    s3_svc.delete_file(_cache_url)
+                    logger.info(f"[Decision] contact-sheet: invalidated shot {_sidx} cache for regen")
+                except Exception as _del_err:
+                    logger.warning(f"[Decision] cache delete failed (shot {_sidx}): {_del_err}")
     except Exception as _werr:
         logger.error(f"[Decision] failed to write sidecar for {video_id} gate={gate_type}: {_werr}")
 
-    # ── Record the answer in the assist ledger + clear pending ──
-    dg.record_answer(
-        assist, decision_id=payload.decision_id, gate_type=gate_type,
-        mode=mode, answer=answer, shot_index=shot_index, artifact_key=artifact_key,
-    )
-    AiVideoRepository().update_assist_state(video_id, assist, status="IN_PROGRESS")
-    logger.info(f"[Decision] recorded answer for {video_id} gate={gate_type} mode={mode}")
+    # ── Freeform steering at a SCRIPT-boundary gate = a REVISION REQUEST ──
+    # not an answer. Persist it as `assist.steering`; the resume leg revises
+    # the stage artifacts per the note and RE-PRESENTS the same gate with the
+    # updated draft. Recording it in answered_decisions (the old behavior)
+    # satisfied the gate and silently discarded the user's note.
+    _steer_note = str((answer or {}).get("text") or "").strip()
+    if mode == "freeform" and gate_type in dg.SCRIPT_BOUNDARY_GATES and _steer_note:
+        from datetime import datetime as _dt, timezone as _tz
+        assist["steering"] = {
+            "gate_type": gate_type,
+            "text": _steer_note[:2000],
+            "decision_id": payload.decision_id,
+            "requested_at": _dt.now(_tz.utc).isoformat(),
+        }
+        _hist = assist.get("steering_history")
+        if not isinstance(_hist, list):
+            _hist = []
+        _hist.append(dict(assist["steering"]))
+        assist["steering_history"] = _hist[-20:]
+        assist["pending_decision"] = None
+        AiVideoRepository().update_assist_state(video_id, assist, status="IN_PROGRESS")
+        logger.info(
+            f"[Decision] steering recorded for {video_id} gate={gate_type}: {_steer_note[:80]!r}"
+        )
+    else:
+        # ── Record the answer in the assist ledger + clear pending ──
+        dg.record_answer(
+            assist, decision_id=payload.decision_id, gate_type=gate_type,
+            mode=mode, answer=answer, shot_index=shot_index, artifact_key=artifact_key,
+        )
+        AiVideoRepository().update_assist_state(video_id, assist, status="IN_PROGRESS")
+        logger.info(f"[Decision] recorded answer for {video_id} gate={gate_type} mode={mode}")
 
     # ── Resume the next leg (mirrors /resume's background task) ──
     queue: asyncio.Queue = asyncio.Queue()

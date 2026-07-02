@@ -2549,6 +2549,27 @@ class VideoGenerationPipeline:
             print(f"aesthetic directive skipped: {_aerr}")
         return system_prompt
 
+    def _effective_music_volume(self) -> float:
+        """Music bed level for this run. Explicit user override always wins;
+        otherwise the tier default (0.10, a barely-perceptible underscore —
+        right for lectures) is raised for the creative marketing/bold modes,
+        where inaudible wallpaper music reads as unfinished. Sidechain ducking
+        still pulls the bed down under every narrated word, so a louder bed
+        never fights the VO.
+        """
+        if self._background_music_volume_override is not None:
+            return float(self._background_music_volume_override)
+        base = float(self._tier_config.get("background_music_default_volume", 0.10))
+        try:
+            mode = self._resolve_visual_style_mode()
+        except Exception:
+            mode = "educational"
+        if mode == "bold":
+            return max(base, 0.28)
+        if mode == "marketing":
+            return max(base, 0.22)
+        return base
+
     def _shot_templates_active(self) -> bool:
         """Whether deterministic full-shot templates may be used this run.
 
@@ -2804,11 +2825,24 @@ class VideoGenerationPipeline:
         except Exception:
             _mix_mood = "default"
 
+        # Honor the track's declared fade envelope (set at generation time);
+        # without threading these the bed enters/exits with a hard cut.
+        _fade_in = 2.0
+        _fade_out = 3.0
+        if isinstance(bgm_track, dict):
+            try:
+                _fade_in = float(bgm_track.get("fadeIn", 2.0) or 0.0)
+                _fade_out = float(bgm_track.get("fadeOut", 3.0) or 0.0)
+            except (TypeError, ValueError):
+                pass
+
         spec = MixSpec(
             vo_path=_PathL(narration_path),
             video_duration_s=max(0.5, float(audio_duration)),
             music_path=music_local,
             music_volume=music_vol,
+            music_fade_in_s=_fade_in,
+            music_fade_out_s=_fade_out,
             sfx_cues=[],       # ← SFX deliberately omitted, see comment above
             stinger_cues=[],   # ← same
             enable_ducking=True,  # music ducks under VO
@@ -3534,6 +3568,30 @@ class VideoGenerationPipeline:
                 self._assist_casting_pending = (_oc == _dgm.GateOutcome.EMIT_AND_STOP)
             except Exception:
                 self._assist_casting_pending = False
+
+        # Contact-sheet regen notes (assist): when the user sent shots back
+        # from the contact sheet, the /decision router deleted those shots'
+        # cache files (forcing regen) and the notes ride in the answered
+        # decision. Loaded here so _shot_task injects each note into its
+        # shot's system prompt on the regen pass.
+        self._shot_regen_notes: Dict[int, str] = {}
+        if self._assist_state:
+            try:
+                _dgm = self._load_decision_gates_module()
+                _cs_rec = _dgm.find_recorded_answer(
+                    self._assist_state, _dgm.GateType.CONTACT_SHEET.value, None
+                )
+                if _cs_rec and _cs_rec.get("mode") == "edit":
+                    self._shot_regen_notes = _dgm.contact_sheet_regen_notes(
+                        _cs_rec.get("answer")
+                    )
+                    if self._shot_regen_notes:
+                        print(
+                            "👤 assist: contact-sheet regen notes for shots "
+                            f"{sorted(self._shot_regen_notes)}"
+                        )
+            except Exception:
+                self._shot_regen_notes = {}
 
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
@@ -4622,6 +4680,8 @@ class VideoGenerationPipeline:
                 # invoke `orchestrate_ai_video_shot` for stock-miss recovery.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
+                # Assist: contact-sheet gate (twin of the v3 call site below).
+                self._maybe_contact_sheet_gate(html_segments)
             else:
                 # STANDARD VIDEO FLOW
                 # Extract subject domain from AI-classified script plan
@@ -5528,6 +5588,10 @@ class VideoGenerationPipeline:
                 # Bug 1: see twin call site for run_dir rationale.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
+                # Assist: contact-sheet gate — all shot HTML + media resolved;
+                # let the user review real frames before the video finalizes.
+                # Raises DecisionRequired on first pass; no-op when off/answered.
+                self._maybe_contact_sheet_gate(html_segments)
 
             # ── Background music (Lyria) ──
             # Runs before _write_timeline so the generated track can land in
@@ -5559,11 +5623,7 @@ class VideoGenerationPipeline:
                         progress_callback=self._progress_callback,
                     )
                     if _music_result and _music_result.get("url"):
-                        _music_vol = (
-                            self._background_music_volume_override
-                            if self._background_music_volume_override is not None
-                            else float(self._tier_config.get("background_music_default_volume", 0.10))
-                        )
+                        _music_vol = self._effective_music_volume()
                         # Best-effort BPM extraction from the music_plan
                         # prompts so the SFX-snap pass can beat-align cues
                         # (Phase B2). Cheap regex parse — no extra deps.
@@ -5605,11 +5665,7 @@ class VideoGenerationPipeline:
                         from music_fallback_library import pick_fallback_bed
                         _fb_bed = pick_fallback_bed(_music_plan_to_use)
                         if _fb_bed and _fb_bed.get("url"):
-                            _music_vol = (
-                                self._background_music_volume_override
-                                if self._background_music_volume_override is not None
-                                else float(self._tier_config.get("background_music_default_volume", 0.10))
-                            )
+                            _music_vol = self._effective_music_volume()
                             self._background_music_track = {
                                 "id": "background-music",
                                 "label": f"Background Music ({_fb_bed.get('mood', 'ambient')} bed)",
@@ -9620,7 +9676,52 @@ class VideoGenerationPipeline:
                 )
                 break  # one issue is enough; regen the shot
 
+        # ── Visual richness (marketing/bold modes only) ──
+        # The single most common "boring AI video" failure: a shot that is
+        # nothing but a headline + text rows. The premium prompt mandates a
+        # visual per shot; this is the deterministic enforcement.
+        _richness = self._check_visual_richness(html, shot.get("shot_type"))
+        if _richness:
+            issues.append(_richness)
+
         return issues
+
+    # Shot types whose whole body IS the visual — exempt from the richness scan.
+    _RICHNESS_EXEMPT_SHOT_TYPES = frozenset({
+        "KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "ARTICLE_FOCUS",
+    })
+
+    # Any one of these marks the shot as carrying a non-text visual.
+    _RICHNESS_SIGNALS = (
+        "<img", "<iconify-icon", "<svg", "<video", "<canvas",
+        "mermaid", "background-image", "map-svg", "$$",
+    )
+
+    def _check_visual_richness(self, html: str, shot_type: Optional[str]) -> Optional[str]:
+        """Deterministic no-bare-text-cards gate for marketing/bold runs.
+
+        Returns an issue string when a marketing-mode shot contains NO
+        image / icon / SVG / video / canvas / diagram element — i.e. it is a
+        pure text panel, the exact failure that reads as 'boring AI slideshow'.
+        Returns None for educational mode (whiteboard text shots are legit
+        there) and for shot types that are inherently visual/typographic.
+        """
+        try:
+            if self._resolve_visual_style_mode() not in ("marketing", "bold"):
+                return None
+        except Exception:
+            return None
+        if (shot_type or "").upper() in self._RICHNESS_EXEMPT_SHOT_TYPES:
+            return None
+        low = html.lower()
+        if any(sig in low for sig in self._RICHNESS_SIGNALS):
+            return None
+        return (
+            "visual richness: shot contains NO image/icon/SVG/video element — it is a bare "
+            "text panel. Every marketing shot needs at least one non-text visual: an "
+            "<iconify-icon> in a brand-tinted chip beside each label, a full-bleed or split "
+            "image, an animated SVG shape, or a device frame"
+        )
 
     # ------------------------------------------------------------------
     # Vision reviewer — sees the rendered frame, flags blocking defects
@@ -9996,6 +10097,8 @@ class VideoGenerationPipeline:
         _sev = int(review.get("severity_max") or 0)
         _issues = review.get("issues") or []
         _err = review.get("error")
+        _dscore = review.get("designer_score")
+        _dscore_str = f" design={_dscore}/10" if _dscore is not None else ""
         if _err:
             print(
                 f"   🔍 Shot {shot_idx + 1}: review ERRORED ({_err[:120]}) "
@@ -10003,19 +10106,22 @@ class VideoGenerationPipeline:
             )
         elif review.get("passes") and not _issues:
             print(
-                f"   🔍 Shot {shot_idx + 1}: review PASSED "
+                f"   🔍 Shot {shot_idx + 1}: review PASSED{_dscore_str} "
                 f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
             )
         else:
             _codes = ",".join(str(it.get("code")) for it in _issues[:4])
             print(
                 f"   🔍 Shot {shot_idx + 1}: review FOUND {len(_issues)} issue(s) "
-                f"sev_max={_sev} [{_codes}] "
+                f"sev_max={_sev} [{_codes}]{_dscore_str} "
                 f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
             )
 
         record: Dict[str, Any] = {
             "passed_first": bool(review.get("passes")),
+            # Non-blocking aesthetic grade (1-10, None = not graded). Feeds the
+            # post-render triage / weakest-shots surfaces.
+            "designer_score": review.get("designer_score"),
             "issues_pre": list(review.get("issues") or []),
             "severity_max_pre": int(review.get("severity_max") or 0),
             "review_ms_pre": int(review.get("review_ms") or 0),
@@ -11103,6 +11209,7 @@ class VideoGenerationPipeline:
                 brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
                 wpm_override=target_wpm,
                 regen_note=regen_note,
+                source_request=getattr(self, "_base_prompt", None),
             )
         except NarrationWriteError as _nw_err:
             print(f"   ⚠️ v3 overrun NarrationWriter regen unparseable: {_nw_err}")
@@ -11519,6 +11626,9 @@ class VideoGenerationPipeline:
             ),
             brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
             wpm_override=getattr(self, "_effective_wpm", None),
+            # Ground-truth for names/numbers/claims (writer rule 15) — without
+            # it the writer only ever sees 1-2 sentence briefs.
+            source_request=base_prompt,
         )
         nw_usage = nw_result.get("usage") or {}
         # Record NarrationWriter tokens. (ShotPlanner already recorded above
@@ -15900,6 +16010,17 @@ class VideoGenerationPipeline:
             # educational it returns "" and the base aesthetic is untouched.
             system_prompt = self._append_aesthetic_directive(system_prompt)
 
+            # Contact-sheet revision note for THIS shot (assist) — the user saw
+            # the previous frame and sent it back; their note outranks style.
+            _regen_note = (getattr(self, "_shot_regen_notes", None) or {}).get(int(shot_idx))
+            if _regen_note:
+                system_prompt += (
+                    "\n\n## 🔁 USER REVISION NOTE FOR THIS SHOT (highest priority — must satisfy)\n"
+                    f"The user reviewed the previous version of this shot and asked: \"{_regen_note}\"\n"
+                    "Regenerate the shot to satisfy this note; keep everything else that worked.\n"
+                )
+                print(f"   🔁 Shot {shot_idx}: applying user revision note ({_regen_note[:60]!r})")
+
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
             # and can optionally drop <skill> tags into its HTML. The composer
@@ -17477,6 +17598,12 @@ class VideoGenerationPipeline:
                 _anim_regen_on = bool(
                     self._tier_config.get("anim_validator_regen_enabled", True)
                 )
+                # Visual-richness failures ALWAYS regen, even where the anim
+                # knob is off — a bare-text marketing shot is a shipped defect,
+                # and this fires only on the rare zero-visual shot.
+                _has_richness_issue = any(i.startswith("visual richness") for i in issues)
+                if _has_richness_issue:
+                    _anim_regen_on = True
                 if issues and not _anim_regen_on:
                     print(
                         f"   ⚠️ Shot {shot_idx + 1} failed validator (regen disabled by tier): "
@@ -17516,6 +17643,16 @@ class VideoGenerationPipeline:
                             "`transform: rotate(...)` greater than ±15° on any element "
                             "containing text. Stage labels, badges, headlines, callouts — "
                             "all horizontal."
+                        )
+                    if _has_richness_issue:
+                        corrective_parts.append(
+                            "VISUALS: this shot MUST contain at least one non-text visual "
+                            "element. Add a meaningful <iconify-icon> (e.g. "
+                            "<iconify-icon icon='mdi:chart-line' width='44'></iconify-icon>) "
+                            "in a brand-tinted chip beside each label/feature, or a "
+                            "full-bleed/split image (data-img-prompt / data-video-query), "
+                            "or an animated SVG shape. A headline + text rows alone is "
+                            "REJECTED — pick icons that mean something for this content."
                         )
                     # Tailored fix for the back-half-motion check — concrete
                     # GSAP idioms beat abstract "add more motion" guidance.
@@ -18109,6 +18246,9 @@ class VideoGenerationPipeline:
                     tier_config=_tc_for_planner,
                     video_id=video_id,
                     script_text=_script_text,
+                    # Marketing/bold get capped transition stingers (Rule D);
+                    # educational stays event-driven-only.
+                    visual_style_mode=self._resolve_visual_style_mode(),
                 )
                 total_cues = sum(len(e.get("sound_cues") or []) for e in all_entries)
                 shots_with_cues = sum(1 for e in all_entries if e.get("sound_cues"))
@@ -21961,6 +22101,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         run_id = run_dir.name or "run"
         vid = video_id or run_id
 
+        # Contact-sheet thumbs (assist): when the contact_sheet gate will fire
+        # on this leg, upload ONE mid-run frame per shot so the gate can show a
+        # real preview. Uses the screenshots the vision reviewer already
+        # captured — no extra rendering. Off for non-assist runs (zero cost).
+        _cs_thumbs: Dict[int, str] = {}
+        _cs_active = False
+        try:
+            _assist_for_cs = getattr(self, "_assist_state", None)
+            if _assist_for_cs and s3 is not None:
+                _dgm_cs = self._load_decision_gates_module()
+                _oc_cs, _ = _dgm_cs.resolve_gate_outcome(
+                    _assist_for_cs, _dgm_cs.GateType.CONTACT_SHEET.value, None
+                )
+                _cs_active = (_oc_cs == _dgm_cs.GateOutcome.EMIT_AND_STOP)
+        except Exception:
+            _cs_active = False
+
         def _upload_png(idx: int, kind: str, ts_idx: int, png: bytes) -> Optional[str]:
             if s3 is None or bucket is None:
                 return None
@@ -21996,6 +22153,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 continue
 
             shot_idx = int(entry.get("index", 0))
+
+            # Contact-sheet thumb — must run BEFORE the clean-shot byte drop
+            # below, or clean shots would have no preview on the sheet.
+            if _cs_active:
+                _pre_all = rec.get("_screenshots_pre_bytes") or []
+                if _pre_all:
+                    _ckey = f"CONTACT_SHEET/{vid}/shot{shot_idx:03d}.png"
+                    try:
+                        s3.put_object(
+                            Bucket=bucket, Key=_ckey,
+                            Body=_pre_all[len(_pre_all) // 2],
+                            ContentType="image/png",
+                        )
+                        _cs_thumbs[shot_idx] = f"https://{bucket}.s3.amazonaws.com/{_ckey}"
+                    except Exception as _cs_exc:
+                        print(f"   ⚠️ contact-sheet thumb upload failed (shot {shot_idx}): {_cs_exc}")
+
             shipped = rec.get("shipped") or "first_try"
             issues_pre = rec.get("issues_pre") or []
             issues_post = rec.get("issues_post") or []
@@ -22143,6 +22317,51 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if reviewed > 0:
                 print(f"   👁️  Top issues: {top_str}")
             print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f} (cap ${self._tier_config.get('vision_review_run_cost_cap_usd', 0.0):.2f})")
+
+        # Contact-sheet thumbs — consumed by _maybe_contact_sheet_gate right
+        # after media resolution; {} when the gate isn't firing this leg.
+        if _cs_thumbs:
+            self._contact_thumbs = _cs_thumbs
+            print(f"   📇 Contact-sheet thumbs uploaded for {len(_cs_thumbs)} shot(s)")
+
+    def _maybe_contact_sheet_gate(self, html_segments: List[Dict[str, Any]]) -> None:
+        """Assist: pause AFTER all shot HTML + media are resolved so the user
+        reviews a per-shot contact sheet BEFORE the video finalizes.
+
+        Mirrors _maybe_visual_casting_gate: emits ``decision_required`` + raises
+        ``DecisionRequired`` on the first pass; on the resume leg the recorded
+        answer (approve, or edit-with-regens whose notes/cache-deletions were
+        already applied) resolves to USE_ANSWER and the pipeline proceeds.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.CONTACT_SHEET.value, None)
+        if outcome != _dg.GateOutcome.EMIT_AND_STOP:
+            return
+        thumbs = getattr(self, "_contact_thumbs", None) or {}
+        shots_payload: List[Dict[str, Any]] = []
+        for entry in html_segments:
+            try:
+                idx = int(entry.get("index", 0))
+            except (TypeError, ValueError):
+                continue
+            shots_payload.append({
+                "shot_index": idx,
+                "shot_type": str(entry.get("_shot_type") or ""),
+                "narration_excerpt": str(entry.get("_narration_excerpt") or "")[:160],
+                "thumb_url": thumbs.get(idx),
+            })
+        if not shots_payload:
+            return
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_contact_sheet_decision(video_id, shots_payload)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
 
     # Veo-allowed clip durations. Snap-target for the rescue path. Mirrors
     # `_ALLOWED_DURATIONS_S` in `ai_video_orchestrator.py` — duplicated here

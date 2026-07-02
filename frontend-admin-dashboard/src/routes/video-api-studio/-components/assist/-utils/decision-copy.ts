@@ -37,6 +37,10 @@ export const GATE_META: Record<GateType, GateMeta> = {
         title: 'Shot look',
         blurb: 'Which rendered look to use for this shot.',
     },
+    contact_sheet: {
+        title: 'Contact sheet',
+        blurb: 'Every shot as a real frame — approve or send shots back with notes.',
+    },
     voice: { title: 'Voice', blurb: 'The narration voice.' },
     music: { title: 'Background music', blurb: 'The background music track.' },
     avatar: { title: 'Host', blurb: 'The on-screen host / avatar.' },
@@ -53,6 +57,7 @@ const GATE_PROMPT: Record<GateType, string> = {
     narration: "Here's the narration script — edit it, approve it, or let me decide.",
     visual_casting: 'Which visual should we use for this shot?',
     shot_look: 'Which look should we use for this shot?',
+    contact_sheet: 'All shots are built — approve the contact sheet or send shots back.',
     voice: 'Which voice should we use?',
     music: 'Which background music fits?',
     avatar: 'Which host should present?',
@@ -73,6 +78,10 @@ function summarizeLedger(gate: GateType, mode: string, answer: Record<string, un
         case 'edit':
             if (gate === 'shot_plan') return 'Edited the shot plan';
             if (gate === 'narration') return 'Edited the narration script';
+            if (gate === 'contact_sheet') {
+                const n = ((answer as { regens?: unknown[] })?.regens ?? []).length;
+                return `Sent ${n} shot(s) back with notes`;
+            }
             return 'Picked the visuals';
         default:
             return `Resolved the ${label}`;
@@ -126,6 +135,8 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
             if (answer.gate_type === 'shot_plan') return `Edited the shot plan (${answer.shots.length} shots)`;
             if (answer.gate_type === 'narration') return 'Edited the narration script';
             if (answer.gate_type === 'creative_concept') return 'Edited the creative direction';
+            if (answer.gate_type === 'contact_sheet')
+                return `Sent ${answer.regens.length} shot(s) back with notes`;
             return `Picked visuals for ${answer.selections.length} shot(s)`;
         default:
             return `Resolved ${label.toLowerCase()}`;

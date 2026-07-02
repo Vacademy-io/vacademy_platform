@@ -1,21 +1,26 @@
 {
   "font_family": "Inter, sans-serif",
-  "font_size": 42,
+  "font_family_key": "inter",
+  "font_size": 64,
   "font_color": "#ffffff",
-  "font_weight": 700,
-  "background_color": "rgba(0,0,0,0.6)",
+  "font_weight": 600,
+  "background_color": "rgba(0,0,0,0)",
   "padding_px": 20,
   "border_radius_px": 12,
   "gap_threshold_seconds": 0.6,
   "box": {
     "x": 100,
-    "y": 900,
+    "y": 880,
     "w": 1720,
-    "h": 150
+    "h": 170
   },
   "text_align": "center",
   "line_height": 1.4,
   "max_lines": 2,
+  "style": "karaoke",
+  "text_stroke_width": 4,
+  "text_stroke_color": "#000000",
+  "highlight_color": "#fbbf24",
   "annotate_active_word": true,
   "active_word_css": "color: #FBBC04;",
   "inactive_word_css": "opacity: 0.9;"

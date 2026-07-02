@@ -533,9 +533,19 @@ export type GateType =
     | 'narration'
     | 'visual_casting'
     | 'shot_look'
+    | 'contact_sheet'
     | 'voice'
     | 'music'
     | 'avatar';
+
+/** One shot on the contact sheet (contact_sheet gate payload.shots[]). */
+export interface ContactSheetShot {
+    shot_index: number;
+    shot_type?: string;
+    narration_excerpt?: string;
+    /** Mid-run frame screenshot; null when the vision reviewer didn't capture one. */
+    thumb_url?: string | null;
+}
 
 export interface DecisionOption {
     option_id: string;
@@ -634,6 +644,7 @@ export type DecisionAnswer =
     | { kind: 'auto_all' }
     | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
     | { kind: 'edit'; gate_type: 'creative_concept'; concept: Record<string, string> }
+    | { kind: 'edit'; gate_type: 'contact_sheet'; regens: Array<{ shot_index: number; note: string }> }
     | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
     | {
           kind: 'edit';
@@ -1852,6 +1863,8 @@ export function decisionAnswerToBody(
                 payload = { full_script: answer.modified_script, shots: answer.shots };
             } else if (answer.gate_type === 'creative_concept') {
                 payload = { concept: answer.concept };
+            } else if (answer.gate_type === 'contact_sheet') {
+                payload = { regens: answer.regens };
             } else {
                 payload = { selections: answer.selections };
             }
@@ -2104,22 +2117,29 @@ export interface RenderSettings {
     watermark: boolean;
 }
 
+// Defaults upgraded 2026-07: 95% of users ship the default render, and
+// 720p/20fps visibly stutters GSAP motion while plain phrase captions in the
+// system font read as unfinished. New default = 1080p/30fps + the 'karaoke'
+// caption preset (word-highlight, Inter 600, stroke, no box — the modern
+// social-video look). Values mirror CAPTION_PRESETS.karaoke in
+// caption-presets.ts — keep in lockstep. Saved user settings still win
+// (RenderSettingsDialog overlays localStorage over these).
 export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
-    resolution: '720p',
-    fps: 20,
+    resolution: '1080p',
+    fps: 30,
     captions: true,
     captionPosition: 'bottom',
     captionTextColor: '#ffffff',
     captionBgColor: '#000000',
-    captionBgOpacity: 60,
-    captionSize: 'M',
-    captionStyle: 'phrase',
-    captionFontFamily: 'system',
-    captionFontWeight: 400,
-    captionTextStrokeWidth: 0,
+    captionBgOpacity: 0,
+    captionSize: 'L',
+    captionStyle: 'karaoke',
+    captionFontFamily: 'inter',
+    captionFontWeight: 600,
+    captionTextStrokeWidth: 4,
     captionTextStrokeColor: '#000000',
     captionHighlightColor: '#fbbf24',
-    captionPreset: 'youtube',
+    captionPreset: 'karaoke',
     watermark: true,
 };
 

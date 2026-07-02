@@ -121,12 +121,13 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                             <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
                                 <Lightbulb size={13} /> Recurring coaching themes
                             </p>
-                            <ul className="space-y-1">
+                            <ul className="space-y-1.5">
                                 {tips.slice(0, 5).map((t, i) => (
                                     <li
                                         key={i}
-                                        className="flex items-start gap-1.5 text-body text-neutral-700"
+                                        className="flex items-start gap-2 text-body text-neutral-700"
                                     >
+                                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary-400" />
                                         <span className="flex-1">{t.text}</span>
                                         {t.count > 1 && (
                                             <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-caption text-neutral-500">
@@ -143,12 +144,13 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                             <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
                                 <Warning size={13} /> Objections the team hits most
                             </p>
-                            <ul className="space-y-1">
+                            <ul className="space-y-1.5">
                                 {objections.slice(0, 5).map((o, i) => (
                                     <li
                                         key={i}
                                         className="flex items-start gap-2 text-body text-neutral-700"
                                     >
+                                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-warning-400" />
                                         <span className="flex-1">{o.objection}</span>
                                         <span className="shrink-0 text-caption text-neutral-500">
                                             handled {o.handledCount}/{o.count}

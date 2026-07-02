@@ -23,11 +23,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import {
-    Sidebar,
-    SidebarContent,
-    useSidebar,
-} from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, useSidebar } from '@/components/ui/sidebar';
 import {
     SidebarStateType,
     SidebarItemsType,
@@ -36,7 +32,10 @@ import { getSidebarItemsData, withSystemDefaults } from './utils';
 import { useNamingSettingsVersion } from '@/hooks/useNamingSettingsVersion';
 import './scrollbarStyle.css';
 import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
-import { useInstituteQuery, getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import {
+    useInstituteQuery,
+    getSubOrgInstituteQuery,
+} from '@/services/student-list-section/getInstituteDetails';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { filterMenuItems } from './helper';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
@@ -55,13 +54,18 @@ import useInstituteLogoStore from './institutelogo-global-zustand';
 import { useTabSettings } from '@/hooks/use-tab-settings';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { getEffectiveInstituteLogoFileId, getValidSelectedSubOrgId, getSelectedSubOrgLinkageType } from '@/lib/auth/facultyAccessUtils';
+import {
+    getEffectiveInstituteLogoFileId,
+    getValidSelectedSubOrgId,
+    getSelectedSubOrgLinkageType,
+} from '@/lib/auth/facultyAccessUtils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 import { Lightning } from '@phosphor-icons/react';
 import { CategoryRail, type CategoryId } from './category-rail';
 import { SidebarPanel } from './sidebar-panel';
+import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 
 const voltSidebarData: SidebarItemsType[] = [
     {
@@ -103,7 +107,8 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // entries so future renders settle on parent branding without manual clears.
     const selectedSubOrgId = getValidSelectedSubOrgId();
     const subOrgLinkageType = getSelectedSubOrgLinkageType();
-    const isPartnershipLinkage = subOrgLinkageType === 'PARTNERSHIP' || subOrgLinkageType === 'SUB_ORG';
+    const isPartnershipLinkage =
+        subOrgLinkageType === 'PARTNERSHIP' || subOrgLinkageType === 'SUB_ORG';
 
     const { data: subOrgInstituteDetails } = useQuery({
         ...getSubOrgInstituteQuery(selectedSubOrgId ?? null),
@@ -120,8 +125,15 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         queryFn: getNotificationSettings,
         refetchOnWindowFocus: false,
     });
-    const isChatEnabled =
-        notificationSettingsQuery.data?.settings?.chat?.enabled === true;
+    const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
+
+    // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. When
+    // CRM/Call Intelligence is off for the institute the page has no data to show,
+    // so the sidebar entry is stripped regardless of the Display Settings toggle
+    // (the admin can still hide it via Display Settings when the feature IS on).
+    // Fail closed: the hook returns false while loading, so it stays hidden until
+    // the setting resolves.
+    const isCrmIntelligenceEnabled = useCallIntelligenceEnabled();
 
     useEffect(() => {
         setIsVoltSubdomain(
@@ -226,17 +238,30 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     const finalSidebarItems = (() => {
         const rawBase = isVoltSubdomain
             ? voltSidebarData
-            : filterMenuItems(getSidebarItemsData(), data?.id || '', isTabVisible, isSubItemVisible);
+            : filterMenuItems(
+                  getSidebarItemsData(),
+                  data?.id || '',
+                  isTabVisible,
+                  isSubItemVisible
+              );
         // Chat is OFF by default. Strip the Communications > Chat sub-item unless the
         // institute has explicitly enabled chat. Fail closed: isChatEnabled is false
         // while the notification-settings query is loading/errored, so the entry stays
         // hidden until we confirm chat is on.
-        const base = isChatEnabled
-            ? rawBase
-            : rawBase.map((item) => ({
-                  ...item,
-                  subItems: item.subItems?.filter((s) => s.subItemId !== 'chat'),
-              }));
+        // Strip feature-gated sub-items that the institute hasn't enabled: Chat
+        // (unless notifications.chat is on) and AI Intelligence (unless CRM/Call
+        // Intelligence is on). Applied together so we only remap once.
+        const base =
+            isChatEnabled && isCrmIntelligenceEnabled
+                ? rawBase
+                : rawBase.map((item) => ({
+                      ...item,
+                      subItems: item.subItems?.filter(
+                          (s) =>
+                              (isChatEnabled || s.subItemId !== 'chat') &&
+                              (isCrmIntelligenceEnabled || s.subItemId !== 'ai-intelligence')
+                      ),
+                  }));
         if (!roleDisplay) return base;
 
         // Build a lookup of what each sidebar item would look like with system
@@ -280,13 +305,10 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         .map((s) => {
                             const c = subVis.get(s.subItemId);
                             const defaultSub = defaultSubsById.get(s.subItemId);
-                            const isSeededSubLabel =
-                                !c?.label || c.label === defaultSub?.subItem;
+                            const isSeededSubLabel = !c?.label || c.label === defaultSub?.subItem;
                             return {
                                 ...s,
-                                subItem: isSeededSubLabel
-                                    ? s.subItem
-                                    : (c?.label as string),
+                                subItem: isSeededSubLabel ? s.subItem : (c?.label as string),
                                 subItemLink: c?.route ?? s.subItemLink,
                                 locked: c?.locked,
                             };
@@ -362,7 +384,14 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             fetchPublicUrl();
         }, 300);
         return () => clearTimeout(timer);
-    }, [data?.institute_logo_file_id, subOrgInstituteDetails?.institute_logo_file_id, getPublicUrl, setInstituteLogo, currentRoute, isPartnershipLinkage]);
+    }, [
+        data?.institute_logo_file_id,
+        subOrgInstituteDetails?.institute_logo_file_id,
+        getPublicUrl,
+        setInstituteLogo,
+        currentRoute,
+        isPartnershipLinkage,
+    ]);
 
     if (isLoading) return <DashboardLoader />;
     if (roleDisplay?.ui?.showSidebar === false) return null;
@@ -372,7 +401,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
 
     const effectiveInstituteName = subOrgInstituteDetails?.institute_name
         ? subOrgInstituteDetails.institute_name
-        : (data?.institute_name || '');
+        : data?.institute_name || '';
 
     // ─── Mobile: Sheet/Drawer ──────────────────────────────────
     if (isMobile) {
@@ -383,7 +412,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         <SheetTitle>Navigation Menu</SheetTitle>
                     </SheetHeader>
                     <TooltipProvider delayDuration={0}>
-                        <div className="flex h-full pt-safe-native pb-safe-native">
+                        <div className="pt-safe-native pb-safe-native flex h-full">
                             {/* Category Rail */}
                             <CategoryRail
                                 activeCategory={activeCategory}
@@ -424,7 +453,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         <Sidebar collapsible="icon" className="z-20 !border-0">
             <SidebarContent
                 className={cn(
-                    'sidebar-content pt-safe-native pb-safe-native !flex !flex-row !gap-0 border-r-0 bg-transparent !overflow-hidden py-0',
+                    'sidebar-content pt-safe-native pb-safe-native !flex !flex-row !gap-0 !overflow-hidden border-r-0 bg-transparent py-0'
                 )}
             >
                 <TooltipProvider delayDuration={0}>

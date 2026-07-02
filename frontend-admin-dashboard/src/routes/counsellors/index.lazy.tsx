@@ -25,6 +25,7 @@ import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
 import { CounsellorCallsTab } from './-components/CounsellorCallsTab';
 import { CounsellorInsightsTab } from './-components/CounsellorInsightsTab';
+import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -856,6 +857,9 @@ function DetailDrawer({
     instituteId: string;
     onReassign: (lead: WorkbenchLead) => void;
 }) {
+    // Coaching tab only exists when the institute has Call Intelligence on.
+    // (Hook must run before the early return below — Rules of Hooks.)
+    const callIntelligenceEnabled = useCallIntelligenceEnabled();
     // Sheet handles focus trap, Escape, overlay click — we just supply the
     // content. `counsellor` can be null briefly during the close animation
     // (state cleared as the sheet starts to fade out); the early-return
@@ -897,9 +901,11 @@ function DetailDrawer({
                         <TabsTrigger value="calls">
                             <Phone size={14} className="mr-1.5" /> Calls
                         </TabsTrigger>
-                        <TabsTrigger value="coaching">
-                            <Sparkle size={14} className="mr-1.5" /> Coaching
-                        </TabsTrigger>
+                        {callIntelligenceEnabled && (
+                            <TabsTrigger value="coaching">
+                                <Sparkle size={14} className="mr-1.5" /> Coaching
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="performance">
                             <ChartLineUp size={14} className="mr-1.5" /> Performance
                         </TabsTrigger>
@@ -924,7 +930,7 @@ function DetailDrawer({
                                 counsellorUserId={counsellor.user_id}
                             />
                         )}
-                        {tab === 'coaching' && (
+                        {tab === 'coaching' && callIntelligenceEnabled && (
                             <CounsellorInsightsTab
                                 instituteId={instituteId}
                                 counsellorUserId={counsellor.user_id}

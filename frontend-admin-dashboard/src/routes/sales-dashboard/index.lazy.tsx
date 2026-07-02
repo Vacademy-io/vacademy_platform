@@ -6,10 +6,7 @@ import { getInstituteId } from '@/constants/helper';
 import { KpiBand } from './-components/KpiBand';
 import { ConversionFunnelWidget } from './-components/ConversionFunnelWidget';
 import { CounsellorLeaderboardWidget } from './-components/CounsellorLeaderboardWidget';
-import {
-    MissedFollowupsWidget,
-    UpcomingFollowupsWidget,
-} from './-components/FollowupsWidgets';
+import { MissedFollowupsWidget, UpcomingFollowupsWidget } from './-components/FollowupsWidgets';
 import {
     NewVsExistingLeadsWidget,
     ReassignmentVolumeWidget,
@@ -19,6 +16,7 @@ import { TeamPicker } from '@/components/shared/crm/TeamPicker';
 import { ConversionBySourceWidget } from './-components/ConversionBySourceWidget';
 import { CallsPerDayWidget } from './-components/CallsPerDayWidget';
 import { InsightsStrip } from './-components/InsightsStrip';
+import { CallIntelligenceSummary } from '@/components/shared/leads';
 // Reuse the disabled-notice from the counsellors route — same UX in both
 // places, no need for a duplicate component.
 import { FeatureDisabledNotice } from '@/routes/counsellors/-components/FeatureDisabledNotice';
@@ -56,9 +54,7 @@ function parseDateInput(value: string, endOfDay: boolean): number | null {
     const [y, m, d] = parts.map((p) => Number(p));
     if (!y || !m || !d) return null;
     // End-date is end-of-day so the [from, to) window includes the picked day.
-    return endOfDay
-        ? Date.UTC(y, m - 1, d, 23, 59, 59, 999)
-        : Date.UTC(y, m - 1, d, 0, 0, 0, 0);
+    return endOfDay ? Date.UTC(y, m - 1, d, 23, 59, 59, 999) : Date.UTC(y, m - 1, d, 0, 0, 0, 0);
 }
 
 /**
@@ -113,7 +109,8 @@ function SalesDashboardPage() {
         return PRESETS[preset]();
     })();
     const customReady =
-        preset === 'custom' && !!parseDateInput(customStart, false) &&
+        preset === 'custom' &&
+        !!parseDateInput(customStart, false) &&
         !!parseDateInput(customEnd, true);
 
     // Team scope — fed to every widget. undefined = "All my teams" (backend
@@ -240,6 +237,15 @@ function SalesDashboardPage() {
                         to={range.to}
                     />
                 </div>
+
+                {/* Call Intelligence — team call-quality rollup (self-hides when the
+                    feature is off or no calls analyzed). */}
+                <CallIntelligenceSummary
+                    mode="team"
+                    instituteId={instituteId}
+                    fromMillis={range.from}
+                    toMillis={range.to}
+                />
 
                 {/* Bottom: campaigns + insights */}
                 <CampaignCardsRow instituteId={instituteId} period="WEEK" />

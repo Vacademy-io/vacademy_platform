@@ -25,6 +25,15 @@ def build_stt(sample_rate: int):
 
 def build_llm():
     s = get_settings()
+    if s.llm_provider == "google":
+        # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop;
+        # Google's edge is local to the cluster — see config.llm_provider).
+        return OpenAILLMService(
+            api_key=s.gemini_api_key,
+            base_url=s.google_llm_base_url,
+            model=s.google_llm_model,
+            params=OpenAILLMService.InputParams(temperature=0.6, max_tokens=150),
+        )
     if s.llm_provider == "openrouter":
         # Lazy import — only needed when the fallback is active.
         from pipecat.services.openrouter.llm import OpenRouterLLMService

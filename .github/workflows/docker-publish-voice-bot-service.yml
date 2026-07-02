@@ -101,7 +101,8 @@ jobs:
               VOICE_BOT_CLIENT_NAME=${{ vars.VOICE_BOT_CLIENT_NAME || 'voice_bot_service' }} \
               VOICE_BOT_CLIENT_SECRET=${{ secrets.VOICE_BOT_CLIENT_SECRET }} \
               SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
-              LLM_PROVIDER=${{ vars.VOICE_BOT_LLM_PROVIDER || 'openrouter' }} \
+              LLM_PROVIDER=${{ vars.VOICE_BOT_LLM_PROVIDER || 'google' }} \
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
               OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
 
             # Roll out the EXACT freshly-built image by its immutable :<sha> tag

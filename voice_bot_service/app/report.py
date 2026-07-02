@@ -39,6 +39,8 @@ def _llm_target(s):
     the same backend as the conversation (a Sarvam-only analysis 401s forever on an
     OpenRouter-fallback deployment, degrading every call to disposition=Incomplete
     → the classifier retries leads who just completed a full conversation)."""
+    if s.llm_provider == "google":
+        return s.google_llm_base_url, s.gemini_api_key, s.google_llm_model
     if s.llm_provider == "openrouter":
         return s.openrouter_base_url, s.openrouter_api_key, s.openrouter_model
     return s.sarvam_llm_base_url, s.sarvam_api_key, s.sarvam_llm_model

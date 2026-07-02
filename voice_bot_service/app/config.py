@@ -44,19 +44,30 @@ class Settings:
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
 
-    # LLM provider switch: "sarvam" or "openrouter" (default). The switch governs
+    # LLM provider switch: "google" (default) | "openrouter" | "sarvam". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call
     # analysis (report._llm_target) — they must never diverge.
-    # Default is openrouter because Sarvam's current chat models (sarvam-30b/-105b,
-    # verified 2026-07-02) are ALWAYS-reasoning: 6–14s to the first content token
-    # and content=None when max_tokens is exhausted mid-think — unusable live.
-    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "openrouter"))
+    # google = Gemini via its OpenAI-compat endpoint, hit DIRECTLY (Google's edge
+    # is ~18ms from the cluster; OpenRouter adds a proxy + routing lottery that
+    # spiked TTFT to 7.9s on a live call). Sarvam is unusable for the live convo:
+    # its chat models (sarvam-30b/-105b, verified 2026-07-02) are ALWAYS-reasoning
+    # — 6–14s to the first content token, content=None when max_tokens dies mid-think.
+    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "google"))
     openrouter_api_key: str = field(default_factory=lambda: _env("OPENROUTER_API_KEY"))
     openrouter_base_url: str = field(
         default_factory=lambda: _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     )
     openrouter_model: str = field(
         default_factory=lambda: _env("OPENROUTER_MODEL", "google/gemini-3.1-flash-lite")
+    )
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))
+    google_llm_base_url: str = field(
+        default_factory=lambda: _env(
+            "GOOGLE_LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"
+        )
+    )
+    google_llm_model: str = field(
+        default_factory=lambda: _env("GOOGLE_LLM_MODEL", "gemini-3.1-flash-lite")
     )
 
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.

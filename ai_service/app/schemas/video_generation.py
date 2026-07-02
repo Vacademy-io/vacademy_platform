@@ -641,6 +641,16 @@ class VideoGenerationRequest(BaseModel):
             "cost of one extra small LLM call per qualifying shot."
         )
     )
+    dialogue_scenes_enabled: bool = Field(
+        default=False,
+        description=(
+            "Storybook/drama mode: when True, the plan may include DIALOGUE_SCENE "
+            "shots — fully AI-generated clips (Seedance 2.0) where characters speak "
+            "on camera, lip-synced to per-character TTS lines in consistent voices. "
+            "The clip carries its own audio (master narration silent in that window). "
+            "Adds generation cost (~$0.30/s of dialogue clip at 720p, capped per video)."
+        )
+    )
     mute_tts_on_source_clips: bool = Field(
         default=False,
         description=(

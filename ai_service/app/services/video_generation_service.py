@@ -832,6 +832,7 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -1034,6 +1035,8 @@ class VideoGenerationService:
                 gen_metadata["background_music_volume"] = float(background_music_volume)
             if sub_shots_enabled:
                 gen_metadata["sub_shots_enabled"] = True
+            if dialogue_scenes_enabled:
+                gen_metadata["dialogue_scenes_enabled"] = True
             # Persist the TTS voice knobs so per-sentence re-narration in the
             # editor can reproduce the same voice without the user having to
             # re-supply them. Defaults are skipped to keep the row small.
@@ -1206,6 +1209,7 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    dialogue_scenes_enabled=dialogue_scenes_enabled,
                     routing_overrides=routing_overrides,
                     host=host,
                     brand_kit_id=brand_kit_id,
@@ -1363,6 +1367,7 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -2161,6 +2166,7 @@ class VideoGenerationService:
                     "background_music_enabled": background_music_enabled,
                     "background_music_volume": background_music_volume,
                     "sub_shots_enabled": sub_shots_enabled,
+                    "dialogue_scenes_enabled": dialogue_scenes_enabled,
                     "mute_tts_on_source_clips_kwarg": mute_tts_on_source_clips,
                     "input_video_ids": input_video_ids,
                     "input_video_audio": input_video_audio,
@@ -2661,6 +2667,7 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    dialogue_scenes_enabled=dialogue_scenes_enabled,
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,

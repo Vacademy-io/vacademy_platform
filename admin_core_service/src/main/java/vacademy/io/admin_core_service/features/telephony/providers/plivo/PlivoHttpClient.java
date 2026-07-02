@@ -70,8 +70,10 @@ public class PlivoHttpClient {
         URI uri = URI.create(baseUrl + "/v1/Account/" + authId + "/Call/");
 
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("from", trimOrNull(from));
-        body.put("to", trimOrNull(to));
+        // Plivo wants numbers WITHOUT a leading '+' — a "+91..." src makes the
+        // carrier reject the call ("Internal Error From Carrier", never answered).
+        body.put("from", stripPlus(trimOrNull(from)));
+        body.put("to", stripPlus(trimOrNull(to)));
         body.put("answer_url", answerUrl);
         body.put("answer_method", "POST");
         if (hangupUrl != null) {
@@ -148,5 +150,9 @@ public class PlivoHttpClient {
 
     private static String trimOrNull(String s) {
         return s == null ? null : s.trim();
+    }
+
+    private static String stripPlus(String s) {
+        return s != null && s.startsWith("+") ? s.substring(1) : s;
     }
 }

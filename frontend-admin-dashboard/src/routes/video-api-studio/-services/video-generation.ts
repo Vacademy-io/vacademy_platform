@@ -463,6 +463,7 @@ export interface GenerateVideoRequest {
     mute_tts_on_source_clips?: boolean;
     /** Experimental: split dense shots into 2 focused sub-shots before HTML generation. */
     sub_shots_enabled?: boolean;
+    dialogue_scenes_enabled?: boolean;
     /** Sparse override for the auto-routing plan. User toggles win over router decisions. */
     routing_overrides?: RoutingOverrides;
     /** Optional on-screen host (narrator). Available on ultra / super_ultra only; rejected at the API edge on lower tiers. */
@@ -1148,6 +1149,7 @@ export interface VideoStatusUserSelections {
     background_music_enabled?: boolean | null;
     background_music_volume?: number | null;
     sub_shots_enabled?: boolean;
+    dialogue_scenes_enabled?: boolean;
     mute_tts_on_source_clips_kwarg?: boolean;
     input_video_ids?: string[];
     input_video_audio?: 'original' | 'tts' | null;
@@ -1755,6 +1757,7 @@ export function resumeVideo(
         model: opts?.model || null,
         sound_effects_enabled: true,
         sub_shots_enabled: opts?.sub_shots_enabled ?? false,
+        dialogue_scenes_enabled: opts?.dialogue_scenes_enabled ?? false,
     };
     if (request.modifiedScript !== undefined) {
         body.modified_script = request.modifiedScript;

@@ -113,9 +113,11 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
     private String resolveCallerId(String instituteId, TelephonyConfigCache.Resolved resolved) {
         String fromSettings = voiceSettings.get(instituteId).getDefaultCallerId();
         if (fromSettings != null && !fromSettings.isBlank()) return fromSettings.trim();
+        // Lowest priority value wins — same convention as PlivoOriginationResolver.
         return resolved.getEnabledNumbers().stream()
                 .filter(n -> Boolean.TRUE.equals(n.getEnabled()))
-                .findFirst()
+                .min(java.util.Comparator.comparingInt(
+                        n -> n.getPriority() == null ? Integer.MAX_VALUE : n.getPriority()))
                 .map(n -> n.getPhoneNumber())
                 .orElse(null);
     }

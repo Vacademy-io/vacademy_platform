@@ -68,6 +68,11 @@ public class PlivoCallbackController {
             @RequestParam("corr") String corr,
             @RequestParam(value = "token", required = false) String token) {
 
+        // Plivo echoes URL query params into its POST body — Spring then joins the
+        // duplicates with a comma. Normalize before any lookup (all endpoints here).
+        corr = firstValue(corr);
+        token = firstValue(token);
+
         TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
         if (row == null) {
             log.warn("plivo answer/outbound: no row for corr={}", corr);
@@ -161,6 +166,11 @@ public class PlivoCallbackController {
             @RequestParam(value = "token", required = false) String token,
             HttpServletRequest req) {
 
+        menuId = firstValue(menuId);
+        nodeId = firstValue(nodeId);
+        corr = firstValue(corr);
+        token = firstValue(token);
+
         TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
         if (row == null) return xml(HANGUP_XML);
         TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
@@ -195,6 +205,9 @@ public class PlivoCallbackController {
     public ResponseEntity<String> aiNext(
             @RequestParam("corr") String corr,
             @RequestParam(value = "token", required = false) String token) {
+
+        corr = firstValue(corr);
+        token = firstValue(token);
 
         TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
         if (row == null) return xml(HANGUP_XML);
@@ -237,20 +250,33 @@ public class PlivoCallbackController {
         return null;
     }
 
+    /** First value of a possibly comma-joined duplicated request param (Plivo
+     *  echoes URL query params into its POST body; Spring joins the duplicates). */
+    private static String firstValue(String s) {
+        if (s == null) return null;
+        int i = s.indexOf(',');
+        return (i < 0 ? s : s.substring(0, i)).trim();
+    }
+
     private String buildDialXml(String callerId, String leadNumber, String statusBase, boolean record) {
         String recordAttrs = record
                 ? " record=\"true\" recordCallbackUrl=\"" + esc(statusBase + "&plivoEvent=record")
                   + "\" recordCallbackMethod=\"POST\""
                 : "";
+        // Plivo/carrier rejects '+'-prefixed numbers ("Internal Error From Carrier").
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                 + "<Response>"
-                + "<Dial callerId=\"" + esc(callerId) + "\""
+                + "<Dial callerId=\"" + esc(stripPlus(callerId)) + "\""
                 + " callbackUrl=\"" + esc(statusBase + "&plivoEvent=dial_callback") + "\" callbackMethod=\"POST\""
                 + " action=\"" + esc(statusBase + "&plivoEvent=dial_action") + "\" method=\"POST\""
                 + recordAttrs + ">"
-                + "<Number>" + esc(leadNumber) + "</Number>"
+                + "<Number>" + esc(stripPlus(leadNumber)) + "</Number>"
                 + "</Dial>"
                 + "</Response>";
+    }
+
+    private static String stripPlus(String s) {
+        return s != null && s.startsWith("+") ? s.substring(1) : s;
     }
 
     private String buildStatusUrl(String providerType, String token, String corr) {

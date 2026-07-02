@@ -201,6 +201,7 @@ function computeNonDefaultCount(
         if (options[key] !== DEFAULT_OPTIONS[key]) n++;
     }
     if (options.sub_shots_enabled) n++;
+    if (options.dialogue_scenes_enabled) n++;
     if (options.ai_video_enabled) n++;
     if (options.host) n++;
     if (hasActiveVisualPreferences(options.visual_preferences)) n++;
@@ -1056,6 +1057,30 @@ function SettingsBody({
                     <p className="pl-5 text-[10px] text-muted-foreground">
                         Splits dense, motion-heavy shots into 2 focused sub-shots before HTML
                         generation. Better visual precision; small extra LLM cost.
+                    </p>
+                </div>
+
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-1.5 text-xs">
+                            <Users className="size-3.5 text-muted-foreground" />
+                            Story dialogue scenes
+                            <Badge
+                                variant="outline"
+                                className="h-4 px-1 text-[9px] uppercase tracking-wide"
+                            >
+                                Exp
+                            </Badge>
+                        </Label>
+                        <Switch
+                            checked={!!options.dialogue_scenes_enabled}
+                            onCheckedChange={(v) => update('dialogue_scenes_enabled', v)}
+                        />
+                    </div>
+                    <p className="pl-5 text-[10px] text-muted-foreground">
+                        Storybook mode: characters act out key moments in AI-generated clips,
+                        speaking in consistent voices (lip-synced). The narrator carries the
+                        rest. Adds generation cost per dialogue scene.
                     </p>
                 </div>
 

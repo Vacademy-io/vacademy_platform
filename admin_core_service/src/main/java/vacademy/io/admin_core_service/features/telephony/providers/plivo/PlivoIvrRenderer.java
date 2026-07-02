@@ -94,7 +94,8 @@ public class PlivoIvrRenderer {
                         .append("\" method=\"POST\" callbackUrl=\"").append(esc(statusBase + "&plivoEvent=dial_callback"))
                         .append("\" callbackMethod=\"POST\" timeout=\"30\"").append(recordAttrs).append(">");
                 for (String t : targets) {
-                    b.append("<Number>").append(esc(t)).append("</Number>");
+                    // Plivo/carrier rejects '+'-prefixed numbers.
+                    b.append("<Number>").append(esc(stripPlus(t))).append("</Number>");
                 }
                 b.append("</Dial>");
             }
@@ -164,5 +165,9 @@ public class PlivoIvrRenderer {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&apos;");
+    }
+
+    private static String stripPlus(String s) {
+        return s != null && s.startsWith("+") ? s.substring(1) : s;
     }
 }

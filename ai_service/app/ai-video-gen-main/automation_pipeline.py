@@ -2987,6 +2987,7 @@ class VideoGenerationPipeline:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
@@ -3117,6 +3118,15 @@ class VideoGenerationPipeline:
         self._background_music_enabled_override: Optional[bool] = background_music_enabled
         self._background_music_volume_override: Optional[float] = background_music_volume
         # Experimental: split dense shots into 2 focused sub-shots before HTML gen.
+        # DIALOGUE_SCENE (storybook/drama) mode — characters speak on camera in
+        # Seedance-generated clips, lip-synced to OUR per-character TTS lines
+        # (the voice-lock strategy). Opt-in per run.
+        self._dialogue_scenes_enabled: bool = bool(dialogue_scenes_enabled)
+        self._dialogue_characters: List[Dict[str, Any]] = []
+        self._fal_seedance_client = None
+        self._dialogue_cost_tracker = None
+        self._dialogue_cast_sheet_url: Optional[str] = None
+
         self._sub_shots_enabled: bool = bool(sub_shots_enabled)
         if self._sub_shots_enabled:
             print("✂️  Sub-shot decomposition ENABLED (experimental)")
@@ -7333,6 +7343,367 @@ class VideoGenerationPipeline:
             outputs.append(result)
         return outputs
 
+    # ------------------------------------------------------------------
+    # DIALOGUE_SCENE (storybook/drama mode) helpers
+    # ------------------------------------------------------------------
+
+    def _dialogue_voice_map(self) -> Dict[str, str]:
+        """Stable character→voice_gender map for the whole run. Uses the cast's
+        voice_hint when it names a gender; otherwise alternates so a two-hander
+        always gets two distinct voices. Deterministic across shots and legs."""
+        vm: Dict[str, str] = {}
+        genders = ("female", "male")
+        for i, c in enumerate(self._dialogue_characters or []):
+            name = str(c.get("name") or "").strip().lower()
+            if not name:
+                continue
+            hint = str(c.get("voice_hint") or "").lower()
+            if "female" in hint or "woman" in hint or "girl" in hint:
+                g = "female"
+            elif "male" in hint or "man " in hint or hint.endswith("man") or "boy" in hint:
+                g = "male"
+            else:
+                g = genders[i % 2]
+            vm[name] = g
+        return vm
+
+    def _prepare_dialogue_scenes(
+        self,
+        shots: List[Dict[str, Any]],
+        run_dir: Path,
+        *,
+        language: str,
+        voice_gender: str,
+        tts_provider: str,
+        voice_id: Optional[str],
+    ) -> None:
+        """Voice-lock pre-pass for DIALOGUE_SCENE shots (runs before per-shot TTS).
+
+        For each dialogue shot: synthesize every line in its character's voice,
+        concat → one MP3, upload to S3, stash `_dialogue_audio_url` on the shot
+        (fed to Seedance as @Audio1 for lip-sync), and resize the shot's planned
+        duration to fit the audio so the master-narration silence gap matches
+        the clip we request. Failures demote the shot to a plain IMAGE_HERO so
+        the video still ships.
+        """
+        if not self._dialogue_scenes_enabled:
+            return
+        dialogue_shots = [
+            s for s in shots
+            if isinstance(s, dict)
+            and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+        ]
+        if not dialogue_shots:
+            return
+
+        import subprocess as _sp
+
+        def _demote(s: Dict[str, Any], why: str) -> None:
+            print(f"   ⚠️ DIALOGUE_SCENE shot {s.get('shot_index')}: {why} — demoting to IMAGE_HERO")
+            s["shot_type"] = "IMAGE_HERO"
+            s["audio_policy"] = "narration_only"
+            if not s.get("image_prompt"):
+                s["image_prompt"] = str(s.get("scene_description") or "cinematic scene")[:300]
+            for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s", "_dialogue_clip_s"):
+                s.pop(k, None)
+
+        uploaders = self._build_ai_video_uploaders()
+        svc = getattr(self, "_ai_video_s3_service", None)
+        if uploaders is None or not svc:
+            for s in dialogue_shots:
+                _demote(s, "S3 unavailable for dialogue audio upload")
+            return
+
+        vmap = self._dialogue_voice_map()
+        run_name = getattr(self, "_run_name", None) or "run"
+        out_dir = run_dir / "dialogue_tts"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        changed_timing = False
+
+        for s in dialogue_shots:
+            if s.get("_dialogue_audio_url"):
+                continue  # already prepared (resume)
+            shot_idx = int(s.get("shot_index") or 0)
+            lines = [
+                l for l in (s.get("dialogue") or [])
+                if isinstance(l, dict) and str(l.get("line") or "").strip()
+            ][:3]
+            if not lines:
+                _demote(s, "no dialogue lines")
+                continue
+            try:
+                seg_paths: List[Path] = []
+                for li, l in enumerate(lines):
+                    char = str(l.get("character") or "").strip().lower()
+                    g = vmap.get(char) or ("female", "male")[abs(hash(char)) % 2]
+                    res = self._synthesize_voice_for_shot(
+                        shot_idx=9000 + shot_idx * 10 + li,
+                        narration_text=str(l.get("line")).strip(),
+                        run_dir=run_dir,
+                        language=language,
+                        voice_gender=g,
+                        tts_provider=tts_provider,
+                        # Per-character stock voice by gender — NOT the
+                        # narrator's custom voice_id (that's the narrator).
+                        voice_id=None,
+                    )
+                    mp3 = res.get("mp3_path")
+                    if res.get("skipped") or not mp3 or not Path(mp3).exists():
+                        raise RuntimeError(f"line {li} TTS failed: {res.get('reason')}")
+                    seg_paths.append(Path(mp3))
+
+                out_mp3 = out_dir / f"shot_{shot_idx:03d}.mp3"
+                if len(seg_paths) == 1:
+                    import shutil as _sh
+                    _sh.copyfile(seg_paths[0], out_mp3)
+                else:
+                    inputs: List[str] = []
+                    for p in seg_paths:
+                        inputs += ["-i", str(p)]
+                    n = len(seg_paths)
+                    fc = "".join(f"[{i}:a]" for i in range(n)) + f"concat=n={n}:v=0:a=1[a]"
+                    _sp.run(
+                        ["ffmpeg", "-y", *inputs, "-filter_complex", fc,
+                         "-map", "[a]", "-c:a", "libmp3lame", "-q:a", "4", str(out_mp3)],
+                        check=True, capture_output=True, timeout=120,
+                    )
+                probe = _sp.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(out_mp3)],
+                    check=True, capture_output=True, text=True, timeout=30,
+                )
+                dur = float(probe.stdout.strip() or 0.0)
+                if dur <= 0.2:
+                    raise RuntimeError("dialogue audio empty after concat")
+                if dur > 14.5:
+                    raise RuntimeError(f"dialogue audio too long ({dur:.1f}s > 14.5s Seedance cap)")
+
+                s3_key = f"ai-videos/dialogue/{run_name}/shot_{shot_idx:03d}.mp3"
+                url = svc.upload_file(out_mp3, s3_key=s3_key, content_type="audio/mpeg")
+                if not url:
+                    raise RuntimeError("S3 upload of dialogue audio failed")
+
+                import math as _math
+                clip_s = max(5, min(15, int(_math.ceil(dur + 1.0))))
+                s["_dialogue_audio_url"] = url
+                s["_dialogue_audio_s"] = round(dur, 2)
+                s["_dialogue_clip_s"] = clip_s
+                if abs(float(s.get("duration_estimate_s") or 0.0) - clip_s) > 0.01:
+                    s["duration_estimate_s"] = float(clip_s)
+                    changed_timing = True
+                print(
+                    f"   🎭 Dialogue shot {shot_idx}: {len(lines)} line(s), "
+                    f"{dur:.1f}s audio → {clip_s}s clip requested"
+                )
+            except Exception as prep_err:
+                _demote(s, f"dialogue prep failed ({prep_err})")
+
+        if changed_timing:
+            # Re-derive start/end so the master-narration silence gap for each
+            # dialogue window matches the clip length we will request.
+            try:
+                from shot_planner import _derive_shot_timings
+                _derive_shot_timings([s for s in shots if isinstance(s, dict)])
+            except Exception as _t_err:
+                print(f"   ⚠️ dialogue timing re-derive failed: {_t_err}")
+
+    def _ensure_dialogue_cast_sheet(self, run_dir: Path) -> Optional[str]:
+        """One reference image for the whole cast, generated once per run.
+
+        Seedance REQUIRES ≥1 image reference when audio input is provided; the
+        same image in every clip is also what keeps the characters visually
+        consistent. Prefers user-uploaded media-kit images; falls back to a
+        Seedream group portrait from the cast's verbatim visual descriptions.
+        """
+        if self._dialogue_cast_sheet_url:
+            return self._dialogue_cast_sheet_url
+        # Media-kit images win — the user's real characters/products.
+        try:
+            _ref_ctx = getattr(self, "_reference_context", None) or {}
+            for _img in (_ref_ctx.get("embeddable_images") or []):
+                _u = (_img.get("s3_url") or _img.get("url") or "").strip() if isinstance(_img, dict) else ""
+                if _u:
+                    self._dialogue_cast_sheet_url = _u
+                    return _u
+        except Exception:
+            pass
+        cast = self._dialogue_characters or []
+        if not cast:
+            return None
+        try:
+            desc = "; ".join(
+                f"{c.get('name')}: {c.get('visual_description')}"
+                for c in cast if c.get("visual_description")
+            )[:900]
+            prompt = (
+                "Cinematic character lineup reference sheet, all characters standing "
+                f"side by side, neutral background, full body, photorealistic. {desc}"
+            )
+            img_bytes, _u = self._call_image_generation_llm(
+                prompt,
+                width=self.video_width,
+                height=self.video_height,
+                model_override="bytedance-seed/seedream-4.5",
+            )
+            if not img_bytes:
+                return None
+            local = run_dir / "dialogue_tts" / "cast_sheet.png"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_bytes(img_bytes)
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            url = svc.upload_file(
+                local, s3_key=f"ai-videos/dialogue/{run_name}/cast_sheet.png",
+                content_type="image/png",
+            )
+            if url:
+                print(f"   🎭 Cast sheet generated: {url}")
+                self._dialogue_cast_sheet_url = url
+            return url
+        except Exception as cs_err:
+            print(f"   ⚠️ cast sheet generation failed: {cs_err}")
+            return None
+
+    def _build_dialogue_scene_prompt(self, shot: Dict[str, Any]) -> str:
+        """Seedance prompt: scene staging + verbatim character portraits +
+        @Image/@Audio bindings + the lines to lip-sync."""
+        cast_by_name = {
+            str(c.get("name") or "").strip().lower(): c
+            for c in (self._dialogue_characters or [])
+        }
+        names = [str(n).strip() for n in (shot.get("character_names") or []) if str(n).strip()]
+        portraits = []
+        for n in names:
+            c = cast_by_name.get(n.lower())
+            if c and c.get("visual_description"):
+                portraits.append(f"{n}: {c['visual_description']}")
+        lines_txt = " ".join(
+            f"{str(l.get('character') or '').strip()}: \"{str(l.get('line') or '').strip()}\""
+            for l in (shot.get("dialogue") or [])
+            if isinstance(l, dict) and str(l.get("line") or "").strip()
+        )
+        scene = str(shot.get("scene_description") or "").strip()
+        parts = [
+            f"Cinematic scene: {scene}" if scene else "Cinematic dialogue scene.",
+            ("Characters (match @Image1 exactly): " + " | ".join(portraits)) if portraits else "",
+            f"The characters speak these lines, lip-synced verbatim to @Audio1: {lines_txt}",
+            "Natural performance, realistic lighting, subtle camera movement. "
+            "No text overlays, no captions, no subtitles.",
+        ]
+        return "\n".join(p for p in parts if p)
+
+    def _generate_dialogue_scene_entry(
+        self,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        run_dir: Path,
+        start_time: float,
+        end_time: float,
+        entry_id: str,
+        w: int,
+        h: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate one DIALOGUE_SCENE clip via Seedance and build its timeline
+        entry (full-bleed video, intrinsic audio). Returns None on any failure —
+        the caller demotes to the normal HTML path. Never raises."""
+        try:
+            audio_url = shot.get("_dialogue_audio_url")
+            if not audio_url:
+                print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no prepared dialogue audio")
+                return None
+            cast_sheet = self._ensure_dialogue_cast_sheet(run_dir)
+            if not cast_sheet:
+                print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no reference image available")
+                return None
+
+            # Lazy Seedance client + per-run dialogue budget. Dual-path import
+            # — same idiom as the orchestrator's fal_veo_client resolution
+            # (app.services.* under the FastAPI server; bare module when
+            # app/services is directly on sys.path).
+            try:
+                from app.services.fal_seedance_client import (
+                    FalSeedanceClient, seedance_price_per_call_usd,
+                )
+                from app.services.fal_veo_client import get_fal_api_key_from_env as _gk
+            except ImportError:
+                from fal_seedance_client import (  # type: ignore[no-redef]
+                    FalSeedanceClient, seedance_price_per_call_usd,
+                )
+                from fal_veo_client import get_fal_api_key_from_env as _gk  # type: ignore[no-redef]
+            if self._fal_seedance_client is None:
+                _fal_key = _gk()
+                if not _fal_key:
+                    print("   ⚠️ DIALOGUE_SCENE: FAL_API_KEY not set")
+                    return None
+                self._fal_seedance_client = FalSeedanceClient(_fal_key)
+            if self._dialogue_cost_tracker is None:
+                from ai_video_orchestrator import AiVideoCostTracker
+                _cap = float(self._tier_config.get("dialogue_scene_cost_cap_usd") or 6.0)
+                self._dialogue_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+            clip_s = int(shot.get("_dialogue_clip_s") or 8)
+            expected = seedance_price_per_call_usd(resolution="720p", duration_s=clip_s)
+            try:
+                self._dialogue_cost_tracker.try_charge(expected)
+            except Exception as cap_err:
+                print(f"   🛑 DIALOGUE_SCENE shot {shot_idx}: dialogue budget exhausted ({cap_err})")
+                return None
+
+            aspect = "9:16" if h > w else "16:9"
+            prompt = self._build_dialogue_scene_prompt(shot)
+            print(f"   🎭 Shot {shot_idx}: Seedance dialogue clip ({clip_s}s, ~${expected:.2f})…")
+            result = self._fal_seedance_client.generate_reference_to_video(
+                prompt=prompt,
+                image_urls=[cast_sheet],
+                audio_urls=[audio_url],
+                duration_s=clip_s,
+                aspect_ratio=aspect,
+                resolution="720p",
+                generate_audio=True,
+            )
+            from ai_video_orchestrator import build_ai_video_html
+            html = self._ensure_fonts(
+                build_ai_video_html(
+                    shot_idx=shot_idx,
+                    video_url=result.video_url,
+                    audio_policy="intrinsic_only",
+                )
+            )
+            print(
+                f"   🎭 Shot {shot_idx}: dialogue clip ready "
+                f"(${result.cost_usd:.2f}, {result.elapsed_s:.0f}s)"
+            )
+            return {
+                "start": start_time,
+                "end": end_time,
+                "htmlStartX": 0, "htmlStartY": 0,
+                "htmlEndX": w, "htmlEndY": h,
+                "html": html,
+                "id": entry_id,
+                "index": shot_idx,
+                "z": shot.get("z", 10),
+                "_shot_type": "DIALOGUE_SCENE",
+                "_narration_excerpt": "",
+                "_visual_description": str(shot.get("scene_description") or "")[:200],
+                "_skill_audio_events": [],
+                "_ai_video_url": result.video_url,
+                "_ai_video_cost_usd": result.cost_usd,
+                "_ai_video_elapsed_s": result.elapsed_s,
+                "_ai_video_audio_on": True,
+            }
+        except Exception as ds_err:
+            print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx} failed: {type(ds_err).__name__}: {ds_err}")
+            try:
+                if self._dialogue_cost_tracker is not None:
+                    self._dialogue_cost_tracker.refund(expected)  # type: ignore[possibly-undefined]
+            except Exception:
+                pass
+            return None
+
     def _concat_master_narration(
         self,
         per_shot_outputs: List[Dict[str, Any]],
@@ -7561,6 +7932,18 @@ class VideoGenerationPipeline:
         """
         if not shots:
             raise RuntimeError("_run_per_shot_tts_v2 called with empty shot plan")
+
+        # DIALOGUE_SCENE pre-pass (storybook mode): synthesize per-character
+        # line audio + resize dialogue shots BEFORE the silence-gap math below,
+        # so each intrinsic window matches the Seedance clip we'll request.
+        try:
+            self._prepare_dialogue_scenes(
+                shots, run_dir,
+                language=language, voice_gender=voice_gender,
+                tts_provider=tts_provider, voice_id=voice_id,
+            )
+        except Exception as _dlg_err:
+            print(f"   ⚠️ dialogue-scene pre-pass failed: {_dlg_err}")
 
         # Build per-shot input list. Each shot gets a `_v2_narration_text`
         # field set from `narration_excerpt` UNLESS audio_policy is
@@ -11470,6 +11853,7 @@ class VideoGenerationPipeline:
             ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
             ai_video_cost_cap_usd=ai_video_cost_cap,
             source_clip_available=self._v3_source_clip_available(),
+            dialogue_scenes_enabled=getattr(self, "_dialogue_scenes_enabled", False),
             article_screenshots=self._v3_article_screenshots(),
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
@@ -11499,8 +11883,13 @@ class VideoGenerationPipeline:
             # back to `_build_default_music_plan` exactly like v2 did.
             "music_plan": sp_result.get("music_plan"),
             "audio_mood": sp_result.get("audio_mood", ""),
+            # DIALOGUE_SCENE cast — persists in shot_plan.json so resume legs
+            # and the dialogue prompt builder see the same verbatim portraits.
+            "characters": sp_result.get("characters") or [],
         }
         sp_usage = sp_result.get("usage") or {}
+        # Stash the cast for the dialogue TTS pre-pass + prompt builder.
+        self._dialogue_characters = shot_plan_dict.get("characters") or []
 
         # ── Edit-Choreographer (LLM authors the cut) + picker (validates) ──
         # The ShotPlanner already set transition_in per shot. A focused pass
@@ -15700,6 +16089,43 @@ class VideoGenerationPipeline:
                     f"(text_density={_td_shot}; KINETIC_TEXT is text-only by design)"
                 )
                 shot_type = _swap_to
+
+            # ── DIALOGUE_SCENE bypass (storybook/drama mode, opt-in) ──
+            # Characters speak on camera in a Seedance clip lip-synced to our
+            # per-character TTS (prepared in the TTS stage). On any failure we
+            # demote to IMAGE_HERO and fall through to the normal HTML path.
+            if shot_type == "DIALOGUE_SCENE":
+                _ds_entry = None
+                if getattr(self, "_dialogue_scenes_enabled", False):
+                    _ds_entry = self._generate_dialogue_scene_entry(
+                        shot, shot_idx, run_dir, start_time, end_time,
+                        _entry_id, _w, _h,
+                    )
+                if _ds_entry is not None:
+                    if on_segment_done:
+                        try:
+                            on_segment_done([_ds_entry])
+                        except Exception:
+                            pass
+                    try:
+                        _cache_path.write_text(
+                            json.dumps({"entries": [_ds_entry], "usage": {}}, default=str)
+                        )
+                    except Exception:
+                        pass
+                    return [_ds_entry], {}
+                # Demote: plain visual beat over the (already silent) window.
+                print(
+                    f"   ⚠️  {_log_label} DIALOGUE_SCENE unavailable — demoting to IMAGE_HERO"
+                )
+                shot_type = "IMAGE_HERO"
+                shot["shot_type"] = "IMAGE_HERO"
+                if not shot.get("image_prompt"):
+                    shot["image_prompt"] = str(
+                        shot.get("scene_description") or "cinematic scene"
+                    )[:300]
+                for _k in ("dialogue", "_dialogue_audio_url", "_dialogue_clip_s"):
+                    shot.pop(_k, None)
 
             # ── AI_VIDEO_HERO bypass (Phase 3b, ultra+ only, opt-in) ──
             # When the Director sets shot_type=AI_VIDEO_HERO AND the run has

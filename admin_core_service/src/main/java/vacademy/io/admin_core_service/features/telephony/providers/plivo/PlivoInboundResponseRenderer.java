@@ -35,13 +35,18 @@ public class PlivoInboundResponseRenderer implements InboundResponseRenderer {
                     + "Please call back later.</Speak><Hangup/></Response>";
         }
         int ring = decision.getMaxRingingSeconds() == null ? 30 : decision.getMaxRingingSeconds();
+        // Plivo/carrier rejects '+'-prefixed numbers ("Internal Error From Carrier").
         StringBuilder b = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>");
-        b.append("<Dial callerId=\"").append(esc(dialledNumber)).append("\" timeout=\"").append(ring).append("\">");
+        b.append("<Dial callerId=\"").append(esc(stripPlus(dialledNumber))).append("\" timeout=\"").append(ring).append("\">");
         for (String n : numbers) {
-            b.append("<Number>").append(esc(n)).append("</Number>");
+            b.append("<Number>").append(esc(stripPlus(n))).append("</Number>");
         }
         b.append("</Dial></Response>");
         return b.toString();
+    }
+
+    private static String stripPlus(String s) {
+        return s != null && s.startsWith("+") ? s.substring(1) : s;
     }
 
     private static List<String> extractNumbers(InboundRouteDecision decision) {

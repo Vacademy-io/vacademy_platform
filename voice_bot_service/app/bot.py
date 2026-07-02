@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -78,18 +79,31 @@ class CallOutcome:
 
 
 class TranscriptCollector(FrameProcessor):
-    """Records the caller's words (final transcriptions) and refreshes the idle clock."""
+    """Records the caller's words (final transcriptions), refreshes the idle clock,
+    and speaks an instant filler acknowledgment ("Hmm…") while the LLM composes —
+    the reply's hard floor is ~1.5s of silence otherwise (VAD window + STT final +
+    LLM TTFT), and a human-style acknowledgment makes it read as attentiveness."""
 
-    def __init__(self, outcome: CallOutcome, on_activity):
+    def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
+        self._is_bot_speaking = is_bot_speaking
+        s = get_settings()
+        self._filler_phrases = list(s.filler_phrases)
+        self._filler_probability = max(0.0, min(1.0, s.filler_probability))
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
             self._outcome.transcript.append({"role": "user", "text": frame.text.strip()})
             self._on_activity(user=True)
+            # Filler only when the bot is quiet — a barge-in already has audio
+            # to cancel, and stacking a filler on it would talk over the caller.
+            if (self._filler_phrases and not self._is_bot_speaking()
+                    and random.random() < self._filler_probability):
+                await self.push_frame(
+                    TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
         await self.push_frame(frame, direction)
 
 
@@ -262,7 +276,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
     )
 
-    transcript = TranscriptCollector(outcome, on_activity)
+    transcript = TranscriptCollector(outcome, on_activity,
+                                     is_bot_speaking=lambda: flags["bot_speaking"])
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking)
 
     pipeline = Pipeline([

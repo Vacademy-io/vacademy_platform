@@ -28,11 +28,18 @@ def build_llm():
     if s.llm_provider == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop;
         # Google's edge is local to the cluster — see config.llm_provider).
+        # reasoning_effort none: Gemini 3.1 "thinks" by default, which pushes
+        # TTFT up and widens its variance; 'none' measured 0.75-0.85s flat.
+        # Sent via extra_body (not a top-level kwarg) so the OpenAI SDK can't
+        # reject it as an unknown parameter.
         return OpenAILLMService(
             api_key=s.gemini_api_key,
             base_url=s.google_llm_base_url,
             model=s.google_llm_model,
-            params=OpenAILLMService.InputParams(temperature=0.6, max_tokens=150),
+            params=OpenAILLMService.InputParams(
+                temperature=0.6, max_tokens=150,
+                extra={"extra_body": {"reasoning_effort": "none"}},
+            ),
         )
     if s.llm_provider == "openrouter":
         # Lazy import — only needed when the fallback is active.

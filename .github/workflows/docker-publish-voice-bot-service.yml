@@ -130,6 +130,10 @@ jobs:
           REPOSITORY: voice-bot-service/voice-bot-service-repo
           GIT_SHA: ${{ github.sha }}
         run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "VOICE_BOT_MUMBAI_SSH_KEY secret not set — skipping Mumbai roll."
+            exit 0
+          fi
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/mumbai && chmod 600 ~/.ssh/mumbai
           ssh -i ~/.ssh/mumbai -o StrictHostKeyChecking=accept-new "root@$HOST" \

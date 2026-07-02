@@ -84,6 +84,20 @@ class Settings:
     # 0.95 sounded noticeably slow on the phone; 1.1 is brisk but natural.
     tts_pace: float = field(default_factory=lambda: float(_env("TTS_PACE", "1.1")))
 
+    # Filler acknowledgment ("Hmm…", "Achha…") spoken the moment the caller's
+    # words are transcribed, masking the LLM+TTS gap — the pipeline's hard floor
+    # is ~1.5s (0.5 VAD + 0.36 STT final + 0.8 Gemini TTFT) and this cuts the
+    # PERCEIVED dead air to ~1s, which is what human agents do. Probability 0
+    # disables; phrases are comma-separated and spoken verbatim.
+    filler_probability: float = field(
+        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.7"))
+    )
+    filler_phrases: tuple = field(
+        default_factory=lambda: tuple(
+            p.strip() for p in _env("FILLER_PHRASES", "Hmm…,Achha…,Ji…").split(",") if p.strip()
+        )
+    )
+
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).
     idle_timeout_secs: float = 7.0

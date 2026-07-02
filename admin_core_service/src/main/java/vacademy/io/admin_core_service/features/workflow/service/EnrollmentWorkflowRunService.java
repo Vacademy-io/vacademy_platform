@@ -31,18 +31,22 @@ import java.util.stream.Collectors;
  * learner enrollment or a course's package sessions, so the admin dashboard can
  * render them as a tick/cross checklist.
  *
- * <p>The list is <b>authoritative</b>: it starts from the workflow triggers
- * <i>configured</i> to fire on enrollment for the package session (the same
- * resolution the engine does — package-session-specific triggers take priority
- * over institute-global ones), so a workflow that <i>will</i> run shows up even
- * before it has executed (as a PENDING run whose steps come from the workflow
- * definition). Where an execution already exists it is overlaid, replacing the
- * definition steps with the real per-node statuses/errors from
- * {@code workflow_execution_log}.
+ * <p>The list is <b>authoritative</b>: it starts from the package-session-specific
+ * workflow triggers <i>configured</i> to fire on enrollment for the course (those
+ * attached via the Course Settings "Workflow Triggers" card, carrying
+ * {@code eventId = packageSessionId}), so a workflow that <i>will</i> run shows up
+ * even before it has executed (as a PENDING run whose steps come from the workflow
+ * definition). Where an execution exists it is overlaid, replacing the definition
+ * steps with the real per-node statuses/errors (and the workflow-level error) from
+ * the execution + {@code workflow_execution_log}. Institute-global triggers
+ * ({@code eventId} null) are intentionally excluded — a global execution can't be
+ * tied to a specific package session.
  *
- * <p>Executions are tied to a package session through the idempotency key
- * ({@code trigger_<triggerId>_eventType_<eventName>_eventId_<eventId>}, eventId =
- * packageSessionId) — there is no dedicated FK.
+ * <p>Executions are tied to a package session through the execution's
+ * {@code workflow_trigger_id} → the trigger's {@code eventId} (= packageSessionId
+ * for course-attached triggers). This is reliable regardless of idempotency
+ * strategy — the idempotency key is a random UUID under the default strategy and
+ * does NOT encode the package session, so it can't be used for the link.
  */
 @Slf4j
 @Service
@@ -70,64 +74,66 @@ public class EnrollmentWorkflowRunService {
             return List.of();
         }
 
-        // Dedup runs across (workflow, packageSession); an executed run wins over a
-        // pending one, and a single execution shared across package sessions is shown once.
+        // Resolve the enrollment triggers configured for each package session, then
+        // overlay each trigger's latest execution. Dedup so a global trigger shared
+        // across package sessions (or an execution) is shown once.
         Map<String, EnrollmentWorkflowRunDTO> runsByKey = new LinkedHashMap<>();
+        // trigger id -> (trigger, the package session it was resolved for)
+        Map<String, WorkflowTrigger> triggersById = new LinkedHashMap<>();
+        Map<String, String> packageSessionByTriggerId = new LinkedHashMap<>();
 
         for (String packageSessionId : packageSessionIds) {
             if (!StringUtils.hasText(packageSessionId)) {
                 continue;
             }
-
-            // Executions already recorded for this package session, indexed by workflow id.
-            String keyPattern = "%eventId_" + packageSessionId + "%";
-            Map<String, WorkflowExecution> executionByWorkflowId = new LinkedHashMap<>();
-            for (WorkflowExecution execution : workflowExecutionRepository
-                    .findEnrollmentRunsByEventIdPattern(instituteId, keyPattern)) {
-                String workflowId = execution.getWorkflow() != null ? execution.getWorkflow().getId() : null;
-                if (workflowId != null) {
-                    executionByWorkflowId.putIfAbsent(workflowId, execution);
-                }
-            }
-
-            // Resolve the workflows configured to fire on enrollment for this package
-            // session — package-session-specific triggers take priority; when none
-            // exist the institute-global triggers fire (mirrors WorkflowTriggerService).
             for (String eventName : ENROLLMENT_EVENTS) {
+                // Only package-session-specific (course-attached) triggers — the ones
+                // configured via the Course Settings "Workflow Triggers" card, which
+                // carry eventId = packageSessionId and so tie reliably to this course.
+                // Institute-global triggers (eventId null) are intentionally NOT
+                // resolved: a global execution can't be scoped to one package session.
                 List<WorkflowTrigger> triggers = workflowTriggerRepository
                         .findSpecificTriggers(instituteId, packageSessionId, eventName, ACTIVE_STATUSES);
-                if (triggers.isEmpty()) {
-                    triggers = workflowTriggerRepository
-                            .findGlobalTriggers(instituteId, eventName, ACTIVE_STATUSES);
-                }
-
                 for (WorkflowTrigger trigger : triggers) {
-                    Workflow workflow = trigger.getWorkflow();
-                    if (workflow == null) {
+                    if (trigger.getWorkflow() == null) {
                         continue;
                     }
-                    WorkflowExecution execution = executionByWorkflowId.get(workflow.getId());
-                    if (execution != null) {
-                        runsByKey.putIfAbsent(execution.getId(), buildExecutedRun(execution));
-                    } else {
-                        String pendingKey = "pending:" + workflow.getId() + ":" + packageSessionId;
-                        runsByKey.putIfAbsent(pendingKey,
-                                buildPendingRun(workflow, eventName, packageSessionId));
-                    }
+                    triggersById.putIfAbsent(trigger.getId(), trigger);
+                    packageSessionByTriggerId.putIfAbsent(trigger.getId(), packageSessionId);
                 }
             }
+        }
 
-            // Defensive: surface executions for this package session whose configured
-            // trigger has since been removed/deactivated, so historical runs aren't lost.
-            for (WorkflowExecution execution : executionByWorkflowId.values()) {
-                runsByKey.putIfAbsent(execution.getId(), buildExecutedRun(execution));
+        if (triggersById.isEmpty()) {
+            return List.of();
+        }
+
+        // Latest execution per trigger.
+        Map<String, WorkflowExecution> latestExecutionByTriggerId = new LinkedHashMap<>();
+        for (WorkflowExecution execution : workflowExecutionRepository
+                .findByWorkflowTriggerIdInOrderByStartedAtDesc(new ArrayList<>(triggersById.keySet()))) {
+            String triggerId = execution.getWorkflowTrigger() != null
+                    ? execution.getWorkflowTrigger().getId()
+                    : null;
+            if (triggerId != null) {
+                latestExecutionByTriggerId.putIfAbsent(triggerId, execution); // query is desc → first = latest
+            }
+        }
+
+        for (WorkflowTrigger trigger : triggersById.values()) {
+            WorkflowExecution execution = latestExecutionByTriggerId.get(trigger.getId());
+            if (execution != null) {
+                runsByKey.putIfAbsent(execution.getId(), buildExecutedRun(execution, trigger));
+            } else {
+                runsByKey.putIfAbsent("pending:" + trigger.getId(),
+                        buildPendingRun(trigger, packageSessionByTriggerId.get(trigger.getId())));
             }
         }
 
         return new ArrayList<>(runsByKey.values());
     }
 
-    private EnrollmentWorkflowRunDTO buildExecutedRun(WorkflowExecution execution) {
+    private EnrollmentWorkflowRunDTO buildExecutedRun(WorkflowExecution execution, WorkflowTrigger trigger) {
         List<WorkflowExecutionLog> logs = workflowExecutionLogRepository
                 .findByWorkflowExecutionIdOrderByCreatedAtAsc(execution.getId());
         Map<String, String> nodeNamesById = resolveNodeNames(
@@ -153,8 +159,8 @@ public class EnrollmentWorkflowRunService {
                 .executionId(execution.getId())
                 .workflowId(execution.getWorkflow() != null ? execution.getWorkflow().getId() : null)
                 .workflowName(execution.getWorkflow() != null ? execution.getWorkflow().getName() : null)
-                .eventName(parseKeyPart(execution.getIdempotencyKey(), "eventType_", "_eventId_"))
-                .eventId(parseKeyPart(execution.getIdempotencyKey(), "eventId_", null))
+                .eventName(trigger.getTriggerEventName())
+                .eventId(trigger.getEventId())
                 .status(execution.getStatus())
                 .errorMessage(execution.getErrorMessage())
                 .startedAt(execution.getStartedAt())
@@ -168,13 +174,14 @@ public class EnrollmentWorkflowRunService {
      * package session. Steps come from the workflow definition (node mappings →
      * node templates) with a null status (rendered as "pending" / waiting).
      */
-    private EnrollmentWorkflowRunDTO buildPendingRun(Workflow workflow, String eventName, String packageSessionId) {
+    private EnrollmentWorkflowRunDTO buildPendingRun(WorkflowTrigger trigger, String packageSessionId) {
+        Workflow workflow = trigger.getWorkflow();
         List<WorkflowNodeMapping> mappings = workflowNodeMappingRepository
                 .findByWorkflowIdOrderByNodeOrderAsc(workflow.getId());
-        Map<String, String> nodeNamesById = resolveNodeNames(
-                mappings.stream().map(WorkflowNodeMapping::getNodeTemplateId).collect(Collectors.toSet()));
-        Map<String, String> nodeTypesById = resolveNodeTypes(
-                mappings.stream().map(WorkflowNodeMapping::getNodeTemplateId).collect(Collectors.toSet()));
+        Set<String> nodeTemplateIds = mappings.stream()
+                .map(WorkflowNodeMapping::getNodeTemplateId).collect(Collectors.toSet());
+        Map<String, String> nodeNamesById = resolveNodeNames(nodeTemplateIds);
+        Map<String, String> nodeTypesById = resolveNodeTypes(nodeTemplateIds);
 
         List<EnrollmentWorkflowRunDTO.Step> steps = mappings.stream()
                 .map(mapping -> EnrollmentWorkflowRunDTO.Step.builder()
@@ -189,8 +196,8 @@ public class EnrollmentWorkflowRunService {
         return EnrollmentWorkflowRunDTO.builder()
                 .workflowId(workflow.getId())
                 .workflowName(workflow.getName())
-                .eventName(eventName)
-                .eventId(packageSessionId)
+                .eventName(trigger.getTriggerEventName())
+                .eventId(trigger.getEventId() != null ? trigger.getEventId() : packageSessionId)
                 .status(WorkflowExecutionStatus.PENDING)
                 .steps(steps)
                 .build();
@@ -221,26 +228,5 @@ public class EnrollmentWorkflowRunService {
     private String resolveName(Map<String, String> nodeNamesById, String nodeTemplateId, String fallback) {
         String name = nodeNamesById.get(nodeTemplateId);
         return StringUtils.hasText(name) ? name : fallback;
-    }
-
-    /**
-     * Extracts the substring after {@code prefix} up to {@code endMarker} (or the
-     * end of the string when {@code endMarker} is null). Returns null when the
-     * prefix is absent.
-     */
-    private String parseKeyPart(String idempotencyKey, String prefix, String endMarker) {
-        if (!StringUtils.hasText(idempotencyKey)) {
-            return null;
-        }
-        int start = idempotencyKey.indexOf(prefix);
-        if (start < 0) {
-            return null;
-        }
-        start += prefix.length();
-        if (endMarker == null) {
-            return idempotencyKey.substring(start);
-        }
-        int end = idempotencyKey.indexOf(endMarker, start);
-        return end < 0 ? idempotencyKey.substring(start) : idempotencyKey.substring(start, end);
     }
 }

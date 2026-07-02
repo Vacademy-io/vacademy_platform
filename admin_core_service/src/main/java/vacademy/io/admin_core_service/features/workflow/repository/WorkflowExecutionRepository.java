@@ -46,23 +46,21 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
                         @Param("statuses") List<WorkflowExecutionStatus> statuses);
 
         /**
-         * Fetch workflow executions for an enrollment-related event by matching the
-         * {@code eventId} encoded inside the idempotency key (see
-         * {@code EventBasedKeyGenerator}: key format
-         * {@code trigger_<triggerId>_eventType_<eventName>_eventId_<eventId>}). For
-         * {@code LEARNER_BATCH_ENROLLMENT} (and sibling enrollment events) the eventId
-         * is the package session id, so callers pass a pattern like
-         * {@code "%eventId_<packageSessionId>%"}. Scoped to the institute via the
-         * owning workflow. The workflow is fetched eagerly so the caller can read its
-         * name/event outside the persistence context.
+         * Fetch workflow executions for the given triggers, newest first. Executions
+         * are linked to their trigger by {@code workflow_trigger_id} (set at dispatch
+         * in {@code WorkflowTriggerService}), which is reliable regardless of the
+         * trigger's idempotency strategy — unlike the idempotency key, which is a
+         * random UUID under the default strategy and therefore does NOT encode the
+         * event/package-session id. For course-attached enrollment triggers the
+         * trigger carries {@code eventId = packageSessionId}, so matching by trigger
+         * ties an execution to a specific package session. The workflow is fetched
+         * eagerly so callers can read its name outside the persistence context.
          */
         @Query("SELECT we FROM WorkflowExecution we JOIN FETCH we.workflow w " +
-                        "WHERE w.instituteId = :instituteId " +
-                        "AND we.idempotencyKey LIKE :keyPattern " +
+                        "WHERE we.workflowTrigger.id IN :triggerIds " +
                         "ORDER BY we.startedAt DESC")
-        List<WorkflowExecution> findEnrollmentRunsByEventIdPattern(
-                        @Param("instituteId") String instituteId,
-                        @Param("keyPattern") String keyPattern);
+        List<WorkflowExecution> findByWorkflowTriggerIdInOrderByStartedAtDesc(
+                        @Param("triggerIds") List<String> triggerIds);
 
         List<WorkflowExecution> findByWorkflowIdOrderByStartedAtDesc(String workflowId);
 

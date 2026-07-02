@@ -18,6 +18,7 @@ import {
     GearSix,
     MagnifyingGlass,
     LockKey,
+    Heartbeat,
 } from '@phosphor-icons/react';
 import { SidebarSearch } from './sidebar-search';
 import { cn } from '@/lib/utils';
@@ -278,6 +279,29 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                             </span>
                         </button>
             </div>
+
+            {/* ─── Service health / status page (external, pinned above Settings) ──── */}
+            <a
+                href="https://status.vacademy.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                    'hover:bg-white/10'
+                )}
+                aria-label="Service status"
+                title="Service status"
+            >
+                <span className="relative z-10">
+                    <Heartbeat
+                        size={22}
+                        className="text-white/70 transition-colors duration-200"
+                    />
+                </span>
+                <span className="relative z-10 text-[10px] font-medium leading-tight text-white/70 transition-colors duration-200">
+                    Status
+                </span>
+            </a>
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
             {hasSettings && (

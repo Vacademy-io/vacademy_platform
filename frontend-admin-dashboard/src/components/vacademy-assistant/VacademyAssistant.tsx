@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import {
     ArrowClockwise,
+    ArrowsInSimple,
+    ArrowsOutSimple,
     ChatCircleDots,
     PaperPlaneRight,
     Sparkle,
     SpinnerGap,
+    UserCircle,
     Warning,
     X,
 } from '@phosphor-icons/react';
@@ -15,9 +19,12 @@ import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { ASSISTANT_CAPABILITIES } from '@/constants/urls';
+import { useSelectedStudentMirrorStore } from '@/stores/assistant/selected-student-mirror';
 import { useVacademyAssistant } from './useVacademyAssistant';
 import { useAssistDock } from '@/components/assist-dock/store';
-import type { AssistantAction, AssistantMessage } from './types';
+import type { AssistantAction, AssistantCapabilities, AssistantMessage } from './types';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import type { ReactNode } from 'react';
@@ -36,7 +43,40 @@ const PUBLIC_PREFIXES = [
     '/vim/waitlist',
 ];
 
-const SUGGESTIONS = [
+/** Capability-group → human blurb + example prompts (role-accurate: only the
+ * groups the /capabilities endpoint returns for THIS user are shown). */
+const CAPABILITY_COPY: Record<string, { blurb: string; suggestions: string[] }> = {
+    search_help_knowledge: {
+        blurb: 'How-to guidance',
+        suggestions: ['How do I create a course?', 'How do I invite a team member?'],
+    },
+    learner_data: {
+        blurb: 'Learner lookups — attendance, scores, activity, logins',
+        suggestions: ['Find a learner by name', "What's this student's attendance this month?"],
+    },
+    payments: {
+        blurb: 'Fees & payments',
+        suggestions: ['Does this learner have overdue fees?'],
+    },
+    batch_data: {
+        blurb: 'Batch rosters',
+        suggestions: [],
+    },
+    schedule: {
+        blurb: 'Class schedules',
+        suggestions: ['What classes are live right now?'],
+    },
+    institute_overview: {
+        blurb: 'Institute stats',
+        suggestions: ['How much fees is pending across the institute?'],
+    },
+    learner_edits: {
+        blurb: 'Make changes (with your confirmation)',
+        suggestions: ["Extend a learner's access expiry"],
+    },
+};
+
+const FALLBACK_SUGGESTIONS = [
     'How do I create a course?',
     'Where do I add a learner to a batch?',
     'How do I invite a team member?',
@@ -45,12 +85,43 @@ const SUGGESTIONS = [
 export function VacademyAssistant() {
     const pathname = useRouterState({ select: (s) => s.location.pathname });
     const [input, setInput] = useState('');
+    const [expanded, setExpanded] = useState(false);
     const panel = useAssistDock((s) => s.panel);
     const setPanel = useAssistDock((s) => s.setPanel);
     const open = panel === 'assistant';
     const { messages, status, error, sendMessage, reset, resolveAction } = useVacademyAssistant();
     const scrollEndRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
+
+    // The student currently open in a side view — shown as an "Asking about" chip
+    // so the context-awareness is visible (and clearable) instead of magic.
+    const selectedStudent = useSelectedStudentMirrorStore((s) => s.student);
+    const clearSelectedStudent = useSelectedStudentMirrorStore((s) => s.setStudent);
+
+    // Role-accurate capabilities (the AND-gate applied server-side) drive the
+    // empty state, so users see exactly what THEY can ask — nothing they can't.
+    const { data: capabilities } = useQuery<AssistantCapabilities>({
+        queryKey: ['assistant-capabilities'],
+        queryFn: async () => (await authenticatedAxiosInstance.get(ASSISTANT_CAPABILITIES)).data,
+        enabled: open,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const { capabilityBlurbs, suggestions } = useMemo(() => {
+        const groups = capabilities?.groups?.map((g) => g.key) ?? [];
+        if (groups.length === 0) {
+            return { capabilityBlurbs: [] as string[], suggestions: FALLBACK_SUGGESTIONS };
+        }
+        const blurbs: string[] = [];
+        const sugg: string[] = [];
+        for (const key of groups) {
+            const copy = CAPABILITY_COPY[key];
+            if (!copy) continue;
+            blurbs.push(copy.blurb);
+            sugg.push(...copy.suggestions);
+        }
+        return { capabilityBlurbs: blurbs, suggestions: sugg.slice(0, 5) };
+    }, [capabilities]);
 
     // A help answer can include a route link (e.g. [Open Courses](/study-library/courses));
     // navigate in-app and collapse the panel so the user lands on the page.
@@ -95,7 +166,12 @@ export function VacademyAssistant() {
     };
 
     return (
-        <div className="fixed inset-x-4 bottom-6 top-20 z-40 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-20 sm:top-24 sm:w-96">
+        <div
+            className={cn(
+                'fixed inset-x-4 bottom-6 top-20 z-40 flex flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl sm:inset-x-auto sm:right-20 sm:top-24',
+                expanded ? 'sm:left-1/3' : 'sm:w-96'
+            )}
+        >
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-primary-500 px-4 py-3 text-white">
                 <div className="flex items-center gap-2">
@@ -110,6 +186,14 @@ export function VacademyAssistant() {
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        aria-label={expanded ? 'Shrink panel' : 'Expand panel'}
+                        onClick={() => setExpanded((e) => !e)}
+                        className="hidden size-8 items-center justify-center rounded-md text-white/90 transition-colors hover:bg-white/20 sm:flex"
+                    >
+                        {expanded ? <ArrowsInSimple size={18} /> : <ArrowsOutSimple size={18} />}
+                    </button>
                     {messages.length > 0 && (
                         <button
                             type="button"
@@ -135,7 +219,7 @@ export function VacademyAssistant() {
             <ScrollArea className="flex-1">
                 <div className="flex flex-col gap-3 p-4">
                     {messages.length === 0 && (
-                        <div className="flex flex-col items-center gap-3 py-8 text-center">
+                        <div className="flex flex-col items-center gap-3 py-6 text-center">
                             <div className="flex size-12 items-center justify-center rounded-full bg-primary-50">
                                 <ChatCircleDots
                                     size={26}
@@ -146,11 +230,29 @@ export function VacademyAssistant() {
                             <p className="text-body font-semibold text-neutral-700">
                                 Hi! How can I help?
                             </p>
-                            <p className="text-caption text-neutral-500">
-                                Ask me how or where to do anything in Vacademy.
-                            </p>
+                            {capabilityBlurbs.length > 0 ? (
+                                <ul className="flex flex-col items-start gap-1 text-left">
+                                    {capabilityBlurbs.map((b) => (
+                                        <li
+                                            key={b}
+                                            className="flex items-start gap-1.5 text-caption text-neutral-600"
+                                        >
+                                            <Sparkle
+                                                size={12}
+                                                weight="fill"
+                                                className="mt-0.5 shrink-0 text-primary-400"
+                                            />
+                                            {b}
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-caption text-neutral-500">
+                                    Ask me how or where to do anything in Vacademy.
+                                </p>
+                            )}
                             <div className="mt-1 flex flex-col gap-2">
-                                {SUGGESTIONS.map((s) => (
+                                {suggestions.map((s) => (
                                     <button
                                         key={s}
                                         type="button"
@@ -171,6 +273,14 @@ export function VacademyAssistant() {
                                 action={message.action}
                                 onResolve={resolveAction}
                             />
+                        ) : message.role === 'status' ? (
+                            <p
+                                key={message.id}
+                                className="flex items-center gap-1.5 text-caption italic text-neutral-400"
+                            >
+                                <SpinnerGap size={12} className="animate-spin" />
+                                {message.content}
+                            </p>
                         ) : (
                             <MessageBubble
                                 key={message.id}
@@ -197,6 +307,25 @@ export function VacademyAssistant() {
                     <div ref={scrollEndRef} />
                 </div>
             </ScrollArea>
+
+            {/* Context chip — makes "this student" visible instead of magic */}
+            {selectedStudent && (
+                <div className="flex shrink-0 items-center gap-1.5 border-t border-neutral-100 bg-primary-50 px-3 py-1.5">
+                    <UserCircle size={14} weight="fill" className="shrink-0 text-primary-500" />
+                    <span className="min-w-0 flex-1 truncate text-caption text-primary-700">
+                        Asking about:{' '}
+                        <span className="font-semibold">{selectedStudent.full_name}</span>
+                    </span>
+                    <button
+                        type="button"
+                        aria-label="Stop asking about this student"
+                        onClick={() => clearSelectedStudent(null)}
+                        className="flex size-5 shrink-0 items-center justify-center rounded-full text-primary-400 transition-colors hover:bg-primary-100 hover:text-primary-600"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            )}
 
             {/* Input */}
             <form

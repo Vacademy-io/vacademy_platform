@@ -1,7 +1,12 @@
 // Types for the Vacademy Assistant widget. The SSE payload shapes mirror
 // ai_service app/routers/assistant.py / assistant_service.py.
 
-export type AssistantRole = 'user' | 'assistant' | 'action';
+export type AssistantRole = 'user' | 'assistant' | 'action' | 'status';
+
+/** GET /assistant/capabilities — the tool groups THIS caller may use. */
+export interface AssistantCapabilities {
+    groups: Array<{ key: string; mode: 'READ' | 'WRITE'; tools: string[] }>;
+}
 
 export type AssistantActionStatus = 'pending' | 'working' | 'executed' | 'cancelled' | 'failed';
 

@@ -123,6 +123,22 @@ async def stream_session(
     )
 
 
+@router.get(
+    "/capabilities",
+    summary="The tool groups the caller can use (for role-accurate suggestions)",
+)
+async def capabilities(
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+):
+    try:
+        return await service.get_capabilities(principal)
+    except Exception as e:
+        logger.error("Error fetching assistant capabilities: %s", e)
+        # Fail soft — the FE falls back to the generic help suggestions.
+        return {"groups": []}
+
+
 @router.post(
     "/session/{session_id}/action/{action_id}/confirm",
     summary="Confirm a pending assistant write action",

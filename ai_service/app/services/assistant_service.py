@@ -168,6 +168,22 @@ class AssistantAgentService:
             count = ChatMessageRepository(db).count_messages_by_session(session_id)
         return ok, count
 
+    async def get_capabilities(self, principal: PinnedPrincipal) -> Dict[str, Any]:
+        """The tool groups THIS caller can actually use (AND-gate applied) — lets
+        the FE show role-accurate suggestions instead of a static list."""
+        from .assistant_tool_registry import ASSISTANT_TOOLS
+
+        with self._get_db() as db:
+            setting = load_assistant_tools_setting(db, principal.institute_id)
+        groups: Dict[str, Dict[str, Any]] = {}
+        for spec in ASSISTANT_TOOLS.values():
+            if is_tool_allowed(spec.name, principal, setting):
+                g = groups.setdefault(spec.key(), {"key": spec.key(), "mode": spec.mode, "tools": []})
+                g["tools"].append(spec.name)
+                if spec.mode == "WRITE":
+                    g["mode"] = "WRITE"
+        return {"groups": sorted(groups.values(), key=lambda g: g["key"])}
+
     # ── write-confirmation protocol ──────────────────────────────────────
 
     def _load_pending_action(self, db, session_id: str, action_id: str):

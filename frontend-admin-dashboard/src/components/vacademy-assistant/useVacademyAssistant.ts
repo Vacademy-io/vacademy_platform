@@ -56,6 +56,22 @@ const CREDITS_EXHAUSTED_MSG =
     'AI credits are exhausted for your institute. Please add credits to keep using the assistant.';
 const GENERIC_ERROR_MSG = 'Could not reach the assistant. Please try again in a moment.';
 
+/** Friendly one-liners shown while a tool runs, so waits feel purposeful. */
+const TOOL_ACTIVITY_LABELS: Record<string, string> = {
+    search_help_knowledge: 'Searching help articles…',
+    find_learner: 'Searching learners…',
+    get_student_360: 'Fetching learner data…',
+    get_payment_history: 'Fetching payment history…',
+    get_fee_dues: 'Checking fee dues…',
+    get_subscription_plans: 'Checking payment plans…',
+    list_batch_learners: 'Loading the batch roster…',
+    get_class_schedule: 'Checking the schedule…',
+    get_institute_overview: 'Gathering institute stats…',
+    trigger_full_report: 'Starting the full report…',
+    update_learner_profile: 'Preparing the change…',
+    manage_enrollment: 'Preparing the change…',
+};
+
 /**
  * Current page context sent with every message so the assistant can resolve
  * "this student" (route + the student open in the side view / profile overlay).
@@ -167,8 +183,28 @@ export function useVacademyAssistant() {
                             if (data?.content) appendToStreamingAssistant(data.content);
                         } else if (frame.event === 'message') {
                             const data = frame.data as AssistantMessageData;
-                            // tool_call / tool_result are intermediate — not shown as bubbles in v1.
-                            if (data?.type === 'assistant') finalizeAssistant(data.content || '');
+                            if (data?.type === 'assistant') {
+                                finalizeAssistant(data.content || '');
+                            } else if (data?.type === 'tool_call') {
+                                // Surface tool activity as a small status line so the
+                                // user sees what the assistant is doing while it works.
+                                const toolName = String(
+                                    (data.metadata as { tool_name?: string } | null)?.tool_name ??
+                                        ''
+                                );
+                                const label = TOOL_ACTIVITY_LABELS[toolName];
+                                if (label) {
+                                    setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                            id: `status-${data.id ?? crypto.randomUUID()}`,
+                                            role: 'status',
+                                            content: label,
+                                        },
+                                    ]);
+                                }
+                            }
+                            // tool_result stays hidden — the answer summarizes it.
                         } else if (frame.event === 'action_request') {
                             const data = frame.data as AssistantActionRequestData;
                             if (data?.action_id) {

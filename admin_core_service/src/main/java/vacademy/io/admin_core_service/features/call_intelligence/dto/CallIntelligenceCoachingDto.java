@@ -40,6 +40,20 @@ public class CallIntelligenceCoachingDto {
         private String key;
         private Double avgScore;
         private long count;
+        /**
+         * In whole-team coaching, the counsellors weakest in this quality (below the
+         * team average for it), so the UI can say "X can improve in this field".
+         * Null/empty for single-counsellor coaching.
+         */
+        private List<WeakCounsellor> weakCounsellors;
+    }
+
+    @Data
+    @Builder
+    public static class WeakCounsellor {
+        private String counsellorUserId;
+        private String name;
+        private Double avgScore;
     }
 
     @Data

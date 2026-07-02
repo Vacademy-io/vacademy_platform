@@ -89,25 +89,49 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                                 const pct =
                                     q.avgScore == null ? 0 : Math.max(4, (q.avgScore / 10) * 100);
                                 const tone = scoreTone(q.avgScore);
+                                const weak = (q.weakCounsellors ?? []).filter((w) =>
+                                    (w.name ?? w.counsellorUserId)?.trim()
+                                );
                                 return (
-                                    <div key={q.key} className="flex items-center gap-3">
-                                        <span className="w-36 shrink-0 truncate text-caption text-neutral-600">
-                                            {prettify(q.key)}
-                                        </span>
-                                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white">
-                                            <div
-                                                className={cn('h-full rounded-full', tone.bar)}
-                                                style={{ width: `${pct}%` }}
-                                            />
+                                    <div key={q.key} className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-36 shrink-0 truncate text-caption text-neutral-600">
+                                                {prettify(q.key)}
+                                            </span>
+                                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white">
+                                                <div
+                                                    className={cn('h-full rounded-full', tone.bar)}
+                                                    style={{ width: `${pct}%` }}
+                                                />
+                                            </div>
+                                            <span
+                                                className={cn(
+                                                    'w-8 shrink-0 text-right text-caption font-medium',
+                                                    tone.text
+                                                )}
+                                            >
+                                                {fmt(q.avgScore)}
+                                            </span>
                                         </div>
-                                        <span
-                                            className={cn(
-                                                'w-8 shrink-0 text-right text-caption font-medium',
-                                                tone.text
-                                            )}
-                                        >
-                                            {fmt(q.avgScore)}
-                                        </span>
+                                        {weak.length > 0 && (
+                                            <div className="flex flex-wrap items-center gap-1 pl-36 text-caption text-neutral-500">
+                                                <span>Can improve:</span>
+                                                {weak.map((w) => (
+                                                    <span
+                                                        key={w.counsellorUserId}
+                                                        className="rounded-full bg-white px-2 py-0.5 text-neutral-600"
+                                                    >
+                                                        {w.name ?? w.counsellorUserId}
+                                                        {w.avgScore != null && (
+                                                            <span className="text-neutral-400">
+                                                                {' '}
+                                                                · {w.avgScore.toFixed(1)}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -121,12 +145,13 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                             <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
                                 <Lightbulb size={13} /> Recurring coaching themes
                             </p>
-                            <ul className="space-y-1">
+                            <ul className="space-y-1.5">
                                 {tips.slice(0, 5).map((t, i) => (
                                     <li
                                         key={i}
-                                        className="flex items-start gap-1.5 text-body text-neutral-700"
+                                        className="flex items-start gap-2 text-body text-neutral-700"
                                     >
+                                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary-400" />
                                         <span className="flex-1">{t.text}</span>
                                         {t.count > 1 && (
                                             <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-caption text-neutral-500">
@@ -143,12 +168,13 @@ export function TeamCoachingSection({ instituteId, fromMillis, toMillis, classNa
                             <p className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-neutral-500">
                                 <Warning size={13} /> Objections the team hits most
                             </p>
-                            <ul className="space-y-1">
+                            <ul className="space-y-1.5">
                                 {objections.slice(0, 5).map((o, i) => (
                                     <li
                                         key={i}
                                         className="flex items-start gap-2 text-body text-neutral-700"
                                     >
+                                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-warning-400" />
                                         <span className="flex-1">{o.objection}</span>
                                         <span className="shrink-0 text-caption text-neutral-500">
                                             handled {o.handledCount}/{o.count}

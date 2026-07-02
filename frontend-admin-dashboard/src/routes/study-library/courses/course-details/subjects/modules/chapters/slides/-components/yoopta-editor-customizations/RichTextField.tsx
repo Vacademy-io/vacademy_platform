@@ -62,9 +62,36 @@ export const escapeRichTextAttr = (s: string): string =>
 // quiz/tab content when an S3 image (…amazonaws.com?X-Amz-Signature=…) lived
 // inside the rich text: the strip-aws regex ate across the encoded JSON quotes
 // and broke JSON.parse on reload, resetting the block to empty defaults.
+// Strip expired S3 signatures from any amazonaws URL inside a block's data
+// BEFORE base64-encoding it. Inner-block images are uploaded via getPublicUrl,
+// which returns a 1-day SIGNED URL (…amazonaws.com?X-Amz-Signature=…&X-Amz-Expires=…).
+// Because the payload is base64, the document-wide stripAwsQueryParamsFromUrls
+// can't reach it, so without this the image would 404 once the signature
+// expires. The bucket objects are public-read, so the query-less URL is the
+// permanent one. The regex is bounded by whitespace/quote/angle so it can only
+// ever trim a single URL's query — never run into surrounding content.
+const stripAwsSignaturesDeep = (value: unknown): unknown => {
+    if (typeof value === 'string') {
+        return /amazonaws\.com/i.test(value)
+            ? value.replace(
+                  /(https?:\/\/[^\s"'<>]*amazonaws\.com[^\s"'<>?]*)\?[^\s"'<>]*/gi,
+                  '$1'
+              )
+            : value;
+    }
+    if (Array.isArray(value)) return value.map(stripAwsSignaturesDeep);
+    if (value && typeof value === 'object') {
+        const source = value as Record<string, unknown>;
+        const out: Record<string, unknown> = {};
+        for (const key of Object.keys(source)) out[key] = stripAwsSignaturesDeep(source[key]);
+        return out;
+    }
+    return value;
+};
+
 export const encodeBlockData = (obj: unknown): string => {
     try {
-        return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+        return btoa(unescape(encodeURIComponent(JSON.stringify(stripAwsSignaturesDeep(obj)))));
     } catch (e) {
         console.error('[BlockData] encode failed', e);
         return '';

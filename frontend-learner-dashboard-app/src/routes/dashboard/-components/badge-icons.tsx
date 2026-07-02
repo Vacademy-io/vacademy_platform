@@ -5,7 +5,7 @@ import {
 import type { IconProps, IconWeight } from "@phosphor-icons/react";
 import { type FC, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getPublicUrl } from "@/services/upload_file";
+import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 /**
  * Curated badge icon set shared by every badge surface (the Play widget and the
@@ -38,14 +38,17 @@ export const BadgeVisual: FC<{
   weight?: IconWeight;
   /** When true (use inside a fixed-size circle), a custom image fills the container. */
   fill?: boolean;
-}> = ({ icon, size = 22, className, weight = "fill", fill = false }) => {
+  /** On no-login pages (e.g. the public leaderboard), resolve uploaded images without auth. */
+  noAuth?: boolean;
+}> = ({ icon, size = 22, className, weight = "fill", fill = false, noAuth = false }) => {
   const builtIn = isBuiltInBadgeIcon(icon);
   const [url, setUrl] = useState("");
 
   useEffect(() => {
     if (builtIn || !icon) return;
     let active = true;
-    getPublicUrl(icon)
+    const resolve = noAuth ? getPublicUrlWithoutLogin : getPublicUrl;
+    resolve(icon)
       .then((u) => {
         if (active) setUrl(u || "");
       })
@@ -53,7 +56,7 @@ export const BadgeVisual: FC<{
     return () => {
       active = false;
     };
-  }, [icon, builtIn]);
+  }, [icon, builtIn, noAuth]);
 
   if (!builtIn && url) {
     return fill ? (

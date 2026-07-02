@@ -14,7 +14,7 @@ function BadgeIcons({ entry }: { entry: LeaderboardEntry }) {
     <span className="inline-flex items-center gap-0.5">
       {shown.map((b, i) => (
         <span key={i} title={b.name} className="inline-flex">
-          <BadgeVisual icon={b.icon} size={14} className="text-warning-600" />
+          <BadgeVisual icon={b.icon} size={14} className="text-warning-600" noAuth />
         </span>
       ))}
       {entry.badgeCount > shown.length && (

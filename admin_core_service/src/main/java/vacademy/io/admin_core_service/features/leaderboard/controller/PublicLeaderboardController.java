@@ -25,7 +25,7 @@ public class PublicLeaderboardController {
     @GetMapping("/course/{packageSessionId}")
     public ResponseEntity<LeaderboardResponseDTO> getPublicCourseLeaderboard(
             @PathVariable String packageSessionId,
-            @RequestParam String instituteId) {
+            @RequestParam(required = false) String instituteId) {
         return ResponseEntity.ok(
                 leaderboardService.buildPublicCourseLeaderboard(packageSessionId, instituteId));
     }

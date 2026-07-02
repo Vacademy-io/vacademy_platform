@@ -4,4 +4,10 @@ public interface BatchInstituteProjection {
     String getBatchName();
 
     String getInstituteName();
+
+    String getInstituteId();
+
+    String getInstituteLogoFileId();
+
+    String getInstituteThemeCode();
 }

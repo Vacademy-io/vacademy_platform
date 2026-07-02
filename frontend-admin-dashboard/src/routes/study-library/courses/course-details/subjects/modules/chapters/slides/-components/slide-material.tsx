@@ -1390,6 +1390,36 @@ export const SlideMaterial = ({
                 return;
             }
 
+            // Never let a catastrophically SHRUNKEN serialization overwrite good
+            // content. A truncation (e.g. the S3-URL sanitizer eating a data-*
+            // block, or a paste glitch) produces VALID but truncated HTML that
+            // the empty/degraded guards above don't catch — a 15KB lesson can
+            // collapse to a 200-byte fragment. If the new content is a small
+            // fraction of what's already stored, refuse the silent auto-save so
+            // the stored copy stays intact. Normal editing rarely removes >70%
+            // of a slide in one go; genuine large deletions can still be saved
+            // explicitly (that path surfaces a confirmation).
+            const storedDocHtml = (
+                slide.document_slide?.published_data ||
+                slide.document_slide?.data ||
+                ''
+            ).trim();
+            if (
+                storedDocHtml.length > 1500 &&
+                htmlString.trim().length < storedDocHtml.length * 0.3
+            ) {
+                console.warn(
+                    `⚠️ Skipping DOC auto-save — new content (${htmlString.trim().length}B) is <30% of ` +
+                        `stored (${storedDocHtml.length}B); refusing to overwrite (likely a truncation). ` +
+                        'Reopen the slide and Save explicitly if this shrink was intentional.'
+                );
+                toast.warning(
+                    'The previous slide became much shorter than what was saved, so it was NOT overwritten. ' +
+                        'Please reopen it to check your content is intact.'
+                );
+                return;
+            }
+
             // Process images in HTML content before saving
             let processedHtmlString = htmlString;
             if (containsBase64Images(htmlString)) {

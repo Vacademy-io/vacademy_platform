@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.institute.repository.InstituteRep
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -55,14 +56,24 @@ public class LeaderboardService {
      * Public, fully-anonymized course leaderboard for the shareable page (no auth).
      * Gated behind the institute's master badges/leaderboard toggle; adds the course name.
      */
-    public LeaderboardResponseDTO buildPublicCourseLeaderboard(String packageSessionId, String instituteId) {
-        if (!isLeaderboardEnabled(instituteId)) {
-            return new LeaderboardResponseDTO(0, List.of(), null, null);
+    public LeaderboardResponseDTO buildPublicCourseLeaderboard(String packageSessionId, String instituteIdHint) {
+        // Derive the institute from the batch so the public page works on ANY domain
+        // (generic learner.vacademy.io included), not only the institute's white-label domain.
+        BatchInstituteProjection ctx = packageSessionRepository
+                .findBatchAndInstituteByPackageSessionId(packageSessionId).orElse(null);
+        String instituteId = (ctx != null && ctx.getInstituteId() != null)
+                ? ctx.getInstituteId() : instituteIdHint;
+        if (instituteId == null || !isLeaderboardEnabled(instituteId)) {
+            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null);
         }
         LeaderboardResponseDTO dto =
                 buildCourseLeaderboard(packageSessionId, instituteId, null, true, 50, null);
-        packageSessionRepository.findBatchAndInstituteByPackageSessionId(packageSessionId)
-                .ifPresent(ctx -> dto.setCourseName(ctx.getBatchName()));
+        if (ctx != null) {
+            dto.setCourseName(ctx.getBatchName());
+            dto.setInstituteName(ctx.getInstituteName());
+            dto.setInstituteLogoFileId(ctx.getInstituteLogoFileId());
+            dto.setInstituteThemeCode(ctx.getInstituteThemeCode());
+        }
         return dto;
     }
 
@@ -111,9 +122,16 @@ public class LeaderboardService {
     /** Public, fully-anonymized institute-wide leaderboard (no auth); gated by the master toggle. */
     public LeaderboardResponseDTO buildPublicInstituteLeaderboard(String instituteId) {
         if (!isLeaderboardEnabled(instituteId)) {
-            return new LeaderboardResponseDTO(0, List.of(), null, null);
+            return new LeaderboardResponseDTO(0, List.of(), null, null, null, null, null);
         }
-        return buildInstituteLeaderboard(instituteId, null, true, 50);
+        LeaderboardResponseDTO dto = buildInstituteLeaderboard(instituteId, null, true, 50);
+        // Institute branding so the public page renders on ANY domain.
+        instituteRepository.findById(instituteId).ifPresent(inst -> {
+            dto.setInstituteName(inst.getInstituteName());
+            dto.setInstituteLogoFileId(inst.getLogoFileId());
+            dto.setInstituteThemeCode(inst.getInstituteThemeCode());
+        });
+        return dto;
     }
 
     /** Shared: turn ranked activity rows + institute badge counts into a leaderboard DTO. */
@@ -164,7 +182,7 @@ public class LeaderboardService {
         LeaderboardEntryDTO me = all.stream().filter(LeaderboardEntryDTO::isCurrentUser).findFirst().orElse(null);
         List<LeaderboardEntryDTO> top = all.stream().limit(Math.max(1, limit)).collect(Collectors.toList());
 
-        return new LeaderboardResponseDTO(all.size(), top, me, null);
+        return new LeaderboardResponseDTO(all.size(), top, me, null, null, null, null);
     }
 
     public BadgeStatsResponseDTO buildBadgeStats(String instituteId) {

@@ -1,0 +1,6 @@
+# Automatic LetsEncrypt TLS + WebSocket-transparent reverse proxy.
+# The hostname must resolve to this box (Cloudflare record must be
+# DNS-only / grey-cloud — the orange proxy breaks long-lived Plivo WSS).
+voice-bot-in.vacademy.io {
+	reverse_proxy voice-bot:8090
+}

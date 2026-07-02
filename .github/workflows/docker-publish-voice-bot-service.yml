@@ -114,3 +114,27 @@ jobs:
           else
             echo "Deployment $DEPLOYMENT_NAME not found — create it once via helm (services.voice_bot_service.enabled=true). Skipping rollout."
           fi
+
+      # Mumbai audio anchor (Linode ap-west): a standalone docker-compose box that
+      # anchors the Plivo<->bot<->Sarvam audio path in-country (see
+      # voice_bot_service/deploy/linode-mumbai/README.md). Enabled by setting the
+      # repo variable VOICE_BOT_MUMBAI_HOST (the box's IP/hostname) + the secret
+      # VOICE_BOT_MUMBAI_SSH_KEY (private key for root@host). Rolls the SAME
+      # immutable :<sha> image by rewriting VOICE_BOT_IMAGE in /opt/voice-bot/.env.
+      - name: Deploy to Mumbai anchor (Linode) over SSH
+        if: vars.VOICE_BOT_MUMBAI_HOST != ''
+        env:
+          SSH_KEY: ${{ secrets.VOICE_BOT_MUMBAI_SSH_KEY }}
+          HOST: ${{ vars.VOICE_BOT_MUMBAI_HOST }}
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: voice-bot-service/voice-bot-service-repo
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/mumbai && chmod 600 ~/.ssh/mumbai
+          ssh -i ~/.ssh/mumbai -o StrictHostKeyChecking=accept-new "root@$HOST" \
+            "set -e; cd /opt/voice-bot; \
+             sed -i '/^VOICE_BOT_IMAGE=/d' .env; \
+             echo 'VOICE_BOT_IMAGE=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA' >> .env; \
+             docker compose pull -q voice-bot; docker compose up -d; \
+             sleep 5; docker compose ps"

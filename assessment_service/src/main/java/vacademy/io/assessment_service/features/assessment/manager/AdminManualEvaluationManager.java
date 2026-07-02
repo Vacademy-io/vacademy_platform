@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.EvaluationDraftDto;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptFilter;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponse;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
@@ -20,6 +21,7 @@ import vacademy.io.assessment_service.features.assessment.enums.EvaluationLogsTy
 import vacademy.io.assessment_service.features.assessment.enums.QuestionResponseEnum;
 import vacademy.io.assessment_service.features.assessment.enums.ReleaseResultStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentSetMappingRepository;
+import vacademy.io.assessment_service.features.assessment.repository.EvaluationDraftRepository;
 import vacademy.io.assessment_service.features.assessment.repository.EvaluationLogsRepository;
 import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.service.StudentAttemptService;
@@ -57,6 +59,9 @@ public class AdminManualEvaluationManager {
     @Autowired
     EvaluationLogsRepository evaluationLogsRepository;
 
+    @Autowired
+    EvaluationDraftRepository evaluationDraftRepository;
+
 
     public ResponseEntity<String> submitManualEvaluatedMarks(CustomUserDetails userDetails, String assessmentId, String instituteId, String attemptId, ManualSubmitMarksRequest request) {
         try {
@@ -75,9 +80,96 @@ public class AdminManualEvaluationManager {
 
             createEvaluationLog(attemptOptional.get(), userDetails, request.getDataJson());
 
+            // The evaluation is now COMPLETED — discard any in-progress draft(s) for
+            // this attempt so it doesn't get offered for "resume" after submission.
+            discardDraftsForAttempt(attemptId);
+
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
             throw new VacademyException("Failed To Update Marks: " + e.getMessage());
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Draft (save-for-later) support. Keeps the full editable evaluator state so a
+    // faculty can pause and resume grading from any device instead of the old
+    // download-PDF / re-upload dance. The draft is NOT the learner-facing artifact —
+    // nothing is released and no evaluated file is produced until the final submit.
+    // ---------------------------------------------------------------------------
+    public ResponseEntity<String> saveEvaluationDraft(CustomUserDetails userDetails, String assessmentId, String instituteId, String attemptId, String draftJson) {
+        try {
+            Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
+            if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
+
+            // Never let the learner who owns this attempt write to its evaluation draft.
+            if (isAttemptOwner(userDetails, attemptOptional.get()))
+                throw new VacademyException("Not authorized to evaluate this attempt");
+
+            // One shared draft per copy: reuse the existing row so any faculty updates
+            // the same in-progress draft rather than creating a personal copy.
+            EvaluationDraft draft = evaluationDraftRepository
+                    .findByAttemptId(attemptId)
+                    .orElseGet(() -> EvaluationDraft.builder()
+                            .attemptId(attemptId)
+                            .build());
+
+            draft.setAssessmentId(assessmentId);
+            draft.setInstituteId(instituteId);
+            // Record who saved it last (informational — the draft stays shared).
+            draft.setEvaluatorUserId(userDetails.getUserId());
+            draft.setDraftJson(draftJson);
+            draft.setUpdatedAt(DateUtil.getCurrentUtcTime());
+
+            evaluationDraftRepository.save(draft);
+            return ResponseEntity.ok("Done");
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Save Draft: " + e.getMessage());
+        }
+    }
+
+    public ResponseEntity<EvaluationDraftDto> getEvaluationDraft(CustomUserDetails userDetails, String attemptId) {
+        try {
+            // Guard: the learner who owns the attempt must never see its in-progress
+            // evaluation. Any faculty, however, resumes the same shared draft.
+            Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
+            if (attemptOptional.isPresent() && isAttemptOwner(userDetails, attemptOptional.get()))
+                return ResponseEntity.ok(null);
+
+            return evaluationDraftRepository
+                    .findByAttemptId(attemptId)
+                    .map(draft -> ResponseEntity.ok(draft.toDto()))
+                    // No draft for this copy — 200 with an empty body so the frontend
+                    // simply starts fresh.
+                    .orElseGet(() -> ResponseEntity.ok(null));
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Get Draft: " + e.getMessage());
+        }
+    }
+
+    // True when the caller IS the learner whose attempt this is (so drafts — the
+    // in-progress evaluation — are never readable/writable by the student).
+    private boolean isAttemptOwner(CustomUserDetails userDetails, StudentAttempt attempt) {
+        String callerId = userDetails.getUserId();
+        String learnerId = attempt.getRegistration() != null ? attempt.getRegistration().getUserId() : null;
+        return callerId != null && callerId.equals(learnerId);
+    }
+
+    public ResponseEntity<String> deleteEvaluationDraft(CustomUserDetails userDetails, String attemptId) {
+        try {
+            discardDraftsForAttempt(attemptId);
+            return ResponseEntity.ok("Done");
+        } catch (Exception e) {
+            throw new VacademyException("Failed To Delete Draft: " + e.getMessage());
+        }
+    }
+
+    // Best-effort — the repository method runs in its OWN transaction, so a failed
+    // draft cleanup can never roll back a successful marks submission.
+    private void discardDraftsForAttempt(String attemptId) {
+        try {
+            evaluationDraftRepository.deleteByAttemptId(attemptId);
+        } catch (Exception ignored) {
+            // Swallow: a stale draft should never fail a successful submit.
         }
     }
 

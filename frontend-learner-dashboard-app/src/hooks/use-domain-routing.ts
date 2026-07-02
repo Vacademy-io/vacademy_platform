@@ -440,6 +440,8 @@ export const useDomainRouting = () => {
         "/learner-invitation-response",
         "/payment-result",
         "/un",
+        // Public shareable leaderboard (course + institute) — don't redirect away.
+        "/leaderboard",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)
@@ -493,6 +495,8 @@ export const useDomainRouting = () => {
         "/learner-invitation-response",
         "/payment-result",
         "/un",
+        // Public shareable leaderboard (course + institute) — don't redirect away.
+        "/leaderboard",
       ];
       const isOnPublicRoute = publicRoutes.some((route) =>
         currentPath.startsWith(route)

@@ -193,3 +193,159 @@ describe('DOC slide: a throwing block is detected as degraded (data-loss guard)'
         expect(appSaveSerialize(editor).degraded).toBe(false);
     });
 });
+
+describe('DOC slide: signed S3 images survive and get de-signed (truncation regression)', () => {
+    it('quiz with INNER signed images — content kept, signature stripped, end-to-end', () => {
+        const editor = makeEditor();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const value: Record<string, any> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const add = (b: any) => (value[b.id] = b);
+        add(blk(0, 'Paragraph', 'paragraph', 'SIG_BEFORE'));
+        add(
+            custom(1, 'quizBlock', {
+                quizData: {
+                    question:
+                        'SIG_Q <img src="https://vac.s3.amazonaws.com/q.png?X-Amz-Signature=DEADBEEF&X-Amz-Expires=86400" />',
+                    type: 'mcq',
+                    explanation: '',
+                    options: [
+                        {
+                            id: 'o1',
+                            text: 'SIG_OPT_IMG <img src="https://vac.s3.amazonaws.com/o.png?X-Amz-Signature=CAFEBABE" />',
+                            isCorrect: true,
+                        },
+                        { id: 'o2', text: 'SIG_OPT_PLAIN', isCorrect: false },
+                    ],
+                },
+            })
+        );
+        add(blk(2, 'Paragraph', 'paragraph', 'SIG_AFTER'));
+        editor.setEditorValue(value as any);
+
+        const stored = formatHTMLString(html.serialize(editor, value as any));
+        const reloaded = makeEditor();
+        reloaded.setEditorValue(html.deserialize(reloaded, appReloadPreprocess(stored)));
+        const { out, degraded } = appSaveSerialize(reloaded);
+        const searchable = out + decodeDataAttrs(out);
+
+        for (const s of ['SIG_BEFORE', 'SIG_Q', 'SIG_OPT_IMG', 'SIG_OPT_PLAIN', 'SIG_AFTER']) {
+            expect(searchable, `lost "${s}" on round-trip`).toContain(s);
+        }
+        expect(searchable, 'inner image q.png kept').toContain('q.png');
+        expect(searchable, 'inner image o.png kept').toContain('o.png');
+        expect(searchable, 'expiring signature must be stripped so the image cannot 404').not.toContain(
+            'X-Amz-Signature'
+        );
+        expect(degraded).toBe(false);
+    });
+
+    it('legacy entity-encoded data-* holding a signed URL is NOT truncated by the save sanitizer', () => {
+        // The ORIGINAL bug: a signed S3 URL inside a legacy (pre-base64) data-*
+        // block. The old whole-doc sanitizer ate across the encoded JSON quotes
+        // and deleted everything from the '?' — taking SIG_INSIDE (and often the
+        // rest of the slide) with it. The fixed sanitizer only touches real
+        // src/href/poster attributes, so the data-* payload is left byte-intact.
+        const storedRaw =
+            '<div data-quiz="{&quot;u&quot;:&quot;https://vac.s3.amazonaws.com/x.png?sig=ABC&quot;,&quot;keep&quot;:&quot;SIG_INSIDE&quot;}">Q</div>' +
+            '<p>SIG_OUTSIDE</p>';
+        const afterSave = formatHTMLString(storedRaw);
+        expect(afterSave, 'save must not truncate the encoded payload').toContain('SIG_INSIDE');
+        expect(afterSave, 'neighbour content survives').toContain('SIG_OUTSIDE');
+        // The old code would have deleted "sig=ABC…" from inside the data-*; the
+        // fix leaves the payload completely untouched.
+        expect(afterSave, 'data-* payload left untouched').toContain('sig=ABC');
+    });
+
+    it('a top-level signed image between blocks keeps neighbours and is de-signed', () => {
+        const storedRaw =
+            '<h1>SIG_TOP</h1>' +
+            '<div><img src="https://vac.s3.amazonaws.com/hero.png?X-Amz-Signature=ZZZ&X-Amz-Expires=1" alt="" /></div>' +
+            '<p>SIG_MIDDLE</p><p>SIG_END</p>';
+        const afterReload = appReloadPreprocess(formatHTMLString(storedRaw));
+        for (const s of ['SIG_TOP', 'SIG_MIDDLE', 'SIG_END']) {
+            expect(afterReload, `lost "${s}"`).toContain(s);
+        }
+        expect(afterReload, 'image kept').toContain('hero.png');
+        expect(afterReload, 'signature stripped').not.toContain('X-Amz-Signature');
+    });
+
+    // Runs the two content-touching sanitizers that fire on save + reload — the
+    // exact path a stored slide flows through when reopened.
+    const saveThenReload = (storedInnerHtml: string): string =>
+        appReloadPreprocess(formatHTMLString(storedInnerHtml));
+
+    it('DEEP DIVE — image INSIDE an accordion: heading, body & image all survive, de-signed', () => {
+        const s = saveThenReload(
+            '<p>SIG_A_BEFORE</p>' +
+                '<div><details><summary>SIG_ACC_HEADING</summary><div>' +
+                '<p>SIG_ACC_BODY</p>' +
+                '<img src="https://vac.s3.amazonaws.com/acc.png?X-Amz-Signature=BBB&X-Amz-Expires=86400" alt="" />' +
+                '</div></details></div>' +
+                '<p>SIG_A_AFTER</p>'
+        );
+        for (const sig of ['SIG_A_BEFORE', 'SIG_ACC_HEADING', 'SIG_ACC_BODY', 'SIG_A_AFTER']) {
+            expect(s, `accordion lost "${sig}"`).toContain(sig);
+        }
+        expect(s, 'accordion image kept').toContain('acc.png');
+        expect(s, 'accordion image de-signed').not.toContain('X-Amz-Signature');
+    });
+
+    it('DEEP DIVE — image INSIDE a table cell: cells & image survive, de-signed, table not truncated', () => {
+        const s = saveThenReload(
+            '<table data-header-row="true"><colgroup><col style="width: 200px" /><col style="width: 200px" /></colgroup>' +
+                '<tbody>' +
+                '<tr><th>SIG_TH_A</th><th>SIG_TH_B</th></tr>' +
+                '<tr><td>SIG_TD_TEXT</td>' +
+                '<td><img src="https://vac.s3.amazonaws.com/cell.png?X-Amz-Signature=CCC" alt="" /></td></tr>' +
+                '</tbody></table>'
+        );
+        for (const sig of ['SIG_TH_A', 'SIG_TH_B', 'SIG_TD_TEXT']) {
+            expect(s, `table lost "${sig}"`).toContain(sig);
+        }
+        expect(s, 'table-cell image kept').toContain('cell.png');
+        expect(s, 'table-cell image de-signed').not.toContain('X-Amz-Signature');
+    });
+
+    it('DEEP DIVE — one slide with image + quiz(inner img) + accordion(inner img): nothing lost, all de-signed', () => {
+        // Real quiz block carrying an inner signed image (exercises encodeBlockData)...
+        const editor = makeEditor();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const value: Record<string, any> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const add = (b: any) => (value[b.id] = b);
+        add(blk(0, 'HeadingOne', 'heading-one', 'SIG_FULL_TITLE'));
+        add(
+            custom(1, 'quizBlock', {
+                quizData: {
+                    question:
+                        'SIG_FQ <img src="https://vac.s3.amazonaws.com/fq.png?X-Amz-Signature=DDD" />',
+                    type: 'mcq',
+                    explanation: '',
+                    options: [{ id: 'o1', text: 'SIG_FOPT', isCorrect: true }],
+                },
+            })
+        );
+        add(blk(2, 'Paragraph', 'paragraph', 'SIG_FULL_END'));
+        editor.setEditorValue(value as any);
+
+        // ...plus a doc image + an accordion image authored alongside it.
+        let stored = formatHTMLString(html.serialize(editor, value as any));
+        stored = stored.replace(
+            '\n        </div>\n    </body>',
+            '<div><img data-meta-align="center" src="https://vac.s3.amazonaws.com/fdoc.png?X-Amz-Signature=EEE" /></div>' +
+                '<div><details><summary>SIG_FACC_HEAD</summary><div>' +
+                '<img src="https://vac.s3.amazonaws.com/facc.png?X-Amz-Signature=FFF" /></div></details></div>' +
+                '\n        </div>\n    </body>'
+        );
+
+        const searchable = saveThenReload(stored) + decodeDataAttrs(saveThenReload(stored));
+        for (const sig of ['SIG_FULL_TITLE', 'SIG_FQ', 'SIG_FOPT', 'SIG_FULL_END', 'SIG_FACC_HEAD']) {
+            expect(searchable, `combined slide lost "${sig}"`).toContain(sig);
+        }
+        for (const img of ['fq.png', 'fdoc.png', 'facc.png']) {
+            expect(searchable, `combined slide lost image "${img}"`).toContain(img);
+        }
+        expect(searchable, 'every image de-signed').not.toContain('X-Amz-Signature');
+    });
+});

@@ -2,13 +2,43 @@
  * Strip query parameters from any AWS S3 URLs as these are public assets and
  * temporary signatures can be expired/stale. We only target hosts containing
  * "amazonaws.com" and remove everything after the first '?' character.
+ *
+ * IMPORTANT — why this only touches real URL attributes:
+ * The previous implementation ran a blunt `…amazonaws\.com[^"'()<>\s]*\?…`
+ * scan over the ENTIRE serialized slide. When an S3 URL sat inside a data-*
+ * block (quiz/tabs), the JSON quotes there are entity-encoded (`&quot;`, not
+ * literal `"`), so the negated character class never stopped at the URL's end —
+ * it swallowed the rest of the block (and everything after it) up to the next
+ * literal delimiter, and the `slice(0, '?')` replacement then DELETED that whole
+ * swallowed span. A single freshly-uploaded image (signed `?…` URL) could wipe
+ * the rest of the document. We now match only `src`/`href`/`poster` attribute
+ * values, bounded by the attribute's own quote, so the match can never cross
+ * into other content. data-* payloads are left untouched (the block editors
+ * already base64-encode their JSON, and their internal images render from the
+ * decoded value — they must not be rewritten here).
  */
 export const stripAwsQueryParamsFromUrls = (htmlString: string): string => {
-    const awsSignedUrlRegex = /https?:\/\/[^"'()<>\s]*amazonaws\.com[^"'()<>\s]*\?[^"'()<>\s]*/gi;
-    return htmlString.replace(awsSignedUrlRegex, (matched: string): string => {
-        const qIndex = matched.indexOf('?');
-        return qIndex === -1 ? matched : matched.slice(0, qIndex);
-    });
+    if (!htmlString) return htmlString;
+
+    const stripQuery = (url: string): string => {
+        if (!/amazonaws\.com/i.test(url)) return url;
+        const qIndex = url.indexOf('?');
+        return qIndex === -1 ? url : url.slice(0, qIndex);
+    };
+
+    // (attr=)(quote)(value)(same quote). [^"'] excludes both quote styles, so
+    // the value can never run past its own closing quote — the over-match that
+    // caused the truncation is structurally impossible here. (Catastrophic
+    // content loss from ANY cause is separately guarded on save by the
+    // shrink-check in slide-material.tsx's autoPublishDocSlide — a length-based
+    // fail-safe here would false-trigger on image-heavy slides where the signed
+    // query strings are a large fraction of a small document.)
+    const attrUrlRegex = /(\b(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi;
+    return htmlString.replace(
+        attrUrlRegex,
+        (_match, prefix: string, quote: string, url: string): string =>
+            `${prefix}${quote}${stripQuery(url)}${quote}`
+    );
 };
 
 /**

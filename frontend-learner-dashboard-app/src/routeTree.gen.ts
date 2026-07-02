@@ -81,6 +81,7 @@ import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
+import { Route as LeaderboardInstituteInstituteIdIndexRouteImport } from './routes/leaderboard/institute/$instituteId/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
 import { Route as AssessmentReportsComparisonIndexRouteImport } from './routes/assessment/reports/comparison/index'
 import { Route as AssessmentReportsAiReportIndexRouteImport } from './routes/assessment/reports/ai-report/index'
@@ -475,6 +476,12 @@ const MMediaIdPhoneNumberIndexRoute =
     path: '/m/$mediaId/$phoneNumber/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LeaderboardInstituteInstituteIdIndexRoute =
+  LeaderboardInstituteInstituteIdIndexRouteImport.update({
+    id: '/leaderboard/institute/$instituteId/',
+    path: '/leaderboard/institute/$instituteId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssessmentReportsStudentReportIndexRoute =
   AssessmentReportsStudentReportIndexRouteImport.update({
     id: '/assessment/reports/student-report/',
@@ -624,6 +631,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -709,6 +717,7 @@ export interface FileRoutesByTo {
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -796,6 +805,7 @@ export interface FileRoutesById {
   '/assessment/reports/ai-report/': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison/': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId/': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -884,6 +894,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report'
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
+    | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -969,6 +980,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report'
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
+    | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -1055,6 +1067,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report/'
     | '/assessment/reports/comparison/'
     | '/assessment/reports/student-report/'
+    | '/leaderboard/institute/$instituteId/'
     | '/m/$mediaId/$phoneNumber/'
     | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
@@ -1141,6 +1154,7 @@ export interface RootRouteChildren {
   AssessmentReportsAiReportIndexRoute: typeof AssessmentReportsAiReportIndexRoute
   AssessmentReportsComparisonIndexRoute: typeof AssessmentReportsComparisonIndexRoute
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
+  LeaderboardInstituteInstituteIdIndexRoute: typeof LeaderboardInstituteInstituteIdIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
   PayInvoiceInvoiceIdIndexRoute: typeof PayInvoiceInvoiceIdIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -1662,6 +1676,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMediaIdPhoneNumberIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/leaderboard/institute/$instituteId/': {
+      id: '/leaderboard/institute/$instituteId/'
+      path: '/leaderboard/institute/$instituteId'
+      fullPath: '/leaderboard/institute/$instituteId'
+      preLoaderRoute: typeof LeaderboardInstituteInstituteIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assessment/reports/student-report/': {
       id: '/assessment/reports/student-report/'
       path: '/assessment/reports/student-report'
@@ -1836,6 +1857,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentReportsComparisonIndexRoute: AssessmentReportsComparisonIndexRoute,
   AssessmentReportsStudentReportIndexRoute:
     AssessmentReportsStudentReportIndexRoute,
+  LeaderboardInstituteInstituteIdIndexRoute:
+    LeaderboardInstituteInstituteIdIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,
   PayInvoiceInvoiceIdIndexRoute: PayInvoiceInvoiceIdIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:

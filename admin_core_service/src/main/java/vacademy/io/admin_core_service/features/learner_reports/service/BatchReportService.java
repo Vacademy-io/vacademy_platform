@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.sql.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -181,5 +182,12 @@ public class BatchReportService {
                 filter.getPackageSessionId(),
                 ACTIVE_LEARNERS
         );
+    }
+
+    /** Institute-WIDE activity ranking — every active learner across all batches, summed. */
+    public List<LearnerActivityDataProjection> getInstituteActivityDataLeaderBoard(
+            String instituteId, Date startDate, Date endDate) {
+        return activityLogRepository.getInstituteActivityDataWithRank(
+                startDate, endDate, instituteId, ACTIVE_LEARNERS);
     }
 }

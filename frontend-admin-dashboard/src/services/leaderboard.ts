@@ -4,12 +4,18 @@ import { BASE_URL } from '@/constants/urls';
 
 const BASE = `${BASE_URL}/admin-core-service/leaderboard/v1`;
 
+export interface LeaderboardBadge {
+    name: string;
+    icon: string;
+}
+
 export interface LeaderboardEntry {
     rank: number | null;
     userId: string | null;
     name: string;
     points: number;
     badgeCount: number;
+    badges: LeaderboardBadge[];
     currentUser: boolean;
 }
 
@@ -37,6 +43,15 @@ export async function getCourseLeaderboardAdmin(packageSessionId: string): Promi
     const instituteId = getCurrentInstituteId();
     const { data } = await authenticatedAxiosInstance.get<LeaderboardData>(`${BASE}/course/admin`, {
         params: { packageSessionId, instituteId },
+    });
+    return data;
+}
+
+/** Admin institute-WIDE leaderboard: every learner ranked across all their courses combined. */
+export async function getInstituteLeaderboardAdmin(): Promise<LeaderboardData> {
+    const instituteId = getCurrentInstituteId();
+    const { data } = await authenticatedAxiosInstance.get<LeaderboardData>(`${BASE}/institute/admin`, {
+        params: { instituteId },
     });
     return data;
 }

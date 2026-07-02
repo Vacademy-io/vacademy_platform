@@ -95,6 +95,31 @@ public class LeaderboardService {
 
         List<LearnerActivityDataProjection> rows =
                 batchReportService.getBatchActivityDataLeaderBoard(filter, userDetails);
+        return buildFromActivityRows(rows, instituteId, currentUserId, anonymize, limit);
+    }
+
+    /** Institute-WIDE leaderboard: rank every learner across all their courses combined. */
+    public LeaderboardResponseDTO buildInstituteLeaderboard(String instituteId, String currentUserId,
+                                                            boolean anonymize, int limit) {
+        List<LearnerActivityDataProjection> rows = batchReportService.getInstituteActivityDataLeaderBoard(
+                instituteId,
+                Date.valueOf(LocalDate.of(2000, 1, 1)),
+                Date.valueOf(LocalDate.now().plusDays(1)));
+        return buildFromActivityRows(rows, instituteId, currentUserId, anonymize, limit);
+    }
+
+    /** Public, fully-anonymized institute-wide leaderboard (no auth); gated by the master toggle. */
+    public LeaderboardResponseDTO buildPublicInstituteLeaderboard(String instituteId) {
+        if (!isLeaderboardEnabled(instituteId)) {
+            return new LeaderboardResponseDTO(0, List.of(), null, null);
+        }
+        return buildInstituteLeaderboard(instituteId, null, true, 50);
+    }
+
+    /** Shared: turn ranked activity rows + institute badge counts into a leaderboard DTO. */
+    private LeaderboardResponseDTO buildFromActivityRows(List<LearnerActivityDataProjection> rows,
+                                                         String instituteId, String currentUserId,
+                                                         boolean anonymize, int limit) {
         if (rows == null) rows = List.of();
 
         List<String> userIds = rows.stream()

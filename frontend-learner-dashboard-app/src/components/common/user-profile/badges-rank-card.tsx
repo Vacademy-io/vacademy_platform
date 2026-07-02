@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Trophy, Crown } from "@phosphor-icons/react";
+import { Trophy, Crown, Buildings } from "@phosphor-icons/react";
 import { BadgeVisual } from "@/routes/dashboard/-components/badge-icons";
 import { getCachedGamification, type PlayBadge } from "@/services/play-gamification";
-import { fetchLearnerSummary } from "@/services/course-leaderboard";
+import { fetchLearnerSummary, fetchMyInstituteRank } from "@/services/course-leaderboard";
 import { getBadgesEnabled } from "@/services/badge-config";
 import { getInstituteId } from "@/constants/helper";
 
@@ -15,6 +15,7 @@ export const BadgesRankCard: React.FC = () => {
   const [badges, setBadges] = useState<{ name: string; icon: string }[]>([]);
   const [count, setCount] = useState(0);
   const [bestRank, setBestRank] = useState<number | null>(null);
+  const [instituteRank, setInstituteRank] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -43,7 +44,10 @@ export const BadgesRankCard: React.FC = () => {
         }
       }
 
-      const summary = await fetchLearnerSummary();
+      const [summary, instituteStanding] = await Promise.all([
+        fetchLearnerSummary(),
+        fetchMyInstituteRank(),
+      ]);
       if (!active) return;
 
       // Fall back to the server's awarded badges if the dashboard cache is empty.
@@ -55,6 +59,7 @@ export const BadgesRankCard: React.FC = () => {
       setBadges(list.slice(0, 12));
       setCount(total);
       setBestRank(summary?.bestRank ?? null);
+      setInstituteRank(instituteStanding?.rank ?? null);
       setLoaded(true);
     })();
     return () => {
@@ -64,7 +69,7 @@ export const BadgesRankCard: React.FC = () => {
 
   // Feature disabled, or nothing earned yet and no rank → hide the card entirely.
   if (hidden) return null;
-  if (loaded && count === 0 && bestRank == null) return null;
+  if (loaded && count === 0 && bestRank == null && instituteRank == null) return null;
 
   return (
     <div className="rounded-xl border bg-card p-5 shadow-sm">
@@ -86,6 +91,15 @@ export const BadgesRankCard: React.FC = () => {
             <div>
               <p className="text-body font-bold text-primary-600">#{bestRank}</p>
               <p className="text-caption text-muted-foreground">best rank</p>
+            </div>
+          </div>
+        )}
+        {instituteRank != null && (
+          <div className="flex items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-2">
+            <Buildings weight="fill" className="h-4 w-4 text-primary-500" />
+            <div>
+              <p className="text-body font-bold text-primary-600">#{instituteRank}</p>
+              <p className="text-caption text-muted-foreground">institute rank</p>
             </div>
           </div>
         )}

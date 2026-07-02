@@ -1458,6 +1458,75 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("packageSessionId") String packageSessionId,
             @Param("statusList") List<String> statusList);
 
+    /**
+     * Institute-WIDE activity ranking: same shape as {@link #getBatchActivityDataWithRank}
+     * but the candidate set is every active learner in the institute (across all batches),
+     * so each learner's total_minutes sums their activity over all their courses.
+     */
+    @Query(value = """
+                WITH valid_users AS (
+                    SELECT DISTINCT user_id
+                    FROM student_session_institute_group_mapping
+                    WHERE institute_id = :instituteId
+                    AND status IN (:statusList)
+                ),
+                activity AS (
+                    SELECT
+                        a.user_id,
+                        SUM(
+                            CASE
+                                WHEN a.start_time < '2023-01-01' THEN 0
+                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                            END
+                        ) AS total_minutes,
+                        COUNT(DISTINCT DATE(a.start_time)) AS active_days
+                    FROM activity_log a
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                    GROUP BY a.user_id
+                ),
+                concentration AS (
+                    SELECT
+                        a.user_id,
+                        AVG(LEAST(100, GREATEST(0, cs.concentration_score))) AS avg_concentration
+                    FROM concentration_score cs
+                    JOIN activity_log a ON a.id = cs.activity_id
+                    JOIN valid_users vu ON vu.user_id = a.user_id
+                    WHERE a.start_time BETWEEN :startTime AND :endTime
+                      AND cs.concentration_score > 0
+                    GROUP BY a.user_id
+                ),
+                students AS (
+                    -- One row per learner: the `student` unique key is (user_id, username),
+                    -- so a user can have >1 row — dedup here to avoid duplicate rows on the
+                    -- institute-wide leaderboard (which spans every learner in the institute).
+                    SELECT DISTINCT ON (s.user_id) s.user_id AS user_id,
+                           s.full_name AS full_name, s.email AS email
+                    FROM student s
+                    JOIN valid_users vu ON vu.user_id = s.user_id
+                    ORDER BY s.user_id, s.id
+                )
+                SELECT
+                    st.user_id AS userId,
+                    st.full_name AS fullName,
+                    st.email AS email,
+                    COALESCE(c.avg_concentration, 0) AS avgConcentration,
+                    COALESCE(act.total_minutes, 0) AS totalTime,
+                    COALESCE(act.total_minutes / NULLIF(act.active_days, 0), 0) AS dailyAvgTime,
+                    DENSE_RANK() OVER (
+                        ORDER BY COALESCE(act.total_minutes, 0) DESC,
+                                 COALESCE(c.avg_concentration, 0) DESC
+                    ) AS rank
+                FROM students st
+                LEFT JOIN activity act ON act.user_id = st.user_id
+                LEFT JOIN concentration c ON c.user_id = st.user_id
+            """, nativeQuery = true)
+    List<LearnerActivityDataProjection> getInstituteActivityDataWithRank(
+            @Param("startTime") Date startTime,
+            @Param("endTime") Date endTime,
+            @Param("instituteId") String instituteId,
+            @Param("statusList") List<String> statusList);
+
     @Query(value = """
                         WITH Chapters AS (
                             SELECT

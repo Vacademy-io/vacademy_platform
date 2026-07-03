@@ -660,6 +660,15 @@ class VideoGenerationRequest(BaseModel):
             "music off (clips carry their own ambience), higher clip budget."
         )
     )
+    cast_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Reuse a saved cast (see /cast endpoints): the planner keeps these exact "
+            "characters (names + verbatim portraits), the pipeline reuses their stored "
+            "reference sheets (same faces) and voice mapping (same voices) — a series "
+            "of storybook/drama videos with a consistent cast."
+        )
+    )
     mute_tts_on_source_clips: bool = Field(
         default=False,
         description=(

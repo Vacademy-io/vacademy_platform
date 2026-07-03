@@ -14,6 +14,7 @@ import {
     Stop,
     Clock,
     WarningCircle,
+    UsersThree,
 } from '@phosphor-icons/react';
 import type { StageRow } from './-utils/stage-rows';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,7 @@ import { ShotPlanDecision } from './gates/ShotPlanDecision';
 import { VisualCastingDecision } from './gates/VisualCastingDecision';
 import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
 import { ContactSheetDecision } from './gates/ContactSheetDecision';
+import { AssetRequestDecision } from './gates/AssetRequestDecision';
 
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
@@ -66,6 +68,8 @@ interface AssistChatProps {
     vimMode?: boolean;
     /** Post-completion conversational editor: "redo shot 3 — bigger headline". */
     onPostEdit?: (text: string) => void;
+    /** Save this video's dialogue cast for reuse (storybook/drama runs only). */
+    onSaveCast?: () => void;
     postEdits?: PostEditItem[];
     /** Bumped after a post-edit lands — reloads the completion player. */
     playerReloadKey?: number;
@@ -284,6 +288,14 @@ function DecisionCard({
                     onSubmit={onSubmit}
                 />
             );
+        case 'asset_request':
+            return (
+                <AssetRequestDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
         case 'narration':
             return (
                 <NarrationDecision
@@ -317,6 +329,7 @@ function CompletionCard({
     orientation,
     onEdit,
     onShowProgress,
+    onSaveCast,
     reloadKey,
 }: {
     timelineUrl?: string;
@@ -325,6 +338,8 @@ function CompletionCard({
     orientation?: 'landscape' | 'portrait';
     onEdit?: () => void;
     onShowProgress?: () => void;
+    /** Present only when this run generated dialogue scenes — saves the cast. */
+    onSaveCast?: () => void;
     /** Bumped after a post-completion edit — remounts the player and busts
      *  the timeline fetch cache so the updated frame shows. */
     reloadKey?: number;
@@ -375,6 +390,12 @@ function CompletionCard({
                         Details & download
                     </Button>
                 )}
+                {onSaveCast && (
+                    <Button variant="outline" size="sm" onClick={onSaveCast} className="gap-1.5">
+                        <UsersThree className="size-3.5" />
+                        Save cast
+                    </Button>
+                )}
             </div>
         </div>
     );
@@ -408,6 +429,7 @@ export function AssistChat({
     onEdit,
     apiKey,
     onPostEdit,
+    onSaveCast,
     postEdits,
     playerReloadKey,
 }: AssistChatProps) {
@@ -513,6 +535,7 @@ export function AssistChat({
                             orientation={orientation}
                             onEdit={onEdit}
                             onShowProgress={onShowProgress}
+                            onSaveCast={onSaveCast}
                             reloadKey={playerReloadKey}
                         />
                         {(postEdits ?? []).map((p) => (

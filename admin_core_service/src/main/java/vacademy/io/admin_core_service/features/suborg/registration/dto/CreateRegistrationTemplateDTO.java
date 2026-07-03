@@ -55,4 +55,10 @@ public class CreateRegistrationTemplateDTO {
     private String vendor;
     private String vendorId;
     private String currency;
+
+    /**
+     * DigiLocker KYC step config: ["AADHAAR"] or ["AADHAAR","PAN"]. Non-empty enables the
+     * KYC step (must include AADHAAR). Empty/absent = no KYC.
+     */
+    private List<String> kycDocuments;
 }

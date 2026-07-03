@@ -24,6 +24,9 @@ public interface SubOrgRegistrationRepository extends JpaRepository<SubOrgRegist
     /** Webhook lookup: flip PENDING_PAYMENT → COMPLETED once the spawned sub-org's plan activates. */
     Optional<SubOrgRegistration> findFirstBySpawnedSubOrgIdAndStatus(String spawnedSubOrgId, String status);
 
+    /** KYC webhook lookup by the verification id we sent to Cashfree SecureID. */
+    Optional<SubOrgRegistration> findFirstByKycVerificationId(String kycVerificationId);
+
     /** Pessimistic lock for the complete/spawn transition — guards double-submit. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM SubOrgRegistration r WHERE r.id = :id")

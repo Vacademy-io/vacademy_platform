@@ -2998,6 +2998,7 @@ class VideoGenerationPipeline:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
@@ -3146,6 +3147,25 @@ class VideoGenerationPipeline:
         # P2: per-character reference portraits ({name_lower: url}) — cached
         # once per run; None = not yet attempted.
         self._character_sheet_urls: Optional[Dict[str, str]] = None
+        # P3: saved cast (series reuse) — locks characters, portrait sheets,
+        # and voice genders to a previously saved cast so a sequel video has
+        # the SAME faces and voices.
+        self._saved_cast: List[Dict[str, Any]] = [
+            c for c in (saved_cast or [])
+            if isinstance(c, dict) and c.get("name")
+        ][:4]
+        if self._saved_cast:
+            self._dialogue_characters = list(self._saved_cast)
+            _sheets = {
+                str(c["name"]).strip().lower(): str(c["sheet_url"])
+                for c in self._saved_cast if c.get("sheet_url")
+            }
+            if _sheets:
+                self._character_sheet_urls = _sheets
+            print(
+                f"🎭 Saved cast loaded: {[c.get('name') for c in self._saved_cast]} "
+                f"({len(_sheets)} portrait sheet(s) reused)"
+            )
 
         self._sub_shots_enabled: bool = bool(sub_shots_enabled)
         if self._sub_shots_enabled:
@@ -3598,6 +3618,34 @@ class VideoGenerationPipeline:
                 self._assist_casting_pending = (_oc == _dgm.GateOutcome.EMIT_AND_STOP)
             except Exception:
                 self._assist_casting_pending = False
+
+        # Asset-request gate uploads without a shot binding (global photos/
+        # logos) ride shot_plan.json as `user_assets`; merge them into the
+        # reference context so the brand-embed enforcement + casting pins
+        # treat them exactly like upfront media-kit uploads.
+        if self._assist_state:
+            try:
+                _ua_path = run_dir / "shot_plan.json"
+                _uas: List[Dict[str, Any]] = []
+                if _ua_path.exists():
+                    _plan_ua = json.loads(_ua_path.read_text())
+                    if isinstance(_plan_ua, dict):
+                        _uas = [u for u in (_plan_ua.get("user_assets") or []) if isinstance(u, dict) and u.get("url")]
+                if _uas:
+                    if not isinstance(getattr(self, "_reference_context", None), dict):
+                        self._reference_context = {}
+                    _emb = self._reference_context.setdefault("embeddable_images", [])
+                    _known = {(e.get("s3_url") or e.get("url")) for e in _emb if isinstance(e, dict)}
+                    for _u in _uas:
+                        if _u["url"] not in _known:
+                            _emb.append({
+                                "name": (_u.get("ask") or "user asset")[:80],
+                                "description": (_u.get("ask") or "")[:200],
+                                "s3_url": _u["url"],
+                            })
+                    print(f"📎 assist: merged {len(_uas)} user asset(s) into reference context")
+            except Exception as _ua_err:
+                print(f"⚠️ assist: user_assets merge failed: {_ua_err}")
 
         # Contact-sheet regen notes (assist): when the user sent shots back
         # from the contact sheet, the /decision router deleted those shots'
@@ -7390,6 +7438,10 @@ class VideoGenerationPipeline:
         for i, c in enumerate(self._dialogue_characters or []):
             name = str(c.get("name") or "").strip().lower()
             if not name:
+                continue
+            _stored = str(c.get("voice_gender") or "").strip().lower()
+            if _stored in ("male", "female"):
+                vm[name] = _stored  # saved cast — exact voice reuse
                 continue
             hint = str(c.get("voice_hint") or "").lower()
             if "female" in hint or "woman" in hint or "girl" in hint:
@@ -12096,6 +12148,11 @@ class VideoGenerationPipeline:
             source_clip_available=self._v3_source_clip_available(),
             dialogue_scenes_enabled=getattr(self, "_dialogue_scenes_enabled", False),
             dialogue_mode=getattr(self, "_dialogue_mode", "storybook"),
+            saved_cast=(getattr(self, "_saved_cast", None) or None),
+            asset_asks_enabled=bool(
+                getattr(self, "_assist_state", None)
+                and (self._assist_state or {}).get("enabled")
+            ),
             article_screenshots=self._v3_article_screenshots(),
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
@@ -12128,10 +12185,20 @@ class VideoGenerationPipeline:
             # DIALOGUE_SCENE cast — persists in shot_plan.json so resume legs
             # and the dialogue prompt builder see the same verbatim portraits.
             "characters": sp_result.get("characters") or [],
+            # Agent-initiated asks (assist) — presented as the asset_request
+            # gate at the script boundary; persists for resume legs.
+            "asset_requests": sp_result.get("asset_requests") or [],
         }
         sp_usage = sp_result.get("usage") or {}
         # Stash the cast for the dialogue TTS pre-pass + prompt builder.
-        self._dialogue_characters = shot_plan_dict.get("characters") or []
+        # A saved cast (series reuse) WINS over whatever the planner emitted —
+        # names/portraits/voices are locked; we also overwrite the plan copy so
+        # shot_plan.json persists the locked cast for resume legs.
+        if getattr(self, "_saved_cast", None):
+            shot_plan_dict["characters"] = list(self._saved_cast)
+            self._dialogue_characters = list(self._saved_cast)
+        else:
+            self._dialogue_characters = shot_plan_dict.get("characters") or []
 
         # ── Edit-Choreographer (LLM authors the cut) + picker (validates) ──
         # The ShotPlanner already set transition_in per shot. A focused pass
@@ -16677,6 +16744,41 @@ class VideoGenerationPipeline:
             # it authoritatively overrides the base flat/whiteboard rules; for
             # educational it returns "" and the base aesthetic is untouched.
             system_prompt = self._append_aesthetic_directive(system_prompt)
+
+            # User-provided REAL asset for THIS shot (assist asset_request gate).
+            # A real screenshot/photo outranks anything generated — the shot is
+            # built AROUND it, never replaced by an invention.
+            _user_asset = str(shot.get("user_asset_url") or "").strip()
+            if _user_asset:
+                if (shot.get("shot_type") or shot_type or "").upper() == "DEVICE_MOCKUP":
+                    system_prompt += (
+                        "\n\n## 📎 USER PROVIDED THE REAL APP SCREENSHOT (must use)\n"
+                        f"The user uploaded the ACTUAL interface for this shot: {_user_asset}\n"
+                        "Embed it verbatim as the device's screen content — "
+                        f"`<img src=\"{_user_asset}\" style=\"width:100%;height:100%;object-fit:cover;object-position:top\" />` "
+                        "inside the device frame — and build the device chrome (bezel, "
+                        "notch/browser bar, shadow) AROUND it. Do NOT fabricate any interface "
+                        "elements over it; animate the DEVICE (entrance, tilt, parallax, "
+                        "spotlight) rather than the screen's contents.\n"
+                    )
+                else:
+                    system_prompt += (
+                        "\n\n## 📎 USER PROVIDED A REAL IMAGE FOR THIS SHOT (must use)\n"
+                        f"Use this exact image as the shot's hero visual: {_user_asset}\n"
+                        f"`<img src=\"{_user_asset}\" ... />` — full-bleed or dominant placement, "
+                        "with a Ken Burns move or tasteful reveal. Do NOT substitute a stock or "
+                        "generated image for it.\n"
+                    )
+                print(f"   📎 Shot {shot_idx}: using user-provided asset")
+            # User-confirmed REAL data (statistic) for this shot.
+            _real_data = str(shot.get("real_data") or "").strip()
+            if _real_data:
+                system_prompt += (
+                    "\n\n## 📊 USER-CONFIRMED REAL FIGURE (must appear verbatim)\n"
+                    f"{_real_data}\n"
+                    "This is the user's actual number/fact — display it EXACTLY as given; "
+                    "never round, embellish, or replace it.\n"
+                )
 
             # Contact-sheet revision note for THIS shot (assist) — the user saw
             # the previous frame and sent it back; their note outranks style.

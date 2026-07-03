@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +77,8 @@ import {
     FamilyBias,
     TextDensity,
     VisualStyleMode,
+    listCasts,
+    VideoCast,
     VISUAL_PREFERENCE_FAMILIES,
     hasActiveVisualPreferences,
     AI_VIDEO_MODELS,
@@ -111,6 +113,8 @@ import type { AIModel } from '@/types/ai-models';
 interface SettingsPopoverProps {
     options: Omit<GenerateVideoRequest, 'prompt'>;
     onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
+    /** Institute API key — used by the saved-cast picker's list fetch. */
+    apiKey?: string | null;
     reviewModeEnabled?: boolean;
     onReviewModeChange?: (enabled: boolean) => void;
     /** Voice metadata — fetched in Composer; passed in here. */
@@ -214,6 +218,7 @@ function computeNonDefaultCount(
 function SettingsBody({
     options,
     onOptionsChange,
+    apiKey,
     reviewModeEnabled,
     onReviewModeChange,
     availableVoices,
@@ -1082,38 +1087,45 @@ function SettingsBody({
                         consistent voices (lip-synced). Adds generation cost per scene.
                     </p>
                     {!!options.dialogue_scenes_enabled && (
-                        <div className="flex gap-1.5 pl-5 pt-1">
-                            {(
-                                [
-                                    {
-                                        v: 'storybook',
-                                        label: 'Storybook',
-                                        desc: 'Narrator carries the video; 1-4 dialogue scenes at key moments.',
-                                    },
-                                    {
-                                        v: 'drama',
-                                        label: 'Drama',
-                                        desc: 'Pure dialogue film — every shot is a scene, no narrator, music off. Higher clip budget.',
-                                    },
-                                ] as const
-                            ).map((m) => {
-                                const active = (options.dialogue_mode ?? 'storybook') === m.v;
-                                return (
-                                    <button
-                                        key={m.v}
-                                        type="button"
-                                        title={m.desc}
-                                        onClick={() => update('dialogue_mode', m.v)}
-                                        className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
-                                            active
-                                                ? 'border-primary-500 bg-primary-50 text-foreground'
-                                                : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                    >
-                                        {m.label}
-                                    </button>
-                                );
-                            })}
+                        <div className="space-y-1.5 pl-5 pt-1">
+                            <div className="flex gap-1.5">
+                                {(
+                                    [
+                                        {
+                                            v: 'storybook',
+                                            label: 'Storybook',
+                                            desc: 'Narrator carries the video; 1-4 dialogue scenes at key moments.',
+                                        },
+                                        {
+                                            v: 'drama',
+                                            label: 'Drama',
+                                            desc: 'Pure dialogue film — every shot is a scene, no narrator, music off. Higher clip budget.',
+                                        },
+                                    ] as const
+                                ).map((m) => {
+                                    const active = (options.dialogue_mode ?? 'storybook') === m.v;
+                                    return (
+                                        <button
+                                            key={m.v}
+                                            type="button"
+                                            title={m.desc}
+                                            onClick={() => update('dialogue_mode', m.v)}
+                                            className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
+                                                active
+                                                    ? 'border-primary-500 bg-primary-50 text-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <CastPicker
+                                apiKey={apiKey ?? undefined}
+                                castId={options.cast_id}
+                                onChange={(v) => update('cast_id', v)}
+                            />
                         </div>
                     )}
                 </div>
@@ -2824,5 +2836,69 @@ export function SettingsPopover(props: SettingsPopoverProps) {
                 </div>
             </SheetContent>
         </Sheet>
+    );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// CastPicker — reuse a saved storybook/drama cast (same faces + voices).
+// Fetches once per mount; renders nothing heavier than a compact select.
+// ─────────────────────────────────────────────────────────────────────────
+function CastPicker({
+    apiKey,
+    castId,
+    onChange,
+}: {
+    apiKey?: string;
+    castId?: string;
+    onChange: (castId: string | undefined) => void;
+}) {
+    const [casts, setCasts] = useState<VideoCast[]>([]);
+    const [loaded, setLoaded] = useState(false);
+
+    useEffect(() => {
+        if (!apiKey || loaded) return;
+        let cancelled = false;
+        listCasts(apiKey)
+            .then((c) => {
+                if (!cancelled) {
+                    setCasts(c);
+                    setLoaded(true);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setLoaded(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [apiKey, loaded]);
+
+    if (loaded && casts.length === 0) {
+        return (
+            <p className="text-[10px] text-muted-foreground">
+                New characters this video. Finish a story, then “Save cast” to reuse them in
+                the next one.
+            </p>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground">Cast</span>
+            <select
+                value={castId ?? ''}
+                onChange={(e) => onChange(e.target.value || undefined)}
+                aria-label="Saved cast"
+                className="h-6 flex-1 rounded-md border bg-background px-1.5 text-[10px] text-foreground outline-none"
+            >
+                <option value="">New cast this video</option>
+                {casts.map((c) => (
+                    <option key={c.cast_id} value={c.cast_id}>
+                        {c.name} · {c.characters.length} character{c.characters.length === 1 ? '' : 's'}
+                    </option>
+                ))}
+            </select>
+        </div>
     );
 }

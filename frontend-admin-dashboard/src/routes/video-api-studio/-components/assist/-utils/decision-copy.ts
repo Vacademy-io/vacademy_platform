@@ -41,6 +41,10 @@ export const GATE_META: Record<GateType, GateMeta> = {
         title: 'Contact sheet',
         blurb: 'Every shot as a real frame — approve or send shots back with notes.',
     },
+    asset_request: {
+        title: 'Make it real',
+        blurb: 'The AI asked for real assets — your screenshots, photos, and numbers.',
+    },
     voice: { title: 'Voice', blurb: 'The narration voice.' },
     music: { title: 'Background music', blurb: 'The background music track.' },
     avatar: { title: 'Host', blurb: 'The on-screen host / avatar.' },
@@ -58,6 +62,7 @@ const GATE_PROMPT: Record<GateType, string> = {
     visual_casting: 'Which visual should we use for this shot?',
     shot_look: 'Which look should we use for this shot?',
     contact_sheet: 'All shots are built — approve the contact sheet or send shots back.',
+    asset_request: 'I could make a few shots more real with things only you have.',
     voice: 'Which voice should we use?',
     music: 'Which background music fits?',
     avatar: 'Which host should present?',
@@ -81,6 +86,11 @@ function summarizeLedger(gate: GateType, mode: string, answer: Record<string, un
             if (gate === 'contact_sheet') {
                 const n = ((answer as { regens?: unknown[] })?.regens ?? []).length;
                 return `Sent ${n} shot(s) back with notes`;
+            }
+            if (gate === 'asset_request') {
+                const rs = (answer as { responses?: Array<{ skipped?: boolean }> })?.responses ?? [];
+                const n = rs.filter((r) => !r?.skipped).length;
+                return n > 0 ? `Provided ${n} real asset(s)` : 'Skipped — AI creates everything';
             }
             return 'Picked the visuals';
         default:
@@ -137,6 +147,10 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
             if (answer.gate_type === 'creative_concept') return 'Edited the creative direction';
             if (answer.gate_type === 'contact_sheet')
                 return `Sent ${answer.regens.length} shot(s) back with notes`;
+            if (answer.gate_type === 'asset_request') {
+                const n = answer.responses.filter((r) => !r.skipped).length;
+                return n > 0 ? `Provided ${n} real asset(s)` : 'Skipped the asset requests';
+            }
             return `Picked visuals for ${answer.selections.length} shot(s)`;
         default:
             return `Resolved ${label.toLowerCase()}`;

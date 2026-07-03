@@ -75,6 +75,8 @@ async def _lifespan(app: FastAPI):
         with db_session() as db:
             ensure_ai_task_schema(db)
             ensure_file_conversion_schema(db)
+            from .repositories.ai_video_cast_repository import ensure_ai_video_cast_schema
+            ensure_ai_video_cast_schema(db)
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)

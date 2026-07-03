@@ -75,5 +75,12 @@ public class SubOrgRegistrationSettingDTO {
 
         @JsonProperty("CURRENCY")
         private String currency;
+
+        /**
+         * DigiLocker KYC documents for the KYC step: ["AADHAAR"] or ["AADHAAR","PAN"].
+         * Empty/absent = no KYC step.
+         */
+        @JsonProperty("KYC_DOCUMENTS")
+        private List<String> kycDocuments;
     }
 }

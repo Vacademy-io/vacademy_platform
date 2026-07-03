@@ -28,6 +28,7 @@ import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
 import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/learner-invitation-response/index'
+import { Route as KycCompleteIndexRouteImport } from './routes/kyc-complete/index'
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
 import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-response/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
@@ -192,6 +193,11 @@ const LearnerInvitationResponseIndexRoute =
     path: '/learner-invitation-response/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const KycCompleteIndexRoute = KycCompleteIndexRouteImport.update({
+  id: '/kyc-complete/',
+  path: '/kyc-complete/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InstituteSelectionIndexRoute = InstituteSelectionIndexRouteImport.update({
   id: '/institute-selection/',
   path: '/institute-selection/',
@@ -581,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/delete-user': typeof DeleteUserIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
+  '/kyc-complete': typeof KycCompleteIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
@@ -668,6 +675,7 @@ export interface FileRoutesByTo {
   '/delete-user': typeof DeleteUserIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
+  '/kyc-complete': typeof KycCompleteIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
@@ -757,6 +765,7 @@ export interface FileRoutesById {
   '/delete-user/': typeof DeleteUserIndexRoute
   '/enquiry-response/': typeof EnquiryResponseIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
+  '/kyc-complete/': typeof KycCompleteIndexRoute
   '/learner-invitation-response/': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
@@ -847,6 +856,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/enquiry-response'
     | '/institute-selection'
+    | '/kyc-complete'
     | '/learner-invitation-response'
     | '/live-class-guest'
     | '/login'
@@ -934,6 +944,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/enquiry-response'
     | '/institute-selection'
+    | '/kyc-complete'
     | '/learner-invitation-response'
     | '/live-class-guest'
     | '/login'
@@ -1022,6 +1033,7 @@ export interface FileRouteTypes {
     | '/delete-user/'
     | '/enquiry-response/'
     | '/institute-selection/'
+    | '/kyc-complete/'
     | '/learner-invitation-response/'
     | '/live-class-guest/'
     | '/login/'
@@ -1111,6 +1123,7 @@ export interface RootRouteChildren {
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   EnquiryResponseIndexRoute: typeof EnquiryResponseIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
+  KycCompleteIndexRoute: typeof KycCompleteIndexRoute
   LearnerInvitationResponseIndexRoute: typeof LearnerInvitationResponseIndexRoute
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
@@ -1316,6 +1329,13 @@ declare module '@tanstack/react-router' {
       path: '/learner-invitation-response'
       fullPath: '/learner-invitation-response'
       preLoaderRoute: typeof LearnerInvitationResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kyc-complete/': {
+      id: '/kyc-complete/'
+      path: '/kyc-complete'
+      fullPath: '/kyc-complete'
+      preLoaderRoute: typeof KycCompleteIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/institute-selection/': {
@@ -1818,6 +1838,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   EnquiryResponseIndexRoute: EnquiryResponseIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
+  KycCompleteIndexRoute: KycCompleteIndexRoute,
   LearnerInvitationResponseIndexRoute: LearnerInvitationResponseIndexRoute,
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,

@@ -879,6 +879,7 @@ export function Composer({
                         {/* Settings popover */}
                         <div data-tour="vim-composer-settings">
                             <SettingsPopover
+                                apiKey={apiKey}
                                 options={options}
                                 onOptionsChange={onOptionsChange}
                                 reviewModeEnabled={reviewModeEnabled}

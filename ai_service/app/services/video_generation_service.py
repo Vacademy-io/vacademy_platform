@@ -333,6 +333,34 @@ class VideoGenerationService:
             return gate, (start_stage_idx <= script_idx)
         return None, False
 
+    def _skip_empty_asset_gate(self, video_id, assist, gate_type):
+        """ASSET_REQUEST presents only when the planner actually asked for
+        something. With an empty ask list, auto-answer the gate and advance to
+        the next unanswered script-boundary gate (or None). Any other gate
+        passes through untouched."""
+        dg = self._decision_gates()
+        if gate_type != dg.GateType.ASSET_REQUEST.value:
+            return gate_type
+        plan = self._download_artifact_json(
+            video_id,
+            f"ai-videos/{video_id}/script/shot_plan.json",
+            f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        ) or {}
+        if plan.get("asset_requests"):
+            return gate_type
+        dg.record_answer(
+            assist,
+            decision_id=f"auto_{dg.GateType.ASSET_REQUEST.value}_{video_id}",
+            gate_type=dg.GateType.ASSET_REQUEST.value,
+            mode="auto", answer={},
+        )
+        try:
+            self.repository.update_assist_state(video_id, assist)
+        except Exception:
+            pass
+        nxt, _ = self._next_script_boundary_gate(assist, self.STAGES.index("SCRIPT") + 1)
+        return nxt
+
     def _download_artifact_text(self, video_id, *candidate_keys):
         """Download the first existing S3 artifact among the keys; return text or None."""
         from ..config import get_settings as _gs
@@ -406,6 +434,9 @@ class VideoGenerationService:
                 _hooks = self._generate_hook_variants(video_id, shots)
                 if _hooks:
                     decision["payload"]["hook_variants"] = _hooks
+        elif gate_type == dg.GateType.ASSET_REQUEST.value:
+            _reqs = shot_plan.get("asset_requests") if isinstance(shot_plan, dict) else []
+            decision = dg.build_asset_request_decision(video_id, _reqs or [])
         else:  # creative_concept
             concept = shot_plan.get("creative_concept") if isinstance(shot_plan, dict) else {}
             decision = dg.build_creative_concept_decision(video_id, concept or {})
@@ -834,6 +865,7 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        cast_id: Optional[str] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -1040,6 +1072,8 @@ class VideoGenerationService:
                 gen_metadata["dialogue_scenes_enabled"] = True
             if dialogue_scenes_enabled and dialogue_mode:
                 gen_metadata["dialogue_mode"] = str(dialogue_mode)
+            if cast_id:
+                gen_metadata["cast_id"] = str(cast_id)
             # Persist the TTS voice knobs so per-sentence re-narration in the
             # editor can reproduce the same voice without the user having to
             # re-supply them. Defaults are skipped to keep the row small.
@@ -1139,6 +1173,11 @@ class VideoGenerationService:
                 logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
             _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
             if _pending_gate and not _need_script_run:
+                # The asset gate only presents when the planner asked for
+                # something; empty → auto-answer + advance (possibly to None,
+                # in which case the leg proceeds normally below).
+                _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
+            if _pending_gate and not _need_script_run:
                 # Script artifacts already exist (resume leg). If the user left
                 # a freeform steering note for this gate, REVISE the artifacts
                 # per the note first, then re-present the gate with the updated
@@ -1172,6 +1211,25 @@ class VideoGenerationService:
                 # Clamp this leg to SCRIPT; we present the gate after it runs.
                 target_stage = "SCRIPT"
                 target_stage_idx = self.STAGES.index("SCRIPT")
+
+        # Saved cast (storybook/drama series): load once per leg so the plan
+        # keeps these characters verbatim and the pipeline reuses their stored
+        # portrait sheets + voice mapping. Best-effort — a missing/foreign cast
+        # just means a fresh cast this run.
+        _saved_cast_list = None
+        if cast_id and dialogue_scenes_enabled and institute_id:
+            try:
+                from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+                with _fresh_db_session() as _cast_db:
+                    _cast_row = AiVideoCastRepository(_cast_db).get(str(cast_id), institute_id)
+                if _cast_row and _cast_row.get("characters"):
+                    _saved_cast_list = _cast_row["characters"]
+                    logger.info(
+                        f"[Cast] video {video_id} reuses cast '{_cast_row['name']}' "
+                        f"({len(_saved_cast_list)} characters)"
+                    )
+            except Exception as _cast_err:
+                logger.warning(f"[Cast] could not load cast {cast_id}: {_cast_err}")
 
         # Create temporary working directory
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1214,6 +1272,7 @@ class VideoGenerationService:
                     sub_shots_enabled=sub_shots_enabled,
                     dialogue_scenes_enabled=dialogue_scenes_enabled,
                     dialogue_mode=dialogue_mode,
+                    saved_cast=_saved_cast_list,
                     routing_overrides=routing_overrides,
                     host=host,
                     brand_kit_id=brand_kit_id,
@@ -1254,6 +1313,8 @@ class VideoGenerationService:
                 # The SCRIPT stage just produced shot_plan.json / script.txt;
                 # present the pending gate and end the leg cleanly (no completed
                 # event — the FE flips to the conversation card on this event).
+                if _assist.get("enabled") and _pending_gate:
+                    _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
                 if _assist.get("enabled") and _pending_gate:
                     async for _ev in self._present_script_boundary_gate(
                         video_id, institute_id, _assist, _pending_gate
@@ -1373,6 +1434,7 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -2173,6 +2235,7 @@ class VideoGenerationService:
                     "sub_shots_enabled": sub_shots_enabled,
                     "dialogue_scenes_enabled": dialogue_scenes_enabled,
                     "dialogue_mode": dialogue_mode,
+                    "saved_cast": saved_cast,
                     "mute_tts_on_source_clips_kwarg": mute_tts_on_source_clips,
                     "input_video_ids": input_video_ids,
                     "input_video_audio": input_video_audio,
@@ -2675,6 +2738,7 @@ class VideoGenerationService:
                     sub_shots_enabled=sub_shots_enabled,
                     dialogue_scenes_enabled=dialogue_scenes_enabled,
                     dialogue_mode=dialogue_mode,
+                    saved_cast=saved_cast,
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,

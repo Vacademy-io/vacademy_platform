@@ -57,6 +57,7 @@ class GateType(str, Enum):
     VISUAL_CASTING = "visual_casting"        # stock image/video / AI-image pick per media shot
     SHOT_LOOK = "shot_look"                  # best-of-N HTML look pick for hero/hook/CTA shots
     CONTACT_SHEET = "contact_sheet"          # per-shot frame review AFTER HTML, before finalize
+    ASSET_REQUEST = "asset_request"          # agent-initiated asks: real screenshots/photos/data
     VOICE = "voice"                          # TTS voice (needs preview audio)   [phase 2]
     MUSIC = "music"                          # background music track (needs previews) [phase 2]
     AVATAR = "avatar"                        # host/avatar pick (needs previews) [phase 2]
@@ -68,6 +69,7 @@ class GateType(str, Enum):
 DEFAULT_ASSIST_GATES: List[str] = [
     GateType.CREATIVE_CONCEPT.value,
     GateType.SHOT_PLAN.value,
+    GateType.ASSET_REQUEST.value,
     GateType.NARRATION.value,
     GateType.VISUAL_CASTING.value,
     GateType.SHOT_LOOK.value,
@@ -80,6 +82,10 @@ DEFAULT_ASSIST_GATES: List[str] = [
 SCRIPT_BOUNDARY_GATES: List[str] = [
     GateType.CREATIVE_CONCEPT.value,
     GateType.SHOT_PLAN.value,
+    # Agent-initiated asks sit AFTER the plan (the planner knows what it
+    # needs) and BEFORE narration (user-confirmed real numbers flow into
+    # the spoken script via the grounding rule).
+    GateType.ASSET_REQUEST.value,
     GateType.NARRATION.value,
 ]
 
@@ -491,6 +497,54 @@ def build_contact_sheet_decision(
         payload={"shots": shots},
         seq=seq,
     )
+
+
+def build_asset_request_decision(
+    video_id: str,
+    requests: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Agent-initiated asks — the planner requested real assets from the user.
+
+    ``requests`` = [{index, shot_index?, kind: screenshot|photo|data|inspiration,
+    ask, why, options?}]. Every item is individually skippable; the answer is
+    ``edit`` with ``responses: [{index, url?|text?|choice?|skipped?}]``.
+    """
+    n = len(requests)
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.ASSET_REQUEST.value,
+        prompt=(
+            f"I could make {('this shot' if n == 1 else f'{n} shots')} much more real "
+            "with a few things from you — upload, answer, or skip any of them."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=False,
+        allow_edit=True,
+        payload={"requests": requests},
+        seq=seq,
+    )
+
+
+def asset_request_responses(answer: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Normalize the responses list from an asset_request ``edit`` answer."""
+    out: List[Dict[str, Any]] = []
+    for r in ((answer or {}).get("responses") or []):
+        if not isinstance(r, dict):
+            continue
+        try:
+            idx = int(r.get("index"))
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            "index": idx,
+            "url": (str(r.get("url")).strip() if r.get("url") else None),
+            "text": (str(r.get("text")).strip()[:400] if r.get("text") else None),
+            "choice": (str(r.get("choice")).strip()[:200] if r.get("choice") else None),
+            "skipped": bool(r.get("skipped")),
+        })
+    return out
 
 
 def contact_sheet_regen_notes(answer: Optional[Dict[str, Any]]) -> Dict[int, str]:

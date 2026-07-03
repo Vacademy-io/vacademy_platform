@@ -465,6 +465,8 @@ export interface GenerateVideoRequest {
     sub_shots_enabled?: boolean;
     dialogue_scenes_enabled?: boolean;
     dialogue_mode?: 'storybook' | 'drama';
+    /** Reuse a saved cast — same characters, faces, and voices as a prior video. */
+    cast_id?: string;
     /** Sparse override for the auto-routing plan. User toggles win over router decisions. */
     routing_overrides?: RoutingOverrides;
     /** Optional on-screen host (narrator). Available on ultra / super_ultra only; rejected at the API edge on lower tiers. */
@@ -536,9 +538,21 @@ export type GateType =
     | 'visual_casting'
     | 'shot_look'
     | 'contact_sheet'
+    | 'asset_request'
     | 'voice'
     | 'music'
     | 'avatar';
+
+/** One agent-initiated ask (asset_request gate payload.requests[]). */
+export interface AssetRequestItem {
+    index: number;
+    shot_index?: number | null;
+    kind: 'screenshot' | 'photo' | 'data' | 'inspiration';
+    ask: string;
+    why?: string;
+    /** Present only for kind='inspiration'. */
+    options?: string[];
+}
 
 /** One shot on the contact sheet (contact_sheet gate payload.shots[]). */
 export interface ContactSheetShot {
@@ -615,6 +629,8 @@ export interface DecisionPayload {
     hook_variants?: Array<{ technique: string; text: string }>;
     /** creative_concept: 2 contrasting alternative directions beside the draft. */
     alternatives?: Array<Record<string, string>>;
+    /** asset_request: the planner's asks (upload / answer / pick / skip each). */
+    requests?: AssetRequestItem[];
     [key: string]: unknown;
 }
 
@@ -651,6 +667,17 @@ export type DecisionAnswer =
     | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
     | { kind: 'edit'; gate_type: 'creative_concept'; concept: Record<string, string> }
     | { kind: 'edit'; gate_type: 'contact_sheet'; regens: Array<{ shot_index: number; note: string }> }
+    | {
+          kind: 'edit';
+          gate_type: 'asset_request';
+          responses: Array<{
+              index: number;
+              url?: string;
+              text?: string;
+              choice?: string;
+              skipped?: boolean;
+          }>;
+      }
     | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
     | {
           kind: 'edit';
@@ -1152,6 +1179,8 @@ export interface VideoStatusUserSelections {
     sub_shots_enabled?: boolean;
     dialogue_scenes_enabled?: boolean;
     dialogue_mode?: 'storybook' | 'drama';
+    /** Reuse a saved cast — same characters, faces, and voices as a prior video. */
+    cast_id?: string;
     mute_tts_on_source_clips_kwarg?: boolean;
     input_video_ids?: string[];
     input_video_audio?: 'original' | 'tts' | null;
@@ -1761,6 +1790,7 @@ export function resumeVideo(
         sub_shots_enabled: opts?.sub_shots_enabled ?? false,
         dialogue_scenes_enabled: opts?.dialogue_scenes_enabled ?? false,
         dialogue_mode: opts?.dialogue_mode ?? 'storybook',
+        cast_id: opts?.cast_id,
     };
     if (request.modifiedScript !== undefined) {
         body.modified_script = request.modifiedScript;
@@ -1875,6 +1905,8 @@ export function decisionAnswerToBody(
                 payload = { concept: answer.concept };
             } else if (answer.gate_type === 'contact_sheet') {
                 payload = { regens: answer.regens };
+            } else if (answer.gate_type === 'asset_request') {
+                payload = { responses: answer.responses };
             } else {
                 payload = { selections: answer.selections };
             }
@@ -2601,6 +2633,64 @@ export async function regenerateFrame(
     }
 
     return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Saved casts (storybook/drama) — same characters + voices across a series
+// ---------------------------------------------------------------------------
+
+export interface VideoCastCharacter {
+    name: string;
+    visual_description?: string;
+    voice_hint?: string;
+    voice_gender?: string;
+    /** Reference portrait; null when the source run never generated one. */
+    sheet_url?: string | null;
+}
+
+export interface VideoCast {
+    cast_id: string;
+    name: string;
+    characters: VideoCastCharacter[];
+    source_video_id?: string | null;
+    created_at?: string | null;
+}
+
+export async function listCasts(apiKey: string): Promise<VideoCast[]> {
+    const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/cast/list`, {
+        headers: { 'X-Institute-Key': apiKey },
+    });
+    if (!res.ok) throw new Error(`Failed to list casts: ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data?.casts) ? data.casts : [];
+}
+
+export async function saveCastFromVideo(
+    videoId: string,
+    apiKey: string,
+    name?: string
+): Promise<VideoCast> {
+    const res = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/cast/save-from-video/${encodeURIComponent(videoId)}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Institute-Key': apiKey },
+            body: JSON.stringify({ name: name ?? null }),
+        }
+    );
+    if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`Failed to save cast: ${text}`);
+    }
+    return res.json();
+}
+
+export async function deleteCast(castId: string, apiKey: string): Promise<void> {
+    const res = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/cast/${encodeURIComponent(castId)}`,
+        { method: 'DELETE', headers: { 'X-Institute-Key': apiKey } }
+    );
+    if (!res.ok) throw new Error(`Failed to delete cast: ${res.status}`);
 }
 
 /**

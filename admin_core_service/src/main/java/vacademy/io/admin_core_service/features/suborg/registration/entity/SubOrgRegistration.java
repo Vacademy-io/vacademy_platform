@@ -65,6 +65,21 @@ public class SubOrgRegistration {
     @Column(name = "spawned_user_id")
     private String spawnedUserId;
 
+    /** Null = KYC not started. See SubOrgKycStatus. */
+    @Column(name = "kyc_status")
+    private String kycStatus;
+
+    /** Our unique id sent to Cashfree SecureID; webhook lookup key. Fresh per attempt. */
+    @Column(name = "kyc_verification_id")
+    private String kycVerificationId;
+
+    /** Fetched verified document data: {"AADHAAR": {...}, "PAN": {...}}. */
+    @Column(name = "kyc_documents_json", columnDefinition = "TEXT")
+    private String kycDocumentsJson;
+
+    @Column(name = "kyc_verified_at")
+    private Timestamp kycVerifiedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

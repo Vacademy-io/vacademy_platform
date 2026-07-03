@@ -225,6 +225,7 @@ public class SubOrgRegistrationTemplateService {
                         .adminPhone(r.getAdminPhone())
                         .spawnedSubOrgId(r.getSpawnedSubOrgId())
                         .createdAt(r.getCreatedAt())
+                        .kycStatus(r.getKycStatus())
                         .build()));
         return result;
     }
@@ -253,6 +254,21 @@ public class SubOrgRegistrationTemplateService {
         if (StringUtils.hasText(request.getTncFileId())) {
             steps.add("TNC");
             setting.setTncFileId(request.getTncFileId());
+        }
+        // DigiLocker KYC: verify identity before taking payment.
+        if (!CollectionUtils.isEmpty(request.getKycDocuments())) {
+            List<String> kycDocs = request.getKycDocuments().stream()
+                    .map(String::toUpperCase).distinct().toList();
+            for (String doc : kycDocs) {
+                if (!"AADHAAR".equals(doc) && !"PAN".equals(doc)) {
+                    throw new VacademyException("kyc_documents supports only AADHAAR and PAN");
+                }
+            }
+            if (!kycDocs.contains("AADHAAR")) {
+                throw new VacademyException("kyc_documents must include AADHAAR");
+            }
+            steps.add("KYC");
+            setting.setKycDocuments(kycDocs);
         }
         boolean isPaid = PaymentOptionType.ONE_TIME.name().equals(paymentType)
                 || PaymentOptionType.SUBSCRIPTION.name().equals(paymentType);

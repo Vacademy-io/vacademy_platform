@@ -32,6 +32,7 @@ import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgReg
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationSettingDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.entity.SubOrgRegistration;
+import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgKycStatus;
 import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus;
 import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService;
@@ -101,6 +102,8 @@ public class SubOrgRegistrationService {
                         CustomFieldTypeEnum.ENROLL_INVITE.name(),
                         template.getId()))
                 .payment(buildPublicPayment(setting))
+                .kycDocuments(setting != null && !CollectionUtils.isEmpty(setting.getKycDocuments())
+                        ? setting.getKycDocuments() : null)
                 .build();
     }
 
@@ -265,6 +268,15 @@ public class SubOrgRegistrationService {
                 throw new VacademyException("Terms & Conditions must be accepted");
             }
             registration.setTncAcceptedAt(new Timestamp(System.currentTimeMillis()));
+        }
+
+        // Server-side KYC enforcement (like OTP): a KYC-gated template can never spawn
+        // without a VERIFIED DigiLocker verification on this registration.
+        boolean kycRequired = setting != null && !CollectionUtils.isEmpty(setting.getSteps())
+                && setting.getSteps().contains("KYC");
+        if (kycRequired && !SubOrgKycStatus.VERIFIED.name().equals(registration.getKycStatus())) {
+            throw new VacademyException(
+                    "Identity verification must be completed before finishing registration");
         }
 
         // 1. Spawn a standard sub-org (child institute + org-level SUB_ORG invite + PSLIPO

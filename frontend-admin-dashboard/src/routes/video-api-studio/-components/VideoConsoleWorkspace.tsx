@@ -23,6 +23,7 @@ import {
     ShotPlanItem,
     generateVideo,
     regenerateFrame,
+    saveCastFromVideo,
     updateFrame,
     resumeVideo,
     retryVideo,
@@ -354,6 +355,7 @@ export function VideoConsoleWorkspace({
     // Post-completion conversational editor state ("redo shot 3 — …").
     const [postEdits, setPostEdits] = useState<PostEditItem[]>([]);
     const [playerReloadKey, setPlayerReloadKey] = useState(0);
+    const [castSaved, setCastSaved] = useState(false);
 
     // One-shot consume of the "Reuse settings" handoff written by a Recent
     // card. Read in a `useState` initializer so it's available before the
@@ -2156,6 +2158,7 @@ export function VideoConsoleWorkspace({
     useEffect(() => {
         setPostEdits([]);
         setPlayerReloadKey(0);
+        setCastSaved(false);
     }, [currentGeneration?.videoId]);
 
     /** Post-completion conversational editor: parse "shot N" from the message,
@@ -2210,6 +2213,20 @@ export function VideoConsoleWorkspace({
         },
         [activeApiKey]
     );
+
+    /** Save this run's dialogue cast (characters + portraits + voices) for
+     *  reuse in the next video of the series. One-click; auto-named. */
+    const handleSaveCast = useCallback(async () => {
+        const cg = currentGenerationRef.current;
+        if (!cg?.videoId || !activeApiKey) return;
+        try {
+            const cast = await saveCastFromVideo(cg.videoId, activeApiKey);
+            toast.success(`Cast saved — pick “${cast.name}” on your next story.`);
+            setCastSaved(true);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Could not save the cast');
+        }
+    }, [activeApiKey]);
 
     // Resume generation after script review
     const handleResumeFromReview = useCallback(() => {
@@ -2660,6 +2677,11 @@ export function VideoConsoleWorkspace({
                                     onShowProgress={() => setShowAssistProgress(true)}
                                     apiKey={activeApiKey ?? undefined}
                                     onPostEdit={handlePostEdit}
+                                    onSaveCast={
+                                        currentGeneration.options?.dialogue_scenes_enabled && !castSaved
+                                            ? handleSaveCast
+                                            : undefined
+                                    }
                                     postEdits={postEdits}
                                     playerReloadKey={playerReloadKey}
                                     onAbort={

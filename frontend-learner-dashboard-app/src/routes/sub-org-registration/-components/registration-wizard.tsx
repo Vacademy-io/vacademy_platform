@@ -27,6 +27,7 @@ import DetailsStep, { DetailsStepValues } from "./details-step";
 import OtpStep from "./otp-step";
 import CustomFieldsStep from "./custom-fields-step";
 import TncStep from "./tnc-step";
+import KycStep from "./kyc-step";
 import PaymentStep from "./payment-step";
 import SuccessStep from "./success-step";
 
@@ -35,6 +36,7 @@ type WizardPhase =
   | "OTP"
   | "CUSTOM_FIELDS"
   | "TNC"
+  | "KYC"
   | "PAYMENT"
   | "SUCCESS";
 
@@ -47,8 +49,9 @@ interface RegistrationWizardProps {
 /**
  * Public sub-org self-registration wizard, driven by the template's `steps`:
  * DETAILS → OTP verify → CUSTOM_FIELDS (if present) → TNC (if present) →
- * PAYMENT (paid templates; always last) → SUCCESS. registration_id lives in
- * component state.
+ * KYC (if present; DigiLocker identity verification) → PAYMENT (paid
+ * templates; always last) → SUCCESS. registration_id lives in component
+ * state.
  *
  * FREE templates call POST /complete from the last non-payment step. Paid
  * templates call /complete exactly once — from the PAYMENT step, with
@@ -75,6 +78,8 @@ const RegistrationWizard = ({
     templateSteps.includes("CUSTOM_FIELDS") &&
     (template.custom_fields?.length ?? 0) > 0;
   const hasTncStep = templateSteps.includes("TNC");
+  // Identity verification via DigiLocker (after TNC, before PAYMENT).
+  const hasKycStep = templateSteps.includes("KYC");
   // Payment requires the payment section with at least one plan to pay with.
   const hasPaymentStep =
     templateSteps.includes("PAYMENT") &&
@@ -85,12 +90,13 @@ const RegistrationWizard = ({
   const postOtpSteps = useMemo(
     () =>
       templateSteps.filter(
-        (step): step is "CUSTOM_FIELDS" | "TNC" | "PAYMENT" =>
+        (step): step is "CUSTOM_FIELDS" | "TNC" | "KYC" | "PAYMENT" =>
           (step === "CUSTOM_FIELDS" && hasCustomFieldsStep) ||
           (step === "TNC" && hasTncStep) ||
+          (step === "KYC" && hasKycStep) ||
           (step === "PAYMENT" && hasPaymentStep)
       ),
-    [templateSteps, hasCustomFieldsStep, hasTncStep, hasPaymentStep]
+    [templateSteps, hasCustomFieldsStep, hasTncStep, hasKycStep, hasPaymentStep]
   );
 
   // ─── Wizard state ──────────────────────────────────────────────────────────
@@ -219,7 +225,7 @@ const RegistrationWizard = ({
    * the single /complete with the payment initiation payload.
    */
   const advanceAfter = async (
-    completedStep: "OTP" | "CUSTOM_FIELDS" | "TNC",
+    completedStep: "OTP" | "CUSTOM_FIELDS" | "TNC" | "KYC",
     values: CustomFieldValuePayload[]
   ) => {
     const startIndex =
@@ -309,6 +315,11 @@ const RegistrationWizard = ({
     await advanceAfter("TNC", customFieldValues);
   };
 
+  /** Only invoked by the KYC step once /kyc/status reports VERIFIED. */
+  const handleKycContinue = async () => {
+    await advanceAfter("KYC", customFieldValues);
+  };
+
   // ─── Progress indicator ────────────────────────────────────────────────────
   const progressSteps = useMemo(() => {
     const labels: { key: WizardPhase; label: string }[] = [
@@ -321,7 +332,9 @@ const RegistrationWizard = ({
           ? { key: "CUSTOM_FIELDS", label: "Additional Info" }
           : step === "TNC"
             ? { key: "TNC", label: "Terms" }
-            : { key: "PAYMENT", label: "Payment" }
+            : step === "KYC"
+              ? { key: "KYC", label: "Identity Verification" }
+              : { key: "PAYMENT", label: "Payment" }
       );
     });
     return labels;
@@ -339,8 +352,9 @@ const RegistrationWizard = ({
     [customFieldValues]
   );
 
-  const isFinalPostOtpStep = (step: "CUSTOM_FIELDS" | "TNC" | "PAYMENT") =>
-    postOtpSteps[postOtpSteps.length - 1] === step;
+  const isFinalPostOtpStep = (
+    step: "CUSTOM_FIELDS" | "TNC" | "KYC" | "PAYMENT"
+  ) => postOtpSteps[postOtpSteps.length - 1] === step;
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-neutral-50 to-primary-50">
@@ -471,6 +485,17 @@ const RegistrationWizard = ({
               continueLabel={
                 isFinalPostOtpStep("TNC") ? undefined : "Continue"
               }
+            />
+          )}
+
+          {phase === "KYC" && (
+            <KycStep
+              registrationId={registrationId}
+              kycDocuments={template.kyc_documents}
+              isFinalStep={isFinalPostOtpStep("KYC")}
+              isSubmitting={isCompleting}
+              onContinue={handleKycContinue}
+              onSessionMissing={() => setPhase("DETAILS")}
             />
           )}
 

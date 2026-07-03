@@ -11,6 +11,7 @@ import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -78,6 +79,10 @@ interface BuilderField {
 const PAYMENT_TYPE_VALUES = ['FREE', 'ONE_TIME', 'SUBSCRIPTION'] as const;
 type PaymentType = (typeof PAYMENT_TYPE_VALUES)[number];
 
+// DigiLocker KYC scope — AADHAAR is always required by the backend; PAN is optional on top.
+const KYC_SCOPE_VALUES = ['AADHAAR', 'AADHAAR_PAN'] as const;
+type KycScope = (typeof KYC_SCOPE_VALUES)[number];
+
 const formSchema = z
     .object({
         name: z.string().min(1, 'Name is required'),
@@ -138,6 +143,8 @@ export function RegistrationLinkCreateModal({
     const [tncFileId, setTncFileId] = useState<string | null>(null);
     const [tncFileName, setTncFileName] = useState<string>('');
     const [isUploadingTnc, setIsUploadingTnc] = useState(false);
+    const [kycEnabled, setKycEnabled] = useState(false);
+    const [kycScope, setKycScope] = useState<KycScope>('AADHAAR');
 
     const courseLabel = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const coursesLabel = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
@@ -266,6 +273,8 @@ export function RegistrationLinkCreateModal({
         setTncEnabled(false);
         setTncFileId(null);
         setTncFileName('');
+        setKycEnabled(false);
+        setKycScope('AADHAAR');
     };
 
     const togglePackageSession = (id: string) => {
@@ -407,6 +416,12 @@ export function RegistrationLinkCreateModal({
                 selectedAdminPermissions.length > 0 ? selectedAdminPermissions : undefined,
             allowed_team_roles: selectedTeamRoles.length > 0 ? selectedTeamRoles : undefined,
             tnc_file_id: tncEnabled && tncFileId ? tncFileId : undefined,
+            // AADHAAR is always included — the backend rejects KYC configs without it.
+            kyc_documents: kycEnabled
+                ? kycScope === 'AADHAAR_PAN'
+                    ? ['AADHAAR', 'PAN']
+                    : ['AADHAAR']
+                : undefined,
             max_registrations: values.maxRegistrations,
             institute_custom_fields: buildInstituteCustomFields(),
             payment_type: values.paymentType,
@@ -932,7 +947,47 @@ export function RegistrationLinkCreateModal({
                         ))}
                 </div>
 
-                {/* 8. Max registrations */}
+                {/* 8. Identity Verification (DigiLocker) */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between rounded-md border p-3">
+                        <div>
+                            <Label htmlFor="registration-link-kyc">
+                                Identity Verification (DigiLocker)
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Require identity verification via DigiLocker.
+                            </p>
+                        </div>
+                        <Switch
+                            id="registration-link-kyc"
+                            checked={kycEnabled}
+                            onCheckedChange={setKycEnabled}
+                        />
+                    </div>
+                    {kycEnabled && (
+                        <div className="space-y-2 rounded-md border p-3">
+                            <RadioGroup
+                                value={kycScope}
+                                onValueChange={(v) => setKycScope(v as KycScope)}
+                            >
+                                <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                                    <RadioGroupItem value="AADHAAR" />
+                                    Aadhaar only
+                                </label>
+                                <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
+                                    <RadioGroupItem value="AADHAAR_PAN" />
+                                    Aadhaar + PAN
+                                </label>
+                            </RadioGroup>
+                            <p className="text-xs text-muted-foreground">
+                                The registering organization&apos;s admin must verify their identity
+                                through DigiLocker before completing registration.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* 9. Max registrations */}
                 <div className="space-y-2">
                     <Label htmlFor="registration-link-max">Max registrations</Label>
                     <Input

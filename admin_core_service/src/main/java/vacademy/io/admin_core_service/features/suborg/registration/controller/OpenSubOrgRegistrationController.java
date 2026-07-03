@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicTemplateDTO;
@@ -27,6 +28,7 @@ import java.util.Map;
 public class OpenSubOrgRegistrationController {
 
     private final SubOrgRegistrationService registrationService;
+    private final vacademy.io.admin_core_service.features.suborg.registration.service.SubOrgRegistrationKycService kycService;
 
     @GetMapping("/template")
     public ResponseEntity<PublicTemplateDTO> getTemplate(
@@ -59,5 +61,37 @@ public class OpenSubOrgRegistrationController {
     public ResponseEntity<CompleteRegistrationResponseDTO> complete(
             @RequestBody CompleteRegistrationRequestDTO request) {
         return ResponseEntity.ok(registrationService.complete(request));
+    }
+
+    // ---- DigiLocker KYC (Cashfree SecureID) ----
+
+    @PostMapping("/kyc/start")
+    public ResponseEntity<SubOrgRegistrationFlowDTOs.StartKycResponseDTO> startKyc(
+            @RequestBody SubOrgRegistrationFlowDTOs.StartKycRequestDTO request) {
+        return ResponseEntity.ok(
+                kycService.startKyc(request.getRegistrationId(), request.getRedirectUrl()));
+    }
+
+    @GetMapping("/kyc/status")
+    public ResponseEntity<SubOrgRegistrationFlowDTOs.KycStatusResponseDTO> kycStatus(
+            @RequestParam("registrationId") String registrationId) {
+        return ResponseEntity.ok(kycService.getKycStatus(registrationId));
+    }
+
+    /**
+     * Cashfree SecureID webhook (register in Merchant Dashboard → Developers → Webhooks).
+     * Raw body is required for signature verification — do not bind to a DTO.
+     */
+    @PostMapping("/kyc/webhook")
+    public ResponseEntity<String> kycWebhook(
+            @RequestBody String payload,
+            @RequestHeader(value = "x-webhook-signature", required = false) String signature,
+            @RequestHeader(value = "x-webhook-timestamp", required = false) String timestamp) {
+        try {
+            kycService.handleWebhook(payload, signature, timestamp);
+            return ResponseEntity.ok("OK");
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body("Invalid signature");
+        }
     }
 }

@@ -34,6 +34,43 @@ public final class SubOrgRegistrationFlowDTOs {
         private List<InstituteCustomFieldDTO> customFields;
         /** Present only for paid templates. */
         private PublicPaymentDTO payment;
+        /** DigiLocker KYC docs for the KYC step (["AADHAAR"] or ["AADHAAR","PAN"]); null when no KYC. */
+        private List<String> kycDocuments;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class StartKycRequestDTO {
+        private String registrationId;
+        /** Where DigiLocker lands the user post-consent; wizard sends origin + "/kyc-complete". */
+        private String redirectUrl;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class StartKycResponseDTO {
+        private String registrationId;
+        private String kycStatus;
+        /** DigiLocker consent URL — expires ~10 minutes after minting. */
+        private String url;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class KycStatusResponseDTO {
+        private String registrationId;
+        /** PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED | NOT_STARTED */
+        private String kycStatus;
+        /** Present when VERIFIED: {name, masked_aadhaar, dob, pan_number, pan_name}. */
+        private java.util.Map<String, String> summary;
     }
 
     /** Paid-template payment info for the wizard's PAYMENT step. */
@@ -168,5 +205,7 @@ public final class SubOrgRegistrationFlowDTOs {
         private String adminPhone;
         private String spawnedSubOrgId;
         private Timestamp createdAt;
+        /** Null = KYC not started / not required. */
+        private String kycStatus;
     }
 }

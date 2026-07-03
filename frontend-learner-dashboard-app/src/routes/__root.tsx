@@ -63,6 +63,7 @@ const PUBLIC_ROUTES = [
   "/payment-result",
   "/audience-response",
   "/sub-org-registration", // Public sub-org self-registration wizard
+  "/kyc-complete", // DigiLocker redirect landing (sub-org registration KYC)
   "/institute-selection",
   "/delete-user",
   "/change-password",

@@ -55,6 +55,11 @@ export interface CreateRegistrationTemplateRequest {
     vendor_id?: string;
     /** Optional — backend falls back to the picked option's first active plan currency. */
     currency?: string;
+    /**
+     * DigiLocker KYC documents the registering admin must verify — `["AADHAAR"]` or
+     * `["AADHAAR","PAN"]` (backend validates AADHAAR must be included). Omit/empty = no KYC step.
+     */
+    kyc_documents?: string[];
 }
 
 export interface CreateRegistrationTemplateResponse {
@@ -83,6 +88,8 @@ export interface SubOrgRegistrationRow {
     admin_phone?: string | null;
     spawned_sub_org_id?: string | null;
     created_at?: string | number | null;
+    /** PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED; null = not started / not required. */
+    kyc_status?: string | null;
 }
 
 export const createRegistrationTemplate = async (

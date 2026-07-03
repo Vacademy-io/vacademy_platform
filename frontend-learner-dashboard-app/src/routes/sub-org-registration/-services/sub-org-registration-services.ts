@@ -79,6 +79,11 @@ export interface SubOrgRegistrationTemplate {
   custom_fields: TemplateInstituteCustomField[];
   /** Null/absent for FREE templates. */
   payment?: TemplatePaymentInfo | null;
+  /**
+   * Identity documents verified via DigiLocker when `steps` includes "KYC" —
+   * e.g. ["AADHAAR"] or ["AADHAAR","PAN"]. Null/absent when KYC is off.
+   */
+  kyc_documents?: string[] | null;
 }
 
 // ─── Flow request/response types ─────────────────────────────────────────────
@@ -139,6 +144,41 @@ export interface CompleteRegistrationResponse {
   /** Paid templates only — used for the Cashfree user-plan-payment call. */
   user_plan_id?: string;
   payment_response?: CompletePaymentResponse;
+}
+
+// ─── KYC (DigiLocker identity verification) types ────────────────────────────
+
+export type KycStatus =
+  | "NOT_STARTED"
+  | "PENDING"
+  | "VERIFIED"
+  | "CONSENT_DENIED"
+  | "EXPIRED"
+  | "FAILED";
+
+export interface StartKycResponse {
+  registration_id: string;
+  kyc_status: KycStatus;
+  /**
+   * DigiLocker consent URL. Expires in ~10 minutes — mint it on button click
+   * (never on mount) and open it immediately.
+   */
+  url: string;
+}
+
+/** Extracted document details — present once kyc_status is VERIFIED. */
+export interface KycSummary {
+  name?: string | null;
+  dob?: string | null;
+  masked_aadhaar?: string | null;
+  pan_number?: string | null;
+  pan_name?: string | null;
+}
+
+export interface KycStatusResponse {
+  registration_id: string;
+  kyc_status: KycStatus;
+  summary?: KycSummary | null;
 }
 
 // ─── API functions ───────────────────────────────────────────────────────────
@@ -215,6 +255,37 @@ export const completeSubOrgRegistration = async (
   const response = await axios.post<CompleteRegistrationResponse>(
     `${SUB_ORG_REGISTRATION_BASE}/complete`,
     payload
+  );
+  return response?.data;
+};
+
+/**
+ * Mints a fresh DigiLocker consent URL for the registration's KYC step.
+ * Each call creates a new verification attempt — safe to call again after
+ * CONSENT_DENIED/EXPIRED/FAILED. `redirectUrl` must be https in production.
+ */
+export const startKyc = async (
+  registrationId: string,
+  redirectUrl: string
+): Promise<StartKycResponse> => {
+  const response = await axios.post<StartKycResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/kyc/start`,
+    { registration_id: registrationId, redirect_url: redirectUrl }
+  );
+  return response?.data;
+};
+
+/**
+ * Current KYC status for the registration. Poll while PENDING — the backend
+ * flips it to VERIFIED (fetching documents server-side) once the user
+ * completes DigiLocker consent.
+ */
+export const getKycStatus = async (
+  registrationId: string
+): Promise<KycStatusResponse> => {
+  const response = await axios.get<KycStatusResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/kyc/status`,
+    { params: { registrationId } }
   );
   return response?.data;
 };

@@ -27,9 +27,22 @@ import {
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
 
-// The list response only carries `steps`; paid templates include a "PAYMENT" step.
+// The list response only carries `steps`; paid templates include a "PAYMENT" step and
+// templates with DigiLocker identity verification include a "KYC" step.
 const isPaidTemplate = (template: RegistrationTemplateListItem) =>
     Array.isArray(template.steps) && template.steps.includes('PAYMENT');
+
+const hasKycStep = (template: RegistrationTemplateListItem) =>
+    Array.isArray(template.steps) && template.steps.includes('KYC');
+
+// PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED → tinted outline chip classes.
+const KYC_STATUS_CLASSES: Record<string, string> = {
+    VERIFIED: 'border-success-400 bg-success-50 text-success-600',
+    PENDING: 'border-warning-400 bg-warning-50 text-warning-600',
+    CONSENT_DENIED: 'border-danger-400 bg-danger-50 text-danger-600',
+    EXPIRED: 'border-danger-400 bg-danger-50 text-danger-600',
+    FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
+};
 
 const formatDate = (value?: string | number | null) => {
     if (value === null || value === undefined || value === '') return '-';
@@ -162,6 +175,14 @@ export function RegistrationLinksTab() {
                                                 >
                                                     {isPaidTemplate(template) ? 'Paid' : 'Free'}
                                                 </Badge>
+                                                {hasKycStep(template) && (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="text-muted-foreground"
+                                                    >
+                                                        KYC
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -294,6 +315,7 @@ function RegistrationsDialog({
                                 <TableHead>Email</TableHead>
                                 <TableHead>Phone</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead>KYC</TableHead>
                                 <TableHead>Date</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -314,6 +336,21 @@ function RegistrationsDialog({
                                         >
                                             {row.status}
                                         </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.kyc_status ? (
+                                            <Badge
+                                                variant="outline"
+                                                className={
+                                                    KYC_STATUS_CLASSES[row.kyc_status] ||
+                                                    'text-muted-foreground'
+                                                }
+                                            >
+                                                {row.kyc_status.replace(/_/g, ' ')}
+                                            </Badge>
+                                        ) : (
+                                            <span className="text-sm text-muted-foreground">—</span>
+                                        )}
                                     </TableCell>
                                     <TableCell>{formatDate(row.created_at)}</TableCell>
                                 </TableRow>

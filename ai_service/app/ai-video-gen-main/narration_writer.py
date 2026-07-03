@@ -126,6 +126,8 @@ NARRATION_WRITER_SYSTEM_PROMPT = (
     "signature_device). The whole narration must advance the controlling idea and LAND the emotional "
     "arc; match the tonal_register (it wins over a generic brand tone if they conflict); name or evoke "
     "the visual metaphor in words where natural. Don't restate the concept verbatim — embody it.\n"
+    "15b. **A shot's `real_data` field is a USER-CONFIRMED fact — state it VERBATIM** "
+    "in that shot's narration; never round or paraphrase it.\n"
     "15. **GROUND EVERY CLAIM in the SOURCE REQUEST (when provided).** The input may carry a "
     "`source_request` — the user's original words. Any number, name, price, date, offer, or quote "
     "in the source that serves a shot's brief must appear VERBATIM in the narration — never round "
@@ -194,6 +196,9 @@ def _shot_summary_for_prompt(shot: Dict[str, Any]) -> Dict[str, Any]:
     # Include `role` if present (e.g., product_proof) — affects tone.
     if shot.get("role"):
         summary["role"] = shot["role"]
+    # User-confirmed real figure (asset_request gate) — must appear verbatim.
+    if shot.get("real_data"):
+        summary["real_data"] = str(shot["real_data"])[:300]
     # Visual description helps the narrator describe what's on screen.
     if shot.get("visual_description"):
         summary["visual_description"] = str(shot["visual_description"])[:200]

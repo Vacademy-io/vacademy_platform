@@ -455,6 +455,8 @@ def build_shot_planner_user_prompt(
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
+    saved_cast: Optional[List[Dict[str, Any]]] = None,
+    asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -543,6 +545,40 @@ def build_shot_planner_user_prompt(
         lines.append(
             "DIALOGUE SCENES ARE NOT ENABLED — do NOT pick shot_type=DIALOGUE_SCENE and do "
             "NOT emit a `characters` array."
+        )
+    if asset_asks_enabled:
+        lines.append("")
+        lines.append(
+            "ASSET REQUESTS — the user is in assist mode and can hand you REAL assets. "
+            "Where a real user asset would DRAMATICALLY beat anything generated, emit a "
+            "top-level `asset_requests` array (AT MOST 4 items; only where authenticity "
+            "matters — do not ask for things generation handles well). Each item: "
+            "{\"shot_index\": <int or null>, \"kind\": \"screenshot|photo|data|inspiration\", "
+            "\"ask\": <one plain question to the user>, \"why\": <one line on what it improves>, "
+            "\"options\": [<2-3 strings, ONLY for kind=inspiration>]}. Use:\n"
+            "  - kind=screenshot for every DEVICE_MOCKUP that depicts the user's own product "
+            "(a real screenshot beats an invented interface every time);\n"
+            "  - kind=photo when a real product/team/place photo would anchor a hero shot;\n"
+            "  - kind=data when the narration will state a specific statistic — ask the user "
+            "to confirm THEIR real number;\n"
+            "  - kind=inspiration when you genuinely hesitate between visual directions — "
+            "offer the options as short named choices.\n"
+            "Every request is skippable — plan every shot to work WITHOUT the asset too."
+        )
+
+    if dialogue_scenes_enabled and saved_cast:
+        lines.append("")
+        cast_lines = "\n".join(
+            f"  - {c.get('name')}: {c.get('visual_description')}"
+            + (f" (voice: {c.get('voice_hint')})" if c.get('voice_hint') else "")
+            for c in saved_cast if isinstance(c, dict) and c.get("name")
+        )
+        lines.append(
+            "USE THIS EXISTING SAVED CAST — these characters already exist with locked "
+            "portraits and voices from earlier videos in this series. Use EXACTLY these "
+            "names, and emit EXACTLY these visual_description values VERBATIM in your "
+            "top-level `characters` array. Do NOT invent new main characters (background "
+            "extras without dialogue are fine):\n" + cast_lines
         )
 
     # Source clip gating
@@ -860,6 +896,10 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "dialogue",
         "scene_description",
         "character_names",
+        # Asset-request gate answers (assist): real user assets + figures.
+        "user_asset_url",
+        "user_asset_kind",
+        "real_data",
     ):
         if field in raw and raw[field] is not None:
             out[field] = raw[field]
@@ -1063,7 +1103,39 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         # The verbatim visual_description block is what keeps a character
         # looking the same across independently generated clips.
         "characters": _normalize_characters(plan.get("characters")),
+        "asset_requests": _normalize_asset_requests(plan.get("asset_requests")),
     }
+
+
+def _normalize_asset_requests(raw: Any) -> List[Dict[str, Any]]:
+    """Coerce the planner's agent-initiated asks. Empty when absent/malformed."""
+    out: List[Dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    for i, r in enumerate(raw[:4]):
+        if not isinstance(r, dict):
+            continue
+        kind = str(r.get("kind") or "").strip().lower()
+        ask = str(r.get("ask") or "").strip()
+        if kind not in ("screenshot", "photo", "data", "inspiration") or not ask:
+            continue
+        item: Dict[str, Any] = {
+            "index": len(out),
+            "kind": kind,
+            "ask": ask[:300],
+            "why": str(r.get("why") or "").strip()[:200],
+        }
+        try:
+            item["shot_index"] = int(r.get("shot_index"))
+        except (TypeError, ValueError):
+            item["shot_index"] = None
+        if kind == "inspiration":
+            opts = [str(o).strip()[:120] for o in (r.get("options") or []) if str(o).strip()]
+            item["options"] = opts[:3]
+            if not item["options"]:
+                continue  # an inspiration ask without options is useless
+        out.append(item)
+    return out
 
 
 def _normalize_characters(raw: Any) -> List[Dict[str, str]]:
@@ -1141,6 +1213,8 @@ def plan_shots(
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
+    saved_cast: Optional[List[Dict[str, Any]]] = None,
+    asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -1208,6 +1282,8 @@ def plan_shots(
         source_clip_available=source_clip_available,
         dialogue_scenes_enabled=dialogue_scenes_enabled,
         dialogue_mode=dialogue_mode,
+        saved_cast=saved_cast,
+        asset_asks_enabled=asset_asks_enabled,
         article_screenshots=article_screenshots,
         subject_domain=subject_domain,
         cultural_context=cultural_context,

@@ -426,6 +426,7 @@ async def generate_video_external(
                         sub_shots_enabled=p.sub_shots_enabled,
                         dialogue_scenes_enabled=p.dialogue_scenes_enabled,
                         dialogue_mode=p.dialogue_mode,
+                        cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
@@ -772,6 +773,7 @@ async def resume_video_external(
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    cast_id=_meta.get("cast_id"),
                         visual_preferences=_meta.get("visual_preferences"),
                         # Brand kit + per-video overrides: rehydrate so a resumed
                         # run re-applies the SAME brand direction (kit system_prompt,
@@ -1060,6 +1062,65 @@ async def decision_video_external(
                             content_type="application/json",
                         )
                     artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+        elif mode == "edit" and gate_type == dg.GateType.ASSET_REQUEST.value:
+            # Route each response into the plan: per-shot real assets/figures
+            # onto the shot dicts (the HTML + narration prompts read them);
+            # unbound photos into `user_assets` (merged into the reference
+            # context on resume); an inspiration pick onto the concept.
+            responses = dg.asset_request_responses(answer)
+            plan = _read_s3_json(
+                s3_svc, _bucket, video_id,
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ) or {}
+            _reqs_by_idx = {
+                int(r.get("index")): r
+                for r in (plan.get("asset_requests") or [])
+                if isinstance(r, dict) and r.get("index") is not None
+            }
+            _shots_by_idx = {
+                int(sh.get("shot_index")): sh
+                for sh in (plan.get("shots") or [])
+                if isinstance(sh, dict) and sh.get("shot_index") is not None
+            }
+            _user_assets = [u for u in (plan.get("user_assets") or []) if isinstance(u, dict)]
+            _applied = 0
+            for resp in responses:
+                req = _reqs_by_idx.get(resp["index"])
+                if not req or resp.get("skipped"):
+                    continue
+                kind = str(req.get("kind") or "")
+                _sidx = req.get("shot_index")
+                shot = _shots_by_idx.get(int(_sidx)) if _sidx is not None else None
+                if kind in ("screenshot", "photo") and resp.get("url"):
+                    if shot is not None:
+                        shot["user_asset_url"] = resp["url"]
+                        shot["user_asset_kind"] = kind
+                    _user_assets.append({
+                        "kind": kind, "url": resp["url"],
+                        "ask": str(req.get("ask") or "")[:200],
+                    })
+                    _applied += 1
+                elif kind == "data" and resp.get("text") and shot is not None:
+                    shot["real_data"] = resp["text"]
+                    _applied += 1
+                elif kind == "inspiration" and resp.get("choice"):
+                    _cc = plan.get("creative_concept")
+                    if isinstance(_cc, dict):
+                        _cc["inspiration_note"] = resp["choice"]
+                        _applied += 1
+            plan["user_assets"] = _user_assets
+            _abody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+            for _k in (
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ):
+                s3_svc.upload_file_content(
+                    content=_abody, filename="shot_plan.json", s3_key=_k,
+                    content_type="application/json",
+                )
+            artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+            logger.info(f"[Decision] asset_request: applied {_applied} response(s) for {video_id}")
         elif mode == "edit" and gate_type == dg.GateType.CONTACT_SHEET.value:
             # Delete the sent-back shots' cache files so the resume leg
             # regenerates exactly those shots; the notes ride in the recorded
@@ -1160,6 +1221,7 @@ async def decision_video_external(
                         sub_shots_enabled=bool(m.get("sub_shots_enabled", False)),
                         dialogue_scenes_enabled=bool(m.get("dialogue_scenes_enabled", False)),
                         dialogue_mode=str(m.get("dialogue_mode", "storybook")),
+                        cast_id=m.get("cast_id"),
                         visual_preferences=m.get("visual_preferences"),
                         brand_kit_id=m.get("brand_kit_id"),
                         brand_overrides=m.get("brand_overrides"),
@@ -1263,6 +1325,114 @@ async def stock_search_external(
         for i, r in enumerate((results or [])[:12])
     ]
     return {"candidates": cands, "kind": payload.kind}
+
+
+# ---------------------------------------------------------------------------
+# Saved casts (storybook/drama) — same characters + voices across a series
+# ---------------------------------------------------------------------------
+
+class SaveCastRequest(BaseModel):
+    """Body for POST /cast/save-from-video/{video_id}."""
+    name: Optional[str] = None
+
+
+def _dialogue_voice_gender(character: Dict[str, Any], index: int) -> str:
+    """Deterministic character→voice_gender — MUST mirror the pipeline's
+    `_dialogue_voice_map` so a saved cast reproduces the run's exact voices."""
+    hint = str(character.get("voice_hint") or "").lower()
+    if "female" in hint or "woman" in hint or "girl" in hint:
+        return "female"
+    if "male" in hint or "man " in hint or hint.endswith("man") or "boy" in hint:
+        return "male"
+    return ("female", "male")[index % 2]
+
+
+@router.get("/cast/list", summary="List saved video casts (External)")
+async def list_casts_external(
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    return {"casts": AiVideoCastRepository(db).list_for_institute(institute_id)}
+
+
+@router.post(
+    "/cast/save-from-video/{video_id}",
+    summary="Save a finished video's cast (characters + portraits + voices) for reuse (External)",
+)
+async def save_cast_from_video_external(
+    video_id: str,
+    payload: SaveCastRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    """Reconstruct the cast from the run's artifacts — characters from
+    shot_plan.json, portrait sheets from their deterministic S3 keys
+    (run_name == video_id), voice genders from the same mapping the pipeline
+    used — and persist it for reuse via `cast_id` on a future generation."""
+    video_record = _ensure_video_access(video_id, institute_id, db)
+
+    s3_svc = S3Service()
+    from ..config import get_settings as _gs
+    _bucket = _gs().aws_bucket_name or _gs().aws_s3_public_bucket
+    plan = _read_s3_json(
+        s3_svc, _bucket, video_id,
+        f"ai-videos/{video_id}/script/shot_plan.json",
+        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+    ) or {}
+    characters = plan.get("characters") if isinstance(plan.get("characters"), list) else []
+    characters = [c for c in characters if isinstance(c, dict) and c.get("name")]
+    if not characters:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video {video_id} has no dialogue cast to save (no characters in its plan).",
+        )
+
+    # Attach each character's portrait sheet when the run generated one —
+    # keys are deterministic: ai-videos/dialogue/{video_id}/char_NN.png.
+    import httpx as _hx
+    cast_out: List[Dict[str, Any]] = []
+    for i, c in enumerate(characters[:4]):
+        sheet_url = f"https://{_bucket}.s3.amazonaws.com/ai-videos/dialogue/{video_id}/char_{i:02d}.png"
+        try:
+            if _hx.head(sheet_url, timeout=6.0).status_code != 200:
+                sheet_url = None
+        except Exception:
+            sheet_url = None
+        cast_out.append({
+            "name": str(c.get("name"))[:60],
+            "visual_description": str(c.get("visual_description") or "")[:500],
+            "voice_hint": str(c.get("voice_hint") or "")[:120],
+            "voice_gender": _dialogue_voice_gender(c, i),
+            "sheet_url": sheet_url,
+        })
+
+    _default_name = f"Cast of “{(video_record.prompt or 'video')[:40].strip()}”"
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    cast = AiVideoCastRepository(db).create(
+        institute_id=institute_id,
+        name=(payload.name or _default_name),
+        characters=cast_out,
+        source_video_id=video_id,
+    )
+    logger.info(f"[Cast] saved cast {cast['cast_id']} from {video_id} ({len(cast_out)} characters)")
+    return cast
+
+
+@router.delete("/cast/{cast_id}", summary="Delete a saved cast (External)")
+async def delete_cast_external(
+    cast_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    try:
+        ok = AiVideoCastRepository(db).delete(cast_id, institute_id)
+    except Exception:
+        ok = False
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Cast {cast_id} not found.")
+    return {"deleted": True, "cast_id": cast_id}
 
 
 # ---------------------------------------------------------------------------
@@ -1370,6 +1540,7 @@ async def retry_video_external(
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    cast_id=_meta.get("cast_id"),
                     visual_preferences=_meta.get("visual_preferences"),
                     # Brand kit + per-video overrides — retry rehydrates from saved
                     # meta so regenerated shots keep the original brand direction.

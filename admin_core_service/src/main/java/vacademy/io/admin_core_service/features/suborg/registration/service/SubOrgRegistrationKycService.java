@@ -99,7 +99,17 @@ public class SubOrgRegistrationKycService {
                     .build();
         }
 
-        Map<String, Object> status = secureIdClient.getStatus(registration.getKycVerificationId());
+        Map<String, Object> status;
+        try {
+            status = secureIdClient.getStatus(registration.getKycVerificationId());
+        } catch (Exception e) {
+            // Cashfree enforces IP whitelisting on status/document calls — a
+            // non-whitelisted pod egress IP (or any transient failure) must not
+            // 5xx the wizard's poll; report the stored status and let it retry.
+            log.error("SecureID status check failed for registration {}: {}",
+                    registration.getId(), e.getMessage());
+            return buildStatusResponse(registration);
+        }
         String cashfreeStatus = status != null && status.get("status") != null
                 ? status.get("status").toString() : "PENDING";
         switch (cashfreeStatus) {
@@ -181,9 +191,12 @@ public class SubOrgRegistrationKycService {
                         document, registration.getId(), e.getMessage());
             }
         }
-        if (collected.isEmpty()) {
+        if (collected.size() < documents.size()) {
+            // All-or-nothing: a partial fetch (e.g. one call hit a non-whitelisted
+            // egress IP) must not mark VERIFIED with a required document missing.
+            // Consent stays valid ~1 hour, so the next poll simply retries.
             throw new VacademyException(
-                    "Verification succeeded but documents could not be fetched. Please retry.");
+                    "Verification succeeded but documents could not be fetched yet. Please retry.");
         }
         try {
             registration.setKycDocumentsJson(objectMapper.writeValueAsString(collected));
@@ -258,15 +271,20 @@ public class SubOrgRegistrationKycService {
             if (aadhaar != null) {
                 putIfPresent(summary, "name", aadhaar.get("name"));
                 putIfPresent(summary, "dob", aadhaar.get("dob"));
-                putIfPresent(summary, "masked_aadhaar",
-                        aadhaar.get("aadhaar_number") != null
-                                ? aadhaar.get("aadhaar_number") : aadhaar.get("masked_aadhaar_number"));
+                // Live payload carries the pre-masked number as "uid" (e.g. xxxxxxxx5174);
+                // older doc examples used aadhaar_number/masked_aadhaar_number.
+                Object maskedAadhaar = aadhaar.get("uid") != null ? aadhaar.get("uid")
+                        : aadhaar.get("aadhaar_number") != null ? aadhaar.get("aadhaar_number")
+                        : aadhaar.get("masked_aadhaar_number");
+                putIfPresent(summary, "masked_aadhaar", maskedAadhaar);
             }
             Map<String, Object> pan = docs.get("PAN");
             if (pan != null) {
                 putIfPresent(summary, "pan_number",
                         pan.get("pan_number") != null ? pan.get("pan_number") : pan.get("pan"));
-                putIfPresent(summary, "pan_name", pan.get("name"));
+                // Live payload key is "name_pan_card"; keep "name" as a fallback.
+                putIfPresent(summary, "pan_name",
+                        pan.get("name_pan_card") != null ? pan.get("name_pan_card") : pan.get("name"));
             }
             return summary.isEmpty() ? null : summary;
         } catch (Exception e) {

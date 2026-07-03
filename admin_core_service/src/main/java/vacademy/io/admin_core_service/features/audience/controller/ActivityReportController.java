@@ -34,8 +34,9 @@ public class ActivityReportController {
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(activityReportService.activityTimeline(instituteId, fromDate, toDate,
-                teamId, counsellorUserId, user.getUserId()));
+                teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 }

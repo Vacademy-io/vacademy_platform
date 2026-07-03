@@ -29,6 +29,10 @@ export interface ReportTabProps {
     toDate: string;
     teamId?: string;
     counsellorUserId?: string;
+    /** Campaign (audience) id to scope the report to a single campaign. Only the
+     *  "clean" lead-based tabs (whose queries join audience_response) honour it;
+     *  the shared bar hides the picker on tabs where it can't filter cleanly. */
+    audienceId?: string;
 }
 
 // ── Formatters ─────────────────────────────────────────────────────────

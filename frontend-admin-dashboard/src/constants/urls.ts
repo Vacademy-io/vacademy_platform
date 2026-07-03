@@ -1245,6 +1245,24 @@ export const COUNSELLOR_WORKBENCH_LEAD_TRANSFERS = (instituteId: string, leadUse
     `${COUNSELLOR_WORKBENCH_BASE}/leads/${leadUserId}/transfers?instituteId=${instituteId}`;
 
 // =============================================================================
+// Counsellor targets. Admin-set targets (conversions / leads / calls) per
+// counsellor with a WEEK/MONTH/CUSTOM timeline; "completed" is computed live.
+// Stored inside the same LEAD_SETTING workbench JSON — no extra tables.
+// =============================================================================
+export const COUNSELLOR_TARGET_BASE = `${COUNSELLOR_WORKBENCH_BASE}/targets`;
+export const COUNSELLOR_TARGET_PROGRESS = `${COUNSELLOR_TARGET_BASE}/progress`;
+export const COUNSELLOR_TARGET_UPSERT = COUNSELLOR_TARGET_BASE;
+export const COUNSELLOR_TARGET_BULK = `${COUNSELLOR_TARGET_BASE}/bulk`;
+export const COUNSELLOR_TARGET_LIST = (instituteId: string, counsellorUserId: string) =>
+    `${COUNSELLOR_TARGET_BASE}?instituteId=${instituteId}&counsellorUserId=${counsellorUserId}`;
+export const COUNSELLOR_TARGET_DELETE = (
+    targetId: string,
+    instituteId: string,
+    counsellorUserId: string
+) =>
+    `${COUNSELLOR_TARGET_BASE}/${targetId}?instituteId=${instituteId}&counsellorUserId=${counsellorUserId}`;
+
+// =============================================================================
 // Counsellor rating. Strategy config lives at /counsellor-workbench/config;
 // this block is for the per-counsellor score reads + the manual-override
 // write. Per-counsellor scores are cached inside the same LEAD_SETTING

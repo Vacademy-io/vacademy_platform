@@ -287,6 +287,26 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                 // explicitly customized the label, respect it.
                 const defaultItem = defaultItemsById.get(item.id);
                 const isSeededTitle = !cfg.label || cfg.label === defaultItem?.title;
+                // Custom sub-tabs the admin added under this tab (ids that are
+                // not among the tab's hardcoded default subItems, e.g.
+                // "custom-sub-…"). The built-in flow below only draws from the
+                // hardcoded defaults, so without this these saved sub-tabs
+                // persist in Display Settings but never render in the nav.
+                // Build the default-id set from the *unfiltered* defaults so a
+                // feature-gated default (chat/ai-intelligence removed above) is
+                // still recognized as a default and not re-added here.
+                const defaultSubIds = new Set(
+                    (defaultItem?.subItems || item.subItems || []).map((s) => s.subItemId)
+                );
+                const customSubs = (cfg.subTabs || [])
+                    .filter((s) => s.visible !== false && !defaultSubIds.has(s.id))
+                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((s) => ({
+                        subItem: s.label || s.id,
+                        subItemLink: s.route,
+                        subItemId: s.id,
+                        locked: s.locked,
+                    }));
                 if (item.subItems && item.subItems.length > 0) {
                     const subVis = new Map((cfg.subTabs || []).map((s) => [s.id, s]));
                     const defaultSubsById = new Map(
@@ -317,7 +337,18 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         ...item,
                         title: isSeededTitle ? item.title : (cfg.label as string),
                         to: cfg.route ?? item.to,
-                        subItems: filteredSubs,
+                        subItems: [...filteredSubs, ...customSubs],
+                        locked: cfg.locked,
+                    };
+                }
+                // Built-in tab with no default subItems but the admin added
+                // custom sub-tabs — surface it as a collapsible group of those.
+                if (customSubs.length > 0) {
+                    return {
+                        ...item,
+                        title: isSeededTitle ? item.title : (cfg.label as string),
+                        to: cfg.route ?? item.to,
+                        subItems: customSubs,
                         locked: cfg.locked,
                     };
                 }

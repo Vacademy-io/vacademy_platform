@@ -78,6 +78,8 @@ interface CourseSidebarProps {
     }>;
   };
   overviewVisible: boolean;
+  /** When true, hide the "Author" row in the Course Overview card. */
+  hideAuthorName?: boolean;
   processedSlideCounts: SlideCount[];
   moduleStats: ModuleStats;
   currentSubjects: unknown[];
@@ -102,6 +104,7 @@ export const CourseSidebar = ({
   selectedLevel,
   slideCountQuery,
   overviewVisible,
+  hideAuthorName = false,
   processedSlideCounts,
   moduleStats,
   currentSubjects,
@@ -215,12 +218,16 @@ export const CourseSidebar = ({
         </CardHeader>
         <CardContent className="p-3 pt-2.5 space-y-2.5">
           {/* Author Name */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground font-medium">Author</span>
-            <span className="font-semibold">{displayAuthorName || "—"}</span>
-          </div>
+          {!hideAuthorName && (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground font-medium">Author</span>
+                <span className="font-semibold">{displayAuthorName || "—"}</span>
+              </div>
 
-          <Separator />
+              <Separator />
+            </>
+          )}
 
           {/* Level Badge */}
           {levelOptions.length > 0 &&

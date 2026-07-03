@@ -1958,6 +1958,7 @@ export const CourseDetailsPage = () => {
   const [showCourseConfiguration, setShowCourseConfiguration] =
     useState<boolean>(true);
   const [overviewVisible, setOverviewVisible] = useState<boolean>(true);
+  const [hideAuthorName, setHideAuthorName] = useState<boolean>(false);
 
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -1969,11 +1970,13 @@ export const CourseDetailsPage = () => {
           const resolvedOverviewVisible = cd.courseOverview?.visible ?? true;
           setShowCourseConfiguration(resolvedShowCourseConfiguration);
           setOverviewVisible(resolvedOverviewVisible);
+          setHideAuthorName(cd.hideAuthorName ?? false);
         }
       })
       .catch(() => {
         setShowCourseConfiguration(true);
         setOverviewVisible(true);
+        setHideAuthorName(false);
       });
   }, []);
 
@@ -2236,6 +2239,7 @@ export const CourseDetailsPage = () => {
                     selectedLevel={selectedLevel}
                     slideCountQuery={slideCountQuery}
                     overviewVisible={overviewVisible}
+                    hideAuthorName={hideAuthorName}
                     processedSlideCounts={processedSlideCounts}
                     moduleStats={moduleStats}
                     currentSubjects={getSubjectDetails(

@@ -1761,7 +1761,7 @@ export const CourseStructureDetails = ({
                                       C{chIdx + 1}
                                     </span>
                                   )}
-                                  <span className="break-words text-xs" title={toTitleCase(ch.chapter_name)}>
+                                  <span className="break-words text-sm font-medium" title={toTitleCase(ch.chapter_name)}>
                                     {toTitleCase(ch.chapter_name)}
                                   </span>
                                   {isChapterLocked && (

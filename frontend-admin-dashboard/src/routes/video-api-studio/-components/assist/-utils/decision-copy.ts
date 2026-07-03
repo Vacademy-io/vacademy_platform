@@ -45,6 +45,10 @@ export const GATE_META: Record<GateType, GateMeta> = {
         title: 'Make it real',
         blurb: 'The AI asked for real assets — your screenshots, photos, and numbers.',
     },
+    cast: {
+        title: 'Your cast',
+        blurb: 'The characters\' portraits — approved before any scene is filmed.',
+    },
     voice: { title: 'Voice', blurb: 'The narration voice.' },
     music: { title: 'Background music', blurb: 'The background music track.' },
     avatar: { title: 'Host', blurb: 'The on-screen host / avatar.' },
@@ -63,6 +67,7 @@ const GATE_PROMPT: Record<GateType, string> = {
     shot_look: 'Which look should we use for this shot?',
     contact_sheet: 'All shots are built — approve the contact sheet or send shots back.',
     asset_request: 'I could make a few shots more real with things only you have.',
+    cast: 'Meet your cast — approve the portraits before I film the scenes.',
     voice: 'Which voice should we use?',
     music: 'Which background music fits?',
     avatar: 'Which host should present?',
@@ -91,6 +96,10 @@ function summarizeLedger(gate: GateType, mode: string, answer: Record<string, un
                 const rs = (answer as { responses?: Array<{ skipped?: boolean }> })?.responses ?? [];
                 const n = rs.filter((r) => !r?.skipped).length;
                 return n > 0 ? `Provided ${n} real asset(s)` : 'Skipped — AI creates everything';
+            }
+            if (gate === 'cast') {
+                const n = ((answer as { characters?: unknown[] })?.characters ?? []).length;
+                return n > 0 ? `Updated ${n} portrait(s)` : 'Approved the cast';
             }
             return 'Picked the visuals';
         default:
@@ -151,6 +160,8 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
                 const n = answer.responses.filter((r) => !r.skipped).length;
                 return n > 0 ? `Provided ${n} real asset(s)` : 'Skipped the asset requests';
             }
+            if (answer.gate_type === 'cast')
+                return `Updated ${answer.characters.length} portrait(s) before filming`;
             return `Picked visuals for ${answer.selections.length} shot(s)`;
         default:
             return `Resolved ${label.toLowerCase()}`;

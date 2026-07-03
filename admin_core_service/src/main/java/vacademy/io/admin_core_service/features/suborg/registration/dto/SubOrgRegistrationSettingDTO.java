@@ -30,9 +30,18 @@ public class SubOrgRegistrationSettingDTO {
         @JsonProperty("STEPS")
         private List<String> steps;
 
-        /** Media file id of the T&C PDF; present iff the TNC step is enabled. */
+        /** Media file id of the T&C PDF; optional part of the TNC step. */
         @JsonProperty("TNC_FILE_ID")
         private String tncFileId;
+
+        /**
+         * Consent statements, each rendered as its own required checkbox on the TNC step.
+         * Inline links use [label](url) syntax, e.g.
+         * "We have read the [Code of Conduct](https://...) and agree to abide by it."
+         * TNC step exists when tncFileId OR this list is set.
+         */
+        @JsonProperty("TNC_CONSENT_ITEMS")
+        private List<String> tncConsentItems;
 
         /** Max COMPLETED registrations through this link. Null = unlimited. */
         @JsonProperty("MAX_REGISTRATIONS")

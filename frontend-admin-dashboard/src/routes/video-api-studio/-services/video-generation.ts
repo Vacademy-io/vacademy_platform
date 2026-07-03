@@ -539,9 +539,19 @@ export type GateType =
     | 'shot_look'
     | 'contact_sheet'
     | 'asset_request'
+    | 'cast'
     | 'voice'
     | 'music'
     | 'avatar';
+
+/** One character on the cast gate (cast gate payload.characters[]). */
+export interface CastGateCharacter {
+    name: string;
+    visual_description?: string;
+    voice_hint?: string;
+    /** Reference portrait; null when generation failed (upload instead). */
+    sheet_url?: string | null;
+}
 
 /** One agent-initiated ask (asset_request gate payload.requests[]). */
 export interface AssetRequestItem {
@@ -631,6 +641,8 @@ export interface DecisionPayload {
     alternatives?: Array<Record<string, string>>;
     /** asset_request: the planner's asks (upload / answer / pick / skip each). */
     requests?: AssetRequestItem[];
+    /** cast: the characters awaiting portrait approval. */
+    characters?: CastGateCharacter[];
     [key: string]: unknown;
 }
 
@@ -667,6 +679,11 @@ export type DecisionAnswer =
     | { kind: 'edit'; gate_type: 'shot_plan'; shots: ShotPlanRow[] }
     | { kind: 'edit'; gate_type: 'creative_concept'; concept: Record<string, string> }
     | { kind: 'edit'; gate_type: 'contact_sheet'; regens: Array<{ shot_index: number; note: string }> }
+    | {
+          kind: 'edit';
+          gate_type: 'cast';
+          characters: Array<{ name: string; url?: string; regen_note?: string }>;
+      }
     | {
           kind: 'edit';
           gate_type: 'asset_request';
@@ -1907,6 +1924,8 @@ export function decisionAnswerToBody(
                 payload = { regens: answer.regens };
             } else if (answer.gate_type === 'asset_request') {
                 payload = { responses: answer.responses };
+            } else if (answer.gate_type === 'cast') {
+                payload = { characters: answer.characters };
             } else {
                 payload = { selections: answer.selections };
             }

@@ -251,9 +251,28 @@ public class SubOrgRegistrationTemplateService {
         if (!CollectionUtils.isEmpty(request.getInstituteCustomFields())) {
             steps.add("CUSTOM_FIELDS");
         }
-        if (StringUtils.hasText(request.getTncFileId())) {
+        // TNC step: enabled by a PDF, consent statements, or both.
+        List<String> consentItems = request.getTncConsentItems() == null ? List.of()
+                : request.getTncConsentItems().stream()
+                        .filter(StringUtils::hasText)
+                        .map(String::trim)
+                        .toList();
+        if (consentItems.size() > 10) {
+            throw new VacademyException("At most 10 consent statements are allowed");
+        }
+        for (String item : consentItems) {
+            if (item.length() > 1000) {
+                throw new VacademyException("Consent statements must be at most 1000 characters");
+            }
+        }
+        if (StringUtils.hasText(request.getTncFileId()) || !consentItems.isEmpty()) {
             steps.add("TNC");
-            setting.setTncFileId(request.getTncFileId());
+            if (StringUtils.hasText(request.getTncFileId())) {
+                setting.setTncFileId(request.getTncFileId());
+            }
+            if (!consentItems.isEmpty()) {
+                setting.setTncConsentItems(consentItems);
+            }
         }
         // DigiLocker KYC: verify identity before taking payment.
         if (!CollectionUtils.isEmpty(request.getKycDocuments())) {

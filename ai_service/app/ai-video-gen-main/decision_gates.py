@@ -58,6 +58,7 @@ class GateType(str, Enum):
     SHOT_LOOK = "shot_look"                  # best-of-N HTML look pick for hero/hook/CTA shots
     CONTACT_SHEET = "contact_sheet"          # per-shot frame review AFTER HTML, before finalize
     ASSET_REQUEST = "asset_request"          # agent-initiated asks: real screenshots/photos/data
+    CAST = "cast"                            # approve character portraits BEFORE filming clips
     VOICE = "voice"                          # TTS voice (needs preview audio)   [phase 2]
     MUSIC = "music"                          # background music track (needs previews) [phase 2]
     AVATAR = "avatar"                        # host/avatar pick (needs previews) [phase 2]
@@ -71,6 +72,7 @@ DEFAULT_ASSIST_GATES: List[str] = [
     GateType.SHOT_PLAN.value,
     GateType.ASSET_REQUEST.value,
     GateType.NARRATION.value,
+    GateType.CAST.value,
     GateType.VISUAL_CASTING.value,
     GateType.SHOT_LOOK.value,
     GateType.CONTACT_SHEET.value,
@@ -497,6 +499,51 @@ def build_contact_sheet_decision(
         payload={"shots": shots},
         seq=seq,
     )
+
+
+def build_cast_decision(
+    video_id: str,
+    characters: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Cast gate — approve the characters' portraits BEFORE any dialogue clip
+    is filmed (each clip costs real money; a wrong face multiplies across the
+    whole video). ``characters`` = [{name, visual_description, voice_hint,
+    sheet_url}]. Answer = ``edit`` with ``characters: [{name, url?,
+    regen_note?}]`` — keep by default, upload a replacement, or regenerate
+    with a note.
+    """
+    n = len(characters)
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.CAST.value,
+        prompt=(
+            f"Meet your cast — {n} character{'s' if n != 1 else ''}. Approve them "
+            "before I film the scenes, or fix any portrait first."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=False,
+        allow_edit=True,
+        payload={"characters": characters},
+        seq=seq,
+    )
+
+
+def cast_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """{name_lower: {url?, note?}} from a cast ``edit`` answer."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for c in ((answer or {}).get("characters") or []):
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name") or "").strip().lower()
+        if not name:
+            continue
+        url = str(c.get("url") or "").strip() or None
+        note = str(c.get("regen_note") or "").strip()[:500] or None
+        if url or note:
+            out[name] = {"url": url, "note": note}
+    return out
 
 
 def build_asset_request_decision(

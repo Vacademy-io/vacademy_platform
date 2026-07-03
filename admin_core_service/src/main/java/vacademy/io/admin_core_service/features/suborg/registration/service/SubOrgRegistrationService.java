@@ -97,6 +97,8 @@ public class SubOrgRegistrationService {
                 .steps(setting != null && !CollectionUtils.isEmpty(setting.getSteps())
                         ? setting.getSteps() : List.of("DETAILS"))
                 .tncFileId(setting != null ? setting.getTncFileId() : null)
+                .tncConsentItems(setting != null && !CollectionUtils.isEmpty(setting.getTncConsentItems())
+                        ? setting.getTncConsentItems() : null)
                 .customFields(instituteCustomFiledService.findCustomFieldsAsJson(
                         template.getInstituteId(),
                         CustomFieldTypeEnum.ENROLL_INVITE.name(),

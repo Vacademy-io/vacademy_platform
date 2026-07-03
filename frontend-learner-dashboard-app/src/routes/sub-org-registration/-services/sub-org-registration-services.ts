@@ -76,6 +76,8 @@ export interface SubOrgRegistrationTemplate {
   /** May end with "PAYMENT" for paid templates (always the last step). */
   steps: string[];
   tnc_file_id: string | null;
+  /** Consent statements for the TNC step; inline links via [label](url). */
+  tnc_consent_items?: string[] | null;
   custom_fields: TemplateInstituteCustomField[];
   /** Null/absent for FREE templates. */
   payment?: TemplatePaymentInfo | null;

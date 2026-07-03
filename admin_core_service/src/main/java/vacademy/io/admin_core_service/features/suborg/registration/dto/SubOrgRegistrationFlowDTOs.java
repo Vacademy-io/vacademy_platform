@@ -31,6 +31,8 @@ public final class SubOrgRegistrationFlowDTOs {
         private String instituteId;
         private List<String> steps;
         private String tncFileId;
+        /** Consent statements for the TNC step; inline links via [label](url). */
+        private List<String> tncConsentItems;
         private List<InstituteCustomFieldDTO> customFields;
         /** Present only for paid templates. */
         private PublicPaymentDTO payment;

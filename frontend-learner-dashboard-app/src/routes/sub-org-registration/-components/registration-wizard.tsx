@@ -480,6 +480,7 @@ const RegistrationWizard = ({
           {phase === "TNC" && (
             <TncStep
               tncFileId={template.tnc_file_id}
+              tncConsentItems={template.tnc_consent_items}
               isSubmitting={isCompleting}
               onContinue={handleTncContinue}
               continueLabel={

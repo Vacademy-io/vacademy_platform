@@ -31,6 +31,7 @@ import { VisualCastingDecision } from './gates/VisualCastingDecision';
 import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
 import { ContactSheetDecision } from './gates/ContactSheetDecision';
 import { AssetRequestDecision } from './gates/AssetRequestDecision';
+import { CastDecision } from './gates/CastDecision';
 
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
@@ -291,6 +292,14 @@ function DecisionCard({
         case 'asset_request':
             return (
                 <AssetRequestDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
+        case 'cast':
+            return (
+                <CastDecision
                     decision={decision}
                     isSubmitting={isSubmitting}
                     onSubmit={onSubmit}

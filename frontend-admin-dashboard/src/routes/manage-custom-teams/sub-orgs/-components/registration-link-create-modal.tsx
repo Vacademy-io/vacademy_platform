@@ -9,6 +9,7 @@ import { CircleNotch, FilePdf, Plus, Trash } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -143,6 +144,8 @@ export function RegistrationLinkCreateModal({
     const [tncFileId, setTncFileId] = useState<string | null>(null);
     const [tncFileName, setTncFileName] = useState<string>('');
     const [isUploadingTnc, setIsUploadingTnc] = useState(false);
+    // Consent statements (each a required checkbox in the wizard); inline links via [label](url).
+    const [tncConsentItems, setTncConsentItems] = useState<string[]>([]);
     const [kycEnabled, setKycEnabled] = useState(false);
     const [kycScope, setKycScope] = useState<KycScope>('AADHAAR');
 
@@ -273,6 +276,7 @@ export function RegistrationLinkCreateModal({
         setTncEnabled(false);
         setTncFileId(null);
         setTncFileName('');
+        setTncConsentItems([]);
         setKycEnabled(false);
         setKycScope('AADHAAR');
     };
@@ -383,8 +387,9 @@ export function RegistrationLinkCreateModal({
             toast.error('Select at least one batch');
             return;
         }
-        if (tncEnabled && !tncFileId) {
-            toast.error('Upload a T&C PDF or disable the T&C step');
+        const cleanedConsentItems = tncConsentItems.map((s) => s.trim()).filter(Boolean);
+        if (tncEnabled && !tncFileId && cleanedConsentItems.length === 0) {
+            toast.error('Add a T&C PDF or at least one consent statement, or disable the T&C step');
             return;
         }
         const invalidDropdown = customFields.find(
@@ -416,6 +421,8 @@ export function RegistrationLinkCreateModal({
                 selectedAdminPermissions.length > 0 ? selectedAdminPermissions : undefined,
             allowed_team_roles: selectedTeamRoles.length > 0 ? selectedTeamRoles : undefined,
             tnc_file_id: tncEnabled && tncFileId ? tncFileId : undefined,
+            tnc_consent_items:
+                tncEnabled && cleanedConsentItems.length > 0 ? cleanedConsentItems : undefined,
             // AADHAAR is always included — the backend rejects KYC configs without it.
             kyc_documents: kycEnabled
                 ? kycScope === 'AADHAAR_PAN'
@@ -902,7 +909,8 @@ export function RegistrationLinkCreateModal({
                         <div>
                             <Label htmlFor="registration-link-tnc">Terms &amp; Conditions</Label>
                             <p className="text-xs text-muted-foreground">
-                                Require registrants to accept a T&amp;C PDF before completing.
+                                Require registrants to accept a T&amp;C PDF and/or consent
+                                statements before completing.
                             </p>
                         </div>
                         <Switch
@@ -938,13 +946,65 @@ export function RegistrationLinkCreateModal({
                                     onFileSelected={handleTncFileSelected}
                                     maxSize={10}
                                     acceptFormats={{ 'application/pdf': ['.pdf'] }}
-                                    acceptMsg="Supported format: PDF"
+                                    acceptMsg="Supported format: PDF (optional)"
                                 />
                                 {isUploadingTnc && (
                                     <p className="text-xs text-primary-500">Uploading PDF...</p>
                                 )}
                             </div>
                         ))}
+                    {tncEnabled && (
+                        <div className="space-y-2 rounded-md border p-3">
+                            <div>
+                                <Label>Consent statements</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Each statement becomes a required checkbox. Add inline links
+                                    with [label](url) — e.g. We have read the [Code of
+                                    Conduct](https://example.com/coc) and agree to abide by it.
+                                </p>
+                            </div>
+                            {tncConsentItems.map((item, index) => (
+                                <div key={index} className="flex items-start gap-2">
+                                    <Textarea
+                                        value={item}
+                                        onChange={(e) =>
+                                            setTncConsentItems((prev) =>
+                                                prev.map((s, i) =>
+                                                    i === index ? e.target.value : s
+                                                )
+                                            )
+                                        }
+                                        placeholder="e.g. By submitting, you agree to receive communication. See our [Privacy Policy](https://example.com/privacy)."
+                                        rows={2}
+                                        maxLength={1000}
+                                        className="flex-1 text-sm"
+                                    />
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() =>
+                                            setTncConsentItems((prev) =>
+                                                prev.filter((_, i) => i !== index)
+                                            )
+                                        }
+                                    >
+                                        <Trash className="size-4" />
+                                    </MyButton>
+                                </div>
+                            ))}
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setTncConsentItems((prev) => [...prev, ''])}
+                                disable={tncConsentItems.length >= 10}
+                            >
+                                <Plus className="mr-1 size-4" />
+                                Add statement
+                            </MyButton>
+                        </div>
+                    )}
                 </div>
 
                 {/* 8. Identity Verification (DigiLocker) */}

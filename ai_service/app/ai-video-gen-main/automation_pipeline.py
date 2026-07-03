@@ -7593,6 +7593,10 @@ class VideoGenerationPipeline:
             except Exception as _t_err:
                 print(f"   ⚠️ dialogue timing re-derive failed: {_t_err}")
 
+        # Persist prep results (audio URLs, resized timings) so a later pause
+        # (cast gate / casting / contact sheet) doesn't redo dialogue TTS.
+        self._persist_dialogue_plan(run_dir, shots=[s for s in shots if isinstance(s, dict)])
+
     def _ensure_dialogue_cast_sheet(self, run_dir: Path) -> Optional[str]:
         """One reference image for the whole cast, generated once per run.
 
@@ -7667,6 +7671,13 @@ class VideoGenerationPipeline:
             return self._character_sheet_urls
         sheets: Dict[str, str] = {}
         cast = self._dialogue_characters or []
+        # Character dicts may already carry sheet_url (saved cast, or a cast-gate
+        # upload/regen persisted into the plan) — those win over fresh generation.
+        for c in cast[:4]:
+            _n = str(c.get("name") or "").strip().lower()
+            _u = str(c.get("sheet_url") or "").strip()
+            if _n and _u:
+                sheets[_n] = _u
         try:
             if not getattr(self, "_ai_video_s3_service", None):
                 self._build_ai_video_uploaders()
@@ -7676,7 +7687,7 @@ class VideoGenerationPipeline:
                 for i, c in enumerate(cast[:4]):
                     name = str(c.get("name") or "").strip()
                     desc = str(c.get("visual_description") or "").strip()
-                    if not name or not desc:
+                    if not name or not desc or name.lower() in sheets:
                         continue
                     try:
                         prompt = (
@@ -7703,6 +7714,7 @@ class VideoGenerationPipeline:
                         )
                         if url:
                             sheets[name.lower()] = url
+                            c["sheet_url"] = url
                             print(f"   🎭 Character sheet ready: {name}")
                     except Exception as cs_err:
                         print(f"   ⚠️ character sheet failed for {name}: {cs_err}")
@@ -7710,6 +7722,140 @@ class VideoGenerationPipeline:
             print(f"   ⚠️ character sheets unavailable: {outer_err}")
         self._character_sheet_urls = sheets
         return sheets
+
+    def _persist_dialogue_plan(self, run_dir: Path, shots: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Write the CURRENT dialogue state (shots' _dialogue_* fields, cast
+        sheet_urls) into run_dir/shot_plan.json. The DecisionRequired catch
+        uploads that file to checkpoints/, and the resume leg downloads it back
+        — so pauses (cast gate, casting, contact sheet) never lose prep work.
+        Best-effort; failure just means the resume leg redoes some prep."""
+        try:
+            plan_path = run_dir / "shot_plan.json"
+            plan: Dict[str, Any] = {}
+            if plan_path.exists():
+                try:
+                    plan = json.loads(plan_path.read_text())
+                except Exception:
+                    plan = {}
+            if not isinstance(plan, dict):
+                plan = {}
+            if shots is not None:
+                plan["shots"] = shots
+            if self._dialogue_characters:
+                plan["characters"] = self._dialogue_characters
+            plan_path.write_text(json.dumps(plan, ensure_ascii=False, default=str))
+        except Exception as _pp_err:
+            print(f"   ⚠️ dialogue plan persist failed: {_pp_err}")
+
+    def _regen_character_sheet(
+        self, run_dir: Path, index: int, character: Dict[str, Any], note: str,
+    ) -> Optional[str]:
+        """Regenerate one portrait per the user's cast-gate note. Returns the
+        new URL or None. Key is note-hashed so re-applying the same answer on
+        a later leg reuses the same image instead of regenerating."""
+        try:
+            name = str(character.get("name") or "").strip()
+            desc = str(character.get("visual_description") or "").strip()
+            prompt = (
+                f"Character reference portrait of {name}: {desc}. "
+                f"USER REVISION (must satisfy): {note}. "
+                "Full body, standing, facing camera, neutral studio background, "
+                "photorealistic, cinematic lighting, no text, single person only."
+            )
+            img_bytes, _u = self._call_image_generation_llm(
+                prompt,
+                width=self.video_width,
+                height=self.video_height,
+                model_override="bytedance-seed/seedream-4.5",
+            )
+            if not img_bytes:
+                return None
+            import hashlib as _hl
+            _suffix = _hl.md5(note.encode("utf-8")).hexdigest()[:6]
+            local = run_dir / "dialogue_tts" / f"char_{index:02d}_{_suffix}.png"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_bytes(img_bytes)
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            url = svc.upload_file(
+                local,
+                s3_key=f"ai-videos/dialogue/{run_name}/char_{index:02d}_{_suffix}.png",
+                content_type="image/png",
+            )
+            if url:
+                print(f"   🎭 Portrait regenerated for {name} ({note[:50]!r})")
+            return url
+        except Exception as _rg_err:
+            print(f"   ⚠️ portrait regen failed for character {index}: {_rg_err}")
+            return None
+
+    def _maybe_cast_gate(self, run_dir: Path) -> None:
+        """Assist: approve the cast's portraits BEFORE any clip is filmed.
+
+        Mirrors the casting/contact-sheet gates: first pass emits
+        ``decision_required`` + raises DecisionRequired (clip money not yet
+        spent); the resume leg applies the recorded answer — uploaded
+        replacement portraits and/or note-driven regenerations — then filming
+        proceeds with the approved faces.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        chars = self._dialogue_characters or []
+        if not chars:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.CAST.value, None)
+        if outcome == _dg.GateOutcome.AUTO_DECIDE:
+            return
+        if outcome == _dg.GateOutcome.USE_ANSWER:
+            directives = _dg.cast_gate_directives((_rec or {}).get("answer"))
+            if not directives:
+                return
+            changed = False
+            for i, c in enumerate(chars[:4]):
+                d = directives.get(str(c.get("name") or "").strip().lower())
+                if not d:
+                    continue
+                if d.get("url"):
+                    if c.get("sheet_url") != d["url"]:
+                        c["sheet_url"] = d["url"]
+                        changed = True
+                elif d.get("note") and c.get("_cast_regen_applied") != d["note"]:
+                    new_url = self._regen_character_sheet(run_dir, i, c, d["note"])
+                    c["_cast_regen_applied"] = d["note"]
+                    if new_url:
+                        c["sheet_url"] = new_url
+                    changed = True
+            if changed:
+                # Rebuild the sheet map from the updated dicts + persist.
+                self._character_sheet_urls = None
+                self._ensure_character_sheets(run_dir)
+                self._persist_dialogue_plan(run_dir)
+            return
+        # EMIT_AND_STOP — persist current prep so the pause loses nothing.
+        self._persist_dialogue_plan(run_dir)
+        payload_chars = [
+            {
+                "name": str(c.get("name") or ""),
+                "visual_description": str(c.get("visual_description") or "")[:400],
+                "voice_hint": str(c.get("voice_hint") or "")[:120],
+                "sheet_url": c.get("sheet_url"),
+            }
+            for c in chars[:4]
+        ]
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_cast_decision(video_id, payload_chars)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
 
     def _seedance_ready(self) -> bool:
         """Lazy Seedance client + per-run dialogue budget. True when callable."""
@@ -7859,6 +8005,11 @@ class VideoGenerationPipeline:
         if not dlg:
             return
         sheets = self._ensure_character_sheets(run_dir)
+        # Cast gate (assist): approve portraits BEFORE spending on clips.
+        # Raises DecisionRequired on first pass; applies the answer on resume
+        # (uploads / note-driven regens) and refreshes the sheet map.
+        self._maybe_cast_gate(run_dir)
+        sheets = self._character_sheet_urls or sheets
         try:
             from ai_video_orchestrator import _ffmpeg_extract_last_frame, _download_url_to_path
         except Exception:

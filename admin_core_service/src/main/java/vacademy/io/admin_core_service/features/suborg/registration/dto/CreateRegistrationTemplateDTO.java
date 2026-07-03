@@ -32,8 +32,14 @@ public class CreateRegistrationTemplateDTO {
     private List<String> adminPermissions;
     private List<String> allowedTeamRoles;
 
-    /** Media file id of the T&C PDF. Non-null enables the TNC step. */
+    /** Media file id of the T&C PDF. Optional part of the TNC step. */
     private String tncFileId;
+
+    /**
+     * Consent statements (required checkboxes on the TNC step); inline links via
+     * [label](url). TNC step is enabled when tncFileId OR these are provided.
+     */
+    private List<String> tncConsentItems;
 
     /** Max COMPLETED registrations through this link. Null = unlimited. */
     private Integer maxRegistrations;

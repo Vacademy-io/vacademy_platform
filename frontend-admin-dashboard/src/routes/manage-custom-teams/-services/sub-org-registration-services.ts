@@ -44,6 +44,8 @@ export interface CreateRegistrationTemplateRequest {
     admin_permissions?: string[];
     allowed_team_roles?: string[];
     tnc_file_id?: string;
+    /** Consent statements (required checkboxes on the T&C step); inline links via [label](url). */
+    tnc_consent_items?: string[];
     max_registrations?: number;
     institute_custom_fields?: RegistrationTemplateCustomField[];
     /** Defaults to FREE server-side; FREE keeps the fresh-option backend path. */

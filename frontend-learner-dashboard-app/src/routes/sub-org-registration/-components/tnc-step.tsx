@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
@@ -14,20 +14,67 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 
 interface TncStepProps {
   tncFileId: string | null;
+  /** Consent statements, each a required checkbox; inline links via [label](url). */
+  tncConsentItems?: string[] | null;
   isSubmitting: boolean;
   onContinue: () => void;
   /** Overrides the button label when TNC isn't the final step (e.g. payment follows). */
   continueLabel?: string;
 }
 
-/** Step 4 — Terms & Conditions review + required acceptance. */
+const LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+
+/**
+ * Renders a consent statement, converting [label](url) segments into anchors.
+ * Built as React nodes (never raw HTML) so institute-authored text stays inert;
+ * only http(s) URLs become links.
+ */
+const renderConsentText = (text: string): ReactNode[] => {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const pattern = new RegExp(LINK_PATTERN);
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    nodes.push(
+      <a
+        key={`${match.index}-${match[2]}`}
+        href={match[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-primary-500 underline underline-offset-2 hover:text-primary-400"
+      >
+        {match[1]}
+      </a>,
+    );
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes;
+};
+
+/** Step 4 — Terms & Conditions review + required acceptance (PDF and/or consent statements). */
 const TncStep = ({
   tncFileId,
+  tncConsentItems,
   isSubmitting,
   onContinue,
   continueLabel,
 }: TncStepProps) => {
-  const [accepted, setAccepted] = useState(false);
+  const consentItems = useMemo(
+    () => (tncConsentItems ?? []).filter((item) => item.trim().length > 0),
+    [tncConsentItems],
+  );
+  const hasConsentItems = consentItems.length > 0;
+
+  const [pdfAccepted, setPdfAccepted] = useState(false);
+  const [itemsAccepted, setItemsAccepted] = useState<boolean[]>(() =>
+    consentItems.map(() => false),
+  );
 
   const {
     data: tncUrl,
@@ -39,6 +86,20 @@ const TncStep = ({
     enabled: !!tncFileId,
     staleTime: 60 * 60 * 1000,
   });
+
+  // PDF (when present) needs its own accept; every consent statement must be checked.
+  // When neither is configured (legacy edge) the generic PDF-accept checkbox gates.
+  const allAccepted =
+    (tncFileId || !hasConsentItems ? pdfAccepted : true) &&
+    (!hasConsentItems || itemsAccepted.every(Boolean));
+
+  const toggleItem = (index: number, checked: boolean) => {
+    setItemsAccepted((prev) => {
+      const next = [...prev];
+      next[index] = checked;
+      return next;
+    });
+  };
 
   return (
     <ModernCard
@@ -63,7 +124,7 @@ const TncStep = ({
 
       <Separator className="mb-5" />
 
-      {/* Document viewer */}
+      {/* Document viewer (optional) */}
       {tncFileId ? (
         isTncUrlLoading ? (
           <div className="flex h-40 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50">
@@ -98,30 +159,56 @@ const TncStep = ({
             </a>
           </div>
         )
-      ) : (
+      ) : hasConsentItems ? null : (
         <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
           Please confirm that you accept the institute&apos;s Terms &amp;
           Conditions to finish registration.
         </p>
       )}
 
-      {/* Acceptance */}
-      <div className="mt-5 flex items-start gap-3">
-        <Checkbox
-          id="sub-org-tnc-accept"
-          checked={accepted}
-          onCheckedChange={(checked) => setAccepted(checked === true)}
-          disabled={isSubmitting}
-          className="mt-0.5"
-        />
-        <label
-          htmlFor="sub-org-tnc-accept"
-          className="cursor-pointer text-sm text-neutral-600"
-        >
-          I accept the Terms &amp; Conditions
-          <span className="text-danger-600"> *</span>
-        </label>
-      </div>
+      {/* PDF acceptance (only when a document exists, or legacy fallback) */}
+      {(tncFileId || !hasConsentItems) && (
+        <div className="mt-5 flex items-start gap-3">
+          <Checkbox
+            id="sub-org-tnc-accept"
+            checked={pdfAccepted}
+            onCheckedChange={(checked) => setPdfAccepted(checked === true)}
+            disabled={isSubmitting}
+            className="mt-0.5"
+          />
+          <label
+            htmlFor="sub-org-tnc-accept"
+            className="cursor-pointer text-sm text-neutral-600"
+          >
+            I accept the Terms &amp; Conditions
+            <span className="text-danger-600"> *</span>
+          </label>
+        </div>
+      )}
+
+      {/* Consent statements — each its own required checkbox, links open in new tabs */}
+      {hasConsentItems && (
+        <div className="mt-5 flex flex-col gap-4">
+          {consentItems.map((item, index) => (
+            <div key={index} className="flex items-start gap-3">
+              <Checkbox
+                id={`sub-org-tnc-consent-${index}`}
+                checked={itemsAccepted[index] ?? false}
+                onCheckedChange={(checked) => toggleItem(index, checked === true)}
+                disabled={isSubmitting}
+                className="mt-0.5"
+              />
+              <label
+                htmlFor={`sub-org-tnc-consent-${index}`}
+                className="cursor-pointer text-sm leading-relaxed text-neutral-600"
+              >
+                {renderConsentText(item)}
+                <span className="text-danger-600"> *</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-6 flex justify-end">
         <MyButton
@@ -130,7 +217,7 @@ const TncStep = ({
           scale="large"
           layoutVariant="default"
           onClick={onContinue}
-          disable={!accepted || isSubmitting}
+          disable={!allAccepted || isSubmitting}
           className="w-full min-w-32 sm:w-auto"
         >
           {isSubmitting ? (

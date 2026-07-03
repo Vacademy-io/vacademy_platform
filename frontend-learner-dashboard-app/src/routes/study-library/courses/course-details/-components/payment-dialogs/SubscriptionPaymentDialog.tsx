@@ -15,8 +15,23 @@ import {
   validateAndSanitizeEmail,
   getPaymentOptions,
   getPaymentPlans,
+  fetchPaymentGatewayDetails,
+  resolveEnrollmentVendor,
+  extractRazorpayOrderDetails,
   type PaymentPlan,
 } from "../../-services/enrollment-api";
+import {
+  RazorpayCheckoutForm,
+  type RazorpayCheckoutFormRef,
+} from "@/components/common/enroll-by-invite/-components/razorpay-checkout-form";
+import EwayCardForm from "@/components/common/enroll-by-invite/-components/eway-card-form";
+import { EwayProvider } from "@/components/common/enroll-by-invite/-contexts/eway-context";
+import {
+  runPhonePeCheckout,
+  runCashfreeCheckout,
+  runEwayCheckout,
+  type EwayEncryptedData,
+} from "./vendor-checkout";
 import {
   usePaymentDialog,
   getCurrencyWithPriority,
@@ -94,6 +109,27 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [cardElementError, setCardElementError] = useState<string>("");
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
+
+  // Payment gateway vendor the institute is configured with (STRIPE | RAZORPAY | …),
+  // resolved from the enrollment /details response. Drives which checkout UI and
+  // which payment request we build — never assume STRIPE.
+  const vendor = resolveEnrollmentVendor(enrollmentData);
+  const isRazorpay = vendor === "RAZORPAY";
+  const isStripe = vendor === "STRIPE";
+  const isEway = vendor === "EWAY";
+  const isCashfree = vendor === "CASHFREE";
+  const isPhonePe = vendor === "PHONEPE";
+  // Vendors this in-course dialog can take payment for. Anything else (PAYPAL,
+  // MANUAL, …) shows a clear notice instead of a dead Stripe card form.
+  const isSupportedVendor =
+    isStripe || isRazorpay || isEway || isCashfree || isPhonePe;
+  const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
+  // Eway: eCrypt keys (fetched for EWAY institutes) + the encrypted card payload.
+  const [ewayKeys, setEwayKeys] = useState<{
+    encryptionKey: string;
+    publicKey: string;
+  } | null>(null);
+  const [ewayData, setEwayData] = useState<EwayEncryptedData | null>(null);
 
   // Track if we already prefilled the email for this dialog open
   const hasPrefilledEmailRef = useRef<boolean>(false);
@@ -193,6 +229,33 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       enrollmentData
     );
   };
+
+  // Fetch Eway eCrypt keys for EWAY institutes — EwayCardForm needs them (via
+  // EwayProvider) to encrypt the card client-side before we submit.
+  useEffect(() => {
+    if (!isEway || !open || ewayKeys) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const keys = (await fetchPaymentGatewayDetails(
+          instituteId,
+          "EWAY",
+          token
+        )) as unknown as { encryptionKey?: string; publicKey?: string };
+        if (!cancelled) {
+          setEwayKeys({
+            encryptionKey: keys?.encryptionKey || "",
+            publicKey: keys?.publicKey || "",
+          });
+        }
+      } catch {
+        // Leave keys null → EwayCardForm renders unconfigured; Pay stays disabled.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEway, open, instituteId, token, ewayKeys]);
 
   // Simple loadStripe function
   const loadStripe = useCallback(async (publishableKey: string) => {
@@ -372,8 +435,193 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   };
 
+  // Razorpay hosted-modal callbacks.
+  const handleRazorpaySuccess = () => {
+    // Order is paid; close checkout and poll the backend for confirmation.
+    onOpenChange(false);
+    setShowPaymentStatusDialog(true);
+  };
+
+  const handleRazorpayError = (message: string) => {
+    setProcessingPayment(false);
+    setValidationError(message);
+  };
+
+  // Razorpay: create the order server-side, then open Razorpay's hosted modal.
+  // Payment completion arrives asynchronously via handleRazorpaySuccess.
+  const handleRazorpaySubscription = async () => {
+    if (!selectedPlan || !selectedPaymentOption || !enrollmentData) {
+      return;
+    }
+
+    setProcessingPayment(true);
+    setValidationError("");
+
+    try {
+      const sanitizedEmail = validateAndSanitizeEmail(email);
+
+      const paymentGatewayResp = await fetchPaymentGatewayDetails(
+        instituteId,
+        vendor,
+        token
+      );
+
+      const userData = await getRealUserData();
+      const userProfileEmail = userData?.email || sanitizedEmail;
+      const contact = userData?.mobile_number || "";
+
+      // Step 1: create the Razorpay order via the enroll endpoint.
+      const result = await handlePaymentForEnrollment({
+        userEmail: userProfileEmail,
+        receiptEmail: sanitizedEmail,
+        instituteId,
+        packageSessionId,
+        enrollmentData,
+        paymentGatewayData: paymentGatewayResp,
+        selectedPaymentPlan: selectedPlan,
+        selectedPaymentOption,
+        amount: effectiveAmount,
+        currency: getCurrency(),
+        description: `Subscription for ${selectedPlan.name}`,
+        paymentType: "subscription",
+        vendor,
+        contact,
+        returnUrl: window.location.origin + "/courses",
+        couponCode: couponCtx.state.appliedCode,
+        token,
+        userData: userData || undefined,
+      });
+
+      // Step 2: extract order details and open the hosted checkout.
+      const orderDetails = extractRazorpayOrderDetails(result);
+      if (!orderDetails) {
+        throw new Error(
+          "Failed to create the payment order. Please try again."
+        );
+      }
+      if (!razorpayRef.current) {
+        throw new Error("Payment gateway not ready. Please try again.");
+      }
+
+      razorpayRef.current.openPayment({
+        razorpayKeyId: orderDetails.razorpayKeyId,
+        razorpayOrderId: orderDetails.razorpayOrderId,
+        amount: orderDetails.amount,
+        currency: orderDetails.currency || getCurrency(),
+        contact: orderDetails.contact || contact,
+        email: orderDetails.email || sanitizedEmail,
+      });
+
+      // Modal is now open; stop the button spinner. Completion is handled by
+      // handleRazorpaySuccess (onPaymentReady) / handleRazorpayError (onError).
+      setProcessingPayment(false);
+    } catch (error) {
+      console.error("Subscription Razorpay payment error:", error);
+      if (
+        error instanceof Error &&
+        error.message === "ENROLLMENT_PENDING_APPROVAL"
+      ) {
+        onOpenChange(false);
+        setShowPendingApprovalDialog(true);
+      } else {
+        setValidationError(
+          error instanceof Error
+            ? error.message
+            : "Payment failed. Please try again."
+        );
+      }
+      setProcessingPayment(false);
+    }
+  };
+
+  // EWAY (inline encrypted card) + CASHFREE / PHONEPE (full-page redirect).
+  const handleAltVendorSubscription = async () => {
+    if (!selectedPlan || !selectedPaymentOption || !enrollmentData) {
+      return;
+    }
+    if (isEway && !ewayData) {
+      setValidationError("Please complete the card details.");
+      return;
+    }
+
+    setProcessingPayment(true);
+    setValidationError("");
+
+    try {
+      const sanitizedEmail = validateAndSanitizeEmail(email);
+      const userData = await getRealUserData();
+      const baseParams = {
+        instituteId,
+        packageSessionId,
+        enrollmentData,
+        selectedPaymentPlan: selectedPlan,
+        selectedPaymentOption,
+        amount: effectiveAmount,
+        currency: getCurrency(),
+        description: `Subscription for ${selectedPlan.name}`,
+        paymentType: "subscription" as const,
+        email: sanitizedEmail,
+        contact: userData?.mobile_number || "",
+        userData: userData || undefined,
+        couponCode: couponCtx.state.appliedCode,
+        token,
+      };
+
+      if (isEway) {
+        const { status } = await runEwayCheckout({
+          ...baseParams,
+          ewayPaymentData: ewayData!,
+        });
+        if (status === "PAID") {
+          onOpenChange(false);
+          setShowPaymentStatusDialog(true);
+        } else {
+          setValidationError(
+            "Payment was not successful. Please check your card details and try again."
+          );
+          setProcessingPayment(false);
+        }
+        return;
+      }
+
+      // Cashfree / PhonePe navigate away to the hosted page; the browser unloads
+      // on success, so we only reach the catch below on failure.
+      if (isCashfree) {
+        await runCashfreeCheckout(baseParams);
+        return;
+      }
+      if (isPhonePe) {
+        await runPhonePeCheckout(baseParams);
+        return;
+      }
+    } catch (error) {
+      console.error("Subscription alt-vendor payment error:", error);
+      if (
+        error instanceof Error &&
+        error.message === "ENROLLMENT_PENDING_APPROVAL"
+      ) {
+        onOpenChange(false);
+        setShowPendingApprovalDialog(true);
+      } else {
+        setValidationError(
+          error instanceof Error
+            ? error.message
+            : "Payment failed. Please try again."
+        );
+      }
+      setProcessingPayment(false);
+    }
+  };
+
   const handlePaymentAndEnrollment = async () => {
     if (!selectedPlan || !selectedPaymentOption || !enrollmentData) {
+      return;
+    }
+
+    // Eway (encrypted card) + Cashfree / PhonePe (redirect) have their own flows
+    // and don't rely on the Stripe-only paymentGatewayData being present.
+    if (isEway || isCashfree || isPhonePe) {
+      await handleAltVendorSubscription();
       return;
     }
 
@@ -382,6 +630,12 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       setValidationError(
         "Payment processing is currently unavailable. Please contact support."
       );
+      return;
+    }
+
+    // Razorpay uses a hosted modal + server-created order, not Stripe Elements.
+    if (isRazorpay) {
+      await handleRazorpaySubscription();
       return;
     }
 
@@ -1031,65 +1285,130 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
 
                 <div className="mb-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs text-gray-600">
-                      Card Details
-                    </label>
-                  </div>
-
-                  {!paymentGatewayData ? (
+                  {!isSupportedVendor ? (
+                    /* PAYPAL / MANUAL etc. aren't wired into this in-course dialog —
+                       show a clear notice instead of a broken Stripe form. */
                     <div className="border border-orange-300 bg-orange-50 rounded p-4 text-sm">
                       <div className="flex items-center gap-2 text-orange-700 mb-2">
                         <Lock size={16} />
                         <span className="font-medium">
-                          Payment Processing Unavailable
+                          {vendor} payments aren't available here yet
                         </span>
                       </div>
-                      <p className="text-orange-600 mb-3">
-                        Payment processing is currently unavailable. You can
-                        still proceed with enrollment and complete payment
-                        later.
+                      <p className="text-orange-600">
+                        This course's payment provider ({vendor}) isn't supported
+                        on this screen yet. Please use the enrollment link to
+                        complete your payment, or contact support.
                       </p>
-                      <div className="flex gap-2">
-                        <MyButton
-                          buttonType="secondary"
-                          scale="small"
-                          layoutVariant="default"
-                          className="flex-1"
-                          onClick={retryFetch}
-                        >
-                          Retry Payment Setup
-                        </MyButton>
-                        <MyButton
-                          buttonType="primary"
-                          scale="small"
-                          layoutVariant="default"
-                          className="flex-1"
-                          onClick={handlePaymentAndEnrollment}
-                          disabled={processingPayment}
-                        >
-                          {processingPayment
-                            ? "Processing..."
-                            : "Continue Without Payment"}
-                        </MyButton>
+                    </div>
+                  ) : isRazorpay ? (
+                    /* Razorpay renders its own hosted card; we just mount the
+                       component (loads the SDK + exposes openPayment via ref). */
+                    <RazorpayCheckoutForm
+                      ref={razorpayRef}
+                      error={validationError || null}
+                      amount={effectiveAmount}
+                      currency={getCurrency()}
+                      courseName={enrollmentData?.name || courseTitleFallback}
+                      courseDescription={`Subscription for ${
+                        selectedPlan?.name || courseTitleFallback
+                      }`}
+                      userEmail={email}
+                      onPaymentReady={handleRazorpaySuccess}
+                      onError={handleRazorpayError}
+                      isProcessing={processingPayment}
+                    />
+                  ) : isEway ? (
+                    /* Eway: collect card + encrypt client-side via eCrypt (keys
+                       from EwayProvider). onPaymentReady hands the encrypted payload. */
+                    ewayKeys ? (
+                      <EwayProvider
+                        encryptionKey={ewayKeys.encryptionKey}
+                        publicKey={ewayKeys.publicKey}
+                      >
+                        <EwayCardForm
+                          isProcessing={processingPayment}
+                          onPaymentReady={setEwayData}
+                          onError={(msg) => setValidationError(msg)}
+                        />
+                      </EwayProvider>
+                    ) : (
+                      <div className="flex items-center justify-center py-6 text-gray-500">
+                        <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                        Loading secure card form...
                       </div>
+                    )
+                  ) : isCashfree || isPhonePe ? (
+                    /* Cashfree / PhonePe are full-page redirect flows — no inline
+                       card; the button hands off to the hosted checkout page. */
+                    <div className="border border-blue-200 bg-blue-50 rounded p-4 text-sm text-blue-700">
+                      You'll be securely redirected to{" "}
+                      {isCashfree ? "Cashfree" : "PhonePe"} to complete your
+                      payment, then brought back to your course.
                     </div>
                   ) : (
-                    <div
-                      className={`border rounded p-3 text-sm w-full min-h-12 ${
-                        cardElementError
-                          ? "border-red-500 bg-red-50"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {!cardElementReady && (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                          <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
-                          Loading payment form...
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs text-gray-600">
+                          Card Details
+                        </label>
+                      </div>
+
+                      {!paymentGatewayData ? (
+                        <div className="border border-orange-300 bg-orange-50 rounded p-4 text-sm">
+                          <div className="flex items-center gap-2 text-orange-700 mb-2">
+                            <Lock size={16} />
+                            <span className="font-medium">
+                              Payment Processing Unavailable
+                            </span>
+                          </div>
+                          <p className="text-orange-600 mb-3">
+                            Payment processing is currently unavailable. You can
+                            still proceed with enrollment and complete payment
+                            later.
+                          </p>
+                          <div className="flex gap-2">
+                            <MyButton
+                              buttonType="secondary"
+                              scale="small"
+                              layoutVariant="default"
+                              className="flex-1"
+                              onClick={retryFetch}
+                            >
+                              Retry Payment Setup
+                            </MyButton>
+                            <MyButton
+                              buttonType="primary"
+                              scale="small"
+                              layoutVariant="default"
+                              className="flex-1"
+                              onClick={handlePaymentAndEnrollment}
+                              disabled={processingPayment}
+                            >
+                              {processingPayment
+                                ? "Processing..."
+                                : "Continue Without Payment"}
+                            </MyButton>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`border rounded p-3 text-sm w-full min-h-12 ${
+                            cardElementError
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                        >
+                          {!cardElementReady && (
+                            <div className="flex items-center justify-center h-full text-gray-500">
+                              <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                              Loading payment form...
+                            </div>
+                          )}
+                          <div ref={cardElementRef} className="w-full h-full" />
                         </div>
                       )}
-                      <div ref={cardElementRef} className="w-full h-full" />
-                    </div>
+                    </>
                   )}
 
                   {cardElementError && (
@@ -1105,7 +1424,12 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                       layoutVariant="default"
                       className="w-full h-11 text-base flex items-center justify-center gap-2"
                       onClick={handlePaymentAndEnrollment}
-                      disabled={processingPayment || !paymentGatewayData}
+                      disabled={
+                        processingPayment ||
+                        !isSupportedVendor ||
+                        (isStripe && !paymentGatewayData) ||
+                        (isEway && !ewayData)
+                      }
                     >
                       {processingPayment ? (
                         <>
@@ -1124,8 +1448,14 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     <Lock size={14} className="inline-block mr-1" />
                     Secure payment powered by
                     <span className="font-semibold flex items-center gap-1 ml-1">
-                      <SiStripe size={16} className="text-indigo-600" />
-                      {paymentGatewayData?.vendor || "Stripe"}
+                      {isStripe ? (
+                        <>
+                          <SiStripe size={16} className="text-indigo-600" />
+                          Stripe
+                        </>
+                      ) : (
+                        vendor.charAt(0) + vendor.slice(1).toLowerCase()
+                      )}
                     </span>
                   </div>
                 </div>

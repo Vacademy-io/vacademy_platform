@@ -198,6 +198,84 @@ export const fetchPaymentGatewayDetails = async (
 };
 
 /**
+ * Resolve the payment gateway vendor an institute is configured with from the
+ * enrollment /details response. The vendor is authoritative here — the payment
+ * dialogs must fetch gateway details and build the payment request for THIS
+ * vendor, not a hardcoded "STRIPE". Falls back to STRIPE when absent.
+ */
+export const resolveEnrollmentVendor = (
+  enrollmentData: EnrollmentResponse | null | undefined
+): string => (enrollmentData?.vendor || "STRIPE").toUpperCase();
+
+export interface RazorpayOrderDetails {
+  razorpayKeyId: string;
+  razorpayOrderId: string;
+  amount: number;
+  currency: string;
+  contact?: string;
+  email?: string;
+}
+
+/**
+ * Pull the Razorpay order details the backend returns from the /learner/enroll
+ * response (payment_response.response_data) so the caller can open the Razorpay
+ * hosted checkout. Returns null when the expected keys are missing.
+ */
+export const extractRazorpayOrderDetails = (
+  enrollResponse: any
+): RazorpayOrderDetails | null => {
+  const data = enrollResponse?.payment_response?.response_data;
+  if (!data || !data.razorpayKeyId || !data.razorpayOrderId) {
+    return null;
+  }
+  return {
+    razorpayKeyId: data.razorpayKeyId,
+    razorpayOrderId: data.razorpayOrderId,
+    amount: data.amount,
+    currency: data.currency,
+    contact: data.contact,
+    email: data.email,
+  };
+};
+
+/**
+ * Cashfree creates the enrollment + a UserPlan (payment pending) on the enroll
+ * call; the paymentSessionId is fetched in a second user-plan-payment call keyed
+ * by this UserPlan id. Mirrors the paths the enroll-by-invite flow probes.
+ */
+export const extractUserPlanId = (enrollResponse: any): string | undefined =>
+  enrollResponse?.payment_response?.user_plan_id ||
+  enrollResponse?.user_plan_id ||
+  enrollResponse?.learner_package_session_enroll?.user_plan_id;
+
+/** PhonePe hosted-checkout redirect URL returned by the enroll call. */
+export const extractPhonePeRedirectUrl = (
+  enrollResponse: any
+): string | undefined =>
+  enrollResponse?.payment_response?.response_data?.redirectUrl ||
+  enrollResponse?.payment_response?.response_data?.redirect_url;
+
+/** Backend payment log id (order id) for a created enrollment. */
+export const extractOrderId = (enrollResponse: any): string =>
+  enrollResponse?.payment_response?.order_id ||
+  enrollResponse?.order_id ||
+  "";
+
+/**
+ * Eway is a synchronous card charge — the enroll response already carries the
+ * final status (PAID / FAILED). Returns it upper-cased, or undefined.
+ */
+export const extractEwayPaymentStatus = (
+  enrollResponse: any
+): string | undefined => {
+  const raw =
+    enrollResponse?.payment_response?.response_data?.paymentStatus ||
+    enrollResponse?.payment_response?.response_data?.payment_status ||
+    enrollResponse?.payment_response?.response_data?.status;
+  return typeof raw === "string" ? raw.toUpperCase() : undefined;
+};
+
+/**
  * Fetch enrollment details with payment options
  * @param inviteCode - The invite code for the enrollment
  * @param instituteId - The institute ID
@@ -930,6 +1008,26 @@ export const handlePaymentForEnrollment = async (params: {
    * UserPlan creation (V308 / V309). Null/blank = no coupon.
    */
   couponCode?: string | null;
+  /**
+   * Payment gateway vendor the institute is configured with, resolved from the
+   * enrollment /details response (`enrollmentData.vendor`) — e.g. "STRIPE" or
+   * "RAZORPAY". Defaults to STRIPE for backward compatibility. NEVER hardcode
+   * this to STRIPE at call sites, or Razorpay institutes break.
+   */
+  vendor?: string;
+  /** Learner mobile number, sent as `razorpay_request.contact` / `phonepe_request.contact`. */
+  contact?: string;
+  /**
+   * Eway client-side-encrypted card data (from EwayCardForm's onPaymentReady).
+   * `encryptedNumber` / `encryptedCVN` already carry the "eCrypted:" prefix.
+   */
+  ewayPaymentData?: {
+    encryptedNumber: string;
+    encryptedCVN: string;
+    cardData: { name: string; expiryMonth: string; expiryYear: string };
+  } | null;
+  /** PhonePe redirect (return) URL the backend stamps orderId + instituteId onto. */
+  phonePeRedirectUrl?: string;
 }): Promise<any> => {
   const {
     userEmail,
@@ -949,6 +1047,10 @@ export const handlePaymentForEnrollment = async (params: {
     token,
     userData,
     couponCode,
+    vendor,
+    contact,
+    ewayPaymentData,
+    phonePeRedirectUrl,
   } = params;
 
   // Validate and sanitize emails
@@ -987,19 +1089,32 @@ export const handlePaymentForEnrollment = async (params: {
       );
     }
 
-    // Handle case where API returns simplified response with just publishableKey
-    const vendor = paymentGatewayData?.vendor || "STRIPE";
+    // Resolve the vendor the institute is actually configured with. Passed in by
+    // the caller from enrollmentData.vendor — do NOT default to STRIPE from the
+    // gateway payload (the open-details response carries no `vendor` field, so
+    // that always collapsed to STRIPE and broke Razorpay institutes).
+    const resolvedVendor = (vendor || "STRIPE").toUpperCase();
+    const isFree = paymentType === "free";
+    const isStripe = resolvedVendor === "STRIPE";
+    const isRazorpay = resolvedVendor === "RAZORPAY";
+    const isEway = resolvedVendor === "EWAY";
+    const isCashfree = resolvedVendor === "CASHFREE";
+    const isPhonePe = resolvedVendor === "PHONEPE";
 
-    // Note: Payment gateway configuration is handled by the backend
-    // We only need to send the stripe_request with payment method details
+    // Stripe-only: extract the publishable key and build a real payment method
+    // from the card. Every other vendor either creates its order/session
+    // server-side (Razorpay/Cashfree/PhonePe) or encrypts the card client-side
+    // (Eway), so none of them need this. Free enrollments need no gateway at all.
+    let paymentMethodId = "free_enrollment";
+    let cardLast4 = "0000";
+    let customerId = "free_customer";
 
-    // Extract publishable key from payment gateway config (skip for free enrollments)
-    let publishableKey: string | undefined;
-    if (paymentType !== "free" && paymentGatewayData) {
-      // Check if publishableKey is directly available in the response
-      if (paymentGatewayData.publishableKey) {
+    if (!isFree && isStripe) {
+      // Extract publishable key from payment gateway config
+      let publishableKey: string | undefined;
+      if (paymentGatewayData?.publishableKey) {
         publishableKey = paymentGatewayData.publishableKey;
-      } else if (paymentGatewayData.config_json) {
+      } else if (paymentGatewayData?.config_json) {
         try {
           const config = JSON.parse(paymentGatewayData.config_json);
 
@@ -1021,43 +1136,35 @@ export const handlePaymentForEnrollment = async (params: {
           "Publishable key not found in payment gateway config. Please check the payment gateway configuration."
         );
       }
-    }
 
-    // Create real Stripe payment method from card details
-    let paymentMethodId: string;
-    let cardLast4: string;
-    let customerId: string;
-
-    if (paymentMethod) {
-      // Use the provided payment method from Stripe Elements
-      paymentMethodId = paymentMethod.id;
-      cardLast4 = paymentMethod.card?.last4 || "0000";
-      customerId = paymentMethod.customer || "temp_customer_id";
-    } else if (cardDetails && publishableKey) {
-      // Create real Stripe payment method from manual card input
-      try {
-        const stripePaymentMethod = await createStripePaymentMethod(
-          cardDetails,
-          publishableKey
-        );
-        paymentMethodId = stripePaymentMethod.id;
-        cardLast4 =
-          stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
-        customerId = stripePaymentMethod.customer || "temp_customer_id";
-      } catch (stripeError) {
+      if (paymentMethod) {
+        // Use the provided payment method from Stripe Elements
+        paymentMethodId = (paymentMethod as any).id;
+        cardLast4 = (paymentMethod as any).card?.last4 || "0000";
+        customerId = (paymentMethod as any).customer || "temp_customer_id";
+      } else if (cardDetails) {
+        // Create real Stripe payment method from manual card input
+        try {
+          const stripePaymentMethod = await createStripePaymentMethod(
+            cardDetails,
+            publishableKey
+          );
+          paymentMethodId = stripePaymentMethod.id;
+          cardLast4 =
+            stripePaymentMethod.card?.last4 || cardDetails.number.slice(-4);
+          customerId = stripePaymentMethod.customer || "temp_customer_id";
+        } catch (stripeError) {
+          throw new Error(
+            `Payment method creation failed: ${
+              stripeError instanceof Error ? stripeError.message : "Unknown error"
+            }`
+          );
+        }
+      } else {
         throw new Error(
-          `Payment method creation failed: ${
-            stripeError instanceof Error ? stripeError.message : "Unknown error"
-          }`
+          "Either payment method or card details must be provided"
         );
       }
-    } else if (paymentType === "free") {
-      // For free enrollment, we don't need payment method details
-      paymentMethodId = "free_enrollment";
-      cardLast4 = "0000";
-      customerId = "free_customer";
-    } else {
-      throw new Error("Either payment method or card details must be provided");
     }
 
     // Prepare payment data according to the exact backend API specification
@@ -1085,7 +1192,7 @@ export const handlePaymentForEnrollment = async (params: {
       },
       institute_id: instituteId,
       subject_id: "",
-      vendor_id: paymentType === "free" ? "FREE" : "STRIPE",
+      vendor_id: isFree ? "FREE" : resolvedVendor,
       learner_package_session_enroll: {
         package_session_ids: [packageSessionId],
         plan_id: selectedPaymentPlan.id,
@@ -1095,30 +1202,67 @@ export const handlePaymentForEnrollment = async (params: {
         // atomic UPDATE-WHERE decrement of usage_limit inside the
         // UserPlan-creation transaction. Null = no coupon applied.
         coupon_code: couponCode || null,
-        payment_initiation_request:
-          paymentType === "free"
-            ? null
-            : {
-                amount: amount,
-                currency: currency,
-                description: description,
-                charge_automatically: true,
-                institute_id: instituteId,
-                email: sanitizedReceiptEmail,
-                stripe_request: {
-                  payment_method_id: paymentMethodId,
-                  card_last4: cardLast4,
-                  customer_id: customerId,
-                  return_url: params.returnUrl || "",
-                },
-                razorpay_request: {
-                  customer_id: "",
-                  contact: "",
-                  email: sanitizedReceiptEmail,
-                },
-                pay_pal_request: {},
-                include_pending_items: true,
-              },
+        payment_initiation_request: isFree
+          ? null
+          : {
+              vendor: resolvedVendor,
+              amount: amount,
+              // Eway settles in AUD — mirror the enroll-by-invite request builder,
+              // which forces "aud" for Eway regardless of the plan's display currency.
+              currency: isEway ? "aud" : currency,
+              description: description,
+              charge_automatically: true,
+              institute_id: instituteId,
+              email: sanitizedReceiptEmail,
+              // Only the active vendor's sub-request is populated; the rest are
+              // sent empty so the backend request shape stays consistent.
+              stripe_request: isStripe
+                ? {
+                    payment_method_id: paymentMethodId,
+                    card_last4: cardLast4,
+                    customer_id: customerId,
+                    return_url: params.returnUrl || "",
+                  }
+                : {},
+              razorpay_request: isRazorpay
+                ? {
+                    customer_id: null,
+                    contact: contact || userData?.mobile_number || "",
+                    email: sanitizedReceiptEmail,
+                  }
+                : {
+                    customer_id: "",
+                    contact: "",
+                    email: sanitizedReceiptEmail,
+                  },
+              // Cashfree: order/session created later via user-plan-payment API;
+              // return_url is set at that call, so send it empty here.
+              cashfree_request: isCashfree ? { return_url: "" } : {},
+              // PhonePe: Standard Checkout redirect flow — backend stamps
+              // orderId + instituteId onto redirect_url before hosting the page.
+              phonepe_request: isPhonePe
+                ? {
+                    contact: contact || userData?.mobile_number || "",
+                    email: sanitizedReceiptEmail,
+                    redirect_url: phonePeRedirectUrl || "",
+                  }
+                : {},
+              // Eway: client-side eCrypt-encrypted card fields (au).
+              eway_request:
+                isEway && ewayPaymentData
+                  ? {
+                      customer_id: null,
+                      card_name: ewayPaymentData.cardData.name,
+                      expiry_month: ewayPaymentData.cardData.expiryMonth,
+                      expiry_year: ewayPaymentData.cardData.expiryYear,
+                      card_number: ewayPaymentData.encryptedNumber,
+                      cvn: ewayPaymentData.encryptedCVN,
+                      country_code: "au",
+                    }
+                  : {},
+              pay_pal_request: {},
+              include_pending_items: true,
+            },
         custom_field_values: [],
       },
     };

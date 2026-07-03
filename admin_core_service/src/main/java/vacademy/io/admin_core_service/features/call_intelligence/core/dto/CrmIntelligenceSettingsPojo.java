@@ -59,11 +59,8 @@ public class CrmIntelligenceSettingsPojo {
         /** Analyze calls that never connected (no answer / busy). Usually no audio. */
         private boolean analyzeNotConnected = false;
 
-        /**
-         * Per-institute override of the credit price per analyzed call. {@code null}
-         * = use the DB-managed global price (credit_pricing 'call_intelligence').
-         */
-        private BigDecimal creditCostOverride;
+        // Credit pricing is DB-only (credit_pricing 'call_intelligence', per minute).
+        // There is deliberately no per-institute settings override here.
 
         /** Rating scale upper bound for both ratings (both default to 0-10). */
         private int ratingScale = 10;

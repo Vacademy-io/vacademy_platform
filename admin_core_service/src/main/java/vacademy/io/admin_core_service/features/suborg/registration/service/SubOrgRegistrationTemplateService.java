@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.suborg.registration.dto.CreateReg
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.TemplateListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationSettingDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.TemplateDetailDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus;
 import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
@@ -30,8 +31,11 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Admin-side operations for open sub-org registration templates.
@@ -168,6 +172,144 @@ public class SubOrgRegistrationTemplateService {
         return Map.of(
                 "template_id", invite.getId(),
                 "invite_code", invite.getInviteCode());
+    }
+
+    /** Full read-back for the admin edit form (settings + PSLIPO sessions + custom fields). */
+    public TemplateDetailDTO getTemplateDetail(String templateId, String instituteId) {
+        EnrollInvite template = requireTemplate(templateId, instituteId);
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
+        String paymentType = setting != null && StringUtils.hasText(setting.getPaymentType())
+                ? setting.getPaymentType()
+                : PaymentOptionType.FREE.name();
+        return TemplateDetailDTO.builder()
+                .templateId(template.getId())
+                .name(template.getName())
+                .inviteCode(template.getInviteCode())
+                .status(template.getStatus())
+                .packageSessionIds(pslipoService.findPackageSessionsOfEnrollInvite(template))
+                .memberCount(setting != null ? setting.getMemberCount() : null)
+                .validityInDays(setting != null ? setting.getValidityDays() : template.getLearnerAccessDays())
+                .authRoles(setting != null && setting.getAuthRoles() != null
+                        ? setting.getAuthRoles() : List.of())
+                .adminPermissions(setting != null && setting.getAdminPermissions() != null
+                        ? setting.getAdminPermissions() : List.of())
+                .allowedTeamRoles(setting != null && setting.getAllowedTeamRoles() != null
+                        ? setting.getAllowedTeamRoles() : List.of())
+                .tncFileId(setting != null ? setting.getTncFileId() : null)
+                .tncConsentItems(setting != null ? setting.getTncConsentItems() : null)
+                .maxRegistrations(setting != null ? setting.getMaxRegistrations() : null)
+                .kycDocuments(setting != null ? setting.getKycDocuments() : null)
+                .paymentType(paymentType)
+                .paymentOptionId(setting != null ? setting.getPaymentOptionId() : null)
+                .vendor(setting != null ? setting.getVendor() : null)
+                .currency(setting != null ? setting.getCurrency() : null)
+                .instituteCustomFields(instituteCustomFiledService.findCustomFieldsAsJson(
+                        template.getInstituteId(),
+                        CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                        template.getId()))
+                .build();
+    }
+
+    /**
+     * Edits everything EXCEPT the invite code (it IS the distributed public link) and
+     * the payment config (payment_type/option/vendor/currency are immutable after
+     * create — any payment fields in the request are ignored and the stored ones are
+     * reused when rebuilding settings, so the STEPS list keeps/drops PAYMENT correctly).
+     */
+    @Transactional
+    public Map<String, Object> updateTemplate(
+            String templateId, String instituteId, CreateRegistrationTemplateDTO request) {
+        EnrollInvite template = requireTemplate(templateId, instituteId);
+        if (!StringUtils.hasText(request.getName())) {
+            throw new VacademyException("Template name is required");
+        }
+        if (CollectionUtils.isEmpty(request.getPackageSessionIds())) {
+            throw new VacademyException("At least one package session is required");
+        }
+
+        // Payment config is frozen at create: overwrite whatever the request carries
+        // with the stored values before rebuilding settings via buildSettings.
+        SubOrgRegistrationSettingDTO.RegistrationSetting existingSetting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
+        String paymentType = existingSetting != null && StringUtils.hasText(existingSetting.getPaymentType())
+                ? existingSetting.getPaymentType().toUpperCase()
+                : PaymentOptionType.FREE.name();
+        request.setPaymentType(paymentType);
+        request.setPaymentOptionId(existingSetting != null ? existingSetting.getPaymentOptionId() : null);
+        request.setVendor(existingSetting != null ? existingSetting.getVendor() : null);
+        request.setVendorId(existingSetting != null ? existingSetting.getVendorId() : null);
+        request.setCurrency(existingSetting != null ? existingSetting.getCurrency() : null);
+        // requiresApproval isn't exposed to the edit UI — preserve the stored flag
+        // so an API-created approval-gated template survives UI edits.
+        if (request.getRequiresApproval() == null && existingSetting != null) {
+            request.setRequiresApproval(existingSetting.getRequiresApproval());
+        }
+
+        // Resolve the current payment option BEFORE touching mappings — for FREE
+        // templates the fresh FREE option is only reachable through PSLIPO rows
+        // (settingJson stores paymentOptionId for paid templates only).
+        List<PackageSessionLearnerInvitationToPaymentOption> existingMappings =
+                pslipoService.findByInvite(template);
+        if (existingMappings.isEmpty()) {
+            throw new VacademyException("Template has no linked courses");
+        }
+        PaymentOption option = existingMappings.get(0).getPaymentOption();
+
+        // Diff the course set, keeping every row on the SAME payment option.
+        Set<String> wantedIds = new LinkedHashSet<>(request.getPackageSessionIds());
+        List<String> removedRowIds = existingMappings.stream()
+                .filter(m -> !wantedIds.contains(m.getPackageSession().getId()))
+                .map(PackageSessionLearnerInvitationToPaymentOption::getId)
+                .toList();
+        Set<String> currentIds = existingMappings.stream()
+                .map(m -> m.getPackageSession().getId())
+                .collect(Collectors.toSet());
+        List<PackageSessionLearnerInvitationToPaymentOption> newMappings = new ArrayList<>();
+        for (String psId : wantedIds) {
+            if (currentIds.contains(psId)) {
+                continue;
+            }
+            PackageSession ps = packageSessionService.findById(psId);
+            newMappings.add(new PackageSessionLearnerInvitationToPaymentOption(
+                    template, ps, option, StatusEnum.ACTIVE.name()));
+        }
+        pslipoService.updateStatusByIds(removedRowIds, StatusEnum.DELETED.name());
+        pslipoService.createPackageSessionLearnerInvitationToPaymentOptions(newMappings);
+
+        // FREE templates: keep the fresh FREE plan's seat cap/validity in lockstep with
+        // settingJson — spawn reads settingJson, admin enrollment reads the plan via PSLIPO.
+        if (PaymentOptionType.FREE.name().equals(paymentType) && option != null) {
+            for (PaymentPlan plan : option.getPaymentPlans()) {
+                if (StatusEnum.ACTIVE.name().equals(plan.getStatus())) {
+                    plan.setMemberCount(request.getMemberCount());
+                    plan.setValidityInDays(request.getValidityInDays());
+                }
+            }
+            paymentOptionRepository.save(option);
+        }
+
+        template.setName(request.getName());
+        template.setIsBundled(wantedIds.size() > 1);
+        template.setLearnerAccessDays(request.getValidityInDays());
+        template.setSettingJson(SubOrgRegistrationSettings.serialize(buildSettings(request, paymentType)));
+        enrollInviteRepository.save(template);
+
+        // Unlike create, ALWAYS sync — an empty list must soft-delete leftover fields
+        // so the mapping table stays consistent with the recomputed STEPS.
+        instituteCustomFiledService.syncFeatureCustomFields(
+                instituteId,
+                CustomFieldTypeEnum.ENROLL_INVITE.name(),
+                template.getId(),
+                request.getInstituteCustomFields() == null
+                        ? new ArrayList<>()
+                        : request.getInstituteCustomFields());
+
+        log.info("Updated SUB_ORG_REGISTRATION template id={} institute={} sessions={} paymentType={}",
+                template.getId(), instituteId, wantedIds.size(), paymentType);
+        return Map.of(
+                "template_id", template.getId(),
+                "invite_code", template.getInviteCode());
     }
 
     public List<TemplateListItemDTO> listTemplates(String instituteId) {

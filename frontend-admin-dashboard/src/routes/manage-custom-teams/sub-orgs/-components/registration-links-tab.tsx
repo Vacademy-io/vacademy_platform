@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Copy, LinkSimple, Plus, UsersThree } from '@phosphor-icons/react';
+import {
+    CircleNotch,
+    Copy,
+    LinkSimple,
+    PencilSimple,
+    Plus,
+    UsersThree,
+} from '@phosphor-icons/react';
 
 import {
     Table,
@@ -20,10 +27,12 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import createSubOrgRegistrationLink from '@/routes/manage-students/invite/-utils/createSubOrgRegistrationLink';
 import {
+    getRegistrationTemplateDetail,
     listRegistrationTemplates,
     listTemplateRegistrations,
     updateRegistrationTemplateStatus,
     type RegistrationTemplateListItem,
+    type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
 
@@ -57,6 +66,8 @@ const formatDate = (value?: string | number | null) => {
 
 export function RegistrationLinksTab() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    // Full detail of the template being edited — presence switches the modal to edit mode.
+    const [editTemplate, setEditTemplate] = useState<TemplateDetail | null>(null);
     const [registrationsTemplate, setRegistrationsTemplate] =
         useState<RegistrationTemplateListItem | null>(null);
 
@@ -96,6 +107,23 @@ export function RegistrationLinksTab() {
         },
     });
 
+    // Edit needs the full template config (the list rows only carry summary fields),
+    // so fetch the detail on click, then open the modal in edit mode.
+    const editDetailMutation = useMutation({
+        mutationFn: (templateId: string) =>
+            getRegistrationTemplateDetail(templateId, instituteId || ''),
+        onSuccess: (detail) => {
+            setEditTemplate(detail);
+            setIsCreateModalOpen(true);
+        },
+        onError: (error: unknown) => {
+            const message =
+                (error as { response?: { data?: { message?: string } } })?.response?.data
+                    ?.message || 'Failed to load registration link details';
+            toast.error(message);
+        },
+    });
+
     const copyLink = (inviteCode: string) => {
         const url = createSubOrgRegistrationLink(
             inviteCode,
@@ -123,7 +151,12 @@ export function RegistrationLinksTab() {
     return (
         <div className="space-y-4">
             <div className="flex justify-end">
-                <MyButton onClick={() => setIsCreateModalOpen(true)}>
+                <MyButton
+                    onClick={() => {
+                        setEditTemplate(null);
+                        setIsCreateModalOpen(true);
+                    }}
+                >
                     <Plus className="mr-2 size-4" />
                     Create Registration Link
                 </MyButton>
@@ -160,6 +193,9 @@ export function RegistrationLinksTab() {
                                 const isRowUpdating =
                                     statusMutation.isPending &&
                                     statusMutation.variables?.templateId === template.id;
+                                const isRowLoadingDetail =
+                                    editDetailMutation.isPending &&
+                                    editDetailMutation.variables === template.id;
                                 return (
                                     <TableRow key={template.id}>
                                         <TableCell className="font-medium">
@@ -239,14 +275,33 @@ export function RegistrationLinksTab() {
                                         </TableCell>
                                         <TableCell>{formatDate(template.created_at)}</TableCell>
                                         <TableCell className="text-right">
-                                            <MyButton
-                                                buttonType="secondary"
-                                                scale="small"
-                                                onClick={() => setRegistrationsTemplate(template)}
-                                            >
-                                                <UsersThree className="mr-1 size-3.5" />
-                                                View
-                                            </MyButton>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() =>
+                                                        editDetailMutation.mutate(template.id)
+                                                    }
+                                                    disable={editDetailMutation.isPending}
+                                                >
+                                                    {isRowLoadingDetail ? (
+                                                        <CircleNotch className="mr-1 size-3.5 animate-spin" />
+                                                    ) : (
+                                                        <PencilSimple className="mr-1 size-3.5" />
+                                                    )}
+                                                    Edit
+                                                </MyButton>
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() =>
+                                                        setRegistrationsTemplate(template)
+                                                    }
+                                                >
+                                                    <UsersThree className="mr-1 size-3.5" />
+                                                    View
+                                                </MyButton>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 );
@@ -258,7 +313,12 @@ export function RegistrationLinksTab() {
 
             <RegistrationLinkCreateModal
                 open={isCreateModalOpen}
-                onOpenChange={setIsCreateModalOpen}
+                onOpenChange={(open) => {
+                    setIsCreateModalOpen(open);
+                    // Clear edit state on close so the next open starts a fresh create.
+                    if (!open) setEditTemplate(null);
+                }}
+                editTemplate={editTemplate}
             />
 
             <RegistrationsDialog

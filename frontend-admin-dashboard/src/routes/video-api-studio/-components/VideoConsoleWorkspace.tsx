@@ -2191,7 +2191,11 @@ export function VideoConsoleWorkspace({
                 const content = entries.filter(
                     (e) => !String(e.id ?? '').startsWith('branding-')
                 );
-                const entry = content[shotNum - 1];
+                // Prefer the entry's own shot index — array position drifts
+                // when overlay entries (lower-thirds) or sub-shots exist.
+                const entry =
+                    content.find((e) => Number(e.index) === shotNum - 1) ??
+                    content[shotNum - 1];
                 if (!entry) {
                     finish(`Shot ${shotNum} not found — this video has ${content.length} shots.`);
                     return;

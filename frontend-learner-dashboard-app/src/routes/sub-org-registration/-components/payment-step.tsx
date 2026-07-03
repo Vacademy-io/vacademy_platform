@@ -260,6 +260,7 @@ const PaymentStep = ({
             instituteId,
             email: adminEmail,
             contact: adminPhone,
+            returnUrl: getCashfreeReturnUrl(),
           }),
           selectedPayment.id
         ));

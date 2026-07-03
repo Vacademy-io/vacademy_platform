@@ -954,6 +954,10 @@ export const SUB_ORG_REGISTRATION_TEMPLATE_CREATE = `${SUB_ORG_REGISTRATION_BASE
 export const SUB_ORG_REGISTRATION_TEMPLATE_LIST = `${SUB_ORG_REGISTRATION_BASE}/template/list`;
 export const SUB_ORG_REGISTRATION_TEMPLATE_STATUS = (templateId: string) =>
     `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}/status`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_DETAIL = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}/detail`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_UPDATE = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}`;
 export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>

@@ -33,8 +33,10 @@ import type { PackageSessionDTO } from '@/routes/admin-package-management/-types
 import { getAllRoles } from '../../-services/custom-team-services';
 import {
     createRegistrationTemplate,
+    updateRegistrationTemplate,
     type CreateRegistrationTemplateRequest,
     type RegistrationTemplateCustomField,
+    type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import {
     getTerminology,
@@ -74,6 +76,18 @@ interface BuilderField {
     /** Comma-separated options; only used when type === 'DROPDOWN'. */
     optionsCsv: string;
     mandatory: boolean;
+    /** custom_field.id from an existing template (edit mode) — lets the backend update instead of recreate. */
+    existingId?: string;
+    /** custom_field.fieldKey from an existing template (edit mode). */
+    fieldKey?: string;
+    /**
+     * Snapshot of the stored definition (edit mode). The backend only updates the
+     * MAPPING row for an existing id (order/mandatory) and silently ignores
+     * name/type/options changes — so if the definition changed we must drop the
+     * id and let the backend create a fresh field (the old one is soft-deleted;
+     * existing registrations keep their answers on the old field).
+     */
+    original?: { name: string; type: FieldType; optionsCsv: string };
 }
 
 // NO CPO here on purpose — registration links only support FREE / ONE_TIME / SUBSCRIPTION.
@@ -84,20 +98,21 @@ type PaymentType = (typeof PAYMENT_TYPE_VALUES)[number];
 const KYC_SCOPE_VALUES = ['AADHAAR', 'AADHAAR_PAN'] as const;
 type KycScope = (typeof KYC_SCOPE_VALUES)[number];
 
-const formSchema = z
-    .object({
-        name: z.string().min(1, 'Name is required'),
-        memberCount: z.number().min(1, 'Must be at least 1').optional(),
-        validityInDays: z.number().min(1, 'Must be at least 1 day').optional(),
-        maxRegistrations: z.number().min(1, 'Must be at least 1').optional(),
-        paymentType: z.enum(PAYMENT_TYPE_VALUES),
-        // Required for ONE_TIME / SUBSCRIPTION — picked from the institute's existing
-        // payment options (Payment Settings). FREE keeps the fresh-option backend path.
-        paymentOptionId: z.string().optional(),
-        vendor: z.string().optional(),
-        vendorId: z.string().optional(),
-        currency: z.string().optional(),
-    })
+const baseFormSchema = z.object({
+    name: z.string().min(1, 'Name is required'),
+    memberCount: z.number().min(1, 'Must be at least 1').optional(),
+    validityInDays: z.number().min(1, 'Must be at least 1 day').optional(),
+    maxRegistrations: z.number().min(1, 'Must be at least 1').optional(),
+    paymentType: z.enum(PAYMENT_TYPE_VALUES),
+    // Required for ONE_TIME / SUBSCRIPTION — picked from the institute's existing
+    // payment options (Payment Settings). FREE keeps the fresh-option backend path.
+    paymentOptionId: z.string().optional(),
+    vendor: z.string().optional(),
+    vendorId: z.string().optional(),
+    currency: z.string().optional(),
+});
+
+const formSchema = baseFormSchema
     .refine((values) => values.paymentType === 'FREE' || !!values.paymentOptionId, {
         message: 'Select a payment option',
         path: ['paymentOptionId'],
@@ -107,7 +122,65 @@ const formSchema = z
         path: ['vendor'],
     });
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof baseFormSchema>;
+
+const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+    FREE: 'Free',
+    ONE_TIME: 'One-Time',
+    SUBSCRIPTION: 'Subscription',
+};
+
+/**
+ * Reverse of buildInstituteCustomFields — maps an existing template's custom-field rows
+ * back into builder working rows (edit-mode prefill), keeping custom_field id/fieldKey so
+ * the update payload lets the backend dedupe/update instead of duplicating.
+ */
+const mapDetailCustomFields = (
+    rows: RegistrationTemplateCustomField[] | null | undefined
+): BuilderField[] => {
+    if (!rows || rows.length === 0) return [];
+    return [...rows]
+        .sort(
+            (a, b) =>
+                (a.individual_order ?? a.custom_field?.formOrder ?? 0) -
+                (b.individual_order ?? b.custom_field?.formOrder ?? 0)
+        )
+        .map((row) => {
+            const rawType = (row.custom_field?.fieldType || 'TEXT').toUpperCase();
+            const type: FieldType = (FIELD_TYPE_OPTIONS as readonly string[]).includes(rawType)
+                ? (rawType as FieldType)
+                : 'TEXT';
+            let optionsCsv = '';
+            if (type === 'DROPDOWN' && row.custom_field?.config) {
+                try {
+                    const parsed: unknown = JSON.parse(row.custom_field.config);
+                    if (Array.isArray(parsed)) {
+                        optionsCsv = parsed
+                            .map((o: unknown) =>
+                                typeof o === 'string'
+                                    ? o
+                                    : String((o as { value?: unknown })?.value ?? '')
+                            )
+                            .map((v) => v.trim())
+                            .filter(Boolean)
+                            .join(', ');
+                    }
+                } catch {
+                    optionsCsv = '';
+                }
+            }
+            const name = row.custom_field?.fieldName || '';
+            return {
+                name,
+                type,
+                optionsCsv,
+                mandatory: row.is_mandatory ?? row.custom_field?.isMandatory ?? false,
+                existingId: row.custom_field?.id,
+                fieldKey: row.custom_field?.fieldKey,
+                original: { name, type, optionsCsv },
+            };
+        });
+};
 
 const numberOrUndefined = (value: unknown) =>
     value === '' || value === null || value === undefined || Number.isNaN(Number(value))
@@ -117,12 +190,20 @@ const numberOrUndefined = (value: unknown) =>
 interface RegistrationLinkCreateModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /**
+     * Full detail of an existing template — presence switches the modal to EDIT mode:
+     * every section prefills, payment renders read-only (immutable after creation) and
+     * submit PUTs an update. The invite code never changes on edit.
+     */
+    editTemplate?: TemplateDetail | null;
 }
 
 export function RegistrationLinkCreateModal({
     open,
     onOpenChange,
+    editTemplate,
 }: RegistrationLinkCreateModalProps) {
+    const isEditMode = !!editTemplate;
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId();
     const { uploadFile } = useFileUpload();
@@ -130,8 +211,10 @@ export function RegistrationLinkCreateModal({
     const token = getTokenFromCookie(TokenKey.accessToken);
     const currentUserId = getTokenDecodedData(token)?.user ?? '';
 
+    // Edit mode skips the paid-link refinements — payment config is immutable and the
+    // PUT endpoint ignores payment fields, so they must never block saving other edits.
     const form = useForm<FormValues>({
-        resolver: zodResolver(formSchema),
+        resolver: zodResolver(isEditMode ? baseFormSchema : formSchema),
         defaultValues: { name: '', paymentType: 'FREE' },
     });
 
@@ -236,13 +319,61 @@ export function RegistrationLinkCreateModal({
     );
 
     // Auto-select vendor when there's exactly one. `open` is a dep so a reopen after
-    // resetAll re-stamps the (cached) single vendor back onto the form.
+    // resetAll re-stamps the (cached) single vendor back onto the form. Skipped in edit
+    // mode — payment config is immutable and prefilled from the template detail.
     useEffect(() => {
-        if (open && vendorsList.length === 1 && vendorsList[0]) {
+        if (open && !isEditMode && vendorsList.length === 1 && vendorsList[0]) {
             form.setValue('vendor', vendorsList[0].vendor);
             form.setValue('vendorId', vendorsList[0].vendor_id);
         }
-    }, [vendorsList, open, form]);
+    }, [vendorsList, open, isEditMode, form]);
+
+    // EDIT-MODE PREFILL — stamp every section from the template detail whenever the
+    // modal opens with an editTemplate. Payment fields are prefilled only so the
+    // read-only summary + rebuilt settings keep the original type (backend ignores
+    // them on PUT anyway).
+    useEffect(() => {
+        if (!open || !editTemplate) return;
+        const paymentType: PaymentType = (PAYMENT_TYPE_VALUES as readonly string[]).includes(
+            editTemplate.payment_type
+        )
+            ? (editTemplate.payment_type as PaymentType)
+            : 'FREE';
+        form.reset({
+            name: editTemplate.name || '',
+            memberCount: editTemplate.member_count ?? undefined,
+            validityInDays: editTemplate.validity_in_days ?? undefined,
+            maxRegistrations: editTemplate.max_registrations ?? undefined,
+            paymentType,
+            paymentOptionId: editTemplate.payment_option_id ?? undefined,
+            vendor: editTemplate.vendor ?? undefined,
+            vendorId: undefined,
+            currency: editTemplate.currency ?? undefined,
+        });
+        setSelectedPackageSessionIds(editTemplate.package_session_ids ?? []);
+        // auth_roles must never be sent empty — fall back to the create-mode default.
+        setSelectedAuthRoles(
+            editTemplate.auth_roles && editTemplate.auth_roles.length > 0
+                ? editTemplate.auth_roles
+                : ['ADMIN']
+        );
+        setSelectedTeamRoles(editTemplate.allowed_team_roles ?? []);
+        setSelectedAdminPermissions(
+            editTemplate.admin_permissions && editTemplate.admin_permissions.length > 0
+                ? editTemplate.admin_permissions
+                : ['FULL']
+        );
+        setCustomFields(mapDetailCustomFields(editTemplate.institute_custom_fields));
+        const consentItems = editTemplate.tnc_consent_items ?? [];
+        setTncEnabled(!!editTemplate.tnc_file_id || consentItems.length > 0);
+        setTncFileId(editTemplate.tnc_file_id ?? null);
+        // The real filename isn't stored on the template — the chip falls back to a label.
+        setTncFileName(editTemplate.tnc_file_id ? 'Existing T&C PDF' : '');
+        setTncConsentItems(consentItems);
+        const kycDocs = editTemplate.kyc_documents ?? [];
+        setKycEnabled(kycDocs.length > 0);
+        setKycScope(kycDocs.includes('PAN') ? 'AADHAAR_PAN' : 'AADHAAR');
+    }, [open, editTemplate, form]);
 
     const createMutation = useMutation({
         mutationFn: (payload: CreateRegistrationTemplateRequest) =>
@@ -262,6 +393,34 @@ export function RegistrationLinkCreateModal({
             const message =
                 (error as { response?: { data?: { message?: string } } })?.response?.data
                     ?.message || 'Failed to create registration link';
+            toast.error(message);
+        },
+    });
+
+    // Edit-mode PUT — the invite code never changes, so no new-link toast here.
+    const updateMutation = useMutation({
+        mutationFn: ({
+            templateId,
+            payload,
+        }: {
+            templateId: string;
+            payload: CreateRegistrationTemplateRequest;
+        }) => updateRegistrationTemplate(templateId, instituteId || '', payload),
+        onSuccess: (_data, variables) => {
+            toast.success('Registration link updated');
+            queryClient.invalidateQueries({
+                queryKey: ['sub-org-registration-templates', instituteId],
+            });
+            queryClient.invalidateQueries({
+                queryKey: ['sub-org-registration-template-detail', variables.templateId],
+            });
+            resetAll();
+            onOpenChange(false);
+        },
+        onError: (error: unknown) => {
+            const message =
+                (error as { response?: { data?: { message?: string } } })?.response?.data
+                    ?.message || 'Failed to update registration link';
             toast.error(message);
         },
     });
@@ -352,6 +511,13 @@ export function RegistrationLinkCreateModal({
             .filter((field) => field.name.length > 0);
         if (cleaned.length === 0) return undefined;
 
+        const normalizeOptions = (csv: string) =>
+            csv
+                .split(',')
+                .map((v) => v.trim())
+                .filter(Boolean)
+                .join('|');
+
         return cleaned.map((field, index) => {
             const options =
                 field.type === 'DROPDOWN'
@@ -360,6 +526,16 @@ export function RegistrationLinkCreateModal({
                           .map((v) => v.trim())
                           .filter(Boolean)
                     : [];
+            // The backend can't update a field's definition in place — keep the id
+            // only when name/type/options are untouched; otherwise submit as new.
+            const definitionUnchanged =
+                !!field.original &&
+                field.original.name.trim() === field.name &&
+                field.original.type === field.type &&
+                (field.type !== 'DROPDOWN' ||
+                    normalizeOptions(field.original.optionsCsv) ===
+                        normalizeOptions(field.optionsCsv));
+            const keepIdentity = !!field.existingId && definitionUnchanged;
             return {
                 institute_id: instituteId || '',
                 type: 'ENROLL_INVITE' as const,
@@ -367,6 +543,9 @@ export function RegistrationLinkCreateModal({
                 individual_order: index,
                 is_mandatory: field.mandatory,
                 custom_field: {
+                    // Preserve identity on edit so the backend updates instead of duplicating.
+                    ...(keepIdentity && { id: field.existingId }),
+                    ...(keepIdentity && field.fieldKey && { fieldKey: field.fieldKey }),
                     fieldName: field.name,
                     fieldType: field.type,
                     formOrder: index + 1,
@@ -431,20 +610,45 @@ export function RegistrationLinkCreateModal({
                 : undefined,
             max_registrations: values.maxRegistrations,
             institute_custom_fields: buildInstituteCustomFields(),
-            payment_type: values.paymentType,
-            payment_option_id: isGatewayBacked ? values.paymentOptionId : undefined,
-            vendor: isGatewayBacked ? values.vendor : undefined,
-            vendor_id: isGatewayBacked ? values.vendorId : undefined,
-            currency: isGatewayBacked ? values.currency : undefined,
+            // Payment config is immutable after creation — omit it entirely on edit
+            // so the wire contract doesn't imply otherwise (backend ignores it anyway).
+            ...(editTemplate
+                ? {}
+                : {
+                      payment_type: values.paymentType,
+                      payment_option_id: isGatewayBacked ? values.paymentOptionId : undefined,
+                      vendor: isGatewayBacked ? values.vendor : undefined,
+                      vendor_id: isGatewayBacked ? values.vendorId : undefined,
+                      currency: isGatewayBacked ? values.currency : undefined,
+                  }),
         };
-        createMutation.mutate(payload);
+        if (editTemplate) {
+            // Payment fields in the payload are ignored server-side on PUT (immutable).
+            updateMutation.mutate({ templateId: editTemplate.template_id, payload });
+        } else {
+            createMutation.mutate(payload);
+        }
     };
 
-    const isPending = createMutation.isPending;
+    const isPending = createMutation.isPending || updateMutation.isPending;
+
+    // Read-only payment summary bits (edit mode). The payment-options query already
+    // covers all three types, so we can resolve the configured option's display name.
+    const editPaymentType: PaymentType =
+        editTemplate && (PAYMENT_TYPE_VALUES as readonly string[]).includes(editTemplate.payment_type)
+            ? (editTemplate.payment_type as PaymentType)
+            : 'FREE';
+    const editIsPaid = editPaymentType === 'ONE_TIME' || editPaymentType === 'SUBSCRIPTION';
+    const editPaymentOptionName = editTemplate?.payment_option_id
+        ? isLoadingPaymentOptions
+            ? 'Loading...'
+            : institutePaymentOptions.find((o) => o.id === editTemplate.payment_option_id)?.name ||
+              editTemplate.payment_option_id
+        : '—';
 
     return (
         <MyDialog
-            heading="Create Registration Link"
+            heading={isEditMode ? 'Edit Registration Link' : 'Create Registration Link'}
             open={open}
             onOpenChange={(o) => {
                 if (!o) resetAll();
@@ -571,7 +775,40 @@ export function RegistrationLinkCreateModal({
                     </div>
                 </div>
 
-                {/* 4. Payment */}
+                {/* 4. Payment — read-only in edit mode; payment config is immutable */}
+                {isEditMode ? (
+                    <div className="space-y-2">
+                        <Label>Payment</Label>
+                        <div className="space-y-1 rounded-md border bg-muted/50 p-3 text-sm">
+                            <p>
+                                <span className="text-muted-foreground">Type: </span>
+                                {PAYMENT_TYPE_LABELS[editPaymentType]}
+                            </p>
+                            {editIsPaid && (
+                                <>
+                                    <p>
+                                        <span className="text-muted-foreground">
+                                            Payment option:{' '}
+                                        </span>
+                                        {editPaymentOptionName}
+                                    </p>
+                                    <p>
+                                        <span className="text-muted-foreground">Vendor: </span>
+                                        {editTemplate?.vendor || '—'}
+                                    </p>
+                                    <p>
+                                        <span className="text-muted-foreground">Currency: </span>
+                                        {editTemplate?.currency || '—'}
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Payment settings can&apos;t be changed after creation — create a new
+                            link instead.
+                        </p>
+                    </div>
+                ) : (
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <div>
@@ -705,6 +942,7 @@ export function RegistrationLinkCreateModal({
                         </div>
                     )}
                 </div>
+                )}
 
                 {/* 5. Roles + permissions */}
                 <div className="space-y-4">
@@ -1086,7 +1324,7 @@ export function RegistrationLinkCreateModal({
                         disable={isPending || isUploadingTnc}
                     >
                         {isPending && <CircleNotch className="mr-2 size-4 animate-spin" />}
-                        Create Registration Link
+                        {isEditMode ? 'Save Changes' : 'Create Registration Link'}
                     </MyButton>
                 </div>
             </form>

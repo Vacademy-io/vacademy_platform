@@ -52,7 +52,9 @@ const convertTemplateCustomFields = (
         comma_separated_options: cf.config || "",
         config: cf.config || "{}",
         status: field.status || "ACTIVE",
-        is_mandatory: cf.isMandatory ?? cf.is_mandatory ?? false,
+        // Mapping-level override first: template edits update the OUTER row's
+        // is_mandatory; the nested master flag is only the original default.
+        is_mandatory: field.is_mandatory ?? cf.isMandatory ?? cf.is_mandatory ?? false,
         field_type: cf.fieldType ?? cf.field_type ?? "text",
         created_at: cf.createdAt ?? cf.created_at ?? "",
         updated_at: cf.updatedAt ?? cf.updated_at ?? "",

@@ -42,7 +42,7 @@ interface BuildPaymentInitiationRequestParams {
   contact?: string | null;
   /** STRIPE only — payment method id produced by Stripe Elements. */
   paymentMethodId?: string;
-  /** STRIPE return_url / PHONEPE redirect_url, depending on the vendor. */
+  /** STRIPE/CASHFREE return_url / PHONEPE redirect_url, depending on the vendor. */
   returnUrl?: string;
   /** EWAY only — client-side encrypted card data from the Eway card form. */
   ewayPaymentData?: EwayEncryptedCardData | null;
@@ -97,8 +97,12 @@ export const buildPaymentInitiationRequest = ({
         }
       : {};
 
-  // Return_url is set by the frontend when calling the user-plan-payment API
-  const cashfree_request = vendor === "CASHFREE" ? { return_url: "" } : {};
+  // Stamp the return_url on the ORDER itself — an empty value makes the
+  // backend fall back to its default (https://vacademy.io), leaving the order
+  // pointing at a domain that isn't Cashfree-whitelisted until the SDK's
+  // checkout() call patches it.
+  const cashfree_request =
+    vendor === "CASHFREE" ? { return_url: returnUrl || "" } : {};
 
   // PhonePe Standard Checkout: redirect_url is where PhonePe sends the user
   // back; the backend stamps orderId + instituteId onto it.

@@ -46,6 +46,8 @@ export interface TemplateInstituteCustomField {
   type_id?: string;
   group_name?: string | null;
   custom_field: TemplateCustomFieldInner;
+  /** Mapping-level mandatory override — takes precedence over custom_field.isMandatory. */
+  is_mandatory?: boolean | null;
   individual_order?: number | null;
   group_internal_order?: number | null;
   status?: string | null;

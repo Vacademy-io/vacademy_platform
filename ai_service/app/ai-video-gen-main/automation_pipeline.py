@@ -3143,6 +3143,12 @@ class VideoGenerationPipeline:
         self._dialogue_characters: List[Dict[str, Any]] = []
         self._fal_seedance_client = None
         self._dialogue_cost_tracker = None
+        # Institute credit ledger for dialogue clips — REAL billing, not just
+        # the in-process cap. Lazily built in _seedance_ready (reuses the
+        # AI-video ledger when that feature is also on). institute_id stashed
+        # here because the AI-video block keeps it only as a ctor local.
+        self._dialogue_ledger: Any = None
+        self._dialogue_institute_id = institute_id
         self._dialogue_cast_sheet_url: Optional[str] = None
         # P2: per-character reference portraits ({name_lower: url}) — cached
         # once per run; None = not yet attempted.
@@ -7880,6 +7886,24 @@ class VideoGenerationPipeline:
                     self._tier_config.get("dialogue_scene_cost_cap_usd") or _default_cap
                 )
                 self._dialogue_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+            if self._dialogue_ledger is None:
+                # Reuse the AI-video ledger when present; else build our own so
+                # dialogue-only runs STILL bill the institute for fal spend.
+                _existing = getattr(self, "_ai_video_ledger", None)
+                if _existing is not None and getattr(_existing, "enabled", False):
+                    self._dialogue_ledger = _existing
+                else:
+                    try:
+                        from app.services.ai_video_ledger import AiVideoLedger
+                        self._dialogue_ledger = AiVideoLedger(
+                            institute_id=self._dialogue_institute_id,
+                            video_id=getattr(self, "_run_name", None) or "run",
+                        )
+                        if not self._dialogue_ledger.enabled:
+                            print("⚠️  dialogue credit ledger disabled (missing institute/video id)")
+                    except Exception as _dl_err:
+                        print(f"⚠️  dialogue credit ledger unavailable: {_dl_err}")
+                        self._dialogue_ledger = False  # tried and failed; no retry
             return True
         except Exception as init_err:
             print(f"   ⚠️ Seedance init failed: {init_err}")
@@ -7894,6 +7918,8 @@ class VideoGenerationPipeline:
         """One budgeted Seedance call for a dialogue shot. None on failure."""
         shot_idx = int(shot.get("shot_index") or 0)
         expected = 0.0
+        from decimal import Decimal as _Dec
+        charged_credits = _Dec("0")
         try:
             try:
                 from app.services.fal_seedance_client import seedance_price_per_call_usd
@@ -7908,6 +7934,26 @@ class VideoGenerationPipeline:
             except Exception as cap_err:
                 print(f"   🛑 DIALOGUE_SCENE shot {shot_idx}: dialogue budget exhausted ({cap_err})")
                 return None
+            # Institute billing — mirror the AI_VIDEO_HERO discipline: deduct
+            # BEFORE the fal call; insufficient balance rolls back the tracker
+            # reservation and demotes the shot instead of shipping unbilled spend.
+            _ledger = self._dialogue_ledger if self._dialogue_ledger not in (None, False) else None
+            if _ledger is not None and getattr(_ledger, "enabled", False):
+                try:
+                    charged_credits = _ledger.charge(
+                        cost_usd=expected, shot_idx=shot_idx,
+                        duration_s=clip_s, audio_on=True,
+                    )
+                except Exception as _led_err:
+                    try:
+                        self._dialogue_cost_tracker.refund(expected)
+                    except Exception:
+                        pass
+                    print(
+                        f"   🛑 DIALOGUE_SCENE shot {shot_idx}: credit deduction failed "
+                        f"({type(_led_err).__name__}: {_led_err}) — demoting"
+                    )
+                    return None
             aspect = "9:16" if self.video_height > self.video_width else "16:9"
             prompt = self._build_dialogue_scene_prompt(shot, ref_names)
             print(f"   🎭 Shot {shot_idx}: Seedance dialogue clip ({clip_s}s, ~${expected:.2f})…")
@@ -7930,6 +7976,16 @@ class VideoGenerationPipeline:
             try:
                 if self._dialogue_cost_tracker is not None and expected > 0:
                     self._dialogue_cost_tracker.refund(expected)
+            except Exception:
+                pass
+            # Refund the institute deduction too — the clip never shipped.
+            try:
+                _lg = self._dialogue_ledger if self._dialogue_ledger not in (None, False) else None
+                if _lg is not None and charged_credits > 0:
+                    _lg.refund(
+                        credits=charged_credits, shot_idx=shot_idx,
+                        reason=f"seedance_failure:{type(ds_err).__name__}",
+                    )
             except Exception:
                 pass
             return None

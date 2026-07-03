@@ -73,7 +73,15 @@ export function NarrationDecision({ decision, isSubmitting, onSubmit }: Narratio
     const estSeconds = Math.round(totalWords / WORDS_PER_SECOND);
 
     const approve = () => {
-        if (!dirty) {
+        // Compare against the initial draft rather than trusting the dirty
+        // flag alone — picking the "Draft" hook chip resets `dirty`, which
+        // must not discard edits the user made to OTHER shots' lines.
+        const actuallyChanged =
+            dirty ||
+            rows.some(
+                (r, i) => r.narration_text !== (initial[i]?.narration_text ?? '')
+            );
+        if (!actuallyChanged) {
             onSubmit({ kind: 'accept_recommended' });
             return;
         }

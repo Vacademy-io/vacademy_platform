@@ -3,6 +3,8 @@ import {
     SUB_ORG_REGISTRATION_TEMPLATE_CREATE,
     SUB_ORG_REGISTRATION_TEMPLATE_LIST,
     SUB_ORG_REGISTRATION_TEMPLATE_STATUS,
+    SUB_ORG_REGISTRATION_TEMPLATE_DETAIL,
+    SUB_ORG_REGISTRATION_TEMPLATE_UPDATE,
     SUB_ORG_REGISTRATION_REGISTRATIONS,
 } from '@/constants/urls';
 
@@ -81,6 +83,33 @@ export interface RegistrationTemplateListItem {
     steps?: string[] | null;
 }
 
+/**
+ * Full editable config of one registration template (GET .../template/{id}/detail).
+ * Outer keys snake_case; nested `custom_field` camelCase — same DTO pair as create.
+ */
+export interface TemplateDetail {
+    template_id: string;
+    name: string;
+    invite_code: string;
+    status: string; // ACTIVE | INACTIVE
+    package_session_ids: string[];
+    member_count: number | null;
+    validity_in_days: number | null;
+    auth_roles: string[];
+    admin_permissions: string[];
+    allowed_team_roles: string[];
+    tnc_file_id: string | null;
+    tnc_consent_items: string[] | null;
+    max_registrations: number | null;
+    kyc_documents: string[] | null;
+    /** Immutable after creation — the PUT endpoint ignores all payment fields. */
+    payment_type: string; // FREE | ONE_TIME | SUBSCRIPTION
+    payment_option_id: string | null;
+    vendor: string | null;
+    currency: string | null;
+    institute_custom_fields: RegistrationTemplateCustomField[] | null;
+}
+
 export interface SubOrgRegistrationRow {
     id: string;
     status: string;
@@ -101,6 +130,37 @@ export const createRegistrationTemplate = async (
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: SUB_ORG_REGISTRATION_TEMPLATE_CREATE,
+        params: { instituteId },
+        data,
+    });
+    return response.data;
+};
+
+export const getRegistrationTemplateDetail = async (
+    templateId: string,
+    instituteId: string
+): Promise<TemplateDetail> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_REGISTRATION_TEMPLATE_DETAIL(templateId),
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+/**
+ * PUT full-config update. Body is the same CreateRegistrationTemplateRequest, but the
+ * backend IGNORES payment fields (payment_type/payment_option_id/vendor/vendor_id/currency)
+ * — payment config is immutable after creation. The invite_code never changes.
+ */
+export const updateRegistrationTemplate = async (
+    templateId: string,
+    instituteId: string,
+    data: CreateRegistrationTemplateRequest
+): Promise<CreateRegistrationTemplateResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'PUT',
+        url: SUB_ORG_REGISTRATION_TEMPLATE_UPDATE(templateId),
         params: { instituteId },
         data,
     });

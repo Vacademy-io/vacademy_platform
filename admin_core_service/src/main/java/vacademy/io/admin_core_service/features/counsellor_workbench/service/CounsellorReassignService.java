@@ -217,10 +217,26 @@ public class CounsellorReassignService {
         } else {
             candidates = allowed.stream().sorted().collect(Collectors.toList());
         }
+        // Round-robin distributes only across ACTIVE counsellors (an ACTIVE pool
+        // membership) — drop anyone offline, whether they came from the explicit
+        // candidate list or the whole-scope fallback, so bulk-assign never lands
+        // a lead on an inactive counsellor.
+        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
         if (candidates.isEmpty()) {
             throw new VacademyException("No active counsellors available for round-robin assignment");
         }
         return candidates;
+    }
+
+    /**
+     * Keep only counsellors with at least one ACTIVE pool membership — the same
+     * definition the workbench roster uses for "active". Preserves input order.
+     */
+    private List<String> retainActiveCounsellors(String instituteId, List<String> candidates) {
+        if (candidates.isEmpty()) return candidates;
+        Set<String> active = new HashSet<>(
+                counselorPoolMemberRepository.findCounselorsWithAnyActiveMembership(instituteId, candidates));
+        return candidates.stream().filter(active::contains).collect(Collectors.toList());
     }
 
     private void assertAllowed(String userId, Set<String> allowed) {
@@ -409,6 +425,10 @@ public class CounsellorReassignService {
                 .filter(uid -> !uid.equals(req.getFromUserId()))
                 .sorted()
                 .collect(Collectors.toList());
+        // Round-robin must skip counsellors who are OFFLINE (no ACTIVE pool
+        // membership) — same "active" rule the workbench roster shows. Without
+        // this, reassignment could hand leads to an inactive counsellor.
+        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
         if (candidates.isEmpty()) {
             throw new VacademyException("No active counsellors available for round-robin reassignment");
         }

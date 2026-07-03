@@ -83,6 +83,19 @@ public class TimelineEventController {
         }
 
         /**
+         * Batch fetch the full lead journey (status/disposition changes + notes +
+         * calls) per student, oldest-first — powers the "Lead journey" export column.
+         * POST /admin-core-service/timeline/v1/student/journey-batch
+         * Body: ["userId1", "userId2", ...]
+         * Returns: { "userId1": [ {timeline event}, ... ], ... }
+         */
+        @PostMapping("/student/journey-batch")
+        public ResponseEntity<Map<String, List<TimelineEventDTO>>> getJourneyBatch(
+                        @RequestBody List<String> studentUserIds) {
+                return ResponseEntity.ok(timelineEventService.getJourneyBatch(studentUserIds));
+        }
+
+        /**
          * Get timeline events with pinned notes first.
          * GET /admin-core-service/timeline/v1/events/pinned
          */

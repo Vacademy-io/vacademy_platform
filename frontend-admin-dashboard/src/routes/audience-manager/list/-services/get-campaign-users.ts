@@ -167,6 +167,11 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.submitted_to_local,
             payload.search_query,
             payload.lead_tier,
+            // Must be in the key: picking a specific catalog status sets
+            // lead_status_id while conversion_status_filter stays 'ALL', so
+            // without this the key wouldn't change and React Query would serve
+            // the cached list — the status filter would fire no request.
+            payload.lead_status_id ?? '',
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
             payload.sla_filter ?? '',
             payload.assigned_counselor_id ?? '',

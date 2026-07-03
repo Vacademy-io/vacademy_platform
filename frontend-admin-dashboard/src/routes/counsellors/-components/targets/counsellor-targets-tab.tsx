@@ -1,13 +1,25 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash, CalendarBlank, CalendarCheck } from '@phosphor-icons/react';
+import { Trash, CalendarBlank, CalendarCheck, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { MyButton } from '@/components/design-system/button';
 import {
     deleteCounsellorTarget,
     fetchCounsellorTargets,
     fetchTargetProgress,
+    upsertCounsellorTarget,
     TARGET_METRIC_LABEL,
+    TARGET_METRICS,
     type CounsellorTarget,
+    type TargetMetric,
+    type TargetPeriodType,
 } from '../../-services/counsellor-target-services';
 import { TargetProgress } from './target-progress';
 
@@ -19,9 +31,10 @@ const PERIOD_LABEL: Record<string, string> = {
 
 /**
  * Per-counsellor Targets tab for the detail drawer: current week + month
- * progress up top, then the full list of configured targets (all periods) with
- * a remove action. Adding/updating values is done from the roster's
- * "Set targets" dialog (per-person rows), so this stays a focused detail view.
+ * progress, an inline "Add target" form to set this counsellor's target for a
+ * metric + timeline, and the full list of configured targets (all periods)
+ * with a remove action. (Bulk / whole-team setting lives in the roster's
+ * "Set targets" dialog.)
  */
 export function CounsellorTargetsTab({
     instituteId,
@@ -102,6 +115,9 @@ export function CounsellorTargetsTab({
                 />
             </div>
 
+            {/* Add / update a target for this counsellor */}
+            <AddTargetForm instituteId={instituteId} counsellorUserId={counsellorUserId} />
+
             {/* Configured targets */}
             <div>
                 <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-500">
@@ -129,6 +145,145 @@ export function CounsellorTargetsTab({
                         ))}
                     </ul>
                 )}
+            </div>
+        </div>
+    );
+}
+
+const PERIOD_OPTIONS: { key: TargetPeriodType; label: string }[] = [
+    { key: 'WEEK', label: 'Weekly (recurring)' },
+    { key: 'MONTH', label: 'Monthly (recurring)' },
+    { key: 'CUSTOM', label: 'Custom range' },
+];
+
+/** Inline create/update form: set this counsellor's target for a metric + timeline. */
+function AddTargetForm({
+    instituteId,
+    counsellorUserId,
+}: {
+    instituteId: string;
+    counsellorUserId: string;
+}) {
+    const queryClient = useQueryClient();
+    const [metric, setMetric] = useState<TargetMetric>('CONVERSIONS');
+    const [periodType, setPeriodType] = useState<TargetPeriodType>('MONTH');
+    const [from, setFrom] = useState('');
+    const [to, setTo] = useState('');
+    const [value, setValue] = useState('');
+
+    const customIncomplete = periodType === 'CUSTOM' && (!from || !to);
+
+    const save = useMutation({
+        mutationFn: () =>
+            upsertCounsellorTarget({
+                institute_id: instituteId,
+                counsellor_user_id: counsellorUserId,
+                metric,
+                period_type: periodType,
+                target_value: Number(value),
+                ...(periodType === 'CUSTOM' ? { period_start: from, period_end: to } : {}),
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: ['counsellor-targets', instituteId, counsellorUserId],
+            });
+            queryClient.invalidateQueries({ queryKey: ['counsellor-target-progress-one'] });
+            queryClient.invalidateQueries({ queryKey: ['counsellor-target-progress'] });
+            setValue('');
+            toast.success('Target saved');
+        },
+        onError: (e) =>
+            toast.error(
+                (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex ??
+                    'Could not save target'
+            ),
+    });
+
+    const canSave =
+        !save.isPending && value.trim() !== '' && Number(value) >= 0 && !customIncomplete;
+
+    return (
+        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mb-2 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                Add / update target
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1">
+                    <span className="text-caption text-neutral-500">Metric</span>
+                    <Select value={metric} onValueChange={(v) => setMetric(v as TargetMetric)}>
+                        <SelectTrigger className="h-9 w-40 bg-white">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {TARGET_METRICS.map((m) => (
+                                <SelectItem key={m} value={m}>
+                                    {TARGET_METRIC_LABEL[m]}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </label>
+                <label className="flex flex-col gap-1">
+                    <span className="text-caption text-neutral-500">Timeline</span>
+                    <Select
+                        value={periodType}
+                        onValueChange={(v) => setPeriodType(v as TargetPeriodType)}
+                    >
+                        <SelectTrigger className="h-9 w-44 bg-white">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {PERIOD_OPTIONS.map((p) => (
+                                <SelectItem key={p.key} value={p.key}>
+                                    {p.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </label>
+                <label className="flex flex-col gap-1">
+                    <span className="text-caption text-neutral-500">Target</span>
+                    <input
+                        type="number"
+                        min={0}
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        placeholder="e.g. 50"
+                        className="h-9 w-24 rounded-md border border-neutral-300 px-2 text-body"
+                    />
+                </label>
+                {periodType === 'CUSTOM' && (
+                    <>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-caption text-neutral-500">From</span>
+                            <input
+                                type="date"
+                                value={from}
+                                onChange={(e) => setFrom(e.target.value)}
+                                className="h-9 rounded-md border border-neutral-300 px-2 text-caption"
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-caption text-neutral-500">To</span>
+                            <input
+                                type="date"
+                                value={to}
+                                onChange={(e) => setTo(e.target.value)}
+                                className="h-9 rounded-md border border-neutral-300 px-2 text-caption"
+                            />
+                        </label>
+                    </>
+                )}
+                <MyButton
+                    type="button"
+                    buttonType="primary"
+                    scale="medium"
+                    disabled={!canSave}
+                    onClick={() => save.mutate()}
+                >
+                    <Plus size={14} className="mr-1" />
+                    {save.isPending ? 'Saving…' : 'Save target'}
+                </MyButton>
             </div>
         </div>
     );

@@ -18,7 +18,7 @@
  * Read-only. No new endpoints: current + previous windows are two calls each and
  * the deltas are computed here.
  */
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
     Sparkle,
@@ -550,14 +550,14 @@ function CoachingDrillIn({
     const weakest = (data.qualityAverages ?? []).slice(0, 3);
     const tips = (data.topCoachingTips ?? []).slice(0, 3);
     return (
-        <div className="flex flex-col gap-2 bg-neutral-50 px-4 py-3">
+        <div className="flex flex-col gap-2 px-4 py-3">
             {weakest.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-caption">
                     <span className="font-medium text-neutral-600">Weakest skills:</span>
                     {weakest.map((q) => (
                         <span
                             key={q.key}
-                            className="rounded-full bg-white px-2 py-0.5 text-neutral-600"
+                            className="rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-600"
                         >
                             {q.key.replace(/_/g, ' ')} ·{' '}
                             {q.avgScore == null ? '—' : q.avgScore.toFixed(1)}/10
@@ -613,6 +613,31 @@ function reachTone(v: number | null): string {
     if (v >= 40) return 'text-green-700';
     if (v >= 20) return 'text-amber-700';
     return 'text-red-600';
+}
+
+// One right-aligned metric column (value + its vs-previous delta). Fixed width so
+// every counsellor card lines up under the shared header row.
+function MetricCol({
+    value,
+    previous,
+    digits = 0,
+    suffix = '',
+    tone,
+}: {
+    value: number | null;
+    previous: number | null;
+    digits?: number;
+    suffix?: string;
+    tone?: string;
+}) {
+    return (
+        <div className="flex w-24 shrink-0 flex-col items-end">
+            <span className={cn('font-medium', tone ?? 'text-neutral-900')}>
+                {value == null ? '—' : `${value.toFixed(digits)}${suffix}`}
+            </span>
+            <Delta current={value} previous={previous} digits={digits} suffix={suffix} />
+        </div>
+    );
 }
 
 // ── Per-counsellor breakdown ──────────────────────────────────────────────────
@@ -749,127 +774,83 @@ function CounsellorBreakdown({
                     No counsellor activity in this period.
                 </div>
             ) : (
-                <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-                    <table className="w-full text-body">
-                        <thead>
-                            <tr className="border-b border-neutral-200 text-caption uppercase tracking-wide text-neutral-500">
-                                <th className="w-8 py-2.5" />
-                                <th className="py-2.5 pl-1 text-left">Counsellor</th>
-                                <th className="py-2.5 text-right">Analyzed</th>
-                                <th className="py-2.5 text-right">Avg caller</th>
-                                <th className="py-2.5 text-right">Avg output</th>
-                                <th className="py-2.5 text-right">Dispositioned</th>
-                                <th className="py-2.5 pr-4 text-right">Reach</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows.map((r) => {
-                                const open = !collapsed.has(r.userId);
-                                return (
-                                    <Fragment key={r.userId}>
-                                        <tr
-                                            className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
-                                            onClick={() => toggle(r.userId)}
-                                        >
-                                            <td className="py-2.5 pl-3 text-neutral-400">
-                                                {open ? (
-                                                    <CaretDown size={14} />
-                                                ) : (
-                                                    <CaretRight size={14} />
-                                                )}
-                                            </td>
-                                            <td className="py-2.5 pl-1 text-neutral-800">
-                                                {r.name}
-                                            </td>
-                                            <td className="py-2.5 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="font-medium text-neutral-900">
-                                                        {r.analyzed}
-                                                    </span>
-                                                    <Delta
-                                                        current={r.analyzed}
-                                                        previous={r.analyzedPrev}
-                                                        digits={0}
-                                                    />
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="font-medium text-neutral-900">
-                                                        {r.avgCaller == null
-                                                            ? '—'
-                                                            : r.avgCaller.toFixed(1)}
-                                                    </span>
-                                                    <Delta
-                                                        current={r.avgCaller}
-                                                        previous={r.avgCallerPrev}
-                                                    />
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="font-medium text-neutral-900">
-                                                        {r.avgOutput == null
-                                                            ? '—'
-                                                            : r.avgOutput.toFixed(1)}
-                                                    </span>
-                                                    <Delta
-                                                        current={r.avgOutput}
-                                                        previous={r.avgOutputPrev}
-                                                    />
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span className="font-medium text-neutral-900">
-                                                        {r.statusChanges}
-                                                    </span>
-                                                    <Delta
-                                                        current={r.statusChanges}
-                                                        previous={r.statusChangesPrev}
-                                                        digits={0}
-                                                    />
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 pr-4 text-right">
-                                                <div className="flex flex-col items-end">
-                                                    <span
-                                                        className={cn(
-                                                            'font-medium',
-                                                            reachTone(r.reach)
-                                                        )}
-                                                    >
-                                                        {r.reach == null ? '—' : `${r.reach}%`}
-                                                    </span>
-                                                    <Delta
-                                                        current={r.reach}
-                                                        previous={r.reachPrev}
-                                                        digits={0}
-                                                        suffix="%"
-                                                    />
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        {open && (
-                                            <tr>
-                                                <td colSpan={7} className="p-0">
-                                                    <div className="flex items-center gap-1.5 px-4 pt-2 text-caption font-semibold uppercase tracking-wide text-neutral-500">
-                                                        <Lightbulb size={13} /> What they can
-                                                        improve
-                                                    </div>
-                                                    <CoachingDrillIn
-                                                        counsellorUserId={r.userId}
-                                                        from={current.from}
-                                                        to={current.to}
-                                                    />
-                                                </td>
-                                            </tr>
+                <div className="overflow-x-auto">
+                    <div className="flex min-w-max flex-col gap-3">
+                        {/* Shared column header — aligns with each card's metric row */}
+                        <div className="flex items-center px-4 text-caption uppercase tracking-wide text-neutral-500">
+                            <span className="w-6 shrink-0" />
+                            <span className="min-w-40 flex-1">Counsellor</span>
+                            <span className="w-24 shrink-0 text-right">Analyzed</span>
+                            <span className="w-24 shrink-0 text-right">Avg caller</span>
+                            <span className="w-24 shrink-0 text-right">Avg output</span>
+                            <span className="w-24 shrink-0 text-right">Dispositioned</span>
+                            <span className="w-24 shrink-0 text-right">Reach</span>
+                        </div>
+
+                        {rows.map((r) => {
+                            const open = !collapsed.has(r.userId);
+                            return (
+                                // One card per counsellor — everything inside belongs to this
+                                // rep, and the gap-3 between cards keeps them clearly apart.
+                                <div
+                                    key={r.userId}
+                                    className="overflow-hidden rounded-lg border border-neutral-200 bg-white"
+                                >
+                                    <div
+                                        className={cn(
+                                            'flex cursor-pointer items-center px-4 py-3 hover:bg-neutral-50',
+                                            open && 'bg-neutral-50/60'
                                         )}
-                                    </Fragment>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                        onClick={() => toggle(r.userId)}
+                                    >
+                                        <span className="w-6 shrink-0 text-neutral-400">
+                                            {open ? (
+                                                <CaretDown size={14} />
+                                            ) : (
+                                                <CaretRight size={14} />
+                                            )}
+                                        </span>
+                                        <span className="min-w-40 flex-1 font-medium text-neutral-800">
+                                            {r.name}
+                                        </span>
+                                        <MetricCol value={r.analyzed} previous={r.analyzedPrev} />
+                                        <MetricCol
+                                            value={r.avgCaller}
+                                            previous={r.avgCallerPrev}
+                                            digits={1}
+                                        />
+                                        <MetricCol
+                                            value={r.avgOutput}
+                                            previous={r.avgOutputPrev}
+                                            digits={1}
+                                        />
+                                        <MetricCol
+                                            value={r.statusChanges}
+                                            previous={r.statusChangesPrev}
+                                        />
+                                        <MetricCol
+                                            value={r.reach}
+                                            previous={r.reachPrev}
+                                            suffix="%"
+                                            tone={reachTone(r.reach)}
+                                        />
+                                    </div>
+                                    {open && (
+                                        <div className="border-t border-neutral-200">
+                                            <div className="flex items-center gap-1.5 bg-neutral-50 px-4 py-2 text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                                <Lightbulb size={13} /> What they can improve
+                                            </div>
+                                            <CoachingDrillIn
+                                                counsellorUserId={r.userId}
+                                                from={current.from}
+                                                to={current.to}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </section>

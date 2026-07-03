@@ -211,6 +211,32 @@ public class TimelineEventService {
                 return result;
         }
 
+        /** How many journey events per lead the export pulls (most-recent first, capped). */
+        private static final int JOURNEY_EXPORT_CAP = 50;
+
+        /**
+         * Batch fetch the full lead journey (status/disposition changes + notes +
+         * call events — every category) per student, oldest-first, for CSV export.
+         * Reuses the same window query as latest-notes with a larger cap.
+         * POST /admin-core-service/timeline/v1/student/journey-batch
+         */
+        @Transactional(readOnly = true)
+        public Map<String, List<TimelineEventDTO>> getJourneyBatch(List<String> studentUserIds) {
+                Map<String, List<TimelineEventDTO>> result = new HashMap<>();
+                if (studentUserIds == null || studentUserIds.isEmpty()) return result;
+
+                List<TimelineEvent> events = timelineEventRepository
+                                .findRecentPerStudent(studentUserIds, JOURNEY_EXPORT_CAP);
+                for (TimelineEvent e : events) {
+                        if (e.getStudentUserId() == null) continue;
+                        result.computeIfAbsent(e.getStudentUserId(), k -> new ArrayList<>())
+                                        .add(mapToDTO(e));
+                }
+                // The window query returns newest-first; a journey reads better oldest-first.
+                for (List<TimelineEventDTO> list : result.values()) java.util.Collections.reverse(list);
+                return result;
+        }
+
         // ── Private helpers ───────────────────────────────────────────────────
 
         private void saveEvent(String type, String typeId, String actionType,

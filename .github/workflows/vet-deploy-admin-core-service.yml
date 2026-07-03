@@ -140,7 +140,9 @@ jobs:
             "TELEPHONY_AIRTEL_S3_REGION=us-east-1" \
             "TELEPHONY_AIRTEL_S3_BUCKET=vacademy-airtel-ccr" \
             "TELEPHONY_AIRTEL_S3_ACCESS_KEY=${{ secrets.TELEPHONY_AIRTEL_S3_ACCESS_KEY }}" \
-            "TELEPHONY_AIRTEL_S3_SECRET_KEY=${{ secrets.TELEPHONY_AIRTEL_S3_SECRET_KEY }}"
+            "TELEPHONY_AIRTEL_S3_SECRET_KEY=${{ secrets.TELEPHONY_AIRTEL_S3_SECRET_KEY }}" \
+            "CASHFREE_SECUREID_CLIENT_ID=${{ secrets.CASHFREE_SECUREID_CLIENT_ID }}" \
+            "CASHFREE_SECUREID_CLIENT_SECRET=${{ secrets.CASHFREE_SECUREID_CLIENT_SECRET }}"
 
       - name: Restart deployment
         env:

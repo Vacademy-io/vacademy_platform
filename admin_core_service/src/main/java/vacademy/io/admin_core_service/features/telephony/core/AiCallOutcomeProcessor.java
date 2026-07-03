@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorA
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallDecision;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
@@ -111,13 +112,45 @@ public class AiCallOutcomeProcessor {
         // correlation id / provider call id to bind — skip outbound matching entirely and
         // resolve the lead by phone (resolveLead's last-10 path). Stamp INBOUND so the new
         // telephony_call_log row records the right direction.
+        // SECURITY (P0): the AI-voice report webhook is PUBLIC and, for an institute
+        // with no configured webhook secret (the norm for VACADEMY_AI), accepts
+        // unauthenticated POSTs. Our own bot authenticates by CAPABILITY: it always
+        // echoes the unguessable correlationId = the telephony_call_log id we created
+        // when the call was placed (outbound) or answered (inbound IVR). Require that
+        // corr to resolve to a call log OWNED by the report's institute before this
+        // report may touch ANY lead. Without it, a forger who knows only a (non-secret)
+        // instituteId + a lead's phone could inject a fabricated outcome and mark the
+        // lead Not-Interested / hijack its workflow via the phone-match binding below.
+        TelephonyCallLog ownedCall = null;
+        if (ProviderType.VACADEMY_AI.equals(r.getProvider())) {
+            ownedCall = (r.getCorrelationId() == null || r.getInstituteId() == null) ? null
+                    : callLogRepo.findById(r.getCorrelationId())
+                        .filter(c -> r.getInstituteId().equals(c.getInstituteId()))
+                        .orElse(null);
+            if (ownedCall == null) {
+                log.warn("ai-call outcome: VACADEMY_AI result {} REJECTED — correlationId {} does not resolve to a call log owned by institute {} (possible forged report)",
+                        r.getId(), r.getCorrelationId(), r.getInstituteId());
+                r.setProcessingStatus("REJECTED_UNVERIFIED");
+                aiCallResultRepo.save(r);
+                return;
+            }
+        }
+
         boolean isInbound = isInboundCampaign(r.getCampaignId(), settings);
+        // VACADEMY_AI binds to the EXACT verified call log (both directions) — never
+        // phone-matched — so a report can only ever affect the call it belongs to.
+        // Deriving direction from the owned row also fixes inbound reports creating a
+        // second call-log row (the phone-match path did) and BOTH-direction agents
+        // being mis-detected as OUTBOUND.
+        TelephonyCallLog existing = ownedCall;
+        if (existing != null && CallDirection.INBOUND.name().equalsIgnoreCase(existing.getDirection())) {
+            isInbound = true;
+        }
         if (isInbound) {
             r.setDirection(CallDirection.INBOUND.name());
         }
 
-        TelephonyCallLog existing = null;
-        if (!isInbound) {
+        if (existing == null && !isInbound) {
             existing = (r.getCorrelationId() == null) ? null
                     : callLogRepo.findById(r.getCorrelationId()).orElse(null);
             // Exact match: when the provider returns its call id at placement (Aavtaar now

@@ -56,6 +56,21 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
                                      @Param("excludeId") String excludeId);
 
     /**
+     * All outbound dials this institute placed on a provider since {@code since}
+     * (rolling-window daily-cap guardrail — see {@code AiCallingSettingsPojo.maxCallsPerDay}).
+     * Provider-scoped so an institute's Exotel/Airtel human calls never count
+     * against its AI-call budget.
+     */
+    @Query("""
+            SELECT COUNT(t) FROM TelephonyCallLog t
+            WHERE t.instituteId = :instituteId AND t.providerType = :providerType
+              AND t.direction = 'OUTBOUND' AND t.createdAt >= :since
+            """)
+    long countOutboundSince(@Param("instituteId") String instituteId,
+                            @Param("providerType") String providerType,
+                            @Param("since") java.sql.Timestamp since);
+
+    /**
      * Link an AI-voice end-of-call report to the call we placed, for providers that
      * neither echo our correlationId nor return a provider call id at placement
      * (Aavtaar): the most-recent OUTBOUND call to this phone in this institute.

@@ -84,7 +84,7 @@ class Settings:
 
     # Bulbul speaking pace: 1.0 = native. Founder feedback on the live calls:
     # 0.95 sounded noticeably slow on the phone; 1.1 is brisk but natural.
-    tts_pace: float = field(default_factory=lambda: float(_env("TTS_PACE", "1.5")))
+    tts_pace: float = field(default_factory=lambda: float(_env("TTS_PACE", "1.1")))
 
     # Filler acknowledgment ("Hmm…", "Achha…") spoken the moment the caller's
     # words are transcribed, masking the LLM+TTS gap — the pipeline's hard floor

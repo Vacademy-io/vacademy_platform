@@ -26,6 +26,7 @@ import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallSpec;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +70,14 @@ public class AiCallService {
      */
     @org.springframework.beans.factory.annotation.Value("${aavtaar.dispatch.dedup-window-sec:30}")
     private long dedupWindowSec;
+
+    /**
+     * Server-wide fallback daily AI-call cap per institute+provider, used when the
+     * institute hasn't set its own {@code maxCallsPerDay}. A finite default means a
+     * runaway campaign is bounded out of the box; 0 disables the fleet-wide cap.
+     */
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.max-calls-per-day-default:500}")
+    private int globalMaxCallsPerDay;
 
     /**
      * Striped per-lead locks so the dedup check + INITIATED insert are atomic for a
@@ -159,6 +168,28 @@ public class AiCallService {
                     .dispatched(false)
                     .providerMessage("Lead is already assigned to a counsellor — AI call skipped.")
                     .build();
+        }
+
+        // Daily spend guardrail: bound the WHOLE institute's AI dials on this provider
+        // in a rolling 24h window. Every dial path (CALL_AI node, bulk campaign, manual
+        // click) funnels through here, so this one check covers all three. Real calls
+        // only — MOCK never leaves the box. Per-institute setting wins; else the
+        // server-wide default. Returns a distinct skip status the campaign loop can log.
+        if (!mock) {
+            int cap = settings.getMaxCallsPerDay() > 0 ? settings.getMaxCallsPerDay() : globalMaxCallsPerDay;
+            if (cap > 0) {
+                java.sql.Timestamp since = java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(24)));
+                long placed = callLogRepo.countOutboundSince(req.getInstituteId(), provider, since);
+                if (placed >= cap) {
+                    log.warn("AI call skipped: institute {} hit the daily cap of {} {} calls ({} in the last 24h)",
+                            req.getInstituteId(), cap, provider, placed);
+                    return AiCallResponseDTO.builder()
+                            .status("SKIPPED_DAILY_CAP")
+                            .dispatched(false)
+                            .providerMessage("Daily AI-call limit reached for this institute.")
+                            .build();
+                }
+            }
         }
 
         // De-duplicate a near-simultaneous double dispatch for the SAME lead. Aavtaar

@@ -20,6 +20,7 @@ import {
     SquaresFour,
     List as ListIcon,
     Sparkle,
+    Target,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
@@ -43,12 +44,21 @@ import {
     type WorkbenchCounsellor,
     type WorkbenchLead,
 } from './-services/counsellor-workbench-services';
+import {
+    TargetPeriodSelector,
+    type TargetPeriodValue,
+} from './-components/targets/target-period-selector';
+import { useTargetProgress } from './-components/targets/use-target-progress';
+import { TargetProgress } from './-components/targets/target-progress';
+import { TargetsSettingsDialog } from './-components/targets/targets-settings-dialog';
+import { CounsellorTargetsTab } from './-components/targets/counsellor-targets-tab';
+import type { TargetProgressItem } from './-services/counsellor-target-services';
 
 export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
 });
 
-type DetailTab = 'leads' | 'activity' | 'calls' | 'coaching' | 'performance';
+type DetailTab = 'leads' | 'activity' | 'calls' | 'coaching' | 'performance' | 'targets';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type ViewMode = 'cards' | 'list';
 
@@ -123,6 +133,10 @@ export function WorkbenchPage() {
         setViewMode(next);
         localStorage.setItem(VIEW_MODE_KEY, next);
     }
+    // Targets: the timeline the roster progress is evaluated against, and the
+    // bulk/per-person "Set targets" dialog.
+    const [targetPeriod, setTargetPeriod] = useState<TargetPeriodValue>({ periodType: 'MONTH' });
+    const [targetsDialogOpen, setTargetsDialogOpen] = useState(false);
     // Debounce so we don't fire a server request on every keystroke.
     useEffect(() => {
         const t = setTimeout(() => setSearch(searchInput), 300);
@@ -207,6 +221,14 @@ export function WorkbenchPage() {
     useCounsellorRatingBatch(
         instituteId,
         counsellors.map((c) => c.user_id)
+    );
+
+    // Target-vs-completed for the visible page, in one request. Keyed to the
+    // selected timeline so switching week/month/custom refetches.
+    const targetProgress = useTargetProgress(
+        instituteId,
+        counsellors.map((c) => c.user_id),
+        targetPeriod
     );
 
     // URL → drawer sync. When the URL carries a userId, find that counsellor
@@ -443,6 +465,14 @@ export function WorkbenchPage() {
                         </button>
                     ))}
                 </div>
+                <TargetPeriodSelector value={targetPeriod} onChange={setTargetPeriod} />
+                <button
+                    type="button"
+                    onClick={() => setTargetsDialogOpen(true)}
+                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-700 hover:bg-primary-100"
+                >
+                    <Target size={14} /> Set targets
+                </button>
                 <div
                     className="ml-auto flex overflow-hidden rounded-md border border-neutral-300"
                     role="group"
@@ -494,6 +524,8 @@ export function WorkbenchPage() {
                 <CounsellorTable
                     counsellors={counsellors}
                     instituteId={instituteId}
+                    progressByUser={targetProgress.byUser}
+                    progressLoading={targetProgress.isFetching}
                     statusPendingId={
                         pendingMarkInactiveId ??
                         (setActiveMutation.isPending ? setActiveMutation.variables ?? null : null)
@@ -515,6 +547,8 @@ export function WorkbenchPage() {
                             key={c.user_id}
                             counsellor={c}
                             instituteId={instituteId}
+                            progress={targetProgress.byUser[c.user_id]}
+                            progressLoading={targetProgress.isFetching}
                             onOpen={() => openDrawer(c)}
                             onToggleStatus={() =>
                                 handleStatusToggle(c.user_id, c.full_name ?? c.user_id, c.is_active)
@@ -569,6 +603,21 @@ export function WorkbenchPage() {
                 onComplete={handleReassignComplete}
                 onMarkInactiveWithoutReassign={handleMarkInactiveWithoutReassign}
             />
+
+            <TargetsSettingsDialog
+                open={targetsDialogOpen}
+                onOpenChange={setTargetsDialogOpen}
+                instituteId={instituteId}
+                // Set targets across the whole team (size=500 candidates), not
+                // just the current page — falls back to the page while loading.
+                counsellors={(candidates.length > 0 ? candidates : counsellors).map((c) => ({
+                    user_id: c.user_id,
+                    full_name: c.full_name,
+                }))}
+                onSaved={() =>
+                    queryClient.invalidateQueries({ queryKey: ['counsellor-target-progress'] })
+                }
+            />
         </LayoutContainer>
     );
 }
@@ -608,12 +657,16 @@ function StatChip({
 function CounsellorCard({
     counsellor,
     instituteId,
+    progress,
+    progressLoading,
     onOpen,
     onToggleStatus,
     statusLoading,
 }: {
     counsellor: WorkbenchCounsellor;
     instituteId: string;
+    progress: TargetProgressItem[] | undefined;
+    progressLoading: boolean;
     onOpen: () => void;
     onToggleStatus: () => void;
     statusLoading: boolean;
@@ -669,6 +722,11 @@ function CounsellorCard({
                 </div>
             </div>
 
+            <div className="border-t border-neutral-100 px-4 py-2.5">
+                <div className="mb-1.5 text-caption text-neutral-500">Targets</div>
+                <TargetProgress items={progress} compact loading={progressLoading} />
+            </div>
+
             <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-2.5">
                 <span
                     className={cn(
@@ -717,12 +775,16 @@ function CounsellorCard({
 function CounsellorTable({
     counsellors,
     instituteId,
+    progressByUser,
+    progressLoading,
     statusPendingId,
     onOpen,
     onToggleStatus,
 }: {
     counsellors: WorkbenchCounsellor[];
     instituteId: string;
+    progressByUser: Record<string, TargetProgressItem[]>;
+    progressLoading: boolean;
     statusPendingId: string | null;
     onOpen: (userId: string) => void;
     onToggleStatus: (userId: string, isActive: boolean) => void;
@@ -736,6 +798,7 @@ function CounsellorTable({
                         <th className="px-3 py-2.5 text-left">Team</th>
                         <th className="px-3 py-2.5 text-right">Rating</th>
                         <th className="px-3 py-2.5 text-right">Assigned leads</th>
+                        <th className="px-3 py-2.5 text-left">Targets</th>
                         <th className="px-3 py-2.5 text-left">Status</th>
                         <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
@@ -780,6 +843,13 @@ function CounsellorTable({
                                 </td>
                                 <td className="px-3 py-2.5 text-right text-body font-semibold text-neutral-900">
                                     {c.open_leads_count}
+                                </td>
+                                <td className="min-w-44 px-3 py-2.5">
+                                    <TargetProgress
+                                        items={progressByUser[c.user_id]}
+                                        compact
+                                        loading={progressLoading}
+                                    />
                                 </td>
                                 <td className="px-3 py-2.5">
                                     <span
@@ -909,6 +979,9 @@ function DetailDrawer({
                         <TabsTrigger value="performance">
                             <ChartLineUp size={14} className="mr-1.5" /> Performance
                         </TabsTrigger>
+                        <TabsTrigger value="targets">
+                            <Target size={14} className="mr-1.5" /> Targets
+                        </TabsTrigger>
                     </TabsList>
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
                         {tab === 'leads' && (
@@ -947,6 +1020,12 @@ function DetailDrawer({
                                     counsellorUserId={counsellor.user_id}
                                 />
                             </div>
+                        )}
+                        {tab === 'targets' && (
+                            <CounsellorTargetsTab
+                                instituteId={instituteId}
+                                counsellorUserId={counsellor.user_id}
+                            />
                         )}
                     </div>
                 </Tabs>

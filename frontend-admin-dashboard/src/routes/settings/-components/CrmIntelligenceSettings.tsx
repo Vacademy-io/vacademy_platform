@@ -36,8 +36,6 @@ interface CallsSettings {
     sources: Record<CallSource, boolean>;
     minDurationSeconds: number;
     analyzeNotConnected: boolean;
-    /** null = use the DB-managed global price (credit_pricing 'call_intelligence'). */
-    creditCostOverride: number | null;
     ratingScale: number;
     rubric: RubricSettings;
 }
@@ -122,7 +120,6 @@ const DEFAULT_CALLS: CallsSettings = {
     sources: { MANUAL: true, TELEPHONY: true, AI: true },
     minDurationSeconds: 20,
     analyzeNotConnected: false,
-    creditCostOverride: null,
     ratingScale: 10,
     rubric: DEFAULT_RUBRIC,
 };
@@ -372,30 +369,6 @@ export default function CrmIntelligenceSettings() {
                                             <p className="text-caption text-muted-foreground">
                                                 Skip calls shorter than this — usually voicemail
                                                 blips.
-                                            </p>
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="credit-override">
-                                                Credit cost per call (override)
-                                            </Label>
-                                            <Input
-                                                id="credit-override"
-                                                type="number"
-                                                min={0}
-                                                placeholder="Default"
-                                                value={settings.calls.creditCostOverride ?? ''}
-                                                onChange={(e) =>
-                                                    updateCalls({
-                                                        creditCostOverride:
-                                                            e.target.value === ''
-                                                                ? null
-                                                                : Number(e.target.value),
-                                                    })
-                                                }
-                                                className="w-28"
-                                            />
-                                            <p className="text-caption text-muted-foreground">
-                                                Leave blank to use the platform default price.
                                             </p>
                                         </div>
                                     </div>

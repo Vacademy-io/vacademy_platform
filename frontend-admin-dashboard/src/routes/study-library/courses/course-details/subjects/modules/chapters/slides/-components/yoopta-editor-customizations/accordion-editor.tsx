@@ -337,10 +337,29 @@ export const AccordionPlugin = new YooptaPlugin<{ accordion: any }>({
                 // directly (native toggle + its themed CSS), so no learner change is
                 // needed, and images in the content are safe — the document
                 // sanitizer only trims S3 query params, it never drops the tag.
+                // Peel any padding wrappers a previous serialize already added, so
+                // we never nest them. Without this, each Save wraps the content
+                // (which was read back WITH last save's wrapper) in yet another
+                // `<div style="padding: 4px 0;">`, stacking dead vertical space in
+                // the expanded panel a little more every time. This also self-heals
+                // slides that already accumulated the nesting.
+                const stripPaddingWrappers = (raw: string): string => {
+                    let inner = String(raw || '');
+                    let prev: string;
+                    do {
+                        prev = inner;
+                        inner = inner.replace(
+                            /^\s*<div style="padding: 4px 0;">([\s\S]*)<\/div>\s*$/,
+                            '$1'
+                        );
+                    } while (inner !== prev);
+                    return inner;
+                };
+
                 const sections = items
                     .map((item, i) => {
                         const heading = escapeText(item?.heading || `Section ${i + 1}`);
-                        const content = String(item?.content || '');
+                        const content = stripPaddingWrappers(String(item?.content || ''));
                         return `<details${i === 0 ? ' open' : ''}><summary>${heading}</summary><div style="padding: 4px 0;">${content}</div></details>`;
                     })
                     .join('');

@@ -1096,6 +1096,12 @@ class CreditService:
         result = max(pricing["min_charge"], calculated)
         return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
+    def get_pricing(self, request_type: str) -> dict:
+        """Public pricing lookup (base_cost, token_rate, min_charge, unit) for callers
+        that do their own cost math — e.g. Call Intelligence charges per minute of
+        recording using token_rate as the per-minute rate."""
+        return self._get_pricing(request_type)
+
     def _get_pricing(self, request_type: str) -> dict:
         """Get pricing configuration for a request type."""
         try:

@@ -7,6 +7,7 @@ import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
 import { getPhonePePaymentStatus } from "@/services/phonepe-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
+import { getAccessToken } from "@/lib/auth/sessionUtility";
 import { CheckCircle, XCircle, SpinnerGap } from "@phosphor-icons/react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
@@ -233,6 +234,16 @@ function PaymentResultPage() {
             { accessToken, refreshToken },
             effectiveInstituteId
           );
+          doRedirect("/study-library/courses");
+          return;
+        }
+
+        // 3. Already-authenticated learner (e.g. an in-course purchase from the
+        //    course-details flow, where no signup creds are ever stashed): their
+        //    session is already live, so skip login and go straight to courses
+        //    instead of bouncing them to /login.
+        const existingToken = await getAccessToken();
+        if (existingToken) {
           doRedirect("/study-library/courses");
           return;
         }

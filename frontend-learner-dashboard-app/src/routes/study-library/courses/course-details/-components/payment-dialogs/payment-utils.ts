@@ -5,6 +5,7 @@ import {
   handlePaymentForEnrollment,
   getPaymentOptions,
   getPaymentPlans,
+  resolveEnrollmentVendor,
   type EnrollmentResponse,
   type PaymentGatewayDetails,
   type PaymentOption,
@@ -89,10 +90,14 @@ export const usePaymentDialog = (props: {
       // Step 2: Only fetch payment gateway details for non-FREE payment types
       let gatewayData = null;
       const paymentType = selectedPaymentOption.type?.toLowerCase();
+      // Fetch gateway details for the vendor the institute is actually configured
+      // with (from enrollmentData.vendor) — NOT a hardcoded STRIPE, which 500s /
+      // returns the wrong keys for Razorpay institutes.
+      const vendor = resolveEnrollmentVendor(enrollmentData);
       if (paymentType && paymentType !== 'free') {
-        console.log('usePaymentDialog - Fetching payment gateway for payment type:', paymentType);
+        console.log('usePaymentDialog - Fetching payment gateway for payment type:', paymentType, 'vendor:', vendor);
         try {
-          gatewayData = await fetchPaymentGatewayDetails(instituteId, 'STRIPE', token);
+          gatewayData = await fetchPaymentGatewayDetails(instituteId, vendor, token);
           console.log('usePaymentDialog - Payment gateway data:', gatewayData);
         } catch (gatewayError) {
           console.error('usePaymentDialog - Payment gateway fetch failed:', gatewayError);
@@ -196,6 +201,8 @@ export const usePaymentDialog = (props: {
       description,
       paymentType,
       paymentMethod,
+      vendor: resolveEnrollmentVendor(state.enrollmentData),
+      contact: params.userData?.mobile_number,
       token: params.token,
       returnUrl: params.returnUrl || window.location.origin + "/courses",
       userData: params.userData,

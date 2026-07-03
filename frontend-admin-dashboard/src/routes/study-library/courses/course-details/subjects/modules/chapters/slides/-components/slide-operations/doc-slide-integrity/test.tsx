@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import { createYooptaEditor } from '@yoopta/editor';
 import { html } from '@yoopta/exports';
 import { plugins } from '@/constants/study-library/yoopta-editor-plugins-tools';
-import { formatHTMLString } from '../formatHtmlString';
+import { formatHTMLString, stripAwsQueryParamsFromUrls } from '../formatHtmlString';
 import { appReloadPreprocess } from './reload';
 
 // Register the app's real plugins onto a bare editor, mirroring
@@ -305,6 +305,128 @@ describe('DOC slide: signed S3 images survive and get de-signed (truncation regr
         }
         expect(s, 'table-cell image kept').toContain('cell.png');
         expect(s, 'table-cell image de-signed').not.toContain('X-Amz-Signature');
+    });
+
+    it('EDGE — accordion survives repeated save/reload WITHOUT padding accumulation', () => {
+        const editor = makeEditor();
+        const v = {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            a: custom(0, 'accordion', {
+                items: [
+                    { heading: 'SIG_AH1', content: '<p>SIG_ACC1</p>' },
+                    { heading: 'SIG_AH2', content: '<p>SIG_ACC2</p>' },
+                ],
+            }),
+        };
+        editor.setEditorValue(v as any);
+        let stored = formatHTMLString(html.serialize(editor, v as any));
+        // 4 open→save cycles — the accumulation bug grew a wrapper each time
+        for (let k = 0; k < 4; k++) {
+            const r = makeEditor();
+            r.setEditorValue(html.deserialize(r, appReloadPreprocess(stored)));
+            stored = formatHTMLString(html.serialize(r, r.getEditorValue()));
+        }
+        const pads = (stored.match(/padding: 4px 0/g) || []).length;
+        expect(stored, 'accordion content kept').toContain('SIG_ACC1');
+        expect(stored).toContain('SIG_ACC2');
+        expect(stored).toContain('SIG_AH1');
+        // 2 items → 2 wrappers max, and it must NOT grow with cycles (was 2→4→6…)
+        expect(pads, `padding wrappers must not accumulate (got ${pads})`).toBeLessThanOrEqual(2);
+    });
+
+    it('EDGE — non-amazonaws URL with a ?query is left untouched (not stripped, not truncated)', () => {
+        const out = appReloadPreprocess(
+            formatHTMLString(
+                '<p>SIG_BEFORE</p><a href="https://youtube.com/watch?v=abc&t=4">link</a><p>SIG_AFTER</p>'
+            )
+        );
+        expect(out).toContain('SIG_BEFORE');
+        expect(out).toContain('SIG_AFTER');
+        expect(out, 'non-aws query preserved').toContain('v=abc');
+    });
+
+    it('EDGE — content with NO amazonaws URL is byte-identical through the sanitizer (no false unsaved-changes)', () => {
+        const input =
+            '<h1>Title</h1><p>Body with a <a href="https://example.com/x">link</a> and text.</p>';
+        // stripAws is the only content-touching step that could drift a no-image slide
+        expect(stripAwsQueryParamsFromUrls(input), 'no-op on non-aws content').toBe(input);
+    });
+
+    it('EDGE — many signed images across every container: nothing lost, every one de-signed', () => {
+        const editor = makeEditor();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const v: Record<string, any> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const add = (b: any) => (v[b.id] = b);
+        add(blk(0, 'Paragraph', 'paragraph', 'SIG_P'));
+        add(
+            custom(1, 'quizBlock', {
+                quizData: {
+                    question: 'SIG_Q <img src="https://a.s3.amazonaws.com/1.png?X-Amz-Signature=A" />',
+                    type: 'mcq',
+                    options: [{ id: 'o', text: 'SIG_O', isCorrect: true }],
+                },
+            })
+        );
+        add(
+            custom(2, 'tabbedContent', {
+                tabs: [
+                    {
+                        label: 'SIG_TL',
+                        content: '<p>SIG_TC <img src="https://a.s3.amazonaws.com/2.png?X-Amz-Signature=B" /></p>',
+                    },
+                ],
+            })
+        );
+        add(
+            custom(3, 'accordion', {
+                items: [
+                    {
+                        heading: 'SIG_AH',
+                        content: '<p>SIG_AC <img src="https://a.s3.amazonaws.com/3.png?X-Amz-Signature=C" /></p>',
+                    },
+                ],
+            })
+        );
+        editor.setEditorValue(v as any);
+        const stored = formatHTMLString(html.serialize(editor, v as any));
+        const reloaded = makeEditor();
+        reloaded.setEditorValue(html.deserialize(reloaded, appReloadPreprocess(stored)));
+        const searchable = appSaveSerialize(reloaded).out;
+        const all = searchable + decodeDataAttrs(searchable);
+        for (const sig of ['SIG_P', 'SIG_Q', 'SIG_O', 'SIG_TL', 'SIG_TC', 'SIG_AH', 'SIG_AC']) {
+            expect(all, `lost "${sig}"`).toContain(sig);
+        }
+        for (const img of ['1.png', '2.png', '3.png']) {
+            expect(all, `lost image "${img}"`).toContain(img);
+        }
+        expect(all, 'every signed URL de-signed').not.toContain('X-Amz-Signature');
+    });
+
+    it('EDGE — repeated round-trips are idempotent (signed content stabilises, no drift/leak)', () => {
+        const editor = makeEditor();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const v: Record<string, any> = {
+            p: blk(0, 'Paragraph', 'paragraph', 'stable'),
+            q: custom(1, 'quizBlock', {
+                quizData: {
+                    question: 'Q <img src="https://a.s3.amazonaws.com/z.png?X-Amz-Signature=S" />',
+                    type: 'mcq',
+                    options: [{ id: 'o', text: 'O', isCorrect: true }],
+                },
+            }),
+        };
+        editor.setEditorValue(v as any);
+        const s1 = formatHTMLString(html.serialize(editor, v as any));
+        const r1 = makeEditor();
+        r1.setEditorValue(html.deserialize(r1, appReloadPreprocess(s1)));
+        const s2 = formatHTMLString(html.serialize(r1, r1.getEditorValue()));
+        const r2 = makeEditor();
+        r2.setEditorValue(html.deserialize(r2, appReloadPreprocess(s2)));
+        const s3 = formatHTMLString(html.serialize(r2, r2.getEditorValue()));
+        // After the first normalisation, further round-trips must not change anything.
+        expect(s3, 'content must be stable across repeated save/reload').toBe(s2);
+        expect(s2, 'no signature ever leaks back').not.toContain('X-Amz-Signature');
     });
 
     it('DEEP DIVE — one slide with image + quiz(inner img) + accordion(inner img): nothing lost, all de-signed', () => {

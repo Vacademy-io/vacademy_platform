@@ -312,7 +312,9 @@ describe('rapid-switch simulator — end-to-end no-bleed', () => {
             seed = (seed * 1103515245 + 12345) & 0x7fffffff;
             return seed / 0x7fffffff;
         };
-        const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
+        // Index is always in-range, so the element is defined; assert it to satisfy
+        // the repo's noUncheckedIndexedAccess (arr[i] is otherwise T | undefined).
+        const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)] as T;
 
         const sim = new EditorSim();
         for (let i = 0; i < 500; i++) {

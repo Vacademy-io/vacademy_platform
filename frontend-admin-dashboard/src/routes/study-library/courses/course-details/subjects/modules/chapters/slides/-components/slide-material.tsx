@@ -47,6 +47,7 @@ import { handlePublishSlide } from './slide-operations/handlePublishSlide';
 import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
+import { decideSwitchSave, shouldCacheSerialize } from './slide-operations/switchSaveGuard';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
 const SlideEditor = React.lazy(() =>
     import('./SlideEditor').then((module) => ({ default: module.default }))
@@ -350,6 +351,15 @@ export const SlideMaterial = ({
     const lastSerializeDegradedRef = useRef(false);
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
+    // Which slide's content is CURRENTLY loaded in the shared Yoopta editor
+    // instance. The editor is reused across slides (only its React wrapper
+    // remounts via key), so on a FAST slide-switch editor.getEditorValue() can
+    // already return the INCOMING slide's content while the auto-save-on-switch
+    // is still trying to persist the OUTGOING slide — writing one slide's body
+    // into another slide's row (e.g. the film "Lesson 1" landing inside an
+    // unrelated "Document 2"). Every auto-save is gated on this so we never
+    // attribute the live editor value to a slide it no longer holds.
+    const editorLoadedSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
     // a same-slide re-run (status flip PUBLISHED → UNSYNC on Save Draft, a
     // loadContent dep) apart from a real navigation (id changed). On a same-slide
@@ -518,7 +528,15 @@ export const SlideMaterial = ({
                         marks={MARKS}
                         value={editor.children}
                         selectionBoxRoot={selectionRef}
-                        autoFocus={true}
+                        // autoFocus is disabled on purpose. Slate-react's autoFocus
+                        // effect focuses the editor synchronously on mount, before the
+                        // new block DOM has painted — Editor.start/point then throws
+                        // "Cannot get the start point … no start text node" /
+                        // "Cannot resolve a DOM node from Slate node" and crashes the
+                        // whole slide view (esp. the read-only learner preview). We
+                        // focus ourselves after a rAF + try/catch (see loadContent →
+                        // editor.focus()), which is DOM-safe.
+                        autoFocus={false}
                         readOnly={isLearnerView}
                         onMount={handleEditorMount}
                         onChange={() => {
@@ -530,10 +548,29 @@ export const SlideMaterial = ({
                             debounceTimerRef.current = setTimeout(() => {
                                 try {
                                     const currentContent = html.serialize(editor, editor.children);
-                                    currentDocHtmlRef.current = {
-                                        slideId: prevDocSlideRef.current?.id ?? null,
-                                        html: formatHTMLString(currentContent || ''),
-                                    };
+                                    const formatted = formatHTMLString(currentContent || '');
+                                    // Tag the cache with the slide the editor ACTUALLY
+                                    // holds (not prevDocSlideRef, which can lag a switch:
+                                    // this debounce may fire 500ms later, after a switch)
+                                    // and never cache empty content. This ref is the
+                                    // per-slide fallback the auto-save-on-switch guard
+                                    // trusts, so a mistagged or empty entry is exactly how
+                                    // one slide's body could bleed into another's row.
+                                    if (
+                                        shouldCacheSerialize({
+                                            html: formatted,
+                                            degraded: false,
+                                            isHtmlEmpty: checkIsHtmlEmpty,
+                                        })
+                                    ) {
+                                        currentDocHtmlRef.current = {
+                                            slideId:
+                                                editorLoadedSlideIdRef.current ??
+                                                prevDocSlideRef.current?.id ??
+                                                null,
+                                            html: formatted,
+                                        };
+                                    }
                                 } catch (error) {
                                     console.error('Error serializing content in onChange:', error);
                                 }
@@ -1011,6 +1048,10 @@ export const SlideMaterial = ({
         }
 
         editor.setEditorValue(editorContent);
+        // The shared editor instance now holds THIS slide's content. Record it so
+        // the auto-save-on-switch can tell whether a live serialize belongs to the
+        // slide it's about to persist (guards against cross-slide bleed).
+        editorLoadedSlideIdRef.current = activeItem?.id ?? null;
 
         // Clear any stale selection left over from the previous slide / paste.
         // setEditorValue replaces the entire Slate tree, but editor.selection
@@ -1041,8 +1082,23 @@ export const SlideMaterial = ({
             // Use a short delay so Yoopta finishes rendering before we snapshot
             snapshotTimeoutRef.current = setTimeout(() => {
                 const editorHtml = getCurrentEditorHTMLContent();
+                // Baseline for change-detection: captured raw (even if empty), since
+                // it must represent the slide's actual loaded state.
                 initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
-                currentDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
+                // Fallback cache: seed it ONLY with a clean, non-empty snapshot — same
+                // gate as the other two writers. A degraded (block-dropped) or empty
+                // load must never become the fallback the switch guard trusts, or a
+                // later fast-switch could persist incomplete content and flip the
+                // slide to UNSYNC. (getCurrentEditorHTMLContent sets the degraded flag.)
+                if (
+                    shouldCacheSerialize({
+                        html: editorHtml,
+                        degraded: lastSerializeDegradedRef.current,
+                        isHtmlEmpty: checkIsHtmlEmpty,
+                    })
+                ) {
+                    currentDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
+                }
             }, 300);
         }
     };
@@ -1124,9 +1180,27 @@ export const SlideMaterial = ({
             // NON-empty result: a transient empty/degenerate serialize (e.g.
             // mid slide-switch) must not poison the fallback, or the catch
             // block below would itself recover empty content and lose work.
-            if (!checkIsHtmlEmpty(formatted)) {
+            // Also require a NON-degraded serialize: if a block was dropped this
+            // pass, `formatted` is missing content — caching it would let the
+            // throw-fallback OR the auto-save-on-switch guard resurrect an
+            // incomplete copy and silently vanish that block.
+            if (
+                shouldCacheSerialize({
+                    html: formatted,
+                    degraded: lastSerializeDegradedRef.current,
+                    isHtmlEmpty: checkIsHtmlEmpty,
+                })
+            ) {
                 currentDocHtmlRef.current = {
-                    slideId: prevDocSlideRef.current?.id ?? activeItem?.id ?? null,
+                    // Tag with the slide the editor ACTUALLY holds — not merely the
+                    // ref/activeItem, which can momentarily disagree mid-switch. This
+                    // keeps the cache a trustworthy per-slide fallback for the
+                    // auto-save-on-switch guard below.
+                    slideId:
+                        editorLoadedSlideIdRef.current ??
+                        prevDocSlideRef.current?.id ??
+                        activeItem?.id ??
+                        null,
                     html: formatted,
                 };
             }
@@ -1161,51 +1235,10 @@ export const SlideMaterial = ({
         }
     };
 
-    // Unified handler to check and handle unsaved DOC changes for the previous slide
-    const handleUnsavedDocIfNeeded = useCallback(() => {
-        const previous = prevDocSlideRef.current;
-        if (
-            !previous ||
-            previous.source_type !== 'DOCUMENT' ||
-            previous.document_slide?.type !== 'DOC'
-        ) {
-            return;
-        }
-
-        // Skip if the previous slide is deleted or no longer exists (use fresh store snapshot)
-        const itemsNow = useContentStore.getState().items as unknown as Slide[] | undefined;
-        const stillExists = Array.isArray(itemsNow) && itemsNow.some((s) => s.id === previous.id);
-        const deletedInStore = Array.isArray(itemsNow)
-            ? itemsNow.find((s) => s.id === previous.id)?.status === 'DELETED'
-            : false;
-        if (previous.status === 'DELETED' || deletedInStore || !stillExists) {
-            return;
-        }
-
-        // Deduplicate by slide id; if we already handled this previous slide recently, skip
-        if (lastHandledPrevSlideIdRef.current === previous.id) {
-            return;
-        }
-
-        const initialHtml =
-            initialDocHtmlRef.current.slideId === previous.id
-                ? initialDocHtmlRef.current.html
-                : getCurrentEditorHTMLContent();
-        // Always read latest editor state at the moment of handling to avoid stale saves
-        const currentHtml = getCurrentEditorHTMLContent() || initialHtml;
-        const hasEditorChanged = currentHtml !== initialHtml;
-
-        // Only act if the user actually changed something in the editor
-        if (!hasEditorChanged) {
-            return;
-        }
-
-        // Mark as handled to avoid duplicate calls during add+switch cascades
-        lastHandledPrevSlideIdRef.current = previous.id;
-
-        // Always auto-save draft on slide switch — never show a blocking dialog
-        void autoPublishDocSlide(previous, currentHtml);
-    }, [autoPublishDocSlide]);
+    // NOTE: the legacy handleUnsavedDocIfNeeded() was removed — it read the live
+    // editor and attributed it to the previous slide WITHOUT the editorLoadedSlideId
+    // guard, i.e. the exact cross-slide bleed this fix eliminates. Both switch
+    // triggers now go through handleUnsavedPreviousDoc() → decideSwitchSave().
 
     // Snapshot-based handler to avoid stale editor reads during transitions
     const handleUnsavedDocWithSnapshot = useCallback(
@@ -1253,6 +1286,35 @@ export const SlideMaterial = ({
         [autoPublishDocSlide]
     );
 
+    // Persist the OUTGOING slide's edits on a switch — WITHOUT bleeding another
+    // slide's content into it. The shared Yoopta editor may already have been
+    // reloaded with the incoming slide by the time this runs, so we only serialize
+    // the live editor when it still holds `previous`'s content. Otherwise we fall
+    // back to the last snapshot we captured while it did; if we have none, we skip
+    // rather than overwrite `previous`'s row with the wrong slide's body.
+    const handleUnsavedPreviousDoc = useCallback(() => {
+        const previous = prevDocSlideRef.current;
+        // Delegate the save-or-skip decision to the pure, unit-tested guard so the
+        // shipped logic is exactly what the regression suite proves safe.
+        const decision = decideSwitchSave({
+            previousId: previous?.id,
+            editorLoadedSlideId: editorLoadedSlideIdRef.current,
+            cache: currentDocHtmlRef.current,
+            isHtmlEmpty: checkIsHtmlEmpty,
+        });
+        if (decision.action === 'skip' || !previous) return;
+
+        // 'save-live' is only returned when the editor still holds `previous`, so
+        // serializing the live editor here is safe; 'save-cached' hands back
+        // `previous`'s own last clean snapshot.
+        const snapshot =
+            decision.action === 'save-live'
+                ? getCurrentEditorHTMLContent()
+                : decision.content;
+
+        handleUnsavedDocWithSnapshot(previous, snapshot);
+    }, [handleUnsavedDocWithSnapshot]);
+
     // On slide switch, detect unsaved changes for DOC and act based on role
     useEffect(() => {
         // Cleanup runs before switching away from this slide; capture exact editor HTML
@@ -1264,10 +1326,7 @@ export const SlideMaterial = ({
                 clearTimeout(snapshotTimeoutRef.current);
                 snapshotTimeoutRef.current = null;
             }
-            const previous = prevDocSlideRef.current;
-            if (!previous) return;
-            const snapshot = getCurrentEditorHTMLContent();
-            handleUnsavedDocWithSnapshot(previous, snapshot);
+            handleUnsavedPreviousDoc();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeItem?.id]);
@@ -3015,9 +3074,7 @@ export const SlideMaterial = ({
             // Defer slightly to let store reflect deletions before checking
             setTimeout(() => {
                 if (prevDocSlideRef.current) {
-                    const previous = prevDocSlideRef.current;
-                    const snapshot = getCurrentEditorHTMLContent();
-                    handleUnsavedDocWithSnapshot(previous, snapshot);
+                    handleUnsavedPreviousDoc();
                 }
             }, 50);
         }

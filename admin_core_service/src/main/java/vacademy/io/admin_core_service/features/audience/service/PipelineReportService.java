@@ -85,6 +85,7 @@ public class PipelineReportService {
     private static final String LEAD_SCOPE_PREDICATES = """
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             """;
 
     // ─────────────────────────────────────────────────────────────────────
@@ -159,19 +160,20 @@ public class PipelineReportService {
               AND ulp.conversion_status = 'CONVERTED'
               AND pl.created_at >= :fromTs AND pl.created_at < :toTs
               AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY 1
             """;
 
     @Transactional(readOnly = true)
     public SourcePerformanceReportDTO getSourcePerformance(String instituteId, String fromDate, String toDate,
                                                            String teamId, String counsellorUserId,
-                                                           String callerUserId) {
+                                                           String audienceId, String callerUserId) {
         LeadReportSettingService.ReportSettings settings = settingService.get(instituteId);
         Window w = resolveWindow(fromDate, toDate, settings.timezone());
         String scopeCsv = scopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
 
-        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv)
+        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv, audienceId)
                 .addValue("connectedCsv", joinSet(settings.connectedCallStatuses()))
                 .addValue("interestedCsv", joinSet(settings.interestedStatusKeys()));
 
@@ -238,6 +240,7 @@ public class PipelineReportService {
               AND lsh.changed_at <  :toTs
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR lsh.changed_by_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY 1, 2
             """;
 
@@ -261,12 +264,15 @@ public class PipelineReportService {
     @Transactional(readOnly = true)
     public DispositionReportDTO getDispositions(String instituteId, String fromDate, String toDate,
                                                 String teamId, String counsellorUserId,
-                                                String callerUserId) {
+                                                String audienceId, String callerUserId) {
         LeadReportSettingService.ReportSettings settings = settingService.get(instituteId);
         Window w = resolveWindow(fromDate, toDate, settings.timezone());
         String scopeCsv = scopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
-        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv);
+        // NOTE: audienceId filters the status-change matrix (STATUS_CHANGES_SQL joins
+        // audience_response). The call-outcomes matrix is built from telephony_call_log,
+        // which has no reliable campaign link, so it stays campaign-unfiltered by design.
+        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv, audienceId);
 
         List<DispositionReportDTO.StatusMeta> statuses = jdbc.query(ACTIVE_STATUSES_SQL,
                 new MapSqlParameterSource("instituteId", instituteId),
@@ -436,12 +442,12 @@ public class PipelineReportService {
     @Transactional(readOnly = true)
     public FunnelVelocityReportDTO getFunnelVelocity(String instituteId, String fromDate, String toDate,
                                                      String teamId, String counsellorUserId,
-                                                     String callerUserId) {
+                                                     String audienceId, String callerUserId) {
         LeadReportSettingService.ReportSettings settings = settingService.get(instituteId);
         Window w = resolveWindow(fromDate, toDate, settings.timezone());
         String scopeCsv = scopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
-        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv);
+        MapSqlParameterSource p = baseParams(instituteId, w, scopeCsv, audienceId);
 
         Map<String, Long> stockByKey = new HashMap<>();
         RowCallbackHandler stockCollector = rs ->
@@ -520,12 +526,13 @@ public class PipelineReportService {
      * Common binds. scopeCsv is typed VARCHAR explicitly so a null bind keeps Postgres able to
      * infer the parameter type inside both ":scopeCsv IS NULL" and STRING_TO_ARRAY.
      */
-    private static MapSqlParameterSource baseParams(String instituteId, Window w, String scopeCsv) {
+    private static MapSqlParameterSource baseParams(String instituteId, Window w, String scopeCsv, String audienceId) {
         return new MapSqlParameterSource()
                 .addValue("instituteId", instituteId)
                 .addValue("fromTs", w.fromUtc(), Types.TIMESTAMP)
                 .addValue("toTs", w.toUtc(), Types.TIMESTAMP)
-                .addValue("scopeCsv", scopeCsv, Types.VARCHAR);
+                .addValue("scopeCsv", scopeCsv, Types.VARCHAR)
+                .addValue("audienceId", trimToNull(audienceId), Types.VARCHAR);
     }
 
     /** Empty set → "" → STRING_TO_ARRAY('', ',') = {} → matches nothing (defaults make this moot). */

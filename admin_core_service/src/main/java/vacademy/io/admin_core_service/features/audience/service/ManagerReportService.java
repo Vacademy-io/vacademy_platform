@@ -84,8 +84,9 @@ public class ManagerReportService {
 
     @Transactional(readOnly = true)
     public TeamRollupReportDTO getTeamRollup(String instituteId, String fromDate, String toDate,
-                                             String teamId, String callerUserId) {
+                                             String teamId, String audienceId, String callerUserId) {
         String requestedTeamId = trimToNull(teamId);
+        String scopedAudienceId = trimToNull(audienceId);
 
         // 1. Reporting teams: the requested team alone, else every flat team in the institute.
         List<OrgTeamDTO> reportingTeams = resolveReportingTeams(instituteId, requestedTeamId);
@@ -124,10 +125,10 @@ public class ManagerReportService {
             allMemberIds.addAll(memberIds);
 
             // Per-counsellor numbers for this team, reusing the canonical aggregate (8-arg signature:
-            // audienceId + sourceType are null). It re-applies ReportScopeResolver(teamId, caller),
-            // so the rows already respect RBAC.
+            // sourceType is null; audienceId scopes to the selected campaign when set). It re-applies
+            // ReportScopeResolver(teamId, caller), so the rows already respect RBAC.
             CounselorPerformanceDTO perf = leadReportService.getCounselorPerformance(
-                    instituteId, fromDate, toDate, tId, null, null, null, callerUserId);
+                    instituteId, fromDate, toDate, tId, null, scopedAudienceId, null, callerUserId);
             List<CounselorPerformanceDTO.Row> perfRows = perf.getRows() != null
                     ? perf.getRows() : Collections.emptyList();
 
@@ -145,7 +146,7 @@ public class ManagerReportService {
         // 3. Totals over the de-duplicated union of members — one team-less aggregate so a counsellor
         //    in several teams is not double-counted. RBAC handled inside getCounselorPerformance.
         CounselorPerformanceDTO totalsPerf = leadReportService.getCounselorPerformance(
-                instituteId, fromDate, toDate, requestedTeamId, null, null, null, callerUserId);
+                instituteId, fromDate, toDate, requestedTeamId, null, scopedAudienceId, null, callerUserId);
         List<CounselorPerformanceDTO.Row> totalsRows = totalsPerf.getRows() != null
                 ? totalsPerf.getRows() : Collections.emptyList();
         Long totalsTarget = sumTeamTarget(instituteId, allMemberIds);

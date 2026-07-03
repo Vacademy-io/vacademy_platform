@@ -36,9 +36,10 @@ public class PipelineReportController {
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(pipelineReportService.getSourcePerformance(
-                instituteId, fromDate, toDate, teamId, counsellorUserId, user.getUserId()));
+                instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 
     /** Per-actor status-change matrix + per-counsellor call outcome counts. */
@@ -49,9 +50,10 @@ public class PipelineReportController {
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(pipelineReportService.getDispositions(
-                instituteId, fromDate, toDate, teamId, counsellorUserId, user.getUserId()));
+                instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 
     /** Per-stage throughput + dwell-time medians, plus overall conversion velocity. */
@@ -62,8 +64,9 @@ public class PipelineReportController {
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(pipelineReportService.getFunnelVelocity(
-                instituteId, fromDate, toDate, teamId, counsellorUserId, user.getUserId()));
+                instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 }

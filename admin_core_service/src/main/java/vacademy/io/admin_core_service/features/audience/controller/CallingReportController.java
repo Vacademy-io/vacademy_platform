@@ -66,8 +66,9 @@ public class CallingReportController {
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(callingReportService.followupAging(instituteId,
-                teamId, counsellorUserId, user.getUserId()));
+                teamId, counsellorUserId, audienceId, user.getUserId()));
     }
 }

@@ -33,8 +33,9 @@ public class ManagerReportController {
             @RequestParam(required = false) String fromDate,
             @RequestParam(required = false) String toDate,
             @RequestParam(required = false) String teamId,
+            @RequestParam(required = false) String audienceId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(managerReportService.getTeamRollup(
-                instituteId, fromDate, toDate, teamId, user.getUserId()));
+                instituteId, fromDate, toDate, teamId, audienceId, user.getUserId()));
     }
 }

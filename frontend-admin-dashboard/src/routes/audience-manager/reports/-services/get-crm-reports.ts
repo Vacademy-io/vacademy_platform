@@ -35,6 +35,8 @@ export interface CrmReportParams {
     toDate?: string;
     teamId?: string;
     counsellorUserId?: string;
+    /** Campaign (audience) id — scopes the report to a single campaign. */
+    audienceId?: string;
 }
 
 function toRequestParams(p: CrmReportParams) {
@@ -44,11 +46,12 @@ function toRequestParams(p: CrmReportParams) {
         toDate: p.toDate,
         teamId: p.teamId,
         counsellorUserId: p.counsellorUserId,
+        audienceId: p.audienceId,
     };
 }
 
 const paramsKey = (p: CrmReportParams) =>
-    [p.instituteId, p.fromDate, p.toDate, p.teamId, p.counsellorUserId] as const;
+    [p.instituteId, p.fromDate, p.toDate, p.teamId, p.counsellorUserId, p.audienceId] as const;
 
 // ── Error classification ───────────────────────────────────────────────
 

@@ -113,6 +113,7 @@ public class ActivityReportService {
               AND lsh.changed_at < :toUtc
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR lsh.changed_by_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY lsh.changed_by_user_id, 2
             """;
 
@@ -132,6 +133,7 @@ public class ActivityReportService {
               AND lf.created_at < :toUtc
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR lf.created_by = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY lf.created_by, 2
             """;
 
@@ -154,6 +156,7 @@ public class ActivityReportService {
               AND COALESCE(lf.closed_at, lf.updated_at) < :toUtc
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR lf.closed_by = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY lf.closed_by, 2
             """;
 
@@ -162,12 +165,16 @@ public class ActivityReportService {
     // ─────────────────────────────────────────────────────────────────────
 
     public ActivityTimelineReportDTO activityTimeline(String instituteId, String fromDate, String toDate,
-                                                      String teamId, String counsellorUserId, String callerUserId) {
+                                                      String teamId, String counsellorUserId,
+                                                      String audienceId, String callerUserId) {
         LeadReportSettingService.ReportSettings settings = leadReportSettingService.get(instituteId);
         ZoneId tz = safeZone(settings);
         String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
                 instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
-        MapSqlParameterSource params = activityParams(instituteId, fromDate, toDate, tz, scopeCsv);
+        // audienceId filters the audience_response-linked sources (status changes +
+        // follow-ups). Notes (timeline_event) and calls (telephony_call_log) have no
+        // campaign link, so they stay campaign-unfiltered by design.
+        MapSqlParameterSource params = activityParams(instituteId, fromDate, toDate, tz, scopeCsv, audienceId);
 
         // Per-actor counts per source, plus a per-day total accumulated across
         // every source as the SQL rows stream in.
@@ -240,12 +247,13 @@ public class ActivityReportService {
 
     /** Common bind set for the five activity-source queries. */
     private MapSqlParameterSource activityParams(String instituteId, String fromDate, String toDate,
-                                                 ZoneId tz, String scopeCsv) {
+                                                 ZoneId tz, String scopeCsv, String audienceId) {
         Window w = resolveWindow(fromDate, toDate, tz);
         return new MapSqlParameterSource()
                 .addValue("instituteId", instituteId)
                 .addValue("tz", tz.getId())
                 .addValue("scopeCsv", scopeCsv, java.sql.Types.VARCHAR)
+                .addValue("audienceId", trimToNull(audienceId), java.sql.Types.VARCHAR)
                 .addValue("fromUtc", w.fromUtc(), java.sql.Types.TIMESTAMP)
                 .addValue("toUtc", w.toUtc(), java.sql.Types.TIMESTAMP);
     }

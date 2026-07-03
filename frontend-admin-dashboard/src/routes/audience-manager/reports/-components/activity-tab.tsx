@@ -46,8 +46,16 @@ export function ActivityTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
-    const params: ActivityReportParams = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const params: ActivityReportParams = {
+        instituteId,
+        fromDate,
+        toDate,
+        teamId,
+        counsellorUserId,
+        audienceId,
+    };
 
     const query = useQuery({
         queryKey: activityTimelineQueryKey(params),

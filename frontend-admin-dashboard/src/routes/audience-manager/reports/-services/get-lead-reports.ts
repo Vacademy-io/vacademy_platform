@@ -61,10 +61,11 @@ export async function fetchLeadReportSummary(
     fromDate?: string,
     toDate?: string,
     teamId?: string,
-    counsellorUserId?: string
+    counsellorUserId?: string,
+    audienceId?: string
 ): Promise<LeadReportSummary> {
     const { data } = await authenticatedAxiosInstance.get(GET_LEAD_REPORT_SUMMARY, {
-        params: { instituteId, fromDate, toDate, teamId, counsellorUserId },
+        params: { instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId },
     });
     return data;
 }
@@ -102,10 +103,11 @@ export async function fetchCounselorPerformance(
     fromDate?: string,
     toDate?: string,
     teamId?: string,
-    counsellorUserId?: string
+    counsellorUserId?: string,
+    audienceId?: string
 ): Promise<CounselorPerformance> {
     const { data } = await authenticatedAxiosInstance.get(GET_COUNSELOR_PERFORMANCE, {
-        params: { instituteId, fromDate, toDate, teamId, counsellorUserId },
+        params: { instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId },
     });
     return data;
 }

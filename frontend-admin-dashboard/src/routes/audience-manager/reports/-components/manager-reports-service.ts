@@ -37,6 +37,8 @@ export interface ManagerReportParams {
     toDate?: string;
     teamId?: string;
     counsellorUserId?: string;
+    /** Campaign (audience) id — scopes the team rollup to a single campaign. */
+    audienceId?: string;
 }
 
 function toRequestParams(p: ManagerReportParams) {
@@ -46,6 +48,7 @@ function toRequestParams(p: ManagerReportParams) {
         toDate: p.toDate,
         teamId: p.teamId,
         counsellorUserId: p.counsellorUserId,
+        audienceId: p.audienceId,
     };
 }
 
@@ -92,6 +95,7 @@ export const teamRollupQueryKey = (p: ManagerReportParams) =>
         p.toDate,
         p.teamId,
         p.counsellorUserId,
+        p.audienceId,
     ] as const;
 
 export async function fetchTeamRollup(p: ManagerReportParams): Promise<TeamRollupReport> {

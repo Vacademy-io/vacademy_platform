@@ -69,6 +69,8 @@ interface PaymentInfoStepProps {
   cashfreeOrderId?: string;
   cashfreeInitLoading?: boolean;
   cashfreeInstituteId?: string;
+  /** "sandbox" | "production" from the backend — must match the session. */
+  cashfreeEnvironment?: string | null;
   onCashfreePayClick?: () => void;
   onCashfreePayError?: () => void;
 }
@@ -156,6 +158,7 @@ const PaymentInfoStep = ({
   cashfreeOrderId,
   cashfreeInitLoading,
   cashfreeInstituteId,
+  cashfreeEnvironment,
   onCashfreePayClick,
   onCashfreePayError,
 }: PaymentInfoStepProps) => {
@@ -310,6 +313,7 @@ const PaymentInfoStep = ({
           returnUrl={cashfreeReturnUrl}
           orderId={cashfreeOrderId}
           instituteId={cashfreeInstituteId}
+          environment={cashfreeEnvironment}
           onPayClick={onCashfreePayClick}
           onPayError={onCashfreePayError}
           isProcessing={isProcessing || cashfreeInitLoading}

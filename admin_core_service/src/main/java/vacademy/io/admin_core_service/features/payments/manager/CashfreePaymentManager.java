@@ -115,7 +115,10 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
             log.info("Cashfree order created successfully. cf_order_id={}, order_id={}",
                     cfResponse.getCfOrderId(), cfResponse.getOrderId());
 
-            return buildPaymentResponse(cfResponse, request);
+            // The JS SDK must be loaded in the same environment the session was
+            // minted in — a sandbox-mode SDK rejects prod sessions ("Broken Link").
+            String environment = baseUrl.contains("sandbox") ? "sandbox" : "production";
+            return buildPaymentResponse(cfResponse, request, environment);
 
         } catch (VacademyException e) {
             throw e;
@@ -190,12 +193,14 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
     }
 
     private PaymentResponseDTO buildPaymentResponse(CashfreeOrderResponse cfResponse,
-                                                    PaymentInitiationRequestDTO request) {
+                                                    PaymentInitiationRequestDTO request,
+                                                    String environment) {
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("cfOrderId", cfResponse.getCfOrderId());
         responseData.put("orderId", cfResponse.getOrderId());
         responseData.put("paymentSessionId", cfResponse.getPaymentSessionId());
         responseData.put("status", cfResponse.getOrderStatus());
+        responseData.put("environment", environment);
 
         // Typically, order_status will be "ACTIVE" until payment completes.
         PaymentStatusEnum paymentStatus = PaymentStatusEnum.PAYMENT_PENDING;

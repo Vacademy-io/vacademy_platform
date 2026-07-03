@@ -133,6 +133,8 @@ const PaymentStep = ({
   const [cashfreeSession, setCashfreeSession] = useState<{
     paymentSessionId: string;
     orderId: string;
+    /** "sandbox" | "production" from the backend — must match the session. */
+    environment: string | null;
   } | null>(null);
   const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
 
@@ -271,6 +273,10 @@ const PaymentStep = ({
           responseData.payment_session_id) ||
         "";
       let cfOrderId = response.payment_response?.order_id ?? "";
+      let cfEnvironment =
+        typeof responseData?.environment === "string"
+          ? responseData.environment
+          : null;
 
       if (!paymentSessionId) {
         const userPlanId = response.user_plan_id;
@@ -297,6 +303,10 @@ const PaymentStep = ({
           cfResponse?.responseData?.payment_session_id ??
           "";
         cfOrderId = cfResponse?.orderId ?? cfOrderId;
+        cfEnvironment =
+          typeof cfResponse?.responseData?.environment === "string"
+            ? cfResponse.responseData.environment
+            : cfEnvironment;
       }
 
       if (!paymentSessionId) {
@@ -305,7 +315,11 @@ const PaymentStep = ({
         );
       }
       setOrderId(cfOrderId);
-      setCashfreeSession({ paymentSessionId, orderId: cfOrderId });
+      setCashfreeSession({
+        paymentSessionId,
+        orderId: cfOrderId,
+        environment: cfEnvironment,
+      });
     } catch (err) {
       handlePaymentFailure(
         err,
@@ -670,6 +684,7 @@ const PaymentStep = ({
         courseDescription={`Registration payment for ${templateName}`}
         razorpayRef={razorpayRef}
         cashfreePaymentSessionId={cashfreeSession?.paymentSessionId ?? null}
+        cashfreeEnvironment={cashfreeSession?.environment}
         cashfreeReturnUrl={getCashfreeReturnUrl()}
         cashfreeOrderId={cashfreeSession?.orderId}
         cashfreeInitLoading={cashfreeInitLoading}

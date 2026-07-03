@@ -170,6 +170,8 @@ const EnrollByInvite = ({
   const [cashfreeSessionData, setCashfreeSessionData] = useState<{
     paymentSessionId: string;
     orderId: string;
+    /** "sandbox" | "production" from the backend — must match the session. */
+    environment: string | null;
   } | null>(null);
   const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
   const cashfreeInitAttemptedRef = useRef(false);
@@ -1776,11 +1778,16 @@ const EnrollByInvite = ({
         setPaymentCompletionResponse(paymentResponse);
 
         // Step 3: Launch Cashfree checkout (redirects to return_url on success/failure)
-        // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
-        const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
-        const cashfree = await loadCashfree({
-          mode: isSandbox ? "sandbox" : "production",
-        });
+        // SDK mode must match the environment the session was minted in;
+        // VITE_CASHFREE_SANDBOX=true forces sandbox against older backends.
+        const cfEnv = cfResponse?.responseData?.environment;
+        const mode =
+          cfEnv === "sandbox" || cfEnv === "production"
+            ? cfEnv
+            : import.meta.env.VITE_CASHFREE_SANDBOX === "true"
+              ? "sandbox"
+              : "production";
+        const cashfree = await loadCashfree({ mode });
 
         if (!cashfree) {
           throw new Error("Failed to load Cashfree payment gateway.");
@@ -2176,6 +2183,10 @@ const EnrollByInvite = ({
         const responseData = paymentResponse?.payment_response?.response_data;
         let paymentSessionId =
           responseData?.paymentSessionId ?? responseData?.payment_session_id;
+        let cfEnvironment =
+          typeof responseData?.environment === "string"
+            ? responseData.environment
+            : null;
         // Use top-level orderId (paymentLogId) for status API – backend looks up by payment_log.id
         let cfOrderId =
           paymentResponse?.orderId ??
@@ -2211,6 +2222,10 @@ const EnrollByInvite = ({
             cfResponse?.responseData?.paymentSessionId ??
             cfResponse?.responseData?.payment_session_id;
           cfOrderId = cfResponse?.orderId ?? cfOrderId;
+          cfEnvironment =
+            typeof cfResponse?.responseData?.environment === "string"
+              ? cfResponse.responseData.environment
+              : cfEnvironment;
         }
 
         if (!paymentSessionId) throw new Error("Failed to initialize payment.");
@@ -2223,6 +2238,7 @@ const EnrollByInvite = ({
         setCashfreeSessionData({
           paymentSessionId,
           orderId: ordId,
+          environment: cfEnvironment,
         });
         setOrderId(ordId);
         setPaymentCompletionResponse(paymentResponse);
@@ -2650,6 +2666,7 @@ const EnrollByInvite = ({
             }
             razorpayRef={razorpayRef}
             cashfreePaymentSessionId={cashfreeSessionData?.paymentSessionId}
+            cashfreeEnvironment={cashfreeSessionData?.environment}
             cashfreeReturnUrl={getCashfreeReturnUrl()}
             cashfreeOrderId={cashfreeSessionData?.orderId}
             cashfreeInitLoading={cashfreeInitLoading}

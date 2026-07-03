@@ -39,6 +39,11 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
+import {
+    fetchLeadJourneyBatch,
+    formatJourneyForExport,
+    type JourneyEvent,
+} from '@/components/shared/leads/lead-journey-export';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
@@ -665,12 +670,21 @@ const RecentLeadsContent = () => {
         const ids = Array.from(
             new Set(leads.map((l) => l.user?.id || l.user_id || '').filter(Boolean))
         ) as string[];
-        const [prof, nts] = await Promise.all([
+        const [prof, nts, jny] = await Promise.all([
             showOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
             showOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
+            showOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);
         const baseHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile', 'Audience'];
-        const tail = showOps ? ['Status', 'Counsellor', 'Activity & Notes', 'Notes Count'] : [];
+        const tail = showOps
+            ? [
+                  'Status',
+                  'Counsellor',
+                  'Activity & Notes',
+                  'Notes Count',
+                  'Lead journey (disposition & notes)',
+              ]
+            : [];
         const rows = leads.map((lead) => {
             const u = lead.user ?? {};
             const userId = u.id || lead.user_id || '';
@@ -723,7 +737,14 @@ const RecentLeadsContent = () => {
                     csvSafe(lead.lead_status ?? ''),
                     csvSafe(cName),
                     csvSafe(block),
-                    csvSafe(summary?.count ?? 0)
+                    csvSafe(summary?.count ?? 0),
+                    csvSafe(
+                        formatJourneyForExport(
+                            userId
+                                ? (jny as Record<string, JourneyEvent[]>)[userId]
+                                : undefined
+                        )
+                    )
                 );
             }
             return row.join(',');

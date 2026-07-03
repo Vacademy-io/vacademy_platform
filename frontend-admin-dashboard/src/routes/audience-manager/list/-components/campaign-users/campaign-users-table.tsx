@@ -38,6 +38,11 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
+import {
+    fetchLeadJourneyBatch,
+    formatJourneyForExport,
+    type JourneyEvent,
+} from '@/components/shared/leads/lead-journey-export';
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
 import { useCustomFieldSetup } from '../../-hooks/useCustomFieldSetup';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
@@ -621,14 +626,16 @@ const CampaignUsersContent = ({
                     count: number;
                 }
             > = {};
+            let exportJourney: Record<string, JourneyEvent[]> = {};
             if (showOps && exportUserIds.length > 0) {
                 try {
-                    [exportProfiles, exportNotes] = await Promise.all([
+                    [exportProfiles, exportNotes, exportJourney] = await Promise.all([
                         fetchBatchProfiles(exportUserIds),
                         fetchLatestNotesBatch(exportUserIds),
+                        fetchLeadJourneyBatch(exportUserIds),
                     ]);
                 } catch (e) {
-                    console.warn('Failed to enrich CSV with counsellor/notes', e);
+                    console.warn('Failed to enrich CSV with counsellor/notes/journey', e);
                 }
             }
 
@@ -659,7 +666,14 @@ const CampaignUsersContent = ({
                 fieldIdToHeaderNameMap[fieldId] = headerName;
                 csvHeaders.push(headerName.includes(',') ? `"${headerName}"` : headerName);
             });
-            const tailHeaders = showOps ? ['Counsellor', 'Activity & Notes', 'Notes Count'] : [];
+            const tailHeaders = showOps
+                ? [
+                      'Counsellor',
+                      'Activity & Notes',
+                      'Notes Count',
+                      'Lead journey (disposition & notes)',
+                  ]
+                : [];
             csvHeaders.push(...tailHeaders);
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -706,7 +720,8 @@ const CampaignUsersContent = ({
                     row.push(
                         csvSafe(counsellor),
                         csvSafe(notesBlock),
-                        csvSafe(summary?.count ?? 0)
+                        csvSafe(summary?.count ?? 0),
+                        csvSafe(formatJourneyForExport(userId ? exportJourney[userId] : undefined))
                     );
                 }
                 return row.join(',');

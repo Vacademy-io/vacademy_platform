@@ -1053,6 +1053,24 @@ export const SlideMaterial = ({
         // slide it's about to persist (guards against cross-slide bleed).
         editorLoadedSlideIdRef.current = activeItem?.id ?? null;
 
+        // Reset the shared editor's undo/redo history on every content load. The
+        // Yoopta editor instance is reused across slides (only its React wrapper
+        // remounts), so a stale undo stack lets a Cmd+Z on the newly-loaded slide
+        // rewind into the PREVIOUS slide's operations — or undo the setEditorValue
+        // load itself — silently changing THIS slide's content and flipping it to
+        // UNSYNC. Clearing it scopes undo to edits made on the current slide only.
+        // (Runs only when content is actually (re)loaded, so the user never loses
+        // in-slide undo mid-edit.)
+        try {
+            (
+                editor as unknown as {
+                    historyStack: { undos: unknown[]; redos: unknown[] };
+                }
+            ).historyStack = { undos: [], redos: [] };
+        } catch {
+            /* older Yoopta without a writable historyStack — safe to ignore */
+        }
+
         // Clear any stale selection left over from the previous slide / paste.
         // setEditorValue replaces the entire Slate tree, but editor.selection
         // is preserved — a Point like {path:[0,1], offset:129} from the old

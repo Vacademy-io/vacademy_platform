@@ -11,13 +11,25 @@ import {
     DocViewerComponentRef,
 } from "./doc-viewer-component";
 
-// Helper to strip expired query params from public AWS S3 URLs inside strings/HTML
+// Helper to strip expired query params from public AWS S3 URLs inside strings/HTML.
+// Bounds the HTML case to real src/href/poster attribute values so it can never
+// over-match a signed S3 URL inside a data-* block and truncate the slide (the
+// whole-document scan used to). A bare URL is still stripped fully.
 const stripAwsQueryParamsFromUrls = (input: string): string => {
-    const awsSignedUrlRegex = /https?:\/\/[^"'()<>\s]*amazonaws\.com[^"'()<>\s]*\?[^"'()<>\s]*/gi;
-    return input.replace(awsSignedUrlRegex, (matched: string): string => {
-        const qIndex = matched.indexOf("?");
-        return qIndex === -1 ? matched : matched.slice(0, qIndex);
-    });
+    if (!input) return input;
+    const dropQuery = (url: string): string => {
+        if (!/amazonaws\.com/i.test(url)) return url;
+        const q = url.indexOf("?");
+        return q === -1 ? url : url.slice(0, q);
+    };
+    if (!/[<>]/.test(input) && /^\s*https?:\/\//i.test(input)) {
+        return dropQuery(input.trim());
+    }
+    return input.replace(
+        /(\b(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi,
+        (_m: string, prefix: string, quote: string, url: string): string =>
+            `${prefix}${quote}${dropQuery(url)}${quote}`
+    );
 };
 
 interface DocViewerProps {

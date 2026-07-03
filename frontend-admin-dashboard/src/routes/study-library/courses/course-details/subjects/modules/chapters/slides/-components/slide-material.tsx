@@ -327,8 +327,19 @@ export const SlideMaterial = ({
         slideId: null,
         html: '',
     });
-    // Always-current editor HTML for DOC (updated on every change, not persisted to store)
-    const currentDocHtmlRef = useRef<string>('');
+    // Last successfully-serialized DOC editor HTML, TAGGED with the slide it came
+    // from. It's the fallback when html.serialize throws (a degenerate custom-block
+    // Slate state). Without the slideId, that fallback could hand back a DIFFERENT
+    // slide's HTML during a switch — the "data comes from other slides" bug. The
+    // tag lets every reader verify the cache belongs to the slide in the editor.
+    const currentDocHtmlRef = useRef<{ slideId: string | null; html: string }>({
+        slideId: null,
+        html: '',
+    });
+    // The pending captureInitialDocSnapshot() timeout, tracked so a slide switch
+    // can cancel it — otherwise it fires 300ms later against the NOW-current editor
+    // and writes that content into the PREVIOUS slide's baseline ref.
+    const snapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // True when the last getCurrentEditorHTMLContent() had to fall back to
     // per-block serialization (a block's serializer threw) OR blew up entirely.
     // In that state the serialized HTML may be MISSING the offending block, so
@@ -433,6 +444,15 @@ export const SlideMaterial = ({
             setShowPlaceholder(initialIsEmpty);
         }, [initialIsEmpty]);
 
+        // Clear the pending unsaved-change debounce when this editor unmounts
+        // (a slide switch, now that we remount per slide) so a stale timer can't
+        // serialize the NEXT slide's editor into the previous slide's refs.
+        useEffect(() => {
+            return () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            };
+        }, []);
+
         // Check emptiness from Yoopta JSON structure (no serialization needed)
         const checkIsEmptyFromEditor = (): boolean => {
             try {
@@ -510,9 +530,10 @@ export const SlideMaterial = ({
                             debounceTimerRef.current = setTimeout(() => {
                                 try {
                                     const currentContent = html.serialize(editor, editor.children);
-                                    currentDocHtmlRef.current = formatHTMLString(
-                                        currentContent || ''
-                                    );
+                                    currentDocHtmlRef.current = {
+                                        slideId: prevDocSlideRef.current?.id ?? null,
+                                        html: formatHTMLString(currentContent || ''),
+                                    };
                                 } catch (error) {
                                     console.error('Error serializing content in onChange:', error);
                                 }
@@ -1014,11 +1035,14 @@ export const SlideMaterial = ({
     const captureInitialDocSnapshot = () => {
         if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
             prevDocSlideRef.current = activeItem;
+            // Cancel any earlier pending snapshot so a stale one can't fire after a
+            // switch and write THIS editor's content into a previous slide's refs.
+            if (snapshotTimeoutRef.current) clearTimeout(snapshotTimeoutRef.current);
             // Use a short delay so Yoopta finishes rendering before we snapshot
-            setTimeout(() => {
+            snapshotTimeoutRef.current = setTimeout(() => {
                 const editorHtml = getCurrentEditorHTMLContent();
                 initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
-                currentDocHtmlRef.current = editorHtml;
+                currentDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
             }, 300);
         }
     };
@@ -1026,7 +1050,11 @@ export const SlideMaterial = ({
     const setEditorContent = () => {
         const isEmpty = applyDocContentToEditor();
 
-        setContent(<EditorWithPlaceholder initialIsEmpty={isEmpty} />);
+        // key={slide id} forces a clean editor remount per slide instead of reusing
+        // the shared instance's DOM/state — the video preview below does the same.
+        // Without it the reused editor can momentarily show the previous slide's
+        // blocks after setEditorValue.
+        setContent(<EditorWithPlaceholder key={activeItem?.id} initialIsEmpty={isEmpty} />);
         // Delay focus until after React re-renders the DOM with the new editor state.
         // Calling editor.focus() synchronously after setEditorValue causes
         // "Cannot resolve a DOM node from Slate node" because the DOM hasn't updated yet.
@@ -1097,7 +1125,10 @@ export const SlideMaterial = ({
             // mid slide-switch) must not poison the fallback, or the catch
             // block below would itself recover empty content and lose work.
             if (!checkIsHtmlEmpty(formatted)) {
-                currentDocHtmlRef.current = formatted;
+                currentDocHtmlRef.current = {
+                    slideId: prevDocSlideRef.current?.id ?? activeItem?.id ?? null,
+                    html: formatted,
+                };
             }
             return formatted;
         } catch (error) {
@@ -1113,8 +1144,15 @@ export const SlideMaterial = ({
             // data. Returning '' used to land in SaveDraft's empty-guard
             // and surface "Could not read editor content" — we'd rather
             // preserve prior content than lose work.
-            if (currentDocHtmlRef.current) {
-                return currentDocHtmlRef.current;
+            // Only reuse the cached HTML if it belongs to the slide currently in
+            // the editor — otherwise it's a DIFFERENT slide's content, and handing
+            // it back here is exactly how one slide's data bleeds into another.
+            if (
+                currentDocHtmlRef.current.html &&
+                currentDocHtmlRef.current.slideId ===
+                    (prevDocSlideRef.current?.id ?? activeItem?.id)
+            ) {
+                return currentDocHtmlRef.current.html;
             }
             if (activeItem?.document_slide?.data) {
                 return activeItem.document_slide.data;
@@ -1219,6 +1257,13 @@ export const SlideMaterial = ({
     useEffect(() => {
         // Cleanup runs before switching away from this slide; capture exact editor HTML
         return () => {
+            // Cancel the previous slide's pending 300ms baseline snapshot — if it
+            // fired after the switch it would read the NEW editor and mislabel it
+            // as this (old) slide's content.
+            if (snapshotTimeoutRef.current) {
+                clearTimeout(snapshotTimeoutRef.current);
+                snapshotTimeoutRef.current = null;
+            }
             const previous = prevDocSlideRef.current;
             if (!previous) return;
             const snapshot = getCurrentEditorHTMLContent();
@@ -2159,10 +2204,13 @@ export const SlideMaterial = ({
                 // to the latest (now-saved) HTML so a later slide switch doesn't
                 // auto-save identical content again.
                 if (isSameSlideRerun) {
-                    if (currentDocHtmlRef.current) {
+                    if (
+                        currentDocHtmlRef.current.html &&
+                        currentDocHtmlRef.current.slideId === activeItem.id
+                    ) {
                         initialDocHtmlRef.current = {
                             slideId: activeItem.id,
-                            html: currentDocHtmlRef.current,
+                            html: currentDocHtmlRef.current.html,
                         };
                     }
                     return;
@@ -3380,7 +3428,8 @@ export const SlideMaterial = ({
                                   ? 'h-[calc(100vh-200px)]'
                                   : 'h-full'
                           } ${
-                              activeItem?.document_slide?.type === 'DOC'
+                              activeItem?.document_slide?.type === 'DOC' ||
+                              activeItem?.source_type === 'ASSIGNMENT'
                                   ? 'overflow-visible'
                                   : 'overflow-hidden'
                           }`

@@ -41,8 +41,9 @@ export function DispositionsTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
-    const params = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const params = { instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId };
 
     const query = useQuery({
         queryKey: dispositionsQueryKey(params),

@@ -143,6 +143,7 @@ public class CallingReportService {
                   AND lf.is_closed = false
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                   AND (:scopeCsv IS NULL OR lf.created_by = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+                  AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             ) t
             GROUP BY t.user_id
             """;
@@ -161,6 +162,7 @@ public class CallingReportService {
               AND COALESCE(lf.closed_at, lf.updated_at) >= :closedSince
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               AND (:scopeCsv IS NULL OR lf.created_by = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
             GROUP BY 1
             ORDER BY n DESC, reason ASC
             LIMIT 15
@@ -255,7 +257,8 @@ public class CallingReportService {
      * signature consistency across report endpoints but intentionally ignored.
      */
     public FollowupAgingResponseDTO followupAging(String instituteId,
-                                                  String teamId, String counsellorUserId, String callerUserId) {
+                                                  String teamId, String counsellorUserId,
+                                                  String audienceId, String callerUserId) {
         LeadReportSettingService.ReportSettings settings = leadReportSettingService.get(instituteId);
         ZoneId tz = safeZone(settings);
         String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
@@ -264,7 +267,8 @@ public class CallingReportService {
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("instituteId", instituteId)
                 .addValue("tz", tz.getId())
-                .addValue("scopeCsv", scopeCsv, Types.VARCHAR);
+                .addValue("scopeCsv", scopeCsv, Types.VARCHAR)
+                .addValue("audienceId", trimToNull(audienceId), Types.VARCHAR);
 
         long[] totals = new long[5]; // due_today, 1_3, 3_7, 7_plus, upcoming
         List<FollowupAgingResponseDTO.CounsellorRow> byCounsellor = new ArrayList<>();
@@ -313,6 +317,7 @@ public class CallingReportService {
         MapSqlParameterSource closureParams = new MapSqlParameterSource()
                 .addValue("instituteId", instituteId)
                 .addValue("scopeCsv", scopeCsv, Types.VARCHAR)
+                .addValue("audienceId", trimToNull(audienceId), Types.VARCHAR)
                 .addValue("closedSince",
                         LocalDateTime.now(ZoneOffset.UTC).minusDays(CLOSURE_REASON_WINDOW_DAYS),
                         Types.TIMESTAMP);

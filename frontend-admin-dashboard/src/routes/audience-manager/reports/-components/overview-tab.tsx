@@ -49,6 +49,7 @@ export function OverviewTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
     const navigate = useNavigate();
 
@@ -60,9 +61,17 @@ export function OverviewTab({
             toDate,
             teamId,
             counsellorUserId,
+            audienceId,
         ],
         queryFn: () =>
-            fetchLeadReportSummary(instituteId, fromDate, toDate, teamId, counsellorUserId),
+            fetchLeadReportSummary(
+                instituteId,
+                fromDate,
+                toDate,
+                teamId,
+                counsellorUserId,
+                audienceId
+            ),
         enabled: !!instituteId,
         staleTime: 60_000,
         retry: false,

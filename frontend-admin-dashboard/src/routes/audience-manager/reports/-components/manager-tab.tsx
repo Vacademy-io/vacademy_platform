@@ -75,8 +75,16 @@ export function ManagerTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
-    const params: ManagerReportParams = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const params: ManagerReportParams = {
+        instituteId,
+        fromDate,
+        toDate,
+        teamId,
+        counsellorUserId,
+        audienceId,
+    };
 
     const query = useQuery({
         queryKey: teamRollupQueryKey(params),

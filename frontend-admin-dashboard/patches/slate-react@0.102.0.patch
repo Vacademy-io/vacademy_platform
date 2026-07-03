@@ -1,5 +1,5 @@
 diff --git a/dist/index.es.js b/dist/index.es.js
-index 91843e3bb0a915db87db4e675f1326d956b8968a..e7ac6f75860498076bd5532f85da4b9c7551cd62 100644
+index 91843e3bb0a915db87db4e675f1326d956b8968a..cc5f786edb7e3a647080c95d999a03b758993499 100644
 --- a/dist/index.es.js
 +++ b/dist/index.es.js
 @@ -482,6 +482,8 @@ var ReactEditor = {
@@ -20,6 +20,24 @@ index 91843e3bb0a915db87db4e675f1326d956b8968a..e7ac6f75860498076bd5532f85da4b9c
      var path = [];
      var child = node;
      while (true) {
+@@ -510,7 +514,7 @@ var ReactEditor = {
+     }
+     throw new Error("Unable to find the path for Slate node: ".concat(Scrubber.stringify(node)));
+   },
+-  focus: function focus(editor) {
++  focus: function focus(editor) { try {
+     var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {
+       retries: 5
+     };
+@@ -554,7 +558,7 @@ var ReactEditor = {
+         preventScroll: true
+       });
+     }
+-  },
++   } catch (_e) { /* PATCH(vacademy): editor DOM node/selection can be transiently unresolvable (e.g. right after a paste, before the block DOM paints) so toDOMNode/toDOMRange/Editor.start throw; focus is best-effort and must NEVER crash the slide view. */ } },
+   getWindow: editor => {
+     var window = EDITOR_TO_WINDOW.get(editor);
+     if (!window) {
 @@ -713,7 +717,13 @@ var ReactEditor = {
      }
      var node = domEl ? ELEMENT_TO_NODE.get(domEl) : null;
@@ -50,7 +68,7 @@ index 91843e3bb0a915db87db4e675f1326d956b8968a..e7ac6f75860498076bd5532f85da4b9c
      return {
        path,
 diff --git a/dist/index.js b/dist/index.js
-index e893f6ae3749c5e492866056fd84e3ab2f5926f1..344eb11e93413d394e40685a037d885cb2e109d9 100644
+index e893f6ae3749c5e492866056fd84e3ab2f5926f1..4455520d67ec5ee5d20acc8402f3fc9e6ec9eace 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -695,6 +695,9 @@ var ReactEditor = {
@@ -73,6 +91,24 @@ index e893f6ae3749c5e492866056fd84e3ab2f5926f1..344eb11e93413d394e40685a037d885c
      var path = [];
      var child = node;
      while (true) {
+@@ -723,7 +729,7 @@ var ReactEditor = {
+     }
+     throw new Error("Unable to find the path for Slate node: ".concat(slate.Scrubber.stringify(node)));
+   },
+-  focus: function focus(editor) {
++  focus: function focus(editor) { try {
+     var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {
+       retries: 5
+     };
+@@ -767,7 +773,7 @@ var ReactEditor = {
+         preventScroll: true
+       });
+     }
+-  },
++   } catch (_e) { /* PATCH(vacademy): editor DOM node/selection can be transiently unresolvable (e.g. right after a paste, before the block DOM paints) so toDOMNode/toDOMRange/Editor.start throw; focus is best-effort and must NEVER crash the slide view. */ } },
+   getWindow: function getWindow(editor) {
+     var window = EDITOR_TO_WINDOW.get(editor);
+     if (!window) {
 @@ -943,7 +949,13 @@ var ReactEditor = {
      }
      var node = domEl ? ELEMENT_TO_NODE.get(domEl) : null;

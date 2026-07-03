@@ -610,10 +610,14 @@ export function WorkbenchPage() {
                 instituteId={instituteId}
                 // Set targets across the whole team (size=500 candidates), not
                 // just the current page — falls back to the page while loading.
-                counsellors={(candidates.length > 0 ? candidates : counsellors).map((c) => ({
-                    user_id: c.user_id,
-                    full_name: c.full_name,
-                }))}
+                // Only ACTIVE counsellors: an inactive (offline) counsellor
+                // shouldn't be handed a target.
+                counsellors={(candidates.length > 0 ? candidates : counsellors)
+                    .filter((c) => c.is_active)
+                    .map((c) => ({
+                        user_id: c.user_id,
+                        full_name: c.full_name,
+                    }))}
                 onSaved={() =>
                     queryClient.invalidateQueries({ queryKey: ['counsellor-target-progress'] })
                 }

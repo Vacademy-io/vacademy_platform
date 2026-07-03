@@ -34,6 +34,10 @@ const mergeWithDefaults = (settings: Partial<AssessmentSettingsData>): Assessmen
             ...DEFAULT_REPORT_BRANDING,
             ...settings?.reportBranding,
         },
+        resultNotifications: {
+            version: settings?.resultNotifications?.version ?? 1,
+            roles: settings?.resultNotifications?.roles ?? {},
+        },
     };
 };
 

@@ -26,6 +26,30 @@ function decodeBlockData<T>(raw: string | null | undefined, fallback: T): T {
     }
 }
 
+// Flashcard image aspect-ratio classes — mirror the admin editor so a card's
+// chosen ratio (Original / 1:1 / 4:3 / 16:9) renders the same for learners. The
+// image is contained inside the ratio box (never cropped or stretched).
+const FC_RATIO_CLASS: Record<string, string> = {
+    '1:1': 'fc-ar-1-1',
+    '4:3': 'fc-ar-4-3',
+    '16:9': 'fc-ar-16-9',
+};
+function ensureFcRatioStyles() {
+    if (typeof document === 'undefined') return;
+    const css =
+        '.fc-card-img img { max-width: 100%; max-height: 300px; height: auto; object-fit: contain; display: block; margin: 4px auto; }\n' +
+        '.fc-ar-1-1 img { aspect-ratio: 1 / 1; width: 100%; }\n' +
+        '.fc-ar-4-3 img { aspect-ratio: 4 / 3; width: 100%; }\n' +
+        '.fc-ar-16-9 img { aspect-ratio: 16 / 9; width: 100%; }';
+    let style = document.getElementById('fc-ratio-styles') as HTMLStyleElement | null;
+    if (!style) {
+        style = document.createElement('style');
+        style.id = 'fc-ratio-styles';
+        document.head.appendChild(style);
+    }
+    if (style.textContent !== css) style.textContent = css;
+}
+
 /** Interactive quiz component for learner side */
 function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; slideId?: string; elementIndex?: number }) {
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -127,11 +151,29 @@ function InlineQuiz({ quizJson, slideId, elementIndex }: { quizJson: string; sli
     );
 }
 
-/** Interactive flashcard component for learner side */
-function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: string; back: string; slideId?: string; elementIndex?: number }) {
+/** Interactive flashcard component for learner side. Front/back are rich HTML
+ * (text and/or images) authored in the admin editor. */
+function InteractiveFlashcard({ front, back, aspectRatio, slideId, elementIndex }: { front: string; back: string; aspectRatio?: string; slideId?: string; elementIndex?: number }) {
     const [isFlipped, setIsFlipped] = useState(false);
     const flipCountRef = useRef(0);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        ensureFcRatioStyles();
+    }, []);
+    const ratioClass = FC_RATIO_CLASS[aspectRatio || 'original'] || '';
+    // Always bound flashcard images (fc-card-img); add the chosen ratio on top.
+    const imgWrapClass = `fc-card-img ${ratioClass}`.trim();
+
+    // Plain text (entities decoded) for activity analytics — the stored HTML
+    // would otherwise pollute the admin activity log.
+    const stripTags = (h?: string) => {
+        if (!h) return '';
+        if (typeof document === 'undefined') return h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const d = document.createElement('div');
+        d.innerHTML = h;
+        return (d.textContent || '').replace(/\s+/g, ' ').trim();
+    };
 
     // Flip and (on a learner slide) record engagement — that the learner flipped
     // to reveal the back, and how many times. Debounced + best-effort.
@@ -144,8 +186,8 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
             saveTimerRef.current = setTimeout(
                 () =>
                     saveSlideInteraction(slideId, `flashcard-${elementIndex}`, 'FLASHCARD', {
-                        front,
-                        back,
+                        front: stripTags(front),
+                        back: stripTags(back),
                         viewed: true,
                         flipCount: flipCountRef.current,
                     }),
@@ -156,14 +198,14 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
 
     return (
         <div
-            style={{ perspective: '1000px', cursor: 'pointer', margin: '8px 0' }}
+            style={{ perspective: '1000px', cursor: 'pointer', margin: '8px auto', maxWidth: '420px' }}
             onClick={handleFlip}
         >
+            {/* Both faces share grid-area 1/1 so the card grows to the taller of the
+                two (text OR image content) — no fixed height, no spacer. */}
             <div
                 style={{
-                    position: 'relative',
-                    width: '100%',
-                    minHeight: '150px',
+                    display: 'grid',
                     transition: 'transform 0.6s',
                     transformStyle: 'preserve-3d',
                     transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
@@ -172,15 +214,15 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
                 {/* Front */}
                 <div
                     style={{
-                        position: 'absolute',
-                        width: '100%',
+                        gridArea: '1 / 1',
+                        position: 'relative',
                         minHeight: '150px',
                         backfaceVisibility: 'hidden',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '24px',
+                        padding: '28px 24px',
                         backgroundColor: '#fff', // design-lint-ignore: flashcard UI state — style prop
                         borderRadius: '8px',
                         border: '2px solid #007acc', // design-lint-ignore: flashcard UI state — style prop
@@ -188,14 +230,14 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
                     }}
                 >
                     <div style={{ fontSize: '10px', color: '#007acc', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Front</div> {/* design-lint-ignore: flashcard UI state — style prop */}
-                    <div style={{ fontSize: '16px', color: '#333', textAlign: 'center', whiteSpace: 'pre-wrap' }}>{front}</div> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#333', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: front || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
                     <div style={{ fontSize: '11px', color: '#999', position: 'absolute', bottom: '8px' }}>Click to flip</div> {/* design-lint-ignore: flashcard UI state — style prop */}
                 </div>
                 {/* Back */}
                 <div
                     style={{
-                        position: 'absolute',
-                        width: '100%',
+                        gridArea: '1 / 1',
+                        position: 'relative',
                         minHeight: '150px',
                         backfaceVisibility: 'hidden',
                         transform: 'rotateY(180deg)',
@@ -203,7 +245,7 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '24px',
+                        padding: '28px 24px',
                         backgroundColor: '#007acc', // design-lint-ignore: flashcard UI state — style prop
                         borderRadius: '8px',
                         border: '2px solid #007acc', // design-lint-ignore: flashcard UI state — style prop
@@ -211,11 +253,10 @@ function InteractiveFlashcard({ front, back, slideId, elementIndex }: { front: s
                     }}
                 >
                     <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', position: 'absolute', top: '8px', left: '12px' }}>Back</div>
-                    <div style={{ fontSize: '16px', color: '#fff', textAlign: 'center', whiteSpace: 'pre-wrap' }}>{back}</div> {/* design-lint-ignore: flashcard UI state — style prop */}
+                    <div className={imgWrapClass} style={{ fontSize: '16px', color: '#fff', textAlign: 'center', maxWidth: '100%', whiteSpace: 'pre-wrap' }} dangerouslySetInnerHTML={{ __html: back || '' }} /> {/* design-lint-ignore: flashcard UI state — style prop */}
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', position: 'absolute', bottom: '8px' }}>Click to flip back</div>
                 </div>
             </div>
-            <div style={{ minHeight: '150px' }} />
         </div>
     );
 }
@@ -327,36 +368,46 @@ function InteractiveFillBlanks({ sentence, slideId, elementIndex }: { sentence: 
 function InteractiveTabs({ tabsJson }: { tabsJson: string }) {
     const [activeTab, setActiveTab] = useState(0);
 
-    const tabs: Array<{ label: string; content: string }> = decodeBlockData(tabsJson, []);
+    const tabs: Array<{ label: string; content: string; color?: string }> = decodeBlockData(tabsJson, []);
 
     if (!Array.isArray(tabs) || tabs.length === 0) return null;
+
+    // Per-tab colour-coding (falls back to the default accent when unset).
+    const tabColor = (t?: { color?: string }) => (t && t.color) || '#007acc'; // design-lint-ignore: dynamic tab colour-coding
+    const activeColor = tabColor(tabs[activeTab]);
 
     return (
         <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', margin: '8px 0', overflow: 'hidden', background: '#fafafa' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
             <div style={{ display: 'flex', borderBottom: '1px solid #e0e0e0', background: '#fff', overflowX: 'auto' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
-                {tabs.map((tab, i) => (
-                    <div
-                        key={i}
-                        onClick={() => setActiveTab(i)}
-                        style={{
-                            padding: '10px 20px',
-                            fontSize: '14px',
-                            fontWeight: activeTab === i ? 600 : 400,
-                            color: activeTab === i ? '#007acc' : '#666', // design-lint-ignore: dynamic tab active state
-                            borderBottom: `2px solid ${activeTab === i ? '#007acc' : 'transparent'}`, // design-lint-ignore: dynamic tab active state
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            transition: 'color 0.15s, border-color 0.15s',
-                        }}
-                    >
-                        {tab.label}
-                    </div>
-                ))}
+                {tabs.map((tab, i) => {
+                    const tc = tabColor(tab);
+                    return (
+                        <div
+                            key={i}
+                            onClick={() => setActiveTab(i)}
+                            style={{
+                                padding: '10px 20px',
+                                fontSize: '14px',
+                                fontWeight: activeTab === i ? 600 : 400,
+                                color: activeTab === i ? tc : '#666', // design-lint-ignore: dynamic tab active state
+                                // Colour-code: every tab shows its colour as a top bar.
+                                borderTop: `3px solid ${tc}`, // design-lint-ignore: dynamic tab colour-coding
+                                backgroundColor: activeTab === i ? '#fff' : 'transparent', // design-lint-ignore: dynamic tab active state
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                transition: 'color 0.15s, border-color 0.15s',
+                            }}
+                        >
+                            {tab.label}
+                        </div>
+                    );
+                })}
             </div>
             {/* Tab content is rich-text HTML from the admin editor. The
                 "inline-quiz" class reuses the same list/paragraph/image resets so
-                authored bullets/numbers render past the document's list reset. */}
-            <div className="inline-quiz" style={{ padding: '16px', fontSize: '14px', lineHeight: 1.6, color: '#333' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
+                authored bullets/numbers render past the document's list reset. Top
+                border echoes the active tab's colour-code. */}
+            <div className="inline-quiz" style={{ padding: '16px', borderTop: `3px solid ${activeColor}`, fontSize: '14px', lineHeight: 1.6, color: '#333' }}> {/* design-lint-ignore: dynamic tabs UI state — style prop */}
                 <div dangerouslySetInnerHTML={{ __html: tabs[activeTab]?.content || '' }} />
             </div>
         </div>
@@ -748,14 +799,29 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 });
             });
 
-            // Process flashcard blocks — interactive on learner side
+            // Process flashcard blocks — interactive on learner side. Prefer the
+            // base64 data-flashcard payload (rich HTML incl. images, immune to the
+            // admin's HTML sanitizers); fall back to legacy plain-text data-front/
+            // data-back for flashcards created before image support.
             const flashcardDivs = tempDiv.querySelectorAll('div[data-yoopta-type="flashcard"]');
             flashcardDivs.forEach((div) => {
-                const front = div.getAttribute('data-front') || '';
-                const back = div.getAttribute('data-back') || '';
+                const encoded = div.getAttribute('data-flashcard');
+                let front = '';
+                let back = '';
+                let aspectRatio = 'original';
+                if (encoded) {
+                    const d = decodeBlockData<{ front: string; back: string; aspectRatio?: string }>(encoded, { front: '', back: '' });
+                    front = d.front || '';
+                    back = d.back || '';
+                    aspectRatio = d.aspectRatio || 'original';
+                } else {
+                    front = div.getAttribute('data-front') || '';
+                    back = div.getAttribute('data-back') || '';
+                    aspectRatio = div.getAttribute('data-aspect-ratio') || 'original';
+                }
                 specialBlocks.push({
                     element: div,
-                    code: JSON.stringify({ front, back }),
+                    code: JSON.stringify({ front, back, aspectRatio }),
                     type: 'flashcard' as SectionType,
                 });
             });
@@ -1224,6 +1290,12 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     width: auto;
                     height: auto;
                     max-width: 100%;
+                    /* Centralised: centre every document image (all blocks — tabs,
+                       accordion, columns, flashcard, quiz), for existing and new
+                       images alike. New images also carry an inline centred style. */
+                    display: block;
+                    margin-left: auto;
+                    margin-right: auto;
                 }
 
                 .document-with-mermaid blockquote {
@@ -1452,13 +1524,14 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         />
                     );
                 } else if (section.type === 'flashcard') {
-                    let data = { front: '', back: '' };
+                    let data: { front: string; back: string; aspectRatio?: string } = { front: '', back: '', aspectRatio: 'original' };
                     try { data = JSON.parse(section.content); } catch { /* use empty */ }
                     return (
                         <InteractiveFlashcard
                             key={`flashcard-${index}`}
                             front={data.front}
                             back={data.back}
+                            aspectRatio={data.aspectRatio}
                             slideId={slideId}
                             elementIndex={index}
                         />

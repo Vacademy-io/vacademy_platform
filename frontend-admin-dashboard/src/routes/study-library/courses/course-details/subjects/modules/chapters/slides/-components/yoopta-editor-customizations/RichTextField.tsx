@@ -154,7 +154,12 @@ export function ensureRichTextStyles() {
     const css = `
         .rich-text-field:empty:before { content: attr(data-placeholder); color: ${C.muted}; pointer-events: none; }
         .rich-text-box:focus-within { border-color: ${C.accent} !important; box-shadow: 0 0 0 1px ${C.accent}; }
-        .rich-text-field img, .rich-text-html img { max-width: 100%; height: auto; border-radius: 4px; }
+        .rich-text-field img, .rich-text-html img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin-left: auto; margin-right: auto; }
+        /* Cap image height while EDITING so a tall image doesn't blow the field
+           up to full size (which makes the page awkward to scroll). The stored /
+           preview / learner output is unaffected — it uses the img's own inline
+           max-width and renders at natural height. */
+        .rich-text-field img { max-height: 360px; object-fit: contain; }
         .rich-text-field p, .rich-text-field div, .rich-text-html p, .rich-text-html div { margin: 0; }
         .rich-text-field ul, .rich-text-html ul { list-style: disc outside !important; margin: 4px 0; padding-left: 26px; }
         .rich-text-field ol, .rich-text-html ol { list-style: decimal outside !important; margin: 4px 0; padding-left: 26px; }
@@ -199,18 +204,20 @@ export function RichTextField({
     }, []);
 
     // Sync DOM only on an EXTERNAL value change (never our own keystrokes) so the
-    // caret never jumps; and never let a stale/empty value wipe what's being typed.
+    // caret never jumps.
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
         if (el.innerHTML === (value || '')) return;
-        if (
-            document.activeElement === el &&
-            isRichTextEmpty(value || '') &&
-            !isRichTextEmpty(el.innerHTML)
-        ) {
-            return;
-        }
+        // While this field is focused, the contentEditable DOM is the source of
+        // truth — NEVER overwrite it from `value`. `value` is derived from the DOM
+        // via onInput, and the browser's innerHTML serialization of nodes like
+        // <img> (attribute order/quotes, `&` → `&amp;` in the S3 URL) rarely
+        // matches the stored string byte-for-byte, so re-assigning innerHTML on
+        // each commit round-trip would re-create the <img> and re-download it —
+        // a visible flicker. External changes (deserialize / programmatic) only
+        // arrive while the field isn't focused, so syncing then is enough.
+        if (document.activeElement === el) return;
         el.innerHTML = value || '';
     }, [value]);
 
@@ -272,7 +279,10 @@ export function RichTextField({
             document.execCommand(
                 'insertHTML',
                 false,
-                `<img src="${url.replace(/"/g, '&quot;')}" alt="" style="max-width:100%;" />`
+                // Centralised image styling: block-level, CENTERED, width-bounded.
+                // Inline so it travels with the HTML to the learner and applies in
+                // EVERY block (flashcard, tabs, columns, accordion, quiz) the same way.
+                `<img src="${url.replace(/"/g, '&quot;')}" alt="" style="display:block; margin:10px auto; max-width:100%; height:auto;" />`
             );
             // A trailing image leaves no caret position after it — add an empty
             // line and move the caret into it so you can type below the image.

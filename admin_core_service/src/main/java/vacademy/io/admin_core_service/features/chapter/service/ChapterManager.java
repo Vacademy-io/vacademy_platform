@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackage
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
+import vacademy.io.admin_core_service.features.slide.service.AssessmentSlideBatchRegistrationService;
 import vacademy.io.admin_core_service.features.slide.service.SlideService;
 import vacademy.io.common.institute.entity.module.Module;
 import vacademy.io.common.institute.entity.session.PackageSession;
@@ -24,6 +25,7 @@ public class ChapterManager {
     private final ChapterPackageSessionMappingRepository chapterPackageSessionMappingRepository;
     private final SlideService slideService;
     private final ChapterRepository chapterRepository;
+    private final AssessmentSlideBatchRegistrationService assessmentSlideBatchRegistrationService;
 
     public void copyChaptersOfModule(Module oldModule, Module newModule, PackageSession oldPackageSession, PackageSession newPackageSession) {
         List<Chapter> chapters = moduleChapterMappingRepository.findChaptersByModuleIdAndStatusNotDeleted(oldModule.getId(), oldPackageSession.getId());
@@ -55,7 +57,15 @@ public class ChapterManager {
         moduleChapterMappingRepository.saveAll(newModuleChapterMappings);
         chapterPackageSessionMappingRepository.saveAll(newChapterPackageSessionMappings);
         for (List<Chapter> newAndOldChapter : newChapterAndOldChapterMap) {
-            slideService.copySlidesOfChapter(newAndOldChapter.get(1), newAndOldChapter.get(0));
+            Chapter newChapter = newAndOldChapter.get(0);
+            slideService.copySlidesOfChapter(newAndOldChapter.get(1), newChapter);
+            // The deep copy reuses each assessment slide's assessmentId but lands it
+            // in a brand-new package_session (e.g. duplicating a session/batch). The
+            // assessment must be registered to that batch, otherwise learners there
+            // see the slide while the assessment never shows in their list / the
+            // course's assessment list. Best-effort — the service swallows failures.
+            assessmentSlideBatchRegistrationService
+                    .registerChapterAssessmentsToBatches(newChapter.getId(), List.of(newPackageSession.getId()));
         }
     }
 }

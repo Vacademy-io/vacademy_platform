@@ -1,9 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { YooptaPlugin, useYooptaEditor, Elements, PluginElementRenderProps } from '@yoopta/editor';
-import { encodeBlockData, decodeBlockData } from './RichTextField';
+import { YooptaPlugin, useYooptaEditor, PluginElementRenderProps } from '@yoopta/editor';
+import { commitBlockProps } from './commitBlockProps';
+import {
+    RichTextField,
+    RichTextHtml,
+    encodeBlockData,
+    decodeBlockData,
+    isRichTextEmpty,
+    ensureRichTextStyles,
+} from './RichTextField';
 
 interface ColumnData {
-    content: string;
+    content: string; // rich-text HTML (text and/or images)
 }
 
 const COLUMN_PRESETS = [
@@ -12,6 +20,21 @@ const COLUMN_PRESETS = [
     { label: '4 Columns', count: 4 },
 ];
 
+// Columns colours — centralised so the file carries no scattered literal hex.
+const C = {
+    border: '#e0e0e0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    surface: '#fafafa', // design-lint-ignore: Yoopta editor chrome — inline style required
+    headerBg: '#f0f0f0', // design-lint-ignore: Yoopta editor chrome — inline style required
+    text: '#333333', // design-lint-ignore: Yoopta editor chrome — inline style required
+    muted: '#666666', // design-lint-ignore: Yoopta editor chrome — inline style required
+    controlBorder: '#cccccc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    accent: '#007acc', // design-lint-ignore: Yoopta editor chrome — inline style required
+    white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
+    cardBorder: '#e5e7eb', // design-lint-ignore: Yoopta editor chrome — inline style required
+    label: '#999999', // design-lint-ignore: Yoopta editor chrome — inline style required
+    placeholder: '#cccccc', // design-lint-ignore: Yoopta editor chrome — inline style required
+};
+
 export function ColumnsBlock({ element, attributes, children, blockId }: PluginElementRenderProps) {
     const editor = useYooptaEditor();
     const [columns, setColumns] = useState<ColumnData[]>(
@@ -19,72 +42,75 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
     );
     const [gap, setGap] = useState<number>(element?.props?.gap ?? 16);
     const [isEditing, setIsEditing] = useState(!element?.props?.columns?.length);
-    const isFirstRender = useRef(true);
+    // Refs mirror the latest committed state so the sync-from-props effect can
+    // tell OUR OWN commit echoing back (skip it) from a genuine external change
+    // (apply it). Comparing against React state instead let a commit bounce back
+    // as a "change" → setState → re-commit → infinite loop that froze the page
+    // after adding an image.
+    const columnsRef = useRef<ColumnData[]>(columns);
+    const gapRef = useRef<number>(gap);
 
-    // Sync local state when element props change (e.g. after deserialization)
+    useEffect(() => {
+        ensureRichTextStyles();
+    }, []);
+
+    // Sync local state ONLY on a genuine external prop change (e.g. after
+    // deserialization) — never on our own commit echo (compared via the refs).
     useEffect(() => {
         const propColumns = element?.props?.columns;
         const propGap = element?.props?.gap;
-        if (propColumns && JSON.stringify(propColumns) !== JSON.stringify(columns)) {
+        if (propColumns && JSON.stringify(propColumns) !== JSON.stringify(columnsRef.current)) {
+            columnsRef.current = propColumns;
             setColumns(propColumns);
         }
-        if (propGap !== undefined && propGap !== gap) setGap(propGap);
+        if (propGap !== undefined && propGap !== gapRef.current) {
+            gapRef.current = propGap;
+            setGap(propGap);
+        }
     }, [element?.props?.columns, element?.props?.gap]);
 
-    // Persist state to Yoopta/Slate store
-    useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
-        Elements.updateElement(editor, blockId, {
-            type: 'columnsLayout',
-            props: {
-                ...element.props,
-                columns,
-                columnCount: columns.length,
-                gap,
-                editorType: 'columnsEditor',
-            },
+    // Persist to Yoopta (Slate + block.value) so html.serialize reads fresh
+    // props. Committed INLINE (not from a [columns] effect) so each edit is a
+    // single render with no effect ping-pong.
+    const commit = (nextColumns: ColumnData[], nextGap: number) => {
+        columnsRef.current = nextColumns;
+        gapRef.current = nextGap;
+        setColumns(nextColumns);
+        setGap(nextGap);
+        commitBlockProps(editor, blockId, element, {
+            columns: nextColumns,
+            columnCount: nextColumns.length,
+            gap: nextGap,
+            editorType: 'columnsEditor',
         });
-    }, [columns, gap]);
+    };
 
     const setColumnCount = (count: number) => {
-        setColumns((prev) => {
-            if (count > prev.length) {
-                // Add columns
-                return [...prev, ...Array.from({ length: count - prev.length }, () => ({ content: '' }))];
-            }
-            // Remove columns from the end
-            return prev.slice(0, count);
-        });
+        const prev = columnsRef.current;
+        const next =
+            count > prev.length
+                ? [...prev, ...Array.from({ length: count - prev.length }, () => ({ content: '' }))]
+                : prev.slice(0, count);
+        commit(next, gapRef.current);
     };
 
     const updateColumnContent = (index: number, content: string) => {
-        setColumns((prev) =>
-            prev.map((col, i) => (i === index ? { ...col, content } : col))
-        );
+        const next = columnsRef.current.map((col, i) => (i === index ? { ...col, content } : col));
+        commit(next, gapRef.current);
     };
 
-    const handleInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Backspace') {
-            const target = e.target as HTMLTextAreaElement;
-            if (target.value.length > 0 || target.selectionStart !== 0) {
-                e.stopPropagation();
-            }
-        }
-    };
+    const updateGap = (nextGap: number) => commit(columnsRef.current, nextGap);
 
     return (
         <div
             {...attributes}
             contentEditable={false}
             style={{
-                border: '1px solid #e0e0e0',
+                border: `1px solid ${C.border}`,
                 borderRadius: '8px',
                 margin: '8px 0',
                 overflow: 'hidden',
-                backgroundColor: '#fafafa',
+                backgroundColor: C.surface,
             }}
         >
             {/* Header */}
@@ -94,13 +120,13 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 12px',
-                    backgroundColor: '#f0f0f0',
-                    borderBottom: '1px solid #e0e0e0',
+                    backgroundColor: C.headerBg,
+                    borderBottom: `1px solid ${C.border}`,
+                    flexWrap: 'wrap',
+                    gap: '6px',
                 }}
             >
-                <span style={{ fontSize: '14px', fontWeight: 600, color: '#333' }}>
-                    Columns Layout
-                </span>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: C.text }}>Columns Layout</span>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     {/* Column count */}
                     {COLUMN_PRESETS.map((preset) => (
@@ -110,10 +136,10 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                             style={{
                                 padding: '3px 8px',
                                 fontSize: '11px',
-                                border: '1px solid #ccc',
+                                border: `1px solid ${C.controlBorder}`,
                                 borderRadius: '4px',
-                                backgroundColor: columns.length === preset.count ? '#007acc' : 'white',
-                                color: columns.length === preset.count ? 'white' : '#666',
+                                backgroundColor: columns.length === preset.count ? C.accent : C.white,
+                                color: columns.length === preset.count ? C.white : C.muted,
                                 cursor: 'pointer',
                             }}
                         >
@@ -124,8 +150,8 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                     {/* Gap control */}
                     <select
                         value={gap}
-                        onChange={(e) => setGap(Number(e.target.value))}
-                        style={{ fontSize: '11px', padding: '3px 4px', border: '1px solid #ccc', borderRadius: '4px' }}
+                        onChange={(e) => updateGap(Number(e.target.value))}
+                        style={{ fontSize: '11px', padding: '3px 4px', border: `1px solid ${C.controlBorder}`, borderRadius: '4px' }}
                     >
                         <option value={8}>Tight</option>
                         <option value={16}>Normal</option>
@@ -138,10 +164,10 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                         style={{
                             padding: '3px 10px',
                             fontSize: '12px',
-                            border: '1px solid #ccc',
+                            border: `1px solid ${C.controlBorder}`,
                             borderRadius: '4px',
-                            backgroundColor: 'white',
-                            color: '#666',
+                            backgroundColor: C.white,
+                            color: C.muted,
                             cursor: 'pointer',
                         }}
                     >
@@ -159,71 +185,56 @@ export function ColumnsBlock({ element, attributes, children, blockId }: PluginE
                     padding: '12px',
                 }}
             >
-                {columns.map((col, index) => (
-                    <div
-                        key={index}
-                        style={{
-                            // Preview: distinct white card per column (matches the
-                            // serialized read view). Editing: dashed outline.
-                            border: isEditing ? '1px dashed #ccc' : '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            background: isEditing ? 'transparent' : '#ffffff',
-                            minHeight: isEditing ? '80px' : '20px',
-                            position: 'relative',
-                        }}
-                    >
-                        {isEditing && (
+                {columns.map((col, index) =>
+                    isEditing ? (
+                        <div key={index} style={{ minWidth: 0 }}>
                             <div
                                 style={{
-                                    position: 'absolute',
-                                    top: '4px',
-                                    left: '8px',
                                     fontSize: '10px',
-                                    color: '#999',
+                                    color: C.label,
                                     fontWeight: 600,
+                                    marginBottom: '4px',
                                 }}
                             >
                                 Column {index + 1}
                             </div>
-                        )}
-                        {isEditing ? (
-                            <textarea
+                            <RichTextField
                                 value={col.content}
-                                onChange={(e) => updateColumnContent(index, e.target.value)}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder={`Column ${index + 1} content...`}
-                                style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    minHeight: '80px',
-                                    padding: '20px 8px 8px',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    fontSize: '14px',
-                                    resize: 'vertical',
-                                    backgroundColor: '#fff',
-                                    outline: 'none',
-                                }}
+                                onChange={(html) => updateColumnContent(index, html)}
+                                placeholder={`Column ${index + 1} — text and/or image…`}
+                                minHeight={80}
                             />
-                        ) : (
-                            <div
-                                style={{
-                                    padding: '14px 16px',
-                                    fontSize: '14px',
-                                    lineHeight: 1.6,
-                                    color: '#333',
-                                    whiteSpace: 'pre-wrap',
-                                }}
-                            >
-                                {col.content || (
-                                    <span style={{ color: '#ccc', fontStyle: 'italic' }}>
-                                        Empty column
-                                    </span>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ))}
+                        </div>
+                    ) : (
+                        <div
+                            key={index}
+                            style={{
+                                border: `1px solid ${C.cardBorder}`,
+                                borderRadius: '8px',
+                                background: C.white,
+                                minHeight: '20px',
+                                minWidth: 0,
+                                padding: '14px 16px',
+                            }}
+                        >
+                            {isRichTextEmpty(col.content) ? (
+                                <span style={{ color: C.placeholder, fontStyle: 'italic', fontSize: '14px' }}>
+                                    Empty column
+                                </span>
+                            ) : (
+                                <RichTextHtml
+                                    html={col.content}
+                                    style={{
+                                        fontSize: '14px',
+                                        lineHeight: 1.6,
+                                        color: C.text,
+                                        whiteSpace: 'pre-wrap',
+                                    }}
+                                />
+                            )}
+                        </div>
+                    )
+                )}
             </div>
 
             {children}
@@ -250,7 +261,7 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
     options: {
         display: {
             title: 'Columns Layout',
-            description: 'Add multi-column text layout',
+            description: 'Multi-column layout — each column supports text and images',
             icon: <ColumnsIcon />,
         },
         shortcuts: ['columns', 'cols', 'grid', 'layout'],
@@ -289,8 +300,8 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
             serialize: (element, _children) => {
                 // Bulletproof: must NEVER throw, or the whole-document Save aborts
                 // and the per-block fallback silently drops this block. data-columns
-                // (source of truth) is base64 so the document-wide HTML sanitizers
-                // can't corrupt it.
+                // (source of truth for the admin round-trip) is base64 so the
+                // document-wide HTML sanitizers can't corrupt it.
                 let columns: ColumnData[] = [];
                 try {
                     const props = (element && element.props) || {};
@@ -298,7 +309,7 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
                 } catch {
                     columns = [];
                 }
-                const gap = (element?.props?.gap) ?? 16;
+                const gap = element?.props?.gap ?? 16;
                 let columnsJson = '';
                 try {
                     columnsJson = encodeBlockData(columns);
@@ -308,19 +319,20 @@ export const ColumnsPlugin = new YooptaPlugin<{ columnsLayout: any }>({
 
                 const columnDivs = columns
                     .map((col) => {
-                        const contentEsc = String(col?.content ?? '')
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/\n/g, '<br/>');
+                        // Rich HTML (may include images). Inserted RAW so the
+                        // learner's generic HTML renderer shows formatting/images
+                        // directly (columns aren't special-cased there). A real S3
+                        // <img src> is safe: the document sanitizer only trims its
+                        // query params (→ permanent URL) and never drops the tag.
+                        const content = String(col?.content ?? '');
                         // Render each column as a distinct white card on the grey
                         // container so columns read as separate regions (otherwise
                         // adjacent columns with a tight gap blend into one block).
-                        return `<div style="padding: 14px 16px; font-size: 14px; line-height: 1.6; color: #333; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">${contentEsc}</div>`;
+                        return `<div style="padding: 14px 16px; font-size: 14px; line-height: 1.6; color: ${C.text}; background: ${C.white}; border: 1px solid ${C.cardBorder}; border-radius: 8px; overflow-wrap: anywhere;">${content}</div>`;
                     })
                     .join('');
 
-                return `<div data-yoopta-type="columnsLayout" data-editor-type="columnsEditor" data-columns="${columnsJson}" data-gap="${gap}" style="display: grid; grid-template-columns: repeat(${columns.length}, 1fr); gap: ${gap}px; padding: 12px; margin: 8px 0; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa;">${columnDivs}</div>`;
+                return `<div data-yoopta-type="columnsLayout" data-editor-type="columnsEditor" data-columns="${columnsJson}" data-gap="${gap}" style="display: grid; grid-template-columns: repeat(${columns.length}, 1fr); gap: ${gap}px; padding: 12px; margin: 8px 0; border: 1px solid ${C.border}; border-radius: 8px; background: ${C.surface};">${columnDivs}</div>`;
             },
         },
     },

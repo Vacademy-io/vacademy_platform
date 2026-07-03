@@ -16,8 +16,9 @@ import { z } from 'zod';
 // ── Sentinel filter values (also the URL param values) ────────────────
 export const ALL_AUDIENCES_VALUE = '__ALL__';
 export const ALL_TIERS_VALUE = '__ALL__';
-export const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted (default)
-export const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status
+export const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted
+export const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status (default — enrolled leads stay visible)
+export const ALL_CONVERTED_VALUE = '__CONVERTED__'; // only leads enrolled into a course
 export const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage
 export const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
 // Sentinel for the counsellor dropdown's "Unassigned" entry — narrows to leads

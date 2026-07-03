@@ -33,6 +33,8 @@ export interface CourseLeaderboardData {
   instituteName?: string | null;
   instituteLogoFileId?: string | null;
   instituteThemeCode?: string | null;
+  /** Whether names are anonymized (initials) — admin-configurable for the public page. */
+  anonymized?: boolean;
 }
 
 /** The learner's own gamification summary for their profile. */

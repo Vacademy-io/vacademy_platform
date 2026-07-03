@@ -128,6 +128,14 @@ export interface EnrollmentNotificationsSettings {
     showSendCredentials: boolean;
 }
 
+/**
+ * Status a slide gets when it is copied via slide "Copy to".
+ * - KEEP_DRAFT       → copy is DRAFT (default; matches historical behavior)
+ * - INHERIT_SOURCE   → copy keeps the source slide's status (PUBLISHED stays PUBLISHED)
+ * - ALWAYS_PUBLISHED → copy is always PUBLISHED
+ */
+export type CopiedSlideStatus = 'KEEP_DRAFT' | 'INHERIT_SOURCE' | 'ALWAYS_PUBLISHED';
+
 export interface CourseSettingsData {
     courseInformation: CourseInformation;
     courseStructure: CourseStructure;
@@ -138,6 +146,11 @@ export interface CourseSettingsData {
     dripConditions: DripConditionsSettings;
     offerPricing?: OfferPricingSettings;
     enrollmentNotifications?: EnrollmentNotificationsSettings;
+    /**
+     * Publish behavior for copied slides. Read by admin_core on slide "Copy to".
+     * Optional + defaults to KEEP_DRAFT so existing institutes are unaffected.
+     */
+    copiedSlideStatus?: CopiedSlideStatus;
 }
 
 export interface CourseSettings {
@@ -206,4 +219,5 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
         showNotifyLearners: true,
         showSendCredentials: true,
     },
+    copiedSlideStatus: 'KEEP_DRAFT',
 };

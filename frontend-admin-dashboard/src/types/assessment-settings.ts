@@ -13,12 +13,32 @@ export interface ReportBrandingSettings {
     footer_html: string;
 }
 
+/**
+ * Role-wise control over who receives assessment result / evaluation
+ * notifications (result-release + re-evaluation emails, and learner reports).
+ * `roles` maps a role key (uppercased: ADMIN / TEACHER / STUDENT / LEARNER /
+ * EVALUATOR / a custom role name) to whether that role receives the notification.
+ * A role absent from the map falls back to the default: STUDENT/LEARNER = on,
+ * every other role (incl. ADMIN) = off.
+ */
+export interface ResultNotificationSettings {
+    version: number;
+    roles: Record<string, boolean>;
+}
+
 export interface AssessmentSettingsData {
     offlineEntry: {
         enabled: boolean;
     };
     reportBranding: ReportBrandingSettings;
+    resultNotifications: ResultNotificationSettings;
 }
+
+/** Default: STUDENT/LEARNER receive results; every other role (incl. ADMIN) does not. */
+export const defaultReceivesResultNotification = (roleKey: string): boolean => {
+    const key = (roleKey || '').toUpperCase();
+    return key === 'STUDENT' || key === 'LEARNER';
+};
 
 export interface AssessmentSettingsRequest {
     setting_name: string;
@@ -49,4 +69,6 @@ export const DEFAULT_ASSESSMENT_SETTINGS: AssessmentSettingsData = {
         enabled: false,
     },
     reportBranding: { ...DEFAULT_REPORT_BRANDING },
+    // Empty map => backend applies per-role defaults (STUDENT on, everything else off).
+    resultNotifications: { version: 1, roles: {} },
 };

@@ -33,15 +33,21 @@ const PLACE = {
   3: { ring: "ring-warning-600", pedestal: "bg-warning-50 text-warning-700", height: "h-12" },
 } as const;
 
+/** First character of a name (works for full names and anonymized initials alike). */
+function firstChar(name: string): string {
+  const c = name.trim().charAt(0);
+  return c ? c.toUpperCase() : "?";
+}
+
 function InitialAvatar({ name, className }: { name: string; className?: string }) {
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold text-primary-600",
+        "flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-bold uppercase text-primary-600",
         className
       )}
     >
-      {name}
+      {firstChar(name)}
     </div>
   );
 }
@@ -232,10 +238,12 @@ export function PublicLeaderboardView({
 
         {/* Footer */}
         <div className="mt-4 flex flex-col items-center gap-1 text-center">
-          <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
-            <ShieldCheck weight="fill" className="size-3.5 text-neutral-400" />
-            Names are anonymized for privacy
-          </p>
+          {data?.anonymized !== false && (
+            <p className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
+              <ShieldCheck weight="fill" className="size-3.5 text-neutral-400" />
+              Names are anonymized for privacy
+            </p>
+          )}
           {instituteName && (
             <p className="text-caption text-muted-foreground">Powered by {instituteName}</p>
           )}

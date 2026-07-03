@@ -14,6 +14,7 @@ import {
 import { getAssessmentSettings, saveAssessmentSettings } from '@/services/assessment-settings';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import ReportBrandingSettingsSection from './ReportBrandingSettings';
+import ResultNotificationRecipientsCard from './ResultNotificationRecipientsCard';
 
 const DEFAULT_HEADER_HTML = `<div style="text-align:center; font-size:16px; font-weight:bold;">{{assessment_name}}</div>
 <div style="text-align:center; font-size:11px; color:#666;">Student Performance Analysis</div>`;
@@ -149,6 +150,21 @@ const AssessmentSettings = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Result Notification Recipients (role-wise) */}
+            <ResultNotificationRecipientsCard
+                roles={settings.resultNotifications?.roles ?? {}}
+                onChange={(roles) => {
+                    setSettings((prev) => ({
+                        ...prev,
+                        resultNotifications: {
+                            version: prev.resultNotifications?.version ?? 1,
+                            roles,
+                        },
+                    }));
+                    setHasChanges(true);
+                }}
+            />
 
             {/* Report Branding Section */}
             <div>

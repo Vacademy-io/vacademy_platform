@@ -5,6 +5,7 @@ export * from './lead-view-model';
 export * from './lead-actions';
 export { LeadAvatar } from './lead-avatar';
 export { LeadStageChip, resolveStage, type StageAccent } from './lead-stage-chip';
+export { LeadConversionBadge } from './lead-conversion-badge';
 export { LeadScoreBar } from './lead-score-bar';
 export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';

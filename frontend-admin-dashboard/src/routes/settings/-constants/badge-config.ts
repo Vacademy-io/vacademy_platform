@@ -88,6 +88,8 @@ export interface BadgesRewardsConfig {
     /** Points-per-action scoring (defaults applied when absent). */
     scoring?: ScoringConfig;
     badges: BadgeDefinitionConfig[];
+    /** Show full names on the PUBLIC shareable leaderboard (defaults OFF = anonymized initials). */
+    publicShowFullNames?: boolean;
 }
 
 /** Curated Phosphor icon names available in both the admin picker and learner renderer. */

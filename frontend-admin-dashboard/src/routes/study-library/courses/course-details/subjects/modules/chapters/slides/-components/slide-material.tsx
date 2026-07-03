@@ -518,15 +518,7 @@ export const SlideMaterial = ({
                         marks={MARKS}
                         value={editor.children}
                         selectionBoxRoot={selectionRef}
-                        // autoFocus is disabled on purpose. Slate-react's autoFocus
-                        // effect focuses the editor synchronously on mount, before the
-                        // new block DOM has painted — Editor.start/point then throws
-                        // "Cannot get the start point … no start text node" /
-                        // "Cannot resolve a DOM node from Slate node" and crashes the
-                        // whole slide view (esp. the read-only learner preview). We
-                        // focus ourselves after a rAF + try/catch (see loadContent →
-                        // editor.focus()), which is DOM-safe.
-                        autoFocus={false}
+                        autoFocus={true}
                         readOnly={isLearnerView}
                         onMount={handleEditorMount}
                         onChange={() => {

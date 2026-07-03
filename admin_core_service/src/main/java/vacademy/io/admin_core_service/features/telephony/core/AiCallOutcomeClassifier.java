@@ -20,8 +20,26 @@ import java.util.List;
 @Component
 public class AiCallOutcomeClassifier {
 
+    /** Dispositions that stay retry-worthy even on a CONNECTED call — the lead asked
+     *  to be called back, or the bot couldn't reach a conclusion. */
+    private static final List<String> RETRY_WORTHY = List.of("Callback", "Incomplete");
+
     public AiCallDecision classify(String status, Integer durationSec, String disposition,
                                    int priorAttempts, AiCallingSettingsPojo s) {
+        return classify(status, durationSec, disposition, priorAttempts, s, null);
+    }
+
+    /**
+     * {@code agentDispositions} = the outcomes a VACADEMY_AI registry agent declares.
+     * A CONNECTED call whose disposition the agent explicitly defined is a REACHED
+     * CONCLUSION → terminal, so the AI never re-dials a lead who fully answered with a
+     * custom disposition the institute's assign/stop lists don't enumerate (the old
+     * "neutral → retry" fallback re-called answered leads, incl. do-not-call outcomes).
+     * Null/empty agent list preserves the exact prior behavior (Aavtaar, agentless).
+     */
+    public AiCallDecision classify(String status, Integer durationSec, String disposition,
+                                   int priorAttempts, AiCallingSettingsPojo s,
+                                   List<String> agentDispositions) {
         if (s == null || !s.isEnabled()) {
             return new AiCallDecision(Action.NONE, "ai_calling_disabled");
         }
@@ -39,7 +57,16 @@ public class AiCallOutcomeClassifier {
         if (containsIgnoreCase(s.getStopOnDispositions(), d)) {
             return new AiCallDecision(Action.STOP, "stop:" + d);
         }
-        // Neutral / unmapped disposition (e.g. Incomplete, Requirement_Not_Clear).
+        // Genuinely retry-worthy even when connected (call-back / no conclusion).
+        if (containsIgnoreCase(RETRY_WORTHY, d)) {
+            return canRetry ? new AiCallDecision(Action.RETRY, "neutral:" + d) : exhausted(s);
+        }
+        // Connected call carrying a disposition the AGENT defined = a conclusion the
+        // institute chose not to map to assign/stop → terminal STOP, never re-dial.
+        if (containsIgnoreCase(agentDispositions, d)) {
+            return new AiCallDecision(Action.STOP, "agent_terminal:" + d);
+        }
+        // Truly unmapped (not in settings, not agent-defined) → neutral (unchanged).
         return canRetry ? new AiCallDecision(Action.RETRY, "neutral:" + d) : exhausted(s);
     }
 

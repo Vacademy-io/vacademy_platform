@@ -32,6 +32,15 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("voice_bot")
 
+# Live-call admission control. The event loop is single-threaded, so a plain int
+# read+increment with no intervening await is atomic — the /ws gate below relies
+# on that. Tracks active /ws pipelines (the CPU-heavy resource), not /answer hits.
+_active_calls = 0
+
+
+def _capacity_left() -> bool:
+    return _active_calls < get_settings().max_concurrent_calls
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,7 +64,12 @@ router = APIRouter(prefix="/voice-bot-service")
 @router.get("/health")
 async def health():
     s = get_settings()
-    return {"status": "ok", "ws": s.wss_url("corr=<corr>")}
+    return {
+        "status": "ok",
+        "activeCalls": _active_calls,
+        "maxConcurrentCalls": s.max_concurrent_calls,
+        "ws": s.wss_url("corr=<corr>"),
+    }
 
 
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)
@@ -71,6 +85,22 @@ async def answer(
     runs the conversation, and when the stream closes Plivo falls through to
     <Redirect> (handoff/hangup continuation served by admin_core)."""
     s = get_settings()
+
+    # Admission control: at capacity, don't open a <Stream> we'd immediately have
+    # to drop (a garbled/half-connected bot is worse than a clean fallback). Serve
+    # a short apology + the <Redirect> so Plivo falls through to admin_core's
+    # /plivo/ai-next (human handoff or hangup) exactly as a finished call would.
+    if not _capacity_left():
+        logger.warning("answer: at capacity (%d/%d) — serving busy fallback corr=%s",
+                       _active_calls, s.max_concurrent_calls, corr)
+        busy_redirect = f'<Redirect method="POST">{escape(nxt)}</Redirect>' if nxt else "<Hangup/>"
+        busy_xml = (
+            '<?xml version="1.0" encoding="UTF-8"?><Response>'
+            "<Speak>Sorry, all our lines are busy right now. Please try again shortly.</Speak>"
+            f"{busy_redirect}</Response>"
+        )
+        return PlainTextResponse(busy_xml, media_type="application/xml")
+
     # urlencode: agent/inst are institute-typed free text — '&'/'=' must not
     # inject query params into the wss URL Plivo will connect to.
     ws_url = s.wss_url(urlencode({"corr": corr, "agent": agent, "inst": inst}))
@@ -109,6 +139,7 @@ async def ws_endpoint(websocket: WebSocket):
         FastAPIWebsocketTransport,
     )
 
+    global _active_calls
     await websocket.accept()
 
     corr = websocket.query_params.get("corr") or ""
@@ -118,62 +149,81 @@ async def ws_endpoint(websocket: WebSocket):
         await websocket.close()
         return
 
-    # Provider handshake first (Plivo sends a start event with stream/call ids).
-    transport_type, call_data = await parse_telephony_websocket(websocket)
-    stream_id = (call_data or {}).get("stream_id")
-    call_uuid = (call_data or {}).get("call_id")
-    logger.info("ws connected corr=%s transport=%s call=%s", corr, transport_type, call_uuid)
-
-    # Context BEFORE the pipeline — a call without persona/lead must not proceed.
-    try:
-        context = await admin_core.get_call_context(corr, agent)
-    except Exception:
-        logger.exception("ws: context fetch failed corr=%s — closing", corr)
+    # Admission control (authoritative backstop; /answer already turns most excess
+    # away). The check + increment are adjacent with NO await between them, so on
+    # the single-threaded event loop concurrent handshakes cannot both pass. Every
+    # exit path below is inside the try/finally that releases the slot.
+    s = get_settings()
+    if _active_calls >= s.max_concurrent_calls:
+        logger.warning("ws: at capacity (%d/%d) — closing corr=%s",
+                       _active_calls, s.max_concurrent_calls, corr)
         await websocket.close()
         return
+    _active_calls += 1
 
-    serializer = PlivoFrameSerializer(
+    call_uuid = None
+    try:
+        # Provider handshake first (Plivo sends a start event with stream/call ids).
+        transport_type, call_data = await parse_telephony_websocket(websocket)
+        stream_id = (call_data or {}).get("stream_id")
+        call_uuid = (call_data or {}).get("call_id")
+        logger.info("ws connected corr=%s transport=%s call=%s active=%d",
+                    corr, transport_type, call_uuid, _active_calls)
+
+        # Context BEFORE the pipeline — a call without persona/lead must not proceed.
+        try:
+            context = await admin_core.get_call_context(corr, agent)
+        except Exception:
+            logger.exception("ws: context fetch failed corr=%s — closing", corr)
+            await websocket.close()
+            return
+
+        serializer = PlivoFrameSerializer(
         stream_id=stream_id,
         call_id=call_uuid,
         # auto_hang_up MUST stay off: the call has to SURVIVE the stream's end so
         # Plivo falls through to <Redirect> → admin_core /plivo/ai-next, which
         # serves the human-handoff <Dial> (or <Hangup/>). The default (True)
         # would API-kill the call on EndFrame and no handoff could ever happen.
-        params=PlivoFrameSerializer.InputParams(auto_hang_up=False),
-    )
-    transport = FastAPIWebsocketTransport(
-        websocket=websocket,
-        params=FastAPIWebsocketParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            add_wav_header=False,
-            # stop_secs below the 0.8 default: how much silence ends the caller's
-            # turn — the single biggest chunk of perceived response latency.
-            vad_analyzer=SileroVADAnalyzer(
-                params=VADParams(stop_secs=get_settings().vad_stop_secs)
+            params=PlivoFrameSerializer.InputParams(auto_hang_up=False),
+        )
+        transport = FastAPIWebsocketTransport(
+            websocket=websocket,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                # stop_secs below the 0.8 default: how much silence ends the caller's
+                # turn — the single biggest chunk of perceived response latency.
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(stop_secs=s.vad_stop_secs)
+                ),
+                serializer=serializer,
             ),
-            serializer=serializer,
-        ),
-    )
+        )
 
-    # The outcome is owned HERE (not inside run_bot) so a mid-pipeline crash
-    # still leaves a reportable object — a lost report strands the paused
-    # workflow until its safety timeout.
-    outcome = CallOutcome(corr=corr, context=context)
-    try:
-        await run_bot(transport, corr, context, outcome,
-                      aiohttp_session=websocket.app.state.http_session)
-    except Exception:
-        logger.exception("ws: pipeline crashed corr=%s", corr)
-    finally:
-        if outcome.ended_at is None:  # crash before run_bot's own finally ran
-            outcome.ended_at = time.time()
+        # The outcome is owned HERE (not inside run_bot) so a mid-pipeline crash
+        # still leaves a reportable object — a lost report strands the paused
+        # workflow until its safety timeout.
+        outcome = CallOutcome(corr=corr, context=context)
         try:
-            # shield: if this WS coroutine is being cancelled (abrupt disconnect /
-            # shutdown), the report task still runs to completion.
-            await asyncio.shield(build_and_post_report(outcome, call_uuid))
+            await run_bot(transport, corr, context, outcome,
+                          aiohttp_session=websocket.app.state.http_session)
         except Exception:
-            logger.exception("ws: report failed corr=%s", corr)
+            logger.exception("ws: pipeline crashed corr=%s", corr)
+        finally:
+            if outcome.ended_at is None:  # crash before run_bot's own finally ran
+                outcome.ended_at = time.time()
+            try:
+                # shield: if this WS coroutine is being cancelled (abrupt disconnect /
+                # shutdown), the report task still runs to completion.
+                await asyncio.shield(build_and_post_report(outcome, call_uuid))
+            except Exception:
+                logger.exception("ws: report failed corr=%s", corr)
+    finally:
+        # Release the admission slot on EVERY exit (context-fetch return, crash,
+        # normal end, cancellation) — a leak here would silently shrink capacity.
+        _active_calls -= 1
 
 
 app.include_router(router)

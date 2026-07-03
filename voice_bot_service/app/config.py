@@ -108,6 +108,15 @@ class Settings:
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.
     max_call_minutes_default: float = 10.0
 
+    # Max simultaneous live calls this bot process will run. Each call pins a
+    # Silero VAD session + STT/LLM/TTS streams + a watchdog loop; past the box's
+    # CPU ceiling ALL calls degrade (garbled audio, late turns) instead of new
+    # ones being rejected. Over cap, /answer serves a "busy" hangup (no <Stream>)
+    # and /ws closes immediately. Size to the box: ~10 for a 1 vCPU / 2 GB node.
+    max_concurrent_calls: int = field(
+        default_factory=lambda: int(_env("MAX_CONCURRENT_CALLS", "10"))
+    )
+
     def wss_url(self, query: str) -> str:
         base = self.public_base.replace("https://", "wss://").replace("http://", "ws://")
         return f"{base}/ws?{query}"

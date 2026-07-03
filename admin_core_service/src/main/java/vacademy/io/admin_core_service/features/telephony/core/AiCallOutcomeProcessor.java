@@ -87,6 +87,13 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private WorkflowTriggerService workflowTriggerService;
 
+    // @Lazy (defensive, matching the pattern above): the registry-agent disposition
+    // list makes the classifier agent-aware so a connected call with a custom
+    // disposition isn't re-dialed as "neutral". Read-only lookup on the outcome path.
+    @Autowired
+    @Lazy
+    private AiAgentService aiAgentService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
@@ -244,8 +251,17 @@ public class AiCallOutcomeProcessor {
         instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
         settings = settingsService.get(instituteId);
         int priorAttempts = r.getCallRetry() == null ? 0 : r.getCallRetry();
+        // Agent-defined dispositions (VACADEMY_AI registry agent) make a connected call
+        // carrying a custom outcome terminal instead of re-dialed. Empty for Aavtaar.
+        List<String> agentDispositions = List.of();
+        if (ProviderType.VACADEMY_AI.equals(r.getProvider()) && r.getCampaignId() != null) {
+            agentDispositions = aiAgentService.find(r.getCampaignId(), instituteId)
+                    .map(a -> aiAgentService.parseList(a.getDispositions()))
+                    .orElse(List.of());
+        }
         AiCallDecision decision = classifier.classify(
-                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings);
+                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings,
+                agentDispositions);
         boolean connected = isConnected(r, settings);
 
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",

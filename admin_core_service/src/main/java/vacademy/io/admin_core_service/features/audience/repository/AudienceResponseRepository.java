@@ -24,9 +24,16 @@ import java.util.Optional;
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
         /**
-         * Find all leads for a specific campaign
+         * Find all leads for a specific campaign. Soft-deleted (INACTIVE) leads are
+         * excluded so lead lists, bulk sends and AI call campaigns never act on them.
          */
-        List<AudienceResponse> findByAudienceId(String audienceId);
+        @Query(value = """
+                SELECT ar.*
+                FROM audience_response ar
+                WHERE ar.audience_id = :audienceId
+                  AND ar.audience_status = 'ACTIVE'
+                """, nativeQuery = true)
+        List<AudienceResponse> findByAudienceId(@Param("audienceId") String audienceId);
 
         /**
          * Lead lookup by phone number for telephony attribution: the most recent
@@ -41,6 +48,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                 FROM audience_response ar
                 JOIN audience a ON a.id = ar.audience_id
                 WHERE a.institute_id = :instituteId
+                  AND ar.audience_status = 'ACTIVE'
                   AND ar.parent_mobile IS NOT NULL
                   AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
                 ORDER BY ar.created_at DESC
@@ -63,6 +71,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                 JOIN audience a ON a.id = ar.audience_id
                 WHERE a.institute_id = :instituteId
                   AND ar.user_id = :userId
+                  AND ar.audience_status = 'ACTIVE'
                 ORDER BY ar.created_at DESC
                 LIMIT 1
                 """, nativeQuery = true)
@@ -169,6 +178,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
                               )
+                              AND ar.audience_status = 'ACTIVE'
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -307,6 +317,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
                               )
+                              AND ar.audience_status = 'ACTIVE'
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
                                 OR (
@@ -417,6 +428,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                             ORDER BY ar.submittedAt DESC
                         """)
         Page<AudienceResponse> findAllLeadsForInstitute(
@@ -490,6 +502,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
                               --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
@@ -615,6 +628,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
                               --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
@@ -713,6 +727,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
+                              AND ar.audience_status = 'ACTIVE'
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
@@ -725,6 +740,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
                               AND a.institute_id = :instituteId
+                              AND ar.audience_status = 'ACTIVE'
                               AND cfv.custom_field_id = :customFieldId
                               AND cfv.value IS NOT NULL
                               AND cfv.value <> ''
@@ -762,6 +778,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Check if a user has already submitted a response for this audience
          */
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
+
+        /** Most-recent response for an audience+user — used to reactivate a soft-deleted lead on re-submission. */
+        Optional<AudienceResponse> findTopByAudienceIdAndUserIdOrderByCreatedAtDesc(String audienceId, String userId);
 
         /**
          * Check if a child (student) has already been submitted for this audience campaign.
@@ -834,6 +853,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.audienceId = :audienceId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -855,6 +875,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND ar.conversionStatus = :conversionStatus
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceDateRangeAndConversionStatus(
                         @Param("instituteId") String instituteId,
@@ -874,6 +895,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.userId IS NOT NULL
                             AND ar.parentMobile IS NOT NULL
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findActiveLeadsByAudienceIds(
                         @Param("audienceIds") List<String> audienceIds);
@@ -889,6 +911,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.instituteId = :instituteId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByInstituteAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -984,6 +1007,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                         """, nativeQuery = true)
         List<String> findInstituteIdsWithActiveLeads();
 
@@ -1028,6 +1052,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                               AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                         """, nativeQuery = true)

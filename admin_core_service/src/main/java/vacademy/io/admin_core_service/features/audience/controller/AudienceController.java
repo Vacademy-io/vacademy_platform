@@ -167,9 +167,24 @@ public class AudienceController {
     }
 
     @DeleteMapping("/lead/{responseId}")
-    public ResponseEntity<String> deleteLead(@PathVariable String responseId) {
-        audienceService.deleteLead(responseId);
+    public ResponseEntity<String> deleteLead(@PathVariable String responseId,
+                                             @RequestAttribute("user") CustomUserDetails user) {
+        audienceService.deleteLead(responseId, user);
         return ResponseEntity.ok("Lead deleted successfully");
+    }
+
+    /**
+     * Edit a lead's profile from the CRM. Authenticated counterpart to the
+     * student edit endpoint, but writes only where a lead is read from:
+     * the auth user, the audience_response guardian fields, and the lead's
+     * custom field values. Keyed by the audience_response id.
+     */
+    @PutMapping("/lead/{responseId}/profile")
+    public ResponseEntity<String> updateLeadProfile(@PathVariable String responseId,
+                                                    @RequestBody LeadProfileEditRequestDTO request,
+                                                    @RequestAttribute("user") CustomUserDetails user) {
+        audienceService.updateLeadProfile(responseId, request);
+        return ResponseEntity.ok("Lead profile updated");
     }
 
     /**

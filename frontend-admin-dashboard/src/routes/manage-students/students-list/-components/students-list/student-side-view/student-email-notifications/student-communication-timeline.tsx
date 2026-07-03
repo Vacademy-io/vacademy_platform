@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { IndividualSendDialog } from './individual-send-dialog';
+import { UnsubscribeButtons } from './UnsubscribeButtons';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
     ProfileSkeleton,
@@ -633,6 +634,9 @@ export const StudentCommunicationTimeline = () => {
                     </MyButton>
                 </div>
             </div>
+
+            {/* ── Promotional unsubscribe (admin-only) ─────────────────────── */}
+            <UnsubscribeButtons />
 
             {/* ── Channel filter chips ─────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2">

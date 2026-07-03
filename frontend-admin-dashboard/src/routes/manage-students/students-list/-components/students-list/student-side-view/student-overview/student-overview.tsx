@@ -25,6 +25,7 @@ import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 import { EditStudentDetails } from './EditStudentDetails';
+import { EditLeadDetails } from './EditLeadDetails';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -223,9 +224,15 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
 
     return (
         <div className="flex flex-col gap-3 text-card-foreground">
-            {/* Single primary action — edit the learner's profile. */}
+            {/* Single primary action — edit the profile. Leads (rows carrying a
+                `_response_id` marker) get the lead-shaped editor; contacts get the
+                student editor. */}
             <div className="flex justify-end">
-                <EditStudentDetails />
+                {(selectedStudent as unknown as Record<string, unknown>)?._response_id ? (
+                    <EditLeadDetails />
+                ) : (
+                    <EditStudentDetails />
+                )}
             </div>
 
             {/* Detail sections — clean label/value cards (General Details,

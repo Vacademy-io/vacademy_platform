@@ -81,6 +81,16 @@ public class AudienceResponse {
     @Column(name = "overall_status", length = 50)
     private String overallStatus;
 
+    /**
+     * Soft-delete lifecycle status — {@code ACTIVE} / {@code INACTIVE}
+     * (see {@link vacademy.io.admin_core_service.features.audience.enums.AudienceStatusEnum}).
+     * INACTIVE = admin-deleted lead; excluded from lead views and from
+     * promotional/automated send recipient queries.
+     */
+    @Column(name = "audience_status", length = 50)
+    @Builder.Default
+    private String audienceStatus = "ACTIVE";
+
     // ── Deduplication fields ──────────────────────────────────
 
     /** SHA-256 hash of normalized email+phone for dedup within campaign */

@@ -6,6 +6,7 @@ import { X, ArrowsOutSimple, CaretLeft, CaretRight } from '@phosphor-icons/react
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
+import { DeleteLeadButton } from './student-overview/DeleteLeadButton';
 import { StudentOverview } from './student-overview/student-overview';
 import { StudentCourses } from './student-courses/student-courses';
 import { StudentLearningProgress } from './student-learning-progress/student-learning-progress';
@@ -332,6 +333,9 @@ export const StudentSidebar = ({
                                 {selectedStudent?.status && (
                                     <StatusChips status={selectedStudent.status} />
                                 )}
+                                {/* Delete Lead — self-hides unless this is a lead and the
+                                    caller is an admin. Sits beside the status pill. */}
+                                <DeleteLeadButton />
                             </div>
 
                             {/* The full-screen profile overlay is mounted only by the

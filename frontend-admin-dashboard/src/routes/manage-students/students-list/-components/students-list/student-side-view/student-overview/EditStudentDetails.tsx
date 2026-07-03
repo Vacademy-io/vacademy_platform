@@ -48,7 +48,7 @@ const EditStudentDetailsFormSchema = z.object({
     username: z.string().optional(),
     email: z.string().email('Invalid email address'),
     full_name: z.string().min(1, 'This field is required'),
-    contact_number: z.string().min(1, 'This field is required'),
+    contact_number: z.string().optional().or(z.literal('')),
     gender: z.string().optional(),
     date_of_birth: z.string().optional(),
     address_line: z.string().optional(),
@@ -485,7 +485,7 @@ export const EditStudentDetails = () => {
                                 placeholder="123 456 7890"
                                 name="contact_number"
                                 control={form.control}
-                                required={true}
+                                required={false}
                             />
                             {form.formState.errors.contact_number?.message && (
                                 <p className="mt-1 text-caption text-danger-600">

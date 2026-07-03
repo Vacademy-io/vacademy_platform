@@ -130,10 +130,12 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
         attendance_percent: 0,
         referral_count: 0,
         pin_code: '',
-        fathers_name: '',
+        // Guardian fields for a lead live on audience_response.parent_* — surface
+        // them so the sidebar shows them and EditLeadDetails can round-trip them.
+        fathers_name: lead.parent_name || '',
         mothers_name: '',
-        father_mobile_number: '',
-        father_email: '',
+        father_mobile_number: lead.parent_mobile || '',
+        father_email: lead.parent_email || '',
         mother_mobile_number: '',
         mother_email: '',
         linked_institute_name: null,

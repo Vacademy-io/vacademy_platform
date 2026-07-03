@@ -12,7 +12,9 @@ import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.dto.CounsellorAllocationSettingDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.enums.AudienceStatusEnum;
 import vacademy.io.admin_core_service.features.audience.enums.CampaignStatusEnum;
+import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSourceType;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
@@ -58,6 +60,10 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerS
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.common.exceptions.ConflictException;
+import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.exceptions.InvalidRequestException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 import vacademy.io.common.exceptions.VacademyException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,6 +102,9 @@ public class AudienceService {
 
     @Autowired
     private CustomFieldValuesRepository customFieldValuesRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldValueService customFieldValueService;
 
     @Autowired
     private AuthService authService;
@@ -507,6 +516,8 @@ public class AudienceService {
         // 2. Dedup per person per campaign (same behaviour as submitLeadV2).
         if (StringUtils.hasText(userId)
                 && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            // Silently revive a previously soft-deleted lead on re-submission.
+            reactivateSoftDeletedLeadByUser(audience.getId(), userId);
             return "You have already submitted your response for this campaign";
         }
 
@@ -613,6 +624,8 @@ public class AudienceService {
                 // Duplicate submission guard: same audience + same user
                 if (StringUtils.hasText(userId) &&
                         audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    // Silently revive a previously soft-deleted lead on re-submission.
+                    reactivateSoftDeletedLeadByUser(requestDTO.getAudienceId(), userId);
                     return "You have already submitted your response for this campaign";
                 }
 
@@ -1048,6 +1061,8 @@ public class AudienceService {
                 // Duplicate submission guard: same audience + same user
                 if (StringUtils.hasText(userId) &&
                         audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    // Silently revive a previously soft-deleted lead on re-submission.
+                    reactivateSoftDeletedLeadByUser(requestDTO.getAudienceId(), userId);
                     return "You have already submitted your response for this campaign";
                 }
 
@@ -1561,9 +1576,11 @@ public class AudienceService {
             java.util.Optional<AudienceResponse> existingPrimary = leadDeduplicationService
                     .findDuplicate(requestDTO.getAudienceId(), dedupeKey);
             if (existingPrimary.isPresent()) {
-                leadDeduplicationService.markDuplicate(response, existingPrimary.get(), requestDTO.getSourceType());
+                AudienceResponse primary = existingPrimary.get();
+                reactivateIfSoftDeleted(primary);
+                leadDeduplicationService.markDuplicate(response, primary, requestDTO.getSourceType());
                 logger.info("Duplicate lead detected for campaign {}, primary={}",
-                        requestDTO.getAudienceId(), existingPrimary.get().getId());
+                        requestDTO.getAudienceId(), primary.getId());
             }
         }
 
@@ -2596,6 +2613,11 @@ public class AudienceService {
         AudienceResponse response = audienceResponseRepository.findById(responseId)
                 .orElseThrow(() -> new VacademyException("Lead not found"));
 
+        // Soft-deleted (INACTIVE) leads are treated as not found for the detail fetch.
+        if (AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(response.getAudienceStatus())) {
+            throw new ResourceNotFoundException("Lead not found");
+        }
+
         Audience audience = audienceRepository.findById(response.getAudienceId())
                 .orElseThrow(() -> new VacademyException("Audience not found"));
 
@@ -2614,14 +2636,155 @@ public class AudienceService {
     }
 
     /**
-     * Delete a single lead (audience response) by response ID.
+     * Soft-delete a single lead (audience response) by response ID.
+     *
+     * <p>Sets {@code audience_status = INACTIVE} so the lead disappears from lead
+     * views and — importantly — from promotional/automated send recipient
+     * queries, instead of physically removing the row. Restricted to ADMIN
+     * callers; a lead that has already converted to a student cannot be deleted.</p>
      */
     @Transactional
-    public void deleteLead(String responseId) {
+    public void deleteLead(String responseId, CustomUserDetails actor) {
+        if (!hasAdminRole(actor)) {
+            throw new ForbiddenException("Only an admin can delete a lead");
+        }
+
         AudienceResponse response = audienceResponseRepository.findById(responseId)
-                .orElseThrow(() -> new VacademyException("Lead not found"));
-        audienceResponseRepository.delete(response);
-        logger.info("Deleted lead: {}", responseId);
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        // Block deleting a lead that has converted to a student.
+        String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+        if (leadUserId != null) {
+            boolean converted = userLeadProfileRepository.findByUserId(leadUserId)
+                    .map(p -> "CONVERTED".equalsIgnoreCase(p.getConversionStatus()))
+                    .orElse(false);
+            if (converted) {
+                throw new ConflictException("This lead has converted to a student and cannot be deleted.");
+            }
+        }
+
+        response.setAudienceStatus(AudienceStatusEnum.INACTIVE.name());
+        audienceResponseRepository.save(response);
+        logger.info("Soft-deleted lead {} by user {}", responseId, actor.getUserId());
+    }
+
+    /** Flip a soft-deleted (INACTIVE) lead back to ACTIVE; no-op otherwise. */
+    private void reactivateIfSoftDeleted(AudienceResponse lead) {
+        if (lead != null && AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(lead.getAudienceStatus())) {
+            lead.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
+            audienceResponseRepository.save(lead);
+            logger.info("Reactivated soft-deleted lead {} on re-submission", lead.getId());
+        }
+    }
+
+    /**
+     * Silently reactivate a previously soft-deleted lead for this audience+user,
+     * so a re-submission revives the existing row instead of staying hidden.
+     */
+    private void reactivateSoftDeletedLeadByUser(String audienceId, String userId) {
+        if (!StringUtils.hasText(audienceId) || !StringUtils.hasText(userId)) {
+            return;
+        }
+        audienceResponseRepository
+                .findTopByAudienceIdAndUserIdOrderByCreatedAtDesc(audienceId, userId)
+                .ifPresent(this::reactivateIfSoftDeleted);
+    }
+
+    /** True when the caller carries the institute ADMIN role. */
+    private boolean hasAdminRole(CustomUserDetails user) {
+        if (user == null || user.getAuthorities() == null) {
+            return false;
+        }
+        return user.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .filter(java.util.Objects::nonNull)
+                .anyMatch("ADMIN"::equalsIgnoreCase);
+    }
+
+    /**
+     * Edit a lead's profile from the CRM. Writes ONLY to the places a lead is
+     * actually read from — the auth user (name/email/mobile, etc.), the
+     * audience_response guardian fields, and the lead's custom field values.
+     * Never touches the student table (leads have no student row).
+     *
+     * <p>If the edit changes email/phone to a combination that already belongs
+     * to a different lead in the same campaign, it is rejected so two leads can't
+     * collide on the same identity.</p>
+     */
+    @Transactional
+    public void updateLeadProfile(String responseId, LeadProfileEditRequestDTO request) {
+        if (request == null) {
+            throw new InvalidRequestException("Request body is required");
+        }
+
+        AudienceResponse response = audienceResponseRepository.findById(responseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        UserDTO updates = request.getUserDetails();
+
+        // 1) Update the lead's own auth user (merge over the existing record).
+        String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+        if (updates != null && StringUtils.hasText(leadUserId)) {
+            // Collision guard: recompute the dedupe key from the (possibly) new
+            // email/phone and reject if a DIFFERENT lead in this campaign owns it.
+            String newEmail = updates.getEmail();
+            String newPhone = updates.getMobileNumber();
+            if (StringUtils.hasText(newEmail) || StringUtils.hasText(newPhone)) {
+                String newKey = leadDeduplicationService.generateDedupeKey(newEmail, newPhone);
+                if (newKey != null && response.getAudienceId() != null) {
+                    leadDeduplicationService.findDuplicate(response.getAudienceId(), newKey)
+                            .filter(existing -> !existing.getId().equals(responseId))
+                            .ifPresent(existing -> {
+                                throw new ConflictException(
+                                        "A lead already exists with this phone number or email.");
+                            });
+                    response.setDedupeKey(newKey);
+                }
+            }
+
+            List<UserDTO> existingUsers = authService.getUsersFromAuthServiceByUserIds(List.of(leadUserId));
+            UserDTO existing = (existingUsers != null && !existingUsers.isEmpty()) ? existingUsers.get(0) : null;
+            UserDTO merged = (existing != null) ? mergeUserDTO(existing, updates) : updates;
+            merged.setId(leadUserId);
+            authService.updateUser(merged, leadUserId);
+        }
+
+        // 2) Update guardian fields on the audience_response row.
+        boolean responseModified = false;
+        if (request.getParentName() != null) {
+            response.setParentName(request.getParentName());
+            responseModified = true;
+        }
+        if (request.getParentEmail() != null) {
+            response.setParentEmail(request.getParentEmail());
+            responseModified = true;
+        }
+        if (request.getParentMobile() != null) {
+            response.setParentMobile(request.getParentMobile());
+            responseModified = true;
+        }
+        // dedupe_key may also have been updated above.
+        audienceResponseRepository.save(response);
+        if (responseModified) {
+            logger.info("Updated guardian fields on lead {}", responseId);
+        }
+
+        // 3) Upsert the lead's custom field values (source AUDIENCE_RESPONSE).
+        if (!CollectionUtils.isEmpty(request.getCustomFieldValues())) {
+            request.getCustomFieldValues().forEach(cfv -> {
+                if (cfv != null) {
+                    if (!StringUtils.hasText(cfv.getSourceType())) {
+                        cfv.setSourceType(CustomFieldValueSourceType.AUDIENCE_RESPONSE.name());
+                    }
+                    if (!StringUtils.hasText(cfv.getSourceId())) {
+                        cfv.setSourceId(responseId);
+                    }
+                }
+            });
+            customFieldValueService.upsertCustomFieldValues(request.getCustomFieldValues());
+        }
+
+        logger.info("Lead profile updated for response {}", responseId);
     }
 
     /**

@@ -252,6 +252,8 @@ export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/report
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
+export const UPDATE_LEAD_PROFILE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
@@ -803,6 +805,11 @@ export const UPDATE_NAMING_SETTINGS = `${BASE_URL}/admin-core-service/institute/
 
 // Notification Service
 export const NOTIFICATION_SERVICE_BASE = `${BASE_URL}/notification-service/v1`;
+// User announcement (promotional) preferences — GET current + PUT to (un)subscribe per channel.
+export const USER_ANNOUNCEMENT_PREFERENCES = (username: string) =>
+    `${BASE_URL}/notification-service/public/v1/user-announcement-preferences/${encodeURIComponent(
+        username
+    )}`;
 
 // Chatbot Flow Builder
 export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;

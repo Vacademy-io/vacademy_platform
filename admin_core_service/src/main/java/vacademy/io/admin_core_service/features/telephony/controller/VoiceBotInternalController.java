@@ -155,9 +155,13 @@ public class VoiceBotInternalController {
     }
 
     /**
-     * Persona map from a registry {@code ai_agent} row (Phase C). Blank fields
-     * fall back to the built-in template's values so a minimally-authored agent
-     * (name + prompt) still yields a complete persona.
+     * Persona map from a registry {@code ai_agent} row (Phase C). The agent's own
+     * CONTENT (system prompt + the questions to find out) is AUTHORITATIVE — a blank
+     * field means "none", NOT "inherit the built-in admissions template's values".
+     * Otherwise a religious-shivir (or any non-admissions) agent that leaves
+     * "Questions to find out" empty would still be told to ask "which course/class
+     * are you interested in", contradicting its own prompt. Only benign STRUCTURAL
+     * defaults (voice/language/dispositions vocabulary/max minutes) gap-fill.
      */
     private Map<String, Object> registryAgentMap(
             vacademy.io.admin_core_service.features.telephony.persistence.entity.AiAgent a,
@@ -168,9 +172,10 @@ public class VoiceBotInternalController {
         if (a.getLanguage() != null) base.put("language", a.getLanguage());
         if (a.getVoice() != null) base.put("voice", a.getVoice());
         if (a.getOpeningLine() != null) base.put("openingLine", a.getOpeningLine());
-        if (a.getSystemPrompt() != null) base.put("systemPrompt", a.getSystemPrompt());
-        List<String> questions = aiAgentService.parseList(a.getExtractionQuestions());
-        if (!questions.isEmpty()) base.put("extractionQuestions", questions);
+        // Authoritative content — never inherit the admissions template's prompt/questions.
+        base.put("systemPrompt", a.getSystemPrompt() != null && !a.getSystemPrompt().isBlank()
+                ? a.getSystemPrompt() : "You are a friendly, concise phone assistant.");
+        base.put("extractionQuestions", aiAgentService.parseList(a.getExtractionQuestions()));
         List<String> dispositions = aiAgentService.parseList(a.getDispositions());
         if (!dispositions.isEmpty()) base.put("dispositions", dispositions);
         if (a.getMaxCallMinutes() != null && a.getMaxCallMinutes() > 0) {

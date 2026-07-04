@@ -49,6 +49,17 @@ public class VacademyAiAnswerUrls {
         return url.toString();
     }
 
+    /**
+     * Natural-voice audio URL for an IVR prompt — Plivo {@code <Play>}s it. Renders
+     * the text in the SAME Sarvam voice as the AI agent (so IVR menus stop sounding
+     * like a foreign TTS reading Hindi), and the bot caches the audio to disk, so a
+     * static menu prompt is synthesized once and replayed free on every call.
+     */
+    public String ttsUrl(String text, String lang) {
+        return botBase() + "/tts?text=" + enc(text)
+                + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
+    }
+
     /** Status-webhook base for this call: {@code …/webhook/status?provider=PLIVO&corr=…[&token=…]}. */
     public String statusBase(String webhookToken, String corr) {
         StringBuilder url = new StringBuilder(base())

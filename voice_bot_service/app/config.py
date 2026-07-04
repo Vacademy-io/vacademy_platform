@@ -117,6 +117,11 @@ class Settings:
         default_factory=lambda: int(_env("MAX_CONCURRENT_CALLS", "10"))
     )
 
+    # Where /tts caches synthesized IVR-prompt audio. Backed by a Docker volume so
+    # a prompt is synthesized ONCE (ever) and replayed free on every call — IVR
+    # prompts are static, so there is no recurring TTS cost.
+    tts_cache_dir: str = field(default_factory=lambda: _env("TTS_CACHE_DIR", "/tmp/tts-cache"))
+
     def wss_url(self, query: str) -> str:
         base = self.public_base.replace("https://", "wss://").replace("http://", "ws://")
         return f"{base}/ws?{query}"

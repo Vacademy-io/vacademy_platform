@@ -13,14 +13,20 @@ Endpoints (mirrors the validated POC server.py, productionized):
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
+import io
 import logging
+import os
+import re
 import time
+import wave
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
 import aiohttp
-from fastapi import APIRouter, FastAPI, Query, WebSocket
+from fastapi import APIRouter, FastAPI, Query, Response, WebSocket
 from fastapi.responses import PlainTextResponse
 
 from . import admin_core
@@ -70,6 +76,114 @@ async def health():
         "maxConcurrentCalls": s.max_concurrent_calls,
         "ws": s.wss_url("corr=<corr>"),
     }
+
+
+_SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
+_TTS_MEM: dict[str, bytes] = {}   # small hot cache in front of the disk cache
+_TTS_MEM_MAX = 128
+
+
+def _tts_chunks(text: str, limit: int = 450) -> list[str]:
+    """Split on sentence boundaries so each Sarvam input stays within its limit."""
+    parts = re.split(r"(?<=[.!?।])\s+", text.strip())
+    out, cur = [], ""
+    for p in parts:
+        if cur and len(cur) + len(p) + 1 > limit:
+            out.append(cur)
+            cur = p
+        else:
+            cur = f"{cur} {p}".strip()
+    if cur:
+        out.append(cur)
+    return out or [text[:limit]]
+
+
+async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | None:
+    """Sarvam Bulbul REST → one concatenated 8 kHz WAV. Returns None on failure so
+    the caller can fall back to Plivo's built-in TTS."""
+    s = get_settings()
+    session: aiohttp.ClientSession = app.state.http_session
+    frames, params = [], None
+    for chunk in _tts_chunks(text):
+        body = {
+            "inputs": [chunk],
+            "target_language_code": lang,
+            "speaker": speaker,
+            "model": model,
+            "speech_sample_rate": s.sample_rate,
+        }
+        try:
+            async with session.post(_SARVAM_TTS_URL, json=body,
+                                    headers={"api-subscription-key": s.sarvam_api_key},
+                                    timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                if resp.status != 200:
+                    logger.warning("tts: sarvam %s for %r", resp.status, chunk[:40])
+                    return None
+                data = await resp.json()
+        except Exception:
+            logger.exception("tts: sarvam call failed")
+            return None
+        for b64 in (data.get("audios") or []):
+            with wave.open(io.BytesIO(base64.b64decode(b64)), "rb") as w:
+                params = w.getparams()
+                frames.append(w.readframes(w.getnframes()))
+    if not frames or params is None:
+        return None
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(params.nchannels)
+        w.setsampwidth(params.sampwidth)
+        w.setframerate(params.framerate)
+        for f in frames:
+            w.writeframes(f)
+    return out.getvalue()
+
+
+@router.get("/tts")
+async def tts(
+    text: str = Query(..., max_length=4000),
+    voice: str = Query(""),
+    lang: str = Query("hi-IN"),
+):
+    """Natural-voice audio for a piece of prompt text (IVR menus etc.), in the SAME
+    Sarvam voice as the AI agent — so IVR prompts stop sounding like a foreign TTS
+    reading Hindi. Plivo <Play>s this URL. Synthesized ONCE per (text, voice, lang)
+    and cached to disk (a Docker volume) + memory, so playback on every subsequent
+    call is free — IVR prompts are static, so there is no recurring TTS cost."""
+    s = get_settings()
+    speaker = (voice or s.sarvam_tts_voice).strip()
+    model = s.sarvam_tts_model
+    key = hashlib.sha1(f"{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
+
+    audio = _TTS_MEM.get(key)
+    if audio is None:
+        path = os.path.join(s.tts_cache_dir, key + ".wav")
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                audio = f.read()
+        else:
+            audio = await _synth_wav(text, speaker, model, lang)
+            if audio:
+                try:
+                    os.makedirs(s.tts_cache_dir, exist_ok=True)
+                    tmp = path + ".tmp"
+                    with open(tmp, "wb") as f:
+                        f.write(audio)
+                    os.replace(tmp, path)  # atomic: a concurrent reader never sees a partial file
+                except Exception:
+                    logger.exception("tts: disk cache write failed (serving anyway)")
+        if audio:
+            if len(_TTS_MEM) >= _TTS_MEM_MAX:
+                _TTS_MEM.pop(next(iter(_TTS_MEM)))
+            _TTS_MEM[key] = audio
+
+    if not audio:
+        # Rare (Sarvam down + cold cache). Plivo skips a <Play> it can't fetch and
+        # continues the applet — the GATHER's retry/no-input branch still recovers,
+        # and the prompt caches on the next successful call.
+        return Response(status_code=502)
+    return Response(content=audio, media_type="audio/wav",
+                    headers={"Cache-Control": "public, max-age=31536000"})
 
 
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)

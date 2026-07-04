@@ -17,6 +17,10 @@ services:
     env_file: .env
     expose:
       - "8090"
+    volumes:
+      # Persist synthesized IVR-prompt audio across restarts/redeploys, so each
+      # prompt is synthesized once (ever) and replayed free — no recurring TTS cost.
+      - tts_cache:/tmp/tts-cache
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/voice-bot-service/health', timeout=5)\""]
       interval: 30s
@@ -44,3 +48,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  tts_cache:

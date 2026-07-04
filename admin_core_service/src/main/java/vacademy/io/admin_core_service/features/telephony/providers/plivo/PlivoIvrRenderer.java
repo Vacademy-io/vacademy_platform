@@ -152,7 +152,17 @@ public class PlivoIvrRenderer {
             }
         }
         if (!isBlank(node.getPromptText())) {
-            b.append("<Speak>").append(esc(node.getPromptText())).append("</Speak>");
+            // Voice the institute-authored prompt in our natural Sarvam voice (same as
+            // the AI agent) via the bot's cached /tts endpoint — Plivo's built-in
+            // <Speak> reads Hindi/Hinglish with a foreign accent. Fall back to Plivo's
+            // Hindi Polly voice when the bot isn't configured (still better than default).
+            if (aiAnswerUrls.isConfigured()) {
+                b.append("<Play>").append(esc(aiAnswerUrls.ttsUrl(node.getPromptText(), "hi-IN")))
+                        .append("</Play>");
+            } else {
+                b.append("<Speak voice=\"Polly.Aditi\" language=\"hi-IN\">")
+                        .append(esc(node.getPromptText())).append("</Speak>");
+            }
         }
     }
 

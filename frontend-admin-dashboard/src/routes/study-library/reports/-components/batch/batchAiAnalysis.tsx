@@ -253,6 +253,16 @@ export default function BatchAiAnalysis() {
                     instituteId
                 );
                 const processId = res.process_id;
+                if (!processId) {
+                    setRows((prev) =>
+                        prev.map((r) =>
+                            r.userId === row.userId
+                                ? { ...r, status: 'failed', error: 'Could not start generation' }
+                                : r
+                        )
+                    );
+                    continue;
+                }
                 const finalStatus = await pollUntilDone(processId);
                 setRows((prev) =>
                     prev.map((r) =>

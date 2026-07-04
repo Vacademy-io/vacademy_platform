@@ -26,7 +26,7 @@ from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
 import aiohttp
-from fastapi import APIRouter, FastAPI, Query, Response, WebSocket
+from fastapi import APIRouter, FastAPI, Query, Request, Response, WebSocket
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from . import admin_core
@@ -156,6 +156,7 @@ async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | 
 @router.get("/tts")
 @router.get("/tts.wav")
 async def tts(
+    request: Request,
     text: str = Query(..., max_length=4000),
     voice: str = Query(""),
     lang: str = Query("hi-IN"),
@@ -169,6 +170,11 @@ async def tts(
     Served via FileResponse so HTTP Range requests get a proper 206 + Accept-Ranges:
     Plivo's media player streams audio with range requests and plays SILENCE when the
     server answers 200-with-the-whole-body instead."""
+    logger.info("tts req path=%s xff=%s ua=%r range=%s",
+                request.url.path,
+                request.headers.get("x-forwarded-for"),
+                (request.headers.get("user-agent") or "")[:60],
+                request.headers.get("range"))
     s = get_settings()
     speaker = (voice or s.sarvam_tts_voice).strip()
     model = s.sarvam_tts_model

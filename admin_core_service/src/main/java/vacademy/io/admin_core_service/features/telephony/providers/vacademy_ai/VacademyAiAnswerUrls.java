@@ -24,6 +24,12 @@ public class VacademyAiAnswerUrls {
     @Value("${telephony.webhook.callback-base:}")
     private String webhookBase;
 
+    /** Optional override for the host that serves IVR prompt audio ({@code /tts.wav}).
+     *  Blank → the webhook host's {@code /voice-bot-service} path (Cloudflare-proxied,
+     *  reliably reachable by Plivo's media servers). */
+    @Value("${telephony.ivr.tts-base-url:}")
+    private String ivrTtsBaseUrl;
+
     public boolean isConfigured() {
         return botBaseUrl != null && !botBaseUrl.isBlank();
     }
@@ -56,8 +62,15 @@ public class VacademyAiAnswerUrls {
      * static menu prompt is synthesized once and replayed free on every call.
      */
     public String ttsUrl(String text, String lang) {
-        // .wav path so Plivo's media player recognizes it as a WAV file.
-        return botBase() + "/tts.wav?text=" + enc(text)
+        // Serve IVR audio from the SAME Cloudflare-proxied host Plivo already fetches
+        // the answer-XML from (the webhook base + /voice-bot-service ingress path), NOT
+        // the voice-bot's direct base — Plivo's media servers reach the proxied host
+        // reliably, and the bot behind that path serves+caches the same audio. Override
+        // with telephony.ivr.tts-base-url. .wav path so Plivo keys it as a WAV file.
+        String ttsBase = (ivrTtsBaseUrl != null && !ivrTtsBaseUrl.isBlank())
+                ? ivrTtsBaseUrl.trim().replaceAll("/$", "")
+                : base() + "/voice-bot-service";
+        return ttsBase + "/tts.wav?text=" + enc(text)
                 + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
     }
 

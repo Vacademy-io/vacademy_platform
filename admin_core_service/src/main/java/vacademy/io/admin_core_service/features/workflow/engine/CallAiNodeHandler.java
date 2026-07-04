@@ -61,7 +61,12 @@ public class CallAiNodeHandler implements NodeHandler {
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
     private final SpelEvaluator spelEvaluator;
+    private final vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository callLogRepo;
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /** Server-wide fallback institute daily-cap (mirrors AiCallService); 0 disables. */
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.max-calls-per-day-default:500}")
+    private int globalMaxCallsPerDay;
 
     /**
      * Field-injected with {@code @Lazy} to break an init-time bean cycle:
@@ -147,7 +152,7 @@ public class CallAiNodeHandler implements NodeHandler {
             return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
         }
 
-        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay);
+        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider);
 
         switch (plan.action()) {
             case STOP -> {
@@ -386,7 +391,8 @@ public class CallAiNodeHandler implements NodeHandler {
     /** {@code resumeAt} = next-run time after a DIAL (gap) or DEFER (recheck); null for STOP. */
     private record Plan(Action action, Instant resumeAt, String reason) {}
 
-    private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay) {
+    private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay,
+                      String provider) {
         AiCallingSettingsPojo s = settingsService.get(instituteId);
         if (s == null || !s.isEnabled()) return new Plan(Action.STOP, null, "ai_calling_disabled");
         if (leadAlreadyAssigned(userId, instituteId)) return new Plan(Action.STOP, null, "assigned");
@@ -410,6 +416,21 @@ public class CallAiNodeHandler implements NodeHandler {
         int effectiveToday = today.toString().equals(callsDay) ? callsToday : 0;
         if (effectiveToday >= Math.max(1, s.getMaxCallsPerDayPerLead())) {
             return new Plan(Action.DEFER, recheck, "day_cap");
+        }
+        // Institute-wide daily budget (distinct from the per-lead cap above). DEFER
+        // rather than DIAL so a lead over the shared budget WAITS for capacity — the
+        // same guardrail AiCallService.placeCall enforces, but decided HERE so a
+        // capped dial never consumes a retry and never mislabels the lead AI_NO_ANSWER.
+        int instCap = s.getMaxCallsPerDay() > 0 ? s.getMaxCallsPerDay() : globalMaxCallsPerDay;
+        String effProvider = firstNonBlank(provider, s.getProvider());
+        if (instCap > 0 && !isBlank(effProvider)) {
+            long placedToday = callLogRepo.countOutboundSince(instituteId, effProvider,
+                    java.sql.Timestamp.from(now.minus(24, ChronoUnit.HOURS)));
+            if (placedToday >= instCap) {
+                log.info("CALL_AI node: institute {} over daily cap {} for {} ({} in 24h) — deferring lead {}",
+                        instituteId, instCap, effProvider, placedToday, userId);
+                return new Plan(Action.DEFER, recheck, "institute_day_cap");
+            }
         }
         return new Plan(Action.DIAL, now.plus(Math.max(1, s.getRetryGapMinutes()), ChronoUnit.MINUTES), "dial");
     }

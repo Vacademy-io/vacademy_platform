@@ -61,10 +61,16 @@ public class AiCallOutcomeClassifier {
         if (containsIgnoreCase(RETRY_WORTHY, d)) {
             return canRetry ? new AiCallDecision(Action.RETRY, "neutral:" + d) : exhausted(s);
         }
-        // Connected call carrying a disposition the AGENT defined = a conclusion the
-        // institute chose not to map to assign/stop → terminal STOP, never re-dial.
+        // Connected call carrying a disposition the AGENT defined = a reached
+        // conclusion the institute didn't map to assign/stop. Terminal (never
+        // re-dial), but route through the institute's leftover-handling policy
+        // instead of a blanket STOP — an agent registry enumerates positive
+        // outcomes too (Interested, Wants_Demo), and STOP would silently bury a
+        // hot lead as Not-Interested and never hand it to a human.
         if (containsIgnoreCase(agentDispositions, d)) {
-            return new AiCallDecision(Action.STOP, "agent_terminal:" + d);
+            return s.isAssignExhaustedToHuman()
+                    ? new AiCallDecision(Action.ASSIGN, "agent_terminal:" + d)
+                    : new AiCallDecision(Action.STOP, "agent_terminal:" + d);
         }
         // Truly unmapped (not in settings, not agent-defined) → neutral (unchanged).
         return canRetry ? new AiCallDecision(Action.RETRY, "neutral:" + d) : exhausted(s);

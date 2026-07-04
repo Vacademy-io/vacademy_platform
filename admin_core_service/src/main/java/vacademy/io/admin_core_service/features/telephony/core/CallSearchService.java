@@ -396,7 +396,11 @@ public class CallSearchService {
 
     private Map<String, String> fetchNames(Collection<String> userIds) {
         List<String> ids = userIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
-        if (ids.isEmpty()) return Map.of();
+        // HashMap, NOT Map.of(): the callers do names.get(row.getCounsellorUserId()), and an
+        // unassigned INBOUND row has a null counsellor_user_id. Map.of() is an immutable map
+        // whose get() rejects a null key with an NPE; HashMap.get(null) returns null (correct —
+        // no counsellor, no name). Without this, a page of only-unassigned inbound calls 500s.
+        if (ids.isEmpty()) return new HashMap<>();
         Map<String, String> out = new HashMap<>();
         try {
             for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(ids))) {

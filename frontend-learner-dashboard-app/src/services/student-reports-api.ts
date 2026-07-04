@@ -1,9 +1,9 @@
-import { BASE_URL } from "@/constants/urls";
+// import { BASE_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getUserId } from "@/constants/getUserId";
+import { BASE_URL } from "@/constants/urls";
 
 // ── V1 LLM-text report types (old endpoint) ───────────────────────────────────
-
 export interface ReportContent {
   learning_frequency: string;
   progress: string;
@@ -123,6 +123,23 @@ export interface V2Recommendation {
   suggestion: string;
 }
 
+export interface V2SubjectMarksItem {
+  subject: string;
+  marks_obtained: number;
+  total_marks: number;
+  percentage: number;
+  item_count: number;
+  topics?: string[];
+}
+
+export interface V2GradedItem {
+  type: "ASSESSMENT" | "ASSIGNMENT" | "QUIZ" | "QUESTION";
+  title: string;
+  subject?: string;
+  marks_obtained: number;
+  total_marks: number;
+}
+
 export interface V2ReportData {
   meta: {
     report_version: string;
@@ -200,6 +217,7 @@ export interface V2ReportData {
     available: boolean;
     attended: number;
     missed: number;
+    unmarked?: number;
     total: number;
     attendance_percentage: number;
     participation: V2LiveClassParticipation;
@@ -212,6 +230,11 @@ export interface V2ReportData {
     late: number;
     pending: number;
     avg_score_percentage: number;
+  };
+  subject_marks?: {
+    available: boolean;
+    subjects: V2SubjectMarksItem[];
+    items?: V2GradedItem[];
   };
   strengths?: V2Strength[];
   areas_to_improve?: V2Strength[];

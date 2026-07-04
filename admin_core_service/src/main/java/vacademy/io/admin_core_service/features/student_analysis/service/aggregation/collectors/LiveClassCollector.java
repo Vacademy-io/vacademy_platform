@@ -38,6 +38,14 @@ public class LiveClassCollector {
             }
 
             int total = attended + missed + unmarked;
+
+            // Fold "not marked" into "missed". Attendance is auto-recorded as PRESENT when a learner
+            // joins; ABSENT is only ever set by a manual admin action that rarely happens. So a session
+            // with no PRESENT record means the learner did not attend (= missed), not a data gap. Without
+            // this, "Missed" was always 0 while the real absences sat under "Not marked", making the card
+            // read as if the learner missed nothing.
+            missed = missed + unmarked;
+            unmarked = 0;
             double attendancePct = total > 0
                     ? Math.round((attended * 100.0 / total) * 10.0) / 10.0
                     : 0.0;

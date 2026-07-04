@@ -1099,6 +1099,7 @@ export default function AdminDisplaySettings() {
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
                             'SETTINGS',
@@ -1109,16 +1110,19 @@ export default function AdminDisplaySettings() {
                             LEARNER: 3,
                             TEACHER: 4,
                             ASSESSMENT: 5,
-                            PLANNING: 6,
-                            ACTIVITY: 7,
-                            SETTINGS: 8,
+                            LIVE_SESSION: 6,
+                            PLANNING: 7,
+                            ACTIVITY: 8,
+                            SETTINGS: 9,
                         };
+                        // Tabs that stay OFF unless explicitly enabled per role.
+                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
                         const sorted = detailsIds
                             .map((id) => ({
                                 ...(settings.courseDetails?.tabs.find((t) => t.id === id) || {
                                     id,
                                     order: orderForId[id] ?? 99,
-                                    visible: true,
+                                    visible: !hiddenByDefault.has(id),
                                 }),
                                 id,
                             }))

@@ -27,6 +27,28 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             """)
     SlideCountProjection countSlidesByChapterId(@Param("chapterId") String chapterId);
 
+    /**
+     * Student report v2: total assignment slides available to a package session (the "Assigned"
+     * count). Uses the DIRECT path assignment slides actually take — chapters map to a package
+     * session via chapter_package_session_mapping and slides via chapter_to_slides — avoiding the
+     * fragile subject/module joins. Statuses are permissive (anything not deleted) because content
+     * is commonly PUBLISHED rather than ACTIVE; an over-strict filter returned 0 here. READ-ONLY.
+     */
+    @Query(value = """
+            SELECT COUNT(DISTINCT s.id)
+            FROM chapter_package_session_mapping cpsm
+            JOIN chapter c ON c.id = cpsm.chapter_id
+            JOIN chapter_to_slides cs ON cs.chapter_id = c.id
+            JOIN slide s ON s.id = cs.slide_id
+            WHERE cpsm.package_session_id = :packageSessionId
+              AND cpsm.status <> 'DELETED'
+              AND c.status <> 'DELETED'
+              AND cs.status <> 'DELETED'
+              AND s.status <> 'DELETED'
+              AND s.source_type = 'ASSIGNMENT'
+            """, nativeQuery = true)
+    Integer countAssignmentSlidesForPackageSession(@Param("packageSessionId") String packageSessionId);
+
     @Query(value = """
             SELECT s.id AS slideId,
                    s.title AS slideTitle,
@@ -1292,6 +1314,27 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("chapterStatusList") List<String> chapterStatusList,
             @Param("chapterToSessionStatusList") List<String> chapterToSessionStatusList,
             @Param("slideStatusList") List<String> slideStatusList);
+
+    /**
+     * Student report v2 "Marks by Subject": resolves a single slide's subject name
+     * (nullable — a slide need not be mapped to a subject/chapter). Used by
+     * SubjectMarksCollector to attach a subject hint to ASSIGNMENT graded items
+     * (which are keyed only by slideId, unlike the QUESTION/QUIZ native queries
+     * that resolve the subject inline). Collapses multi-subject mappings via LIMIT 1.
+     */
+    @Query(value = """
+            SELECT sub.subject_name
+            FROM slide s
+            LEFT JOIN chapter_to_slides cs ON cs.slide_id = s.id
+            LEFT JOIN chapter c ON c.id = cs.chapter_id
+            LEFT JOIN module_chapter_mapping mcm ON mcm.chapter_id = c.id
+            LEFT JOIN modules m ON m.id = mcm.module_id
+            LEFT JOIN subject_module_mapping smm ON smm.module_id = m.id
+            LEFT JOIN subject sub ON sub.id = smm.subject_id
+            WHERE s.id = :slideId
+            LIMIT 1
+            """, nativeQuery = true)
+    Optional<String> findSubjectNameBySlideId(@Param("slideId") String slideId);
 
     @Query(value = """
             WITH assignment_question_counts AS (

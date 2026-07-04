@@ -53,6 +53,7 @@ public class ComprehensiveReportAggregator {
     private final DoubtCollector doubtCollector;
     private final LoginCollector loginCollector;
     private final OverviewBuilder overviewBuilder;
+    private final SubjectMarksCollector subjectMarksCollector;
 
     /**
      * @param userId      learner ID
@@ -96,6 +97,13 @@ public class ComprehensiveReportAggregator {
                     ? CompletableFuture.supplyAsync(() -> academicsCollector.collect(userId, instituteId, startDate, endDate), executor)
                     : null;
 
+            // "Marks by Subject" is folded under ACADEMICS (no new ReportModule key) and reuses
+            // the already-collected AcademicsSection (assessments) to avoid a second HMAC call.
+            CompletableFuture<SubjectMarksSection> subjectMarksFuture = academicsFuture != null
+                    ? academicsFuture.thenApplyAsync(
+                            ac -> subjectMarksCollector.collect(userId, ac, startDate, endDate), executor)
+                    : null;
+
             CompletableFuture<StudyHabitsSection> activityFuture = has(mods, ReportModule.ACTIVITY)
                     ? CompletableFuture.supplyAsync(() -> activityCollector.collect(userId, startDate, endDate), executor)
                     : null;
@@ -109,7 +117,7 @@ public class ComprehensiveReportAggregator {
                     : null;
 
             CompletableFuture<AssignmentsSection> assignmentFuture = has(mods, ReportModule.ASSIGNMENTS)
-                    ? CompletableFuture.supplyAsync(() -> assignmentCollector.collect(userId, startDate, endDate), executor)
+                    ? CompletableFuture.supplyAsync(() -> assignmentCollector.collect(userId, batchId, startDate, endDate), executor)
                     : null;
 
             CompletableFuture<DoubtsAndEngagementSection> doubtFuture = has(mods, ReportModule.DOUBTS)
@@ -123,7 +131,7 @@ public class ComprehensiveReportAggregator {
             // Wait for all active futures
             List<CompletableFuture<?>> active = Stream.of(
                             identityFuture, instituteFuture, attendanceFuture, liveClassFuture,
-                            academicsFuture, activityFuture, progressFuture, certFuture,
+                            academicsFuture, subjectMarksFuture, activityFuture, progressFuture, certFuture,
                             assignmentFuture, doubtFuture, loginFuture)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
@@ -139,6 +147,7 @@ public class ComprehensiveReportAggregator {
 
             AttendanceSection attendance = section(attendanceFuture, AttendanceSection.builder().available(false).build());
             AcademicsSection academics = section(academicsFuture, AcademicsSection.builder().available(false).build());
+            SubjectMarksSection subjectMarks = section(subjectMarksFuture, SubjectMarksSection.builder().available(false).build());
             StudyHabitsSection studyHabits = section(activityFuture, StudyHabitsSection.builder().available(false).build());
             ProgressSection courseProgress = section(progressFuture, ProgressSection.builder().available(false).build());
             LiveClassesSection liveClasses = liveClassFuture != null
@@ -169,6 +178,7 @@ public class ComprehensiveReportAggregator {
                     .period(period)
                     .attendance(attendance)
                     .academics(academics)
+                    .subjectMarks(subjectMarks)
                     .studyHabits(studyHabits)
                     .courseProgress(courseProgress)
                     .liveClasses(liveClasses)
@@ -205,6 +215,7 @@ public class ComprehensiveReportAggregator {
                     .period(period)
                     .attendance(has(mods, ReportModule.ATTENDANCE) ? AttendanceSection.builder().available(false).build() : null)
                     .academics(has(mods, ReportModule.ACADEMICS) ? AcademicsSection.builder().available(false).build() : null)
+                    .subjectMarks(has(mods, ReportModule.ACADEMICS) ? SubjectMarksSection.builder().available(false).build() : null)
                     .studyHabits(has(mods, ReportModule.ACTIVITY) ? StudyHabitsSection.builder().available(false).build() : null)
                     .courseProgress(has(mods, ReportModule.PROGRESS) ? ProgressSection.builder().available(false).build() : null)
                     .liveClasses(has(mods, ReportModule.LIVE_CLASSES) ? LiveClassesSection.builder().available(false).build() : null)

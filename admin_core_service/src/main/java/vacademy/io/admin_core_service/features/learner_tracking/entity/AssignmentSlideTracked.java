@@ -58,6 +58,7 @@ public class AssignmentSlideTracked {
     }
 
     public String getId() { return id; }
+    public ActivityLog getActivityLog() { return activityLog; }
     public void setMarks(Double marks) { this.marks = marks; }
     public void setFeedback(String feedback) { this.feedback = feedback; }
     public void setCheckedFileId(String checkedFileId) { this.checkedFileId = checkedFileId; }

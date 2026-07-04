@@ -62,6 +62,13 @@ public class ComprehensiveStudentReport {
     /** Assignments. */
     private AssignmentsSection assignments;
 
+    /**
+     * ADDITIVE: marks-by-subject rollup across assessments/assignments/quiz/question items —
+     * serialized as "subject_marks". Folded under the ACADEMICS module (no new ReportModule key).
+     * Null when ACADEMICS is excluded or the collector found no gradable items.
+     */
+    private SubjectMarksSection subjectMarks;
+
     // ── AI-powered insight lists (top-level) ──────────────────────────────────
     /** LLM-derived strengths — serialized as "strengths". */
     private List<TopicConfidence> strengths;

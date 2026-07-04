@@ -69,7 +69,11 @@ import { useUpdateChapter } from '../subjects/modules/chapters/-services/update-
 import { Chapter } from '@/stores/study-library/use-modules-with-chapters-store';
 import { ChapterWithSlides as ChapterWithSlidesStore } from '@/stores/study-library/use-modules-with-chapters-store';
 import { ChapterWithSlides } from '../../-services/getAllSlides';
-import { TabType, tabs } from '../subjects/-constants/constant';
+import {
+    TabType,
+    tabs,
+    DEFAULT_HIDDEN_COURSE_DETAILS_TABS,
+} from '../subjects/-constants/constant';
 import { useDeleteModule } from '../subjects/modules/-services/delete-module';
 import { useDeleteChapter } from '../subjects/modules/chapters/-services/delete-chapter';
 import { useUpdateModuleOrder } from '../subjects/modules/-services/update-modules-order';
@@ -89,6 +93,7 @@ import { AddModulesButton } from '../subjects/modules/-components/add-modules.ts
 import { AddChapterButton } from '../subjects/modules/chapters/-components/chapter-material/add-chapters/add-chapter-button';
 import Students from '../subjects/-components/student-list';
 import Assessments from '../subjects/-components/assessment-list';
+import LiveSessions from '../subjects/-components/live-sessions-list';
 import { getIcon } from '../subjects/modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { useContentStore } from '../subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { TeachersList } from '../subjects/-components/teacher-list';
@@ -464,7 +469,11 @@ export const CourseStructureDetails = ({
                 t.visible !== false,
             ])
         );
-        const isCurrentVisible = visibilityMap.get(selectedTab);
+        // A hidden-by-default tab absent from the config counts as not visible,
+        // so a stale localStorage selection of it redirects to a visible tab.
+        const isCurrentVisible = visibilityMap.has(selectedTab)
+            ? visibilityMap.get(selectedTab)
+            : !DEFAULT_HIDDEN_COURSE_DETAILS_TABS.has(selectedTab);
         if (isCurrentVisible === false) {
             const preferred = mapDisplayIdToUiValue(details.defaultTab as CourseDetailsTabId);
             const preferredVisible = visibilityMap.get(preferred) !== false;
@@ -3629,6 +3638,15 @@ export const CourseStructureDetails = ({
                 <Assessments packageSessionId={batchPackageSessionId ?? ''} />
             </div>
         ),
+        [TabType.LIVE_SESSION]: batchPackageSessionId ? (
+            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+                <LiveSessions packageSessionId={batchPackageSessionId} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its live sessions.
+            </div>
+        ),
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">
                 <div className="mb-4">
@@ -4729,13 +4747,23 @@ export const CourseStructureDetails = ({
                 details.tabs.map((t) => [mapDisplayIdToUiValue(t.id as CourseDetailsTabId), t])
             );
             reorderedTabs = reorderedTabs
-                .filter((tab) => vis.get(tab.value as CourseDetailsTabId)?.visible !== false)
+                .filter((tab) => {
+                    const cfg = vis.get(tab.value as CourseDetailsTabId);
+                    // Not listed in this role's saved config: hidden-by-default
+                    // tabs stay hidden; everything else stays visible.
+                    if (!cfg) return !DEFAULT_HIDDEN_COURSE_DETAILS_TABS.has(tab.value);
+                    return cfg.visible !== false;
+                })
                 .sort((a, b) => {
                     const ao = vis.get(a.value as CourseDetailsTabId)?.order ?? 999;
                     const bo = vis.get(b.value as CourseDetailsTabId)?.order ?? 999;
                     return ao - bo;
                 });
         } else {
+            // No role display settings at all: hidden-by-default tabs stay hidden.
+            reorderedTabs = reorderedTabs.filter(
+                (tab) => !DEFAULT_HIDDEN_COURSE_DETAILS_TABS.has(tab.value)
+            );
             // Fallbacks based on course settings/defaults
             if (settingsLoading || settingsError) {
                 const outlineTab = reorderedTabs.find((tab) => tab.value === 'OUTLINE');

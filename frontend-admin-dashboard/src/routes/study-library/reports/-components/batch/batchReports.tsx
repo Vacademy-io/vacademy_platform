@@ -1,6 +1,7 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import TimelineReports from './timelineReports';
 import ProgressReports from './progressReports';
+import BatchAiAnalysis from './batchAiAnalysis';
 
 export default function BatchReports() {
     return (
@@ -27,6 +28,15 @@ export default function BatchReports() {
                             </svg>
                             Learning Progress
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="ai-analysis"
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-md transition-all duration-200 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:shadow-sm hover:bg-primary-50 hover:text-primary-600"
+                        >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                            </svg>
+                            AI Analysis
+                        </TabsTrigger>
                     </TabsList>
                 </div>
                 
@@ -38,6 +48,10 @@ export default function BatchReports() {
                     
                     <TabsContent value="progress" className="mt-0 p-6 focus-visible:outline-none">
                         <ProgressReports />
+                    </TabsContent>
+
+                    <TabsContent value="ai-analysis" className="mt-0 p-6 focus-visible:outline-none">
+                        <BatchAiAnalysis />
                     </TabsContent>
                 </div>
             </Tabs>

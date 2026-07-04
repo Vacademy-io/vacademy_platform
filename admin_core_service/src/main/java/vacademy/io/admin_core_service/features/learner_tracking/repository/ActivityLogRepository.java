@@ -1056,6 +1056,23 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("endDate") String endDate,
             @Param("userId") String userId);
 
+    /**
+     * Student report v2 "Focus score": the learner's average concentration score (0-100)
+     * over the window, from the concentration_score table (linked to activity_log by
+     * activity_id). Returns null when the learner has no concentration samples. READ-ONLY.
+     */
+    @Query(value = """
+                SELECT AVG(LEAST(100, GREATEST(0, cs.concentration_score)))
+                FROM concentration_score cs
+                JOIN activity_log al ON al.id = cs.activity_id
+                WHERE al.user_id = :userId
+                  AND DATE(al.created_at) BETWEEN CAST(:startDate AS DATE) AND CAST(:endDate AS DATE)
+            """, nativeQuery = true)
+    Double getAvgConcentrationScore(
+            @Param("userId") String userId,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate);
+
     @Query(value = """
                 WITH SubjectModules AS (
                     SELECT

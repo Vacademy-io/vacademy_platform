@@ -517,15 +517,11 @@ public class StudentReportPdfService {
             if (hasLive) {
                 var lc = r.getLiveClasses();
                 sb.append("<td class='tuc'><h2 class='sec'>Live Classes</h2>");
+                if (lc.getTotal() != null) sb.append("<table class='sr'><tr><td>Total classes</td><td class='sv'>").append(lc.getTotal()).append("</td></tr></table>");
                 if (lc.getAttended() != null) sb.append("<table class='sr'><tr><td>Attended</td><td class='sv' style='color:#16a34a'>").append(lc.getAttended()).append("</td></tr></table>");
                 if (lc.getMissed() != null) sb.append("<table class='sr'><tr><td>Missed</td><td class='sv' style='color:#dc2626'>").append(lc.getMissed()).append("</td></tr></table>");
+                if (lc.getUnmarked() != null && lc.getUnmarked() > 0) sb.append("<table class='sr'><tr><td>Not marked</td><td class='sv' style='color:#6b7280'>").append(lc.getUnmarked()).append("</td></tr></table>");
                 if (lc.getAttendancePercentage() != null) sb.append("<table class='sr'><tr><td>Attendance</td><td class='sv'>").append(String.format("%.0f%%", lc.getAttendancePercentage())).append("</td></tr></table>");
-                if (lc.getParticipation() != null) {
-                    var pd = lc.getParticipation();
-                    if (pd.getQuestionsAsked() != null) sb.append("<table class='sr'><tr><td>Questions asked</td><td class='sv'>").append(pd.getQuestionsAsked()).append("</td></tr></table>");
-                    if (pd.getPollsAnswered() != null) sb.append("<table class='sr'><tr><td>Polls answered</td><td class='sv'>").append(pd.getPollsAnswered()).append("</td></tr></table>");
-                    if (pd.getAvgEngagement() != null) sb.append("<table class='sr'><tr><td>Engagement</td><td class='sv' style='color:#16a34a'>").append(escHtml(pd.getAvgEngagement())).append("</td></tr></table>");
-                }
                 sb.append("</td>");
             }
             if (hasAssign) {

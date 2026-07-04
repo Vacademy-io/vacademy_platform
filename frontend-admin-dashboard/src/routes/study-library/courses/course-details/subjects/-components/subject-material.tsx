@@ -19,7 +19,7 @@ import { useUpdateSubjectOrder } from '@/routes/study-library/courses/course-det
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { tabs, TabType } from '../-constants/constant';
+import { tabs, TabType, DEFAULT_HIDDEN_COURSE_DETAILS_TABS } from '../-constants/constant';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { fetchModulesWithChapters } from '../../../-services/getModulesWithChapters';
 import {
@@ -49,6 +49,7 @@ import {
 } from '@phosphor-icons/react';
 import Students from './student-list';
 import Assessments from './assessment-list';
+import LiveSessions from './live-sessions-list';
 import Planning from './planning';
 import Activity from './activity';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
@@ -853,6 +854,15 @@ export const SubjectMaterial = () => {
                 <Assessments packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
+        [TabType.LIVE_SESSION]: packageSessionIds ? (
+            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+                <LiveSessions packageSessionId={packageSessionIds} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its live sessions.
+            </div>
+        ),
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">
                 <div className="mb-4">
@@ -926,6 +936,16 @@ export const SubjectMaterial = () => {
                     >
                         {tabs
                             .filter((tab) => tab.value !== TabType.DISCUSSION)
+                            // Hidden-by-default tabs (e.g. Live Session) only show
+                            // when a role's display settings explicitly enable them.
+                            .filter(
+                                (tab) =>
+                                    !DEFAULT_HIDDEN_COURSE_DETAILS_TABS.has(tab.value) ||
+                                    (roleDisplay?.courseDetails?.tabs?.some(
+                                        (t) => t.id === tab.value && t.visible !== false
+                                    ) ??
+                                        false)
+                            )
                             .map((tab) => (
                             <TabsTrigger
                                 key={tab.value}

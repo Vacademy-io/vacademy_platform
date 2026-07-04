@@ -100,26 +100,40 @@ public class AcademicsCollector {
      */
     private List<AcademicsSection.AssessmentItem> enrich(List<AcademicsSection.AssessmentItem> raw) {
         if (raw == null) return null;
-        return raw.stream().map(a -> AcademicsSection.AssessmentItem.builder()
+        return raw.stream().map(a -> {
+            // Marks are the source of truth: derive percentage from marks/totalMarks
+            // whenever the assessment service didn't provide it, so grade/status/averages
+            // are never blank just because the "percentage" field was absent.
+            Double pct = derivePercentage(a.getPercentage(), a.getMarks(), a.getTotalMarks());
+            return AcademicsSection.AssessmentItem.builder()
                 .assessmentId(a.getAssessmentId())
                 .name(a.getName() != null ? a.getName() : a.getAssessmentId())
                 .date(a.getDate())
                 .subject(a.getSubject())
                 .marks(a.getMarks())
                 .totalMarks(a.getTotalMarks())
-                .percentage(a.getPercentage())
-                .grade(gradeFromPct(a.getPercentage()))
+                .percentage(pct)
+                .grade(gradeFromPct(pct))
                 .rank(a.getRank())
                 .percentile(a.getPercentile())
                 .classAverage(a.getClassAverage())
-                .status(mapStatus(a.getStatus(), a.getPercentage()))
+                .status(mapStatus(a.getStatus(), pct))
                 .attemptId(a.getAttemptId())
                 .accuracy(a.getAccuracy())
                 .classAccuracy(a.getClassAccuracy())
                 .durationSeconds(a.getDurationSeconds())
                 .sections(a.getSections())
-                .build()
-        ).collect(Collectors.toList());
+                .build();
+        }).collect(Collectors.toList());
+    }
+
+    /** Uses the given percentage, else derives it from marks/totalMarks (marks are the source of truth). */
+    private Double derivePercentage(Double percentage, Double marks, Double totalMarks) {
+        if (percentage != null) return percentage;
+        if (marks != null && totalMarks != null && totalMarks > 0) {
+            return Math.round((marks / totalMarks * 100.0) * 10.0) / 10.0;
+        }
+        return null;
     }
 
     private List<AcademicsSection.SubjectPerformance> buildSubjectPerformance(

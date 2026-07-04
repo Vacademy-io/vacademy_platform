@@ -31,8 +31,7 @@ public class LiveClassesSection {
      */
     private ParticipationDetail participation;
 
-    // Internal count — not serialized
-    @com.fasterxml.jackson.annotation.JsonIgnore
+    /** Sessions with no attendance recorded (neither present nor absent). Serialized as {@code unmarked}. */
     private Integer unmarked;
 
     @Data

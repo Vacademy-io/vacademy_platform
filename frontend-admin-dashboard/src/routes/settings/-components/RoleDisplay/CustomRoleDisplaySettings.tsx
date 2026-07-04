@@ -1083,12 +1083,22 @@ export default function CustomRoleDisplaySettings({
                             'LEARNER',
                             'TEACHER',
                             'ASSESSMENT',
+                            'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
                             'SETTINGS',
                         ];
+                        // Tabs that stay OFF unless explicitly enabled per role.
+                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
                         const sorted = tabIds
-                            .map((id) => settings.courseDetails?.tabs.find((t) => t.id === id) || { id, order: 0, visible: true })
+                            .map(
+                                (id) =>
+                                    settings.courseDetails?.tabs.find((t) => t.id === id) || {
+                                        id,
+                                        order: 0,
+                                        visible: !hiddenByDefault.has(id),
+                                    }
+                            )
                             .sort((a, b) => a.order - b.order);
 
                         return sorted.map((cfg, idx) => {
@@ -1120,8 +1130,9 @@ export default function CustomRoleDisplaySettings({
                                                         LEARNER: 3,
                                                         TEACHER: 4,
                                                         ASSESSMENT: 5,
-                                                        PLANNING: 6,
-                                                        ACTIVITY: 7,
+                                                        LIVE_SESSION: 6,
+                                                        PLANNING: 7,
+                                                        ACTIVITY: 8,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

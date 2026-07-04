@@ -36,6 +36,11 @@ public class ActivityCollector {
                 for (Object[] row : dailyRaw) {
                     String date = row[0] != null ? row[0].toString() : null;
                     double mins = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+                    // Cap each day at 24h. The query sums many activity_log rows per day and a
+                    // single row's (end_time - start_time) can be inflated (e.g. a slide left open
+                    // for days), so per-day totals can exceed 24h — physically impossible. Without
+                    // this, totals ran to ~1993 "hrs". Per-row is already capped at 1440 min upstream.
+                    mins = Math.min(mins, 1440.0);
                     double rounded = Math.round(mins * 100.0) / 100.0;
                     dailyStudyMinutes.add(StudyHabitsSection.DailyStudyEntry.builder()
                             .date(date)
@@ -62,6 +67,16 @@ public class ActivityCollector {
             StudyHabitsSection.ContentEngagement contentEngagement = fetchContentEngagement(
                     userId, startDate, endDate);
 
+            // Focus score = average concentration (0-100) over the window; null when no samples.
+            Double focusScore = null;
+            try {
+                Double conc = activityLogRepository.getAvgConcentrationScore(
+                        userId, startDate.toString(), endDate.toString());
+                if (conc != null) focusScore = Math.round(conc * 10.0) / 10.0;
+            } catch (Exception e) {
+                log.warn("[ActivityCollector] Focus score query failed for userId={}: {}", userId, e.getMessage());
+            }
+
             return StudyHabitsSection.builder()
                     .available(true)
                     .totalStudyHours(totalStudyHours)
@@ -71,7 +86,7 @@ public class ActivityCollector {
                     .longestStreakDays(longestStreak)
                     .consistencyRating(consistencyRating)
                     .mostActiveTime(null)       // hourly breakdown not available without N+1 query
-                    .focusScore(null)           // concentration data not available per-user cheaply
+                    .focusScore(focusScore)
                     .contentEngagement(contentEngagement)
                     .dailyStudyMinutes(dailyStudyMinutes)
                     .build();

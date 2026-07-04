@@ -47,6 +47,7 @@ import type {
     V2AttendanceWeekly,
     V2CourseProgressSubject,
     V2DailyStudyMinute,
+    V2SubjectMarksItem,
 } from '@/types/student-analysis';
 import { ProfileSectionCard } from '../profile-ui';
 
@@ -546,11 +547,19 @@ const LiveClassesTab = ({ report }: { report: ComprehensiveStudentReport }) => {
     return (
         <div className="flex flex-col gap-4">
             <ProfileSectionCard heading="Live Class Summary" icon={Video as PhosphorIcon}>
+                <div className="mb-3 flex items-baseline justify-between rounded-md bg-neutral-50 px-4 py-3">
+                    <span className="text-xs text-neutral-500">
+                        Total classes: <span className="font-semibold text-neutral-800">{lc.total ?? 0}</span>
+                    </span>
+                    <span className="text-sm font-semibold text-neutral-800">
+                        {lc.attendance_percentage != null ? `${lc.attendance_percentage}%` : '—'} attendance
+                    </span>
+                </div>
                 <div className="grid grid-cols-3 gap-3 pt-1">
                     {[
-                        { label: 'Attended', value: lc.attended, cls: 'text-success-600' },
-                        { label: 'Missed', value: lc.missed, cls: 'text-danger-600' },
-                        { label: 'Unmarked', value: lc.unmarked, cls: 'text-neutral-500' },
+                        { label: 'Attended', value: lc.attended ?? 0, cls: 'text-success-600' },
+                        { label: 'Missed', value: lc.missed ?? 0, cls: 'text-danger-600' },
+                        { label: 'Not marked', value: lc.unmarked ?? 0, cls: 'text-neutral-500' },
                     ].map((s) => (
                         <div
                             key={s.label}
@@ -646,7 +655,11 @@ const AssignmentsTab = ({ report }: { report: ComprehensiveStudentReport }) => {
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                                     <span className="text-sm font-semibold text-neutral-800">
-                                        {item.marks}
+                                        {item.score_percentage != null
+                                            ? `${item.score_percentage}%`
+                                            : item.marks != null
+                                              ? item.marks
+                                              : 'Not graded'}
                                     </span>
                                     {item.late && (
                                         <span className="rounded-full bg-warning-50 px-1.5 py-0.5 text-xs font-medium text-warning-700 ring-1 ring-warning-200">
@@ -845,6 +858,7 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
     const headlineMetrics = overview.headline_metrics ?? [];
     const academicAssessments = data.academics?.assessments ?? [];
     const academicSubjectPerf = data.academics?.subject_performance ?? [];
+    const subjectMarksList = data.subject_marks?.subjects ?? [];
     const courseProgressSubjects = data.course_progress?.subjects ?? [];
     const aiCrossDomainInsights = data.ai_insights?.cross_domain_insights ?? [];
     const aiRecommendations = data.ai_insights?.recommendations ?? [];
@@ -1060,6 +1074,58 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                 </ProfileSectionCard>
             )}
 
+            {/* Marks by Subject */}
+            {data.subject_marks?.available && subjectMarksList.length > 0 && (
+                <ProfileSectionCard>
+                    <AdminSectionHeading>Marks by Subject</AdminSectionHeading>
+                    <p className="text-xs text-neutral-500 mb-3 -mt-2">
+                        Aggregated across assessments, assignments, quizzes and practice questions.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                        {subjectMarksList.map((sm: V2SubjectMarksItem) => {
+                            const pct = sm.percentage ?? 0;
+                            return (
+                                <div
+                                    key={sm.subject}
+                                    className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-3 shadow-sm"
+                                >
+                                    <div className="relative size-16">
+                                        <svg viewBox="0 0 64 64" className="size-full -rotate-90">
+                                            <circle cx="32" cy="32" r="27" fill="none" strokeWidth="6" className="stroke-neutral-100" />
+                                            <circle
+                                                cx="32"
+                                                cy="32"
+                                                r="27"
+                                                fill="none"
+                                                strokeWidth="6"
+                                                strokeLinecap="round"
+                                                strokeDasharray={`${(pct / 100) * 169.6} 169.6`}
+                                                className={cn(
+                                                    pct >= 75
+                                                        ? 'stroke-success-500'
+                                                        : pct >= 50
+                                                          ? 'stroke-warning-500'
+                                                          : 'stroke-danger-500',
+                                                )}
+                                            />
+                                        </svg>
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                            <span className="text-xs font-bold text-neutral-800">{pct}%</span>
+                                        </div>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="truncate text-sm font-medium text-neutral-800 max-w-24">{sm.subject}</p>
+                                        <p className="text-xs text-neutral-400">
+                                            {sm.marks_obtained}/{sm.total_marks}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </ProfileSectionCard>
+            )}
+
             {/* Strengths + Areas to Improve */}
             {((data.strengths && data.strengths.length > 0) ||
                 (data.areas_to_improve && data.areas_to_improve.length > 0)) && (
@@ -1118,8 +1184,8 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         {[
                             { label: 'Active days', value: `${data.study_habits.active_days}/${data.study_habits.total_days}` },
                             { label: 'Longest streak', value: `${data.study_habits.longest_streak_days}d` },
-                            { label: 'Focus score', value: String(data.study_habits.focus_score) },
-                            { label: 'Most active', value: data.study_habits.most_active_time },
+                            { label: 'Focus score', value: data.study_habits.focus_score != null ? `${data.study_habits.focus_score}%` : '—' },
+                            { label: 'Most active', value: data.study_habits.most_active_time ?? '—' },
                         ].map((s) => (
                             <div key={s.label} className="flex flex-col gap-0.5 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 shadow-sm">
                                 <span className="text-xs text-neutral-400">{s.label}</span>
@@ -1203,12 +1269,11 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         <ProfileSectionCard heading="Live Classes" icon={Video as PhosphorIcon}>
                             <div className="mt-1 flex flex-col divide-y divide-border">
                                 {[
-                                    { label: 'Attended', value: data.live_classes.attended, cls: 'text-success-600' },
-                                    { label: 'Missed', value: data.live_classes.missed, cls: 'text-danger-600' },
-                                    { label: 'Attendance', value: `${data.live_classes.attendance_percentage}%`, cls: undefined },
-                                    { label: 'Questions asked', value: data.live_classes.participation?.questions_asked ?? 0, cls: undefined },
-                                    { label: 'Polls answered', value: data.live_classes.participation?.polls_answered ?? 0, cls: undefined },
-                                    { label: 'Engagement', value: data.live_classes.participation?.avg_engagement ?? '—', cls: 'text-success-600' },
+                                    { label: 'Total classes', value: data.live_classes.total ?? 0, cls: undefined },
+                                    { label: 'Attended', value: data.live_classes.attended ?? 0, cls: 'text-success-600' },
+                                    { label: 'Missed', value: data.live_classes.missed ?? 0, cls: 'text-danger-600' },
+                                    { label: 'Not marked', value: data.live_classes.unmarked ?? 0, cls: 'text-neutral-500' },
+                                    { label: 'Attendance', value: data.live_classes.attendance_percentage != null ? `${data.live_classes.attendance_percentage}%` : '—', cls: undefined },
                                 ].map(({ label, value, cls }) => (
                                     <div key={label} className="flex justify-between items-center py-1.5">
                                         <span className="text-xs text-neutral-500">{label}</span>
@@ -1222,12 +1287,12 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
                         <ProfileSectionCard heading="Assignments" icon={ClipboardText as PhosphorIcon}>
                             <div className="mt-1 flex flex-col divide-y divide-border">
                                 {[
-                                    { label: 'Assigned', value: data.assignments.assigned, cls: undefined },
-                                    { label: 'Submitted', value: data.assignments.submitted, cls: 'text-success-600' },
-                                    { label: 'On time', value: data.assignments.on_time, cls: undefined },
-                                    { label: 'Late', value: data.assignments.late, cls: 'text-warning-600' },
-                                    { label: 'Pending', value: data.assignments.pending, cls: 'text-danger-600' },
-                                    { label: 'Avg. score', value: `${data.assignments.avg_score_percentage}%`, cls: undefined },
+                                    { label: 'Assigned', value: data.assignments.assigned ?? '—', cls: undefined },
+                                    { label: 'Submitted', value: data.assignments.submitted ?? 0, cls: 'text-success-600' },
+                                    { label: 'On time', value: data.assignments.on_time ?? '—', cls: undefined },
+                                    { label: 'Late', value: data.assignments.late ?? 0, cls: 'text-warning-600' },
+                                    { label: 'Pending', value: data.assignments.pending ?? '—', cls: 'text-danger-600' },
+                                    { label: 'Avg. score', value: data.assignments.avg_score_percentage != null ? `${data.assignments.avg_score_percentage}%` : '—', cls: undefined },
                                 ].map(({ label, value, cls }) => (
                                     <div key={label} className="flex justify-between items-center py-1.5">
                                         <span className="text-xs text-neutral-500">{label}</span>

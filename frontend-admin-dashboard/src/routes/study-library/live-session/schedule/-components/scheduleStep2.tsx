@@ -43,7 +43,7 @@ import {
 } from '../-services/utils';
 import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
@@ -95,7 +95,10 @@ const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
 };
 
 export default function ScheduleStep2() {
-    const { clearSessionId, clearStep1Data, clearBulkSessionIds } = useLiveSessionStore();
+    const { clearSessionId, clearStep1Data, clearBulkSessionIds, clearDeepLink } =
+        useLiveSessionStore();
+    const preselectedBatchIds = useLiveSessionStore((state) => state.preselectedBatchIds);
+    const returnUrl = useLiveSessionStore((state) => state.returnUrl);
     const bulkSessionIds = useLiveSessionStore((state) => state.bulkSessionIds);
     const isBulkFlow = bulkSessionIds.length > 0;
     const { studyLibraryData } = useStudyLibraryStore();
@@ -109,6 +112,7 @@ export default function ScheduleStep2() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const navigate = useNavigate();
+    const router = useRouter();
 
     // Get the institute details at component level
     const { instituteDetails } = useInstituteDetailsStore();
@@ -372,6 +376,50 @@ export default function ScheduleStep2() {
             }
         }
     }, [sessionDetails, instituteDetails, sessionList, form]);
+
+    // Deep-link preselect (create flow only): when the schedule flow was opened
+    // from another page with a preselected batch (e.g. Course Details → Live
+    // Sessions tab), seed the batch selection here so the admin doesn't have to
+    // pick it again. Runs once, and never in edit mode (edit seeds from the saved
+    // session above) or when the admin has already chosen batches.
+    const hasSeededPreselect = useRef(false);
+    useEffect(() => {
+        if (hasSeededPreselect.current) return;
+        if (isEditState || sessionDetails) return;
+        if (!preselectedBatchIds || preselectedBatchIds.length === 0) return;
+        if (!instituteDetails) return;
+        const existing = form.getValues('selectedLevels') || [];
+        if (existing.length > 0) {
+            hasSeededPreselect.current = true;
+            return;
+        }
+
+        const selectedLevels: { courseId: string; sessionId: string; levelId: string }[] = [];
+        preselectedBatchIds.forEach((packageSessionId) => {
+            const matchingBatch = instituteDetails.batches_for_sessions.find(
+                (batch) => batch.id === packageSessionId
+            );
+            if (matchingBatch) {
+                selectedLevels.push({
+                    courseId: matchingBatch.package_dto.id,
+                    sessionId: matchingBatch.session.id,
+                    levelId: matchingBatch.level.id,
+                });
+            }
+        });
+
+        if (selectedLevels.length > 0) {
+            form.setValue('selectedLevels', selectedLevels);
+            const firstSelectedLevel = selectedLevels[0];
+            const matchingSession = sessionList.find(
+                (session) => session.id === firstSelectedLevel?.sessionId
+            );
+            if (matchingSession) {
+                setCurrentSession(matchingSession);
+            }
+            hasSeededPreselect.current = true;
+        }
+    }, [isEditState, sessionDetails, preselectedBatchIds, instituteDetails, sessionList, form]);
 
     const addCustomFieldform = useForm<z.infer<typeof addCustomFiledSchema>>({
         resolver: zodResolver(addCustomFiledSchema),
@@ -691,7 +739,19 @@ export default function ScheduleStep2() {
             clearSessionId();
             clearStep1Data();
             clearBulkSessionIds();
-            navigate({ to: '/study-library/live-session' });
+            // If we were deep-linked in from another page (e.g. Course Details →
+            // Live Sessions tab), return to that exact URL instead of the
+            // live-session list. Push the raw path+search string through the
+            // router history rather than reconstructing a typed `to`/`search`
+            // pair — the return URL is an arbitrary in-app location and history
+            // push avoids route-pattern / search-encoding round-trip pitfalls.
+            const destination = returnUrl;
+            clearDeepLink();
+            if (destination) {
+                router.history.push(destination);
+            } else {
+                navigate({ to: '/study-library/live-session' });
+            }
         } catch (error) {
             // Capture to Sentry (feature-tagged) + show a toast in one call so
             // create failures are no longer console-only.

@@ -1,6 +1,5 @@
 package vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
@@ -35,12 +34,10 @@ public class AssignmentsSection {
     /** Average score percentage across graded submissions. Null when no marks available. */
     private Double avgScorePercentage;
 
-    /** Internal detail — kept for potential future use but not serialized. */
-    @JsonIgnore
+    /** Number of graded submissions (marks/feedback/checked-file present). */
     private Integer graded;
 
-    /** Internal item list — not serialized in v2 report. */
-    @JsonIgnore
+    /** Per-submission detail (used by the admin Assignments tab). */
     private List<AssignmentItem> items;
 
     @Data
@@ -52,6 +49,8 @@ public class AssignmentsSection {
         private String slideId;
         private String title;
         private Double marks;
+        /** Score as a percentage of the assignment's total marks; null when ungraded / total unknown. */
+        private Double scorePercentage;
         private Boolean late;
         private String feedback;
         private String reviewStatus;

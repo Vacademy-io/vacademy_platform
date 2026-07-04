@@ -67,19 +67,18 @@ public class AttendanceCollector {
 
             int totalSessions = present + absent + late + unmarked;
 
-            // Compute overall percentage
-            double pct = 0.0;
-            if (batchId != null) {
-                try {
-                    Double dbPct = participantRepository.getAttendancePercentage(batchId, userId, startDate, endDate);
-                    if (dbPct != null) pct = dbPct;
-                } catch (Exception e) {
-                    log.warn("[AttendanceCollector] Could not fetch attendance %, using count-based: {}", e.getMessage());
-                    pct = totalSessions > 0 ? ((present + late) * 100.0 / totalSessions) : 0.0;
-                }
-            } else {
-                pct = totalSessions > 0 ? ((present + late) * 100.0 / totalSessions) : 0.0;
-            }
+            // Fold "unmarked" into "absent" — see LiveClassCollector: attendance is auto-recorded as
+            // PRESENT on join, so a session with no PRESENT record was not attended. This keeps the
+            // Attendance card's Absent count consistent with the Live Classes card's Missed count.
+            absent = absent + unmarked;
+            unmarked = 0;
+
+            // Overall % = (present + late) / total sessions — session-based, so it MATCHES the
+            // Live Classes card exactly. We intentionally do NOT use getAttendancePercentage():
+            // that query is day-based AND counts any day with an ATTENDANCE_RECORDED log as
+            // "attended" even when the status is ABSENT, which inflated this number (73% vs the
+            // real 62.2%). Both cards read the same present/total records now.
+            double pct = totalSessions > 0 ? ((present + late) * 100.0 / totalSessions) : 0.0;
 
             // Build weekly buckets from sessions
             List<AttendanceSection.WeeklyBucket> weekly = buildWeeklyBuckets(sessions, startDate, endDate);

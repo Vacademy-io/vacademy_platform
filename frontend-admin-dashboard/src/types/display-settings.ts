@@ -75,6 +75,7 @@ export type CourseDetailsTabId =
     | 'LEARNER'
     | 'TEACHER'
     | 'ASSESSMENT'
+    | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'
     | 'SETTINGS';

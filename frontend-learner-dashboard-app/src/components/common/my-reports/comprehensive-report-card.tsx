@@ -244,6 +244,58 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
   );
 }
 
+// ── V2 Marks by Subject ────────────────────────────────────────────────────────
+
+function V2SubjectMarksCard({ sm }: { sm: NonNullable<V2ReportData["subject_marks"]> }) {
+  const subjects = sm.subjects ?? [];
+  if (subjects.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
+      <V2SectionHeading>Marks by Subject</V2SectionHeading>
+      <p className="text-sm text-neutral-500 mb-4 -mt-2">
+        Aggregated across assessments, assignments, quizzes and practice questions.
+      </p>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {subjects.map((subj) => {
+          const pct = subj.percentage ?? 0;
+          const ringStrokeClass =
+            pct >= 75 ? "stroke-success-500" : pct >= 50 ? "stroke-warning-500" : "stroke-danger-500";
+          const circumference = 169.6;
+          return (
+            <div
+              key={subj.subject}
+              className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-3"
+            >
+              <div className="relative w-16 h-16 shrink-0">
+                <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+                  <circle cx="32" cy="32" r="27" fill="none" strokeWidth="6" className="stroke-neutral-100" />
+                  <circle
+                    cx="32" cy="32" r="27" fill="none"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={`${(pct / 100) * circumference} ${circumference}`}
+                    className={ringStrokeClass}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs font-bold text-neutral-800">{pct}%</span>
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-neutral-800 truncate max-w-24">{subj.subject}</p>
+                <p className="text-xs text-neutral-500">
+                  {subj.marks_obtained}/{subj.total_marks}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── V2 Strengths + Areas to Improve ──────────────────────────────────────────
 
 function V2StrengthsCard({
@@ -332,7 +384,9 @@ function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"
         </div>
         <div className="rounded-xl border border-neutral-200 p-3">
           <p className="text-xs text-neutral-500">Focus score</p>
-          <p className="text-2xl font-bold text-neutral-800 mt-1">{sh.focus_score}</p>
+          <p className="text-2xl font-bold text-neutral-800 mt-1">
+            {sh.focus_score != null ? `${sh.focus_score}%` : '—'}
+          </p>
         </div>
         <div className="rounded-xl border border-neutral-200 p-3">
           <p className="text-xs text-neutral-500">Most active</p>
@@ -419,12 +473,11 @@ function V2LiveClassesAndAssignments({
         <V2SectionHeading>Live Classes</V2SectionHeading>
         <div className="divide-y divide-dashed divide-neutral-200">
           {[
-            { label: "Attended", value: lc.attended, cls: "text-success-600" },
-            { label: "Missed", value: lc.missed, cls: "text-danger-600" },
-            { label: "Attendance", value: `${lc.attendance_percentage}%`, cls: undefined },
-            { label: "Questions asked", value: lc.participation?.questions_asked ?? 0, cls: undefined },
-            { label: "Polls answered", value: lc.participation?.polls_answered ?? 0, cls: undefined },
-            { label: "Engagement", value: lc.participation?.avg_engagement ?? "—", cls: "text-success-600" },
+            { label: "Total classes", value: lc.total ?? 0, cls: undefined },
+            { label: "Attended", value: lc.attended ?? 0, cls: "text-success-600" },
+            { label: "Missed", value: lc.missed ?? 0, cls: "text-danger-600" },
+            { label: "Not marked", value: lc.unmarked ?? 0, cls: "text-neutral-500" },
+            { label: "Attendance", value: lc.attendance_percentage != null ? `${lc.attendance_percentage}%` : "—", cls: undefined },
           ].map(({ label, value, cls }) => (
             <div key={label} className="flex justify-between items-center py-1.5">
               <span className="text-sm text-neutral-600">{label}</span>
@@ -438,12 +491,12 @@ function V2LiveClassesAndAssignments({
         <V2SectionHeading>Assignments</V2SectionHeading>
         <div className="divide-y divide-dashed divide-neutral-200">
           {[
-            { label: "Assigned", value: asgn.assigned, cls: undefined },
-            { label: "Submitted", value: asgn.submitted, cls: "text-success-600" },
-            { label: "On time", value: asgn.on_time, cls: undefined },
-            { label: "Late", value: asgn.late, cls: "text-warning-600" },
-            { label: "Pending", value: asgn.pending, cls: "text-danger-600" },
-            { label: "Avg. score", value: `${asgn.avg_score_percentage}%`, cls: undefined },
+            { label: "Assigned", value: asgn.assigned ?? "—", cls: undefined },
+            { label: "Submitted", value: asgn.submitted ?? 0, cls: "text-success-600" },
+            { label: "On time", value: asgn.on_time ?? "—", cls: undefined },
+            { label: "Late", value: asgn.late ?? 0, cls: "text-warning-600" },
+            { label: "Pending", value: asgn.pending ?? "—", cls: "text-danger-600" },
+            { label: "Avg. score", value: asgn.avg_score_percentage != null ? `${asgn.avg_score_percentage}%` : "—", cls: undefined },
           ].map(({ label, value, cls }) => (
             <div key={label} className="flex justify-between items-center py-1.5">
               <span className="text-sm text-neutral-600">{label}</span>
@@ -661,6 +714,11 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
           <V2AcademicsCard acs={data.academics} />
         )}
 
+        {/* ── 5b. MARKS BY SUBJECT ── */}
+        {data.subject_marks?.available && (
+          <V2SubjectMarksCard sm={data.subject_marks} />
+        )}
+
         {/* ── 6. STRENGTHS + AREAS TO IMPROVE ── */}
         {((data.strengths && data.strengths.length > 0) || (data.areas_to_improve && data.areas_to_improve.length > 0)) && (
           <V2StrengthsCard
@@ -688,9 +746,11 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
             <V2SectionHeading>Live Classes</V2SectionHeading>
             <div className="divide-y divide-dashed divide-neutral-200">
               {[
-                { label: "Attended", value: data.live_classes.attended, cls: "text-success-600" },
-                { label: "Missed", value: data.live_classes.missed, cls: "text-danger-600" },
-                { label: "Attendance", value: `${data.live_classes.attendance_percentage}%`, cls: undefined },
+                { label: "Total classes", value: data.live_classes.total ?? 0, cls: undefined },
+                { label: "Attended", value: data.live_classes.attended ?? 0, cls: "text-success-600" },
+                { label: "Missed", value: data.live_classes.missed ?? 0, cls: "text-danger-600" },
+                { label: "Not marked", value: data.live_classes.unmarked ?? 0, cls: "text-neutral-500" },
+                { label: "Attendance", value: data.live_classes.attendance_percentage != null ? `${data.live_classes.attendance_percentage}%` : "—", cls: undefined },
               ].map(({ label, value, cls }) => (
                 <div key={label} className="flex justify-between items-center py-1.5">
                   <span className="text-sm text-neutral-600">{label}</span>
@@ -705,12 +765,12 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
             <V2SectionHeading>Assignments</V2SectionHeading>
             <div className="divide-y divide-dashed divide-neutral-200">
               {[
-                { label: "Assigned", value: data.assignments.assigned, cls: undefined },
-                { label: "Submitted", value: data.assignments.submitted, cls: "text-success-600" },
-                { label: "On time", value: data.assignments.on_time, cls: undefined },
-                { label: "Late", value: data.assignments.late, cls: "text-warning-600" },
-                { label: "Pending", value: data.assignments.pending, cls: "text-danger-600" },
-                { label: "Avg. score", value: `${data.assignments.avg_score_percentage}%`, cls: undefined },
+                { label: "Assigned", value: data.assignments.assigned ?? "—", cls: undefined },
+                { label: "Submitted", value: data.assignments.submitted ?? 0, cls: "text-success-600" },
+                { label: "On time", value: data.assignments.on_time ?? "—", cls: undefined },
+                { label: "Late", value: data.assignments.late ?? 0, cls: "text-warning-600" },
+                { label: "Pending", value: data.assignments.pending ?? "—", cls: "text-danger-600" },
+                { label: "Avg. score", value: data.assignments.avg_score_percentage != null ? `${data.assignments.avg_score_percentage}%` : "—", cls: undefined },
               ].map(({ label, value, cls }) => (
                 <div key={label} className="flex justify-between items-center py-1.5">
                   <span className="text-sm text-neutral-600">{label}</span>

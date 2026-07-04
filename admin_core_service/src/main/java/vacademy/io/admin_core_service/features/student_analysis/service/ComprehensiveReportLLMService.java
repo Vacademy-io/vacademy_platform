@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.SubjectMarksSection;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -84,6 +85,158 @@ public class ComprehensiveReportLLMService {
 
         String prompt = buildPrompt(facts);
         return tryModelsWithFallback(prompt, modelPriority, 0, userId);
+    }
+
+    /**
+     * ADDITIVE: clusters raw graded items (assessments/assignments/quiz/question marks) into
+     * subject domains by topic, e.g. "optics quiz", "magnetism" → Physics. Best-effort — the
+     * caller ({@code SubjectMarksCollector#deterministicGroup} via {@code StudentAnalysisProcessorService})
+     * MUST fall back to deterministic DB-subject-hint grouping on empty/error, since this
+     * codebase has learned the LLM can be unreliable (§ design doc constraint).
+     *
+     * <p>STRICT: the model must not invent marks — it only sums the numbers it is given.
+     * Percentage is always recomputed in Java from the returned marks, never trusted from the LLM.
+     */
+    public Mono<List<SubjectMarksSection.SubjectMarks>> clusterSubjectMarks(
+            List<SubjectMarksSection.GradedItem> items, String userId) {
+        if (items == null || items.isEmpty()) {
+            return Mono.just(List.of());
+        }
+        log.info("[ComprehensiveReportLLM] Clustering {} graded items into subjects for userId={}", items.size(), userId);
+
+        List<String> modelPriority = aiModelRegistryService.getModelPriority("student_report");
+        if (modelPriority == null || modelPriority.isEmpty()) {
+            modelPriority = aiModelRegistryService.getModelPriority("analytics");
+        }
+        if (modelPriority == null || modelPriority.isEmpty()) {
+            log.error("[ComprehensiveReportLLM] No AI models available for subject-marks clustering");
+            return Mono.error(new RuntimeException("No AI models available for subject-marks clustering"));
+        }
+
+        String prompt = buildSubjectMarksPrompt(items);
+        return trySubjectMarksModelsWithFallback(prompt, modelPriority, 0, userId);
+    }
+
+    private Mono<List<SubjectMarksSection.SubjectMarks>> trySubjectMarksModelsWithFallback(
+            String prompt, List<String> models, int idx, String userId) {
+        if (idx >= models.size()) {
+            return Mono.error(new RuntimeException("All LLM models failed for subject-marks clustering. Tried: " + models));
+        }
+        String model = models.get(idx);
+        return generateSubjectMarksWithModel(prompt, model, userId)
+                .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
+                        .doBeforeRetry(s -> log.warn("[ComprehensiveReportLLM] Subject-marks retry {}/{} for model={}",
+                                s.totalRetries() + 1, MAX_RETRIES_PER_MODEL, model))
+                        .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
+                .onErrorResume(err -> {
+                    log.error("[ComprehensiveReportLLM] Subject-marks model {} failed: {}. Trying next.", model, err.getMessage());
+                    return trySubjectMarksModelsWithFallback(prompt, models, idx + 1, userId);
+                });
+    }
+
+    private Mono<List<SubjectMarksSection.SubjectMarks>> generateSubjectMarksWithModel(
+            String prompt, String model, String userId) {
+        Map<String, Object> payload = Map.of(
+                "model", model,
+                "messages", List.of(
+                        Map.of("role", "system", "content",
+                                "You are an expert academic taxonomist. You cluster graded item titles into "
+                                + "subject domains (e.g. Physics, Mathematics, Chemistry, Biology, English). "
+                                + "You MUST NOT invent, estimate, or alter any marks — only sum the numbers "
+                                + "you are given, grouped by the subject domain you infer."),
+                        Map.of("role", "user", "content", prompt)),
+                "response_format", Map.of("type", "json_object"));
+
+        return webClient.post()
+                .uri("/api/v1/chat/completions")
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(String.class)
+                .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
+                .doOnNext(response -> logTokenUsage(response, model, userId))
+                .flatMap(response -> parseSubjectMarks(response, model));
+    }
+
+    private Mono<List<SubjectMarksSection.SubjectMarks>> parseSubjectMarks(String body, String model) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
+            if (contentNode.isMissingNode()) {
+                return Mono.error(new RuntimeException("No content in LLM response"));
+            }
+            String content = contentNode.asText();
+            if (content.startsWith("```json")) content = content.replace("```json", "").replace("```", "").trim();
+            else if (content.startsWith("```")) content = content.replace("```", "").trim();
+
+            JsonNode parsed = objectMapper.readTree(content);
+            JsonNode subjectsNode = parsed.path("subjects");
+            List<SubjectMarksSection.SubjectMarks> result = new ArrayList<>();
+            if (subjectsNode.isArray()) {
+                for (JsonNode s : subjectsNode) {
+                    String subject = s.path("subject").asText(null);
+                    if (subject == null || subject.isBlank()) continue;
+                    Double obtained = s.has("marks_obtained") && !s.get("marks_obtained").isNull()
+                            ? s.get("marks_obtained").asDouble() : null;
+                    Double total = s.has("total_marks") && !s.get("total_marks").isNull()
+                            ? s.get("total_marks").asDouble() : null;
+                    // Percentage is ALWAYS recomputed here — never trust LLM math.
+                    Double pct = (obtained != null && total != null && total > 0)
+                            ? Math.round((obtained / total * 100.0) * 10.0) / 10.0 : null;
+                    List<String> topics = parseStringList(s.path("topics"));
+
+                    result.add(SubjectMarksSection.SubjectMarks.builder()
+                            .subject(subject)
+                            .marksObtained(obtained)
+                            .totalMarks(total)
+                            .percentage(pct)
+                            .itemCount(topics.size())
+                            .topics(topics)
+                            .build());
+                }
+            }
+            log.info("[ComprehensiveReportLLM] Subject-marks clustering succeeded with model={} ({} subjects)", model, result.size());
+            return Mono.just(result);
+
+        } catch (Exception e) {
+            log.error("[ComprehensiveReportLLM] Failed to parse subject-marks clustering from model={}: {}", model, e.getMessage());
+            return Mono.error(new RuntimeException("Failed to parse subject-marks clustering: " + e.getMessage(), e));
+        }
+    }
+
+    private String buildSubjectMarksPrompt(List<SubjectMarksSection.GradedItem> items) {
+        try {
+            String itemsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(items);
+            return """
+                    You are given a list of graded items a student completed (assessments, assignments,
+                    quizzes, and individual questions), each with a title, an optional subject hint from
+                    our database, marks obtained, and total marks.
+
+                    YOUR TASK: cluster these items into subject domains by inferring the academic subject
+                    from the title (use the provided "subject" hint when present and trust it; when absent
+                    or ambiguous, infer the domain from the title — e.g. "optics quiz", "magnetism",
+                    "Newton's law" → Physics; "algebra", "polynomials" → Math), then SUM the marks_obtained
+                    and total_marks of every item assigned to that subject.
+
+                    STRICT RULES:
+                    1. Do NOT invent, estimate, or alter any marks. Only sum the exact numbers given per item.
+                    2. Every item must be assigned to exactly one subject.
+                    3. Use clean, human-readable subject names (e.g. "Physics", "Mathematics", "Chemistry",
+                       "Biology", "English"). Use "Other" only when a subject truly cannot be inferred.
+                    4. "topics" for each subject is the list of item titles clustered into it.
+
+                    Return ONLY a valid JSON object with this exact structure (no extra keys):
+                    {
+                      "subjects": [
+                        { "subject": "Physics", "marks_obtained": 30, "total_marks": 60, "topics": ["Optics Quiz", "Magnetism Test"] }
+                      ]
+                    }
+
+                    GRADED ITEMS:
+                    """ + itemsJson;
+        } catch (Exception e) {
+            log.error("[ComprehensiveReportLLM] Failed to build subject-marks prompt: {}", e.getMessage());
+            return "Cluster the following graded items by subject and sum their marks. Return JSON with key: subjects.";
+        }
     }
 
     // ── model retry / fallback ────────────────────────────────────────────────
@@ -209,13 +362,25 @@ public class ComprehensiveReportLLMService {
 
                     STRICT RULES:
                     1. You MUST NOT introduce any new numbers, percentages, dates, or counts not present in the facts.
-                    2. You ONLY interpret, correlate, and explain what you see.
-                    3. Strengths: topics with score 70-100. Weaknesses: topics with score 0-50. Only infer from assessments data if available.
+                    2. You ONLY interpret, correlate, and explain what you see — but you MUST use ALL of the data below.
+                    3. STRENGTHS and WEAKNESSES — derive these from EVERY available domain, not just assessments:
+                       - course_progress.subjects (subject + completion_percentage): high completion → strength, low → weakness.
+                       - academics.subject_performance (subject + score_percentage): high score → strength, low → weakness.
+                       - Also consider assignments (submitted/on-time/avg score), attendance %, live-class attendance,
+                         and study consistency as strengths/weaknesses where clearly good or poor.
+                       The map value is a 0-100 confidence: use the subject's own completion_percentage or score_percentage
+                       when available, otherwise your best qualitative rating consistent with the facts.
+                       Classification: strength if the value is >= 60, weakness/area-to-improve if < 60.
+                       Aim for 3-6 strengths and 2-6 areas to improve whenever the data supports it, and ALWAYS return at
+                       least one of each when any subject/topic data exists. Use the real subject/topic names from the facts
+                       (never invent topics that aren't present).
                     4. "summary" is a one-sentence AI summary shown inside the ai_insights card.
                     5. "parent_summary" is a jargon-free 2-4 sentence paragraph written for a parent — highlight achievements and one clear focus area.
                     6. "overview_one_line" is a ≤15-word headline shown under the student's name on the report cover.
-                    7. "cross_domain_insights" is an array of 2-5 observations that connect two or more sections (e.g., attendance vs marks).
-                    8. "recommendations" must be actionable and prioritized (HIGH/MEDIUM/LOW).
+                    7. "cross_domain_insights" is an array of 2-5 observations that connect two or more sections (e.g., attendance vs marks, progress vs assignments).
+                    8. "recommendations" is the IMPROVEMENT PATH: 3-5 concrete, actionable, prioritized (HIGH/MEDIUM/LOW) steps.
+                       Each must name the specific area it addresses (a weak subject, low attendance, pending assignments, etc.)
+                       and a clear action the student/parent can take. Always produce at least 3 when any weakness or gap exists.
                     9. "section_commentary" is optional; include only for sections where you have a genuine observation.
 
                     Return ONLY a valid JSON object with this exact structure (no extra keys):
@@ -224,8 +389,8 @@ public class ComprehensiveReportLLMService {
                       "parent_summary": "...",
                       "overview_one_line": "...",
                       "cross_domain_insights": ["...", "..."],
-                      "strengths": { "Topic": 85 },
-                      "weaknesses": { "Topic": 40 },
+                      "strengths": { "Subject/Topic": 85 },
+                      "weaknesses": { "Subject/Topic": 40 },
                       "recommendations": [{ "priority": "HIGH", "area": "...", "suggestion": "..." }],
                       "section_commentary": { "attendance": "...", "academics": "..." }
                     }

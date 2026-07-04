@@ -25,7 +25,7 @@ from xml.sax.saxutils import escape
 
 import aiohttp
 from fastapi import APIRouter, FastAPI, Query, Request, Response, WebSocket
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import PlainTextResponse
 
 from . import admin_core
 from .bot import CallOutcome, run_bot
@@ -140,9 +140,62 @@ async def _synth_audio(text: str, speaker: str, model: str, lang: str) -> bytes 
     return out or None
 
 
-# Renderer uses /tts.mp3 (FreeSWITCH keys on the extension). /tts and /tts.wav stay
-# as aliases but ALSO serve MP3 (audio/mpeg) — the content is what matters, and
-# FreeSWITCH plays our WAV as silence.
+def _prompt_key(text: str) -> str:
+    """Stable id for a prompt's audio — the ADMIN-CORE renderer computes the identical
+    SHA-1(text) to build the clean play URL, so both sides agree with no shared state.
+    IVR uses one voice/rate, so the text alone is a sufficient key."""
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+async def _ensure_cached(text: str, voice: str, lang: str) -> str | None:
+    """Ensure {cache}/{sha1(text)}.mp3 exists (44.1 kHz MPEG-1); return its path or None."""
+    s = get_settings()
+    speaker = (voice or s.sarvam_tts_voice).strip()
+    path = os.path.join(s.tts_cache_dir, _prompt_key(text) + ".mp3")
+    if os.path.exists(path):
+        return path
+    audio = await _synth_audio(text, speaker, s.sarvam_tts_model, lang)
+    if not audio:
+        return None
+    try:
+        os.makedirs(s.tts_cache_dir, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "wb") as f:
+            f.write(audio)
+        os.replace(tmp, path)  # atomic: a concurrent reader never sees a partial file
+    except Exception:
+        logger.exception("tts: disk cache write failed")
+        return None
+    return path
+
+
+def _serve_mp3(path: str) -> Response:
+    # Plain 200 with the FULL body (NOT FileResponse/206): FreeSWITCH's mod_httapi
+    # fetches the whole file and plays SILENCE on a 206 partial response. Content is a
+    # 44.1 kHz MPEG-1 MP3 (the only profile Plivo's decoder plays).
+    with open(path, "rb") as f:
+        body = f.read()
+    return Response(content=body, media_type="audio/mpeg",
+                    headers={"Cache-Control": "public, max-age=31536000",
+                             "Content-Length": str(len(body))})
+
+
+@router.get("/tts/{token}.mp3")
+async def tts_by_token(request: Request, token: str):
+    """The URL the renderer gives Plivo: a CLEAN .mp3 path with NO query string, so
+    FreeSWITCH's extension-based format detection sees ".mp3". Serves the pre-warmed
+    file; 404 if it was never synthesized (warm-on-save populates it)."""
+    logger.info("tts play token=%s xff=%s ua=%r range=%s",
+                token, request.headers.get("x-forwarded-for"),
+                (request.headers.get("user-agent") or "")[:40], request.headers.get("range"))
+    path = os.path.join(get_settings().tts_cache_dir, os.path.basename(token) + ".mp3")
+    if not os.path.exists(path):
+        return Response(status_code=404)
+    return _serve_mp3(path)
+
+
+# By-text route: used by warm-on-save (and on-demand). Caches under sha1(text) so the
+# clean /tts/{token}.mp3 play route finds it.
 @router.get("/tts")
 @router.get("/tts.wav")
 @router.get("/tts.mp3")
@@ -152,46 +205,14 @@ async def tts(
     voice: str = Query(""),
     lang: str = Query("hi-IN"),
 ):
-    """Natural-voice audio (MP3) for a piece of prompt text (IVR menus etc.), in the
-    SAME Sarvam voice as the AI agent — so IVR prompts stop sounding like a foreign TTS
-    reading Hindi. Plivo <Play>s this URL. Synthesized ONCE per (text, voice, lang) and
-    cached to disk (a Docker volume), so playback on every subsequent call is free —
-    IVR prompts are static, so there is no recurring TTS cost. Served via FileResponse
-    for proper HTTP Range (206) support."""
-    logger.info("tts req path=%s xff=%s ua=%r range=%s",
-                request.url.path,
-                request.headers.get("x-forwarded-for"),
-                (request.headers.get("user-agent") or "")[:60],
-                request.headers.get("range"))
-    s = get_settings()
-    speaker = (voice or s.sarvam_tts_voice).strip()
-    model = s.sarvam_tts_model
-    key = hashlib.sha1(
-        f"mp3|{s.tts_prompt_sample_rate}|{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
-    path = os.path.join(s.tts_cache_dir, key + ".mp3")
-
-    if not os.path.exists(path):
-        audio = _TTS_MEM.get(key) or await _synth_audio(text, speaker, model, lang)
-        if not audio:
-            # Rare (Sarvam down + cold cache). Plivo skips a <Play> it can't fetch;
-            # the GATHER's no-input branch recovers and it caches next time.
-            return Response(status_code=502)
-        try:
-            os.makedirs(s.tts_cache_dir, exist_ok=True)
-            tmp = f"{path}.{os.getpid()}.tmp"
-            with open(tmp, "wb") as f:
-                f.write(audio)
-            os.replace(tmp, path)  # atomic: a concurrent reader never sees a partial file
-        except Exception:
-            logger.exception("tts: disk cache write failed")
-            # Fall back to an in-memory body (no range support, but better than 502).
-            return Response(content=audio, media_type="audio/mpeg")
-        if len(_TTS_MEM) >= _TTS_MEM_MAX:
-            _TTS_MEM.pop(next(iter(_TTS_MEM)))
-        _TTS_MEM[key] = audio
-
-    return FileResponse(path, media_type="audio/mpeg",
-                        headers={"Cache-Control": "public, max-age=31536000"})
+    """Natural-voice audio (44.1 kHz MPEG-1 MP3) for a prompt, in the SAME Sarvam voice
+    as the AI agent. Synthesized ONCE per text and cached to disk (a Docker volume), so
+    playback is free — IVR prompts are static, no recurring TTS cost."""
+    logger.info("tts synth path=%s text=%r", request.url.path, text[:40])
+    path = await _ensure_cached(text, voice, lang)
+    if not path:
+        return Response(status_code=502)
+    return _serve_mp3(path)
 
 
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)

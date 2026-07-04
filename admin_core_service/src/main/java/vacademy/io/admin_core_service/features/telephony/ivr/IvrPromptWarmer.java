@@ -39,7 +39,7 @@ public class IvrPromptWarmer {
         for (String p : prompts) {
             if (p == null || p.isBlank()) continue;
             try {
-                HttpRequest req = HttpRequest.newBuilder(URI.create(answerUrls.ttsUrl(p, "hi-IN")))
+                HttpRequest req = HttpRequest.newBuilder(URI.create(answerUrls.ttsWarmUrl(p, "hi-IN")))
                         .timeout(Duration.ofSeconds(40)).GET().build();
                 int code = http.send(req, HttpResponse.BodyHandlers.discarding()).statusCode();
                 log.info("ivr prompt warmed ({}): {}…", code, p.substring(0, Math.min(40, p.length())));

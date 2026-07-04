@@ -6,6 +6,7 @@ import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * Builds the voice-bot {@code /answer} URL (and its embedded continuation +
@@ -61,19 +62,42 @@ public class VacademyAiAnswerUrls {
      * like a foreign TTS reading Hindi), and the bot caches the audio to disk, so a
      * static menu prompt is synthesized once and replayed free on every call.
      */
+    /**
+     * The CLEAN play URL Plivo &lt;Play&gt;s: {@code {base}/voice-bot-service/tts/{sha1(text)}.mp3}
+     * — a real .mp3 path with NO query string, because FreeSWITCH (Plivo's media engine)
+     * keys audio-format detection off the URL's file extension, and a "…mp3?text=…" URL
+     * broke that (silence). Served from the same Cloudflare-proxied host Plivo already
+     * fetches the answer-XML from. The bot pre-synthesizes the file under the same
+     * sha1(text) id when the menu is saved (see {@link #ttsWarmUrl}).
+     */
     public String ttsUrl(String text, String lang) {
-        // Serve IVR audio from the SAME Cloudflare-proxied host Plivo already fetches
-        // the answer-XML from (the webhook base + /voice-bot-service ingress path), NOT
-        // the voice-bot's direct base — Plivo's media servers reach the proxied host
-        // reliably, and the bot behind that path serves+caches the same audio. Override
-        // with telephony.ivr.tts-base-url. .wav path so Plivo keys it as a WAV file.
-        String ttsBase = (ivrTtsBaseUrl != null && !ivrTtsBaseUrl.isBlank())
+        return ttsBase() + "/tts/" + sha1Hex(text) + ".mp3";
+    }
+
+    /** By-text URL used to PRE-WARM the cache on menu save (populates {@code {sha1(text)}.mp3}). */
+    public String ttsWarmUrl(String text, String lang) {
+        return ttsBase() + "/tts.mp3?text=" + enc(text)
+                + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
+    }
+
+    private String ttsBase() {
+        return (ivrTtsBaseUrl != null && !ivrTtsBaseUrl.isBlank())
                 ? ivrTtsBaseUrl.trim().replaceAll("/$", "")
                 : base() + "/voice-bot-service";
-        // .mp3: FreeSWITCH (Plivo's media engine) plays MP3 reliably but rendered our
-        // WAV as silence.
-        return ttsBase + "/tts.mp3?text=" + enc(text)
-                + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
+    }
+
+    /** SHA-1 hex of the text's UTF-8 bytes — MUST match the bot's hashlib.sha1(text). */
+    private static String sha1Hex(String text) {
+        try {
+            byte[] h = MessageDigest.getInstance("SHA-1")
+                    .digest((text == null ? "" : text).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(h.length * 2);
+            for (byte b : h) sb.append(Character.forDigit((b >> 4) & 0xF, 16))
+                                .append(Character.forDigit(b & 0xF, 16));
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("SHA-1 unavailable", e);
+        }
     }
 
     /** Status-webhook base for this call: {@code …/webhook/status?provider=PLIVO&corr=…[&token=…]}. */

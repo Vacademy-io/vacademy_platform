@@ -490,7 +490,10 @@ def _build_filter_graph(
     sfx_labels: List[str] = []
     for (path, t_s, volume, label) in cue_files:
         delay_ms = max(0, int(round(float(t_s) * 1000)))
-        vol = max(0.0, min(1.0, float(volume)))
+        # 1.5 ceiling matches _apply_vo_aware_volume boost headroom (ffmpeg
+        # volume accepts >1.0; the sfx-bus alimiter guards clipping) — a 1.0
+        # clamp here silently erased the VO-aware boost.
+        vol = max(0.0, min(1.5, float(volume)))
         out_label = f"sfx{next_input}"
         # adelay applies an initial silence of N ms. `t|t` syntax delays
         # both stereo channels equally (avoiding the deprecated single-value

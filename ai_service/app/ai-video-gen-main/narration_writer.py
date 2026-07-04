@@ -651,6 +651,13 @@ def write_narration(
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
             )
+            # Tokens were spent regardless of whether the rewrite is kept —
+            # merge usage BEFORE the accept/revert decision.
+            for k, v in (usage2 or {}).items():
+                if isinstance(v, (int, float)) and isinstance(total_usage.get(k), (int, float)):
+                    total_usage[k] = total_usage[k] + v
+                elif k not in total_usage:
+                    total_usage[k] = v
             revised = _parse_narration_response(text2 or "")
             if revised:
                 _apply(revised)
@@ -660,11 +667,6 @@ def write_narration(
                         f"   ✍️ Corrective rewrite accepted: {len(issues)} → {len(new_issues)} issue(s)"
                     )
                     text = text2
-                    for k, v in (usage2 or {}).items():
-                        if isinstance(v, (int, float)) and isinstance(total_usage.get(k), (int, float)):
-                            total_usage[k] = total_usage[k] + v
-                        elif k not in total_usage:
-                            total_usage[k] = v
                 else:
                     print(
                         f"   ✍️ Corrective rewrite NOT better ({len(issues)} → {len(new_issues)}) — keeping first draft"

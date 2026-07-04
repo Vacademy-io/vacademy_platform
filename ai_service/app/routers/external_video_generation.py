@@ -684,7 +684,9 @@ async def resume_video_external(
     # ~5% of total cost and the HTML stage hasn't started yet.
     # Quality tier is pulled from the video record's metadata, NOT the resume
     # payload (which has no tier field). AI video flag also comes from metadata.
-    _vr_meta = getattr(video_record, "metadata", None) or {}
+    # NB: the model maps the JSONB column to `extra_metadata` — plain
+    # `.metadata` resolves to SQLAlchemy Base.metadata (never a dict).
+    _vr_meta = getattr(video_record, "extra_metadata", None) or {}
     _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
     _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
     _ai_video = bool(_user_sel.get("ai_video_enabled", False))
@@ -1021,12 +1023,13 @@ async def decision_video_external(
             selections = answer.get("selections") or []
             forced = {
                 str(s.get("query")): {
-                    "url": s.get("url"),
+                    "url": dg.sanitize_media_url(s.get("url")),
                     "candidate_id": s.get("candidate_id"),
                     "shot_index": s.get("shot_index"),
                 }
                 for s in selections
-                if isinstance(s, dict) and s.get("query") and s.get("candidate_id") and s.get("url")
+                if isinstance(s, dict) and s.get("query") and s.get("candidate_id")
+                and dg.sanitize_media_url(s.get("url"))
             }
             body = json.dumps({"forced": forced}, ensure_ascii=False).encode("utf-8")
             s3_svc.upload_file_content(
@@ -1128,15 +1131,22 @@ async def decision_video_external(
             # injects each into its shot's system prompt).
             _regens = dg.contact_sheet_regen_notes(answer)
             for _sidx in _regens:
-                _cache_url = (
-                    f"https://{_bucket}.s3.amazonaws.com/"
-                    f"ai-videos/{video_id}/checkpoints/shot_cache/shot_{_sidx:03d}.json"
-                )
-                try:
-                    s3_svc.delete_file(_cache_url)
-                    logger.info(f"[Decision] contact-sheet: invalidated shot {_sidx} cache for regen")
-                except Exception as _del_err:
-                    logger.warning(f"[Decision] cache delete failed (shot {_sidx}): {_del_err}")
+                # Sub-shot decomposition caches as shot_NNN_subK.json (no
+                # plain shot_NNN.json) — delete those variants too, or the
+                # regen note is silently served from intact sub caches.
+                _names = [f"shot_{_sidx:03d}.json"] + [
+                    f"shot_{_sidx:03d}_sub{_k}.json" for _k in range(3)
+                ]
+                for _nm in _names:
+                    _cache_url = (
+                        f"https://{_bucket}.s3.amazonaws.com/"
+                        f"ai-videos/{video_id}/checkpoints/shot_cache/{_nm}"
+                    )
+                    try:
+                        s3_svc.delete_file(_cache_url)
+                    except Exception:
+                        pass
+                logger.info(f"[Decision] contact-sheet: invalidated shot {_sidx} cache(s) for regen")
     except Exception as _werr:
         logger.error(f"[Decision] failed to write sidecar for {video_id} gate={gate_type}: {_werr}")
 
@@ -1375,10 +1385,12 @@ async def save_cast_from_video_external(
     s3_svc = S3Service()
     from ..config import get_settings as _gs
     _bucket = _gs().aws_bucket_name or _gs().aws_s3_public_bucket
+    # Checkpoints copy FIRST — it carries the post-prep cast (incl. portrait
+    # revisions from the cast gate); the script/ copy predates the HTML stage.
     plan = _read_s3_json(
         s3_svc, _bucket, video_id,
-        f"ai-videos/{video_id}/script/shot_plan.json",
         f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        f"ai-videos/{video_id}/script/shot_plan.json",
     ) or {}
     characters = plan.get("characters") if isinstance(plan.get("characters"), list) else []
     characters = [c for c in characters if isinstance(c, dict) and c.get("name")]
@@ -1390,15 +1402,22 @@ async def save_cast_from_video_external(
 
     # Attach each character's portrait sheet when the run generated one —
     # keys are deterministic: ai-videos/dialogue/{video_id}/char_NN.png.
+    import asyncio as _aio
     import httpx as _hx
     cast_out: List[Dict[str, Any]] = []
     for i, c in enumerate(characters[:4]):
-        sheet_url = f"https://{_bucket}.s3.amazonaws.com/ai-videos/dialogue/{video_id}/char_{i:02d}.png"
-        try:
-            if _hx.head(sheet_url, timeout=6.0).status_code != 200:
+        # Prefer the plan-persisted sheet_url — it reflects cast-gate
+        # revisions (uploads / note-regens); the deterministic key is only
+        # ever the ORIGINAL portrait. Probe runs off-loop: a blocking HEAD
+        # here froze every SSE stream on the pod for up to ~24s.
+        sheet_url = str(c.get("sheet_url") or "").strip() or None
+        if not sheet_url:
+            _probe = f"https://{_bucket}.s3.amazonaws.com/ai-videos/dialogue/{video_id}/char_{i:02d}.png"
+            try:
+                _resp = await _aio.to_thread(_hx.head, _probe, timeout=6.0)
+                sheet_url = _probe if _resp.status_code == 200 else None
+            except Exception:
                 sheet_url = None
-        except Exception:
-            sheet_url = None
         cast_out.append({
             "name": str(c.get("name"))[:60],
             "visual_description": str(c.get("visual_description") or "")[:500],
@@ -1475,7 +1494,9 @@ async def retry_video_external(
     # failed shots regenerate plus the render stage. AI video flag from
     # original metadata (Veo cap still applies if any shot left to ship is
     # AI_VIDEO_HERO; safer to keep the worst-case guard).
-    _vr_meta = getattr(video_record, "metadata", None) or {}
+    # NB: the model maps the JSONB column to `extra_metadata` — plain
+    # `.metadata` resolves to SQLAlchemy Base.metadata (never a dict).
+    _vr_meta = getattr(video_record, "extra_metadata", None) or {}
     _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
     _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
     _ai_video = bool(_user_sel.get("ai_video_enabled", False))

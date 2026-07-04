@@ -3149,6 +3149,10 @@ class VideoGenerationPipeline:
         # here because the AI-video block keeps it only as a ctor local.
         self._dialogue_ledger: Any = None
         self._dialogue_institute_id = institute_id
+        # _seedance_ready can be hit from parallel _shot_task threads via the
+        # entry-generator fallback — one lock keeps tracker/ledger singletons.
+        import threading as _thr_dlg
+        self._dialogue_init_lock = _thr_dlg.Lock()
         self._dialogue_cast_sheet_url: Optional[str] = None
         # P2: per-character reference portraits ({name_lower: url}) — cached
         # once per run; None = not yet attempted.
@@ -7527,7 +7531,13 @@ class VideoGenerationPipeline:
                 seg_paths: List[Path] = []
                 for li, l in enumerate(lines):
                     char = str(l.get("character") or "").strip().lower()
-                    g = vmap.get(char) or ("female", "male")[abs(hash(char)) % 2]
+                    # md5, not hash(): PYTHONHASHSEED randomizes hash() per
+                    # process — a resume leg could flip an uncast character's
+                    # voice gender mid-video.
+                    import hashlib as _vh
+                    g = vmap.get(char) or ("female", "male")[
+                        int(_vh.md5(char.encode("utf-8")).hexdigest(), 16) % 2
+                    ]
                     res = self._synthesize_voice_for_shot(
                         shot_idx=9000 + shot_idx * 10 + li,
                         narration_text=str(l.get("line")).strip(),
@@ -7872,38 +7882,39 @@ class VideoGenerationPipeline:
             except ImportError:
                 from fal_seedance_client import FalSeedanceClient  # type: ignore[no-redef]
                 from fal_veo_client import get_fal_api_key_from_env as _gk  # type: ignore[no-redef]
-            if self._fal_seedance_client is None:
-                _fal_key = _gk()
-                if not _fal_key:
-                    print("   ⚠️ DIALOGUE_SCENE: FAL_API_KEY not set")
-                    return False
-                self._fal_seedance_client = FalSeedanceClient(_fal_key)
-            if self._dialogue_cost_tracker is None:
-                from ai_video_orchestrator import AiVideoCostTracker
-                # Drama = the whole video is clips → a bigger default budget.
-                _default_cap = 20.0 if self._dialogue_mode == "drama" else 6.0
-                _cap = float(
-                    self._tier_config.get("dialogue_scene_cost_cap_usd") or _default_cap
-                )
-                self._dialogue_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
-            if self._dialogue_ledger is None:
-                # Reuse the AI-video ledger when present; else build our own so
-                # dialogue-only runs STILL bill the institute for fal spend.
-                _existing = getattr(self, "_ai_video_ledger", None)
-                if _existing is not None and getattr(_existing, "enabled", False):
-                    self._dialogue_ledger = _existing
-                else:
-                    try:
-                        from app.services.ai_video_ledger import AiVideoLedger
-                        self._dialogue_ledger = AiVideoLedger(
-                            institute_id=self._dialogue_institute_id,
-                            video_id=getattr(self, "_run_name", None) or "run",
-                        )
-                        if not self._dialogue_ledger.enabled:
-                            print("⚠️  dialogue credit ledger disabled (missing institute/video id)")
-                    except Exception as _dl_err:
-                        print(f"⚠️  dialogue credit ledger unavailable: {_dl_err}")
-                        self._dialogue_ledger = False  # tried and failed; no retry
+            with self._dialogue_init_lock:
+                if self._fal_seedance_client is None:
+                    _fal_key = _gk()
+                    if not _fal_key:
+                        print("   ⚠️ DIALOGUE_SCENE: FAL_API_KEY not set")
+                        return False
+                    self._fal_seedance_client = FalSeedanceClient(_fal_key)
+                if self._dialogue_cost_tracker is None:
+                    from ai_video_orchestrator import AiVideoCostTracker
+                    # Drama = the whole video is clips → a bigger default budget.
+                    _default_cap = 20.0 if self._dialogue_mode == "drama" else 6.0
+                    _cap = float(
+                        self._tier_config.get("dialogue_scene_cost_cap_usd") or _default_cap
+                    )
+                    self._dialogue_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+                if self._dialogue_ledger is None:
+                    # Reuse the AI-video ledger when present; else build our own so
+                    # dialogue-only runs STILL bill the institute for fal spend.
+                    _existing = getattr(self, "_ai_video_ledger", None)
+                    if _existing is not None and getattr(_existing, "enabled", False):
+                        self._dialogue_ledger = _existing
+                    else:
+                        try:
+                            from app.services.ai_video_ledger import AiVideoLedger
+                            self._dialogue_ledger = AiVideoLedger(
+                                institute_id=self._dialogue_institute_id,
+                                video_id=getattr(self, "_run_name", None) or "run",
+                            )
+                            if not self._dialogue_ledger.enabled:
+                                print("⚠️  dialogue credit ledger disabled (missing institute/video id)")
+                        except Exception as _dl_err:
+                            print(f"⚠️  dialogue credit ledger unavailable: {_dl_err}")
+                            self._dialogue_ledger = False  # tried and failed; no retry
             return True
         except Exception as init_err:
             print(f"   ⚠️ Seedance init failed: {init_err}")
@@ -8110,6 +8121,10 @@ class VideoGenerationPipeline:
             s["_dialogue_clip_url"] = result.video_url
             s["_dialogue_clip_cost_usd"] = float(result.cost_usd or 0.0)
             s["_dialogue_clip_elapsed_s"] = float(result.elapsed_s or 0.0)
+            # Persist immediately — a later pause (casting/contact gate) uploads
+            # run_dir/shot_plan.json; without this the resume leg's skip check
+            # misses and RE-PURCHASES every clip (double-charging the ledger).
+            self._persist_dialogue_plan(run_dir, shots=shots)
 
             # Extract + upload the last frame for the next adjacent scene.
             prev_frame_url, prev_shot_idx = None, shot_idx
@@ -16606,11 +16621,30 @@ class VideoGenerationPipeline:
                 )
                 shot_type = _swap_to
 
+            # User revision directives (assist) — computed BEFORE the bypass
+            # branches below (template / DIALOGUE_SCENE / AI_VIDEO_HERO), all
+            # of which return early and would otherwise silently ignore a
+            # contact-sheet note or a provided real asset.
+            _shot_user_note = (getattr(self, "_shot_regen_notes", None) or {}).get(int(shot_idx))
+            _has_user_directive = bool(
+                _shot_user_note or shot.get("user_asset_url") or shot.get("real_data")
+            )
+
             # ── DIALOGUE_SCENE bypass (storybook/drama mode, opt-in) ──
             # Characters speak on camera in a Seedance clip lip-synced to our
             # per-character TTS (prepared in the TTS stage). On any failure we
             # demote to IMAGE_HERO and fall through to the normal HTML path.
             if shot_type == "DIALOGUE_SCENE":
+                # A contact-sheet note on a dialogue shot means: re-film it.
+                # Drop the cached clip URL and weave the note into the scene
+                # so the fresh Seedance call actually reflects the revision.
+                if _shot_user_note:
+                    shot.pop("_dialogue_clip_url", None)
+                    _sd = str(shot.get("scene_description") or "").strip()
+                    if _shot_user_note[:60].lower() not in _sd.lower():
+                        shot["scene_description"] = (
+                            f"{_sd} USER REVISION (must satisfy): {_shot_user_note}"
+                        ).strip()
                 _ds_entry = None
                 if getattr(self, "_dialogue_scenes_enabled", False):
                     _ds_entry = self._generate_dialogue_scene_entry(
@@ -16708,6 +16742,21 @@ class VideoGenerationPipeline:
                     # Dispatch single-shot vs chain. Chain when EITHER:
                     #   - `ai_video_segments` carries >1 entry (Director explicit), OR
                     #   - `ai_video_duration_s` > 8 (auto-split into 8s chunks)
+                    # Contact-sheet revision note (assist): thread it into the
+                    # Veo prompt(s) — otherwise the regen pays for a fresh clip
+                    # that ignores the user's requested change.
+                    if _shot_user_note:
+                        _avp = (shot.get("ai_video_prompt") or "").strip()
+                        if _avp and _shot_user_note[:60].lower() not in _avp.lower():
+                            shot["ai_video_prompt"] = (
+                                f"{_avp}. USER REVISION (must satisfy): {_shot_user_note}"
+                            )
+                        for _seg in (shot.get("ai_video_segments") or []):
+                            if isinstance(_seg, dict) and (_seg.get("prompt") or "").strip():
+                                _seg["prompt"] = (
+                                    f"{_seg['prompt']}. USER REVISION (must satisfy): {_shot_user_note}"
+                                )
+
                     _av_segs_field = shot.get("ai_video_segments") or []
                     _av_has_multi_segments = (
                         isinstance(_av_segs_field, list) and len(_av_segs_field) > 1
@@ -16839,7 +16888,14 @@ class VideoGenerationPipeline:
             # renders successfully, we skip the LLM call entirely and use the
             # deterministic template HTML. Falls through to the LLM path on any
             # template error or when no template_id is set.
-            if _template_enabled and _template_compose_fn is not None and shot.get("template_id"):
+            if (
+                _template_enabled and _template_compose_fn is not None
+                and shot.get("template_id")
+                # A user revision note / real asset needs the LLM path — the
+                # deterministic template would re-render the identical frame
+                # and silently discard the user's input.
+                and not _has_user_directive
+            ):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
                 # Pull captured-page artifacts off the reference context so the
@@ -16956,6 +17012,16 @@ class VideoGenerationPipeline:
             # A real screenshot/photo outranks anything generated — the shot is
             # built AROUND it, never replaced by an invention.
             _user_asset = str(shot.get("user_asset_url") or "").strip()
+            # Defense-in-depth (ingestion already sanitizes): never let a URL
+            # that could break out of an HTML attribute or steer the prompt
+            # reach the injection below.
+            if _user_asset and (
+                any(c in _user_asset for c in ('"', "'", "<", ">", "`"))
+                or any(ord(c) < 33 for c in _user_asset)
+                or not _user_asset.lower().startswith(("http://", "https://"))
+            ):
+                print(f"   ⚠️ Shot {shot_idx}: rejected unsafe user_asset_url")
+                _user_asset = ""
             if _user_asset:
                 if (shot.get("shot_type") or shot_type or "").upper() == "DEVICE_MOCKUP":
                     system_prompt += (

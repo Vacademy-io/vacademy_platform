@@ -241,11 +241,18 @@ class TokenUsageService:
 
         try:
             # Sum all deductions for this video using batch_id (set during deduction)
+            # Net out REFUND rows already issued for this batch (per-shot AI
+            # video / dialogue failures refund immediately via AiVideoLedger)
+            # — otherwise a pipeline abort refunds those charges a SECOND time.
             query = text("""
-                SELECT COALESCE(SUM(ABS(ct.amount)), 0) as total_deducted
+                SELECT COALESCE(SUM(
+                    CASE WHEN ct.transaction_type = 'USAGE_DEDUCTION' THEN ABS(ct.amount)
+                         WHEN ct.transaction_type = 'REFUND' THEN -ABS(ct.amount)
+                         ELSE 0 END
+                ), 0) as total_deducted
                 FROM credit_transactions ct
                 WHERE ct.batch_id = :video_id
-                  AND ct.transaction_type = 'USAGE_DEDUCTION'
+                  AND ct.transaction_type IN ('USAGE_DEDUCTION', 'REFUND')
                   AND ct.institute_id = :institute_id
             """)
             result = self._session.execute(query, {

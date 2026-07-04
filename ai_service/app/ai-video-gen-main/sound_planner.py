@@ -29,11 +29,16 @@ from sound_catalog import SoundCatalog, load_catalog
 # every transition, the same chime on every reveal, etc.
 PALETTE_ROLES = [
     "transition_whoosh",
+    # Required by Rule D's riser-into-climax (marketing/bold) — without this
+    # entry the palette never carries the role and the riser silently drops.
+    "transition_riser",
     "impact",
     "ui_chime",
     "ui_click",
     "data_reveal",
     "ui_positive",
+    # Mapped by _ACTION_TO_ROLE (error/fail events) but was missing here.
+    "ui_negative",
 ]
 
 # Synonym map: bridges natural-language words in the script to

@@ -539,7 +539,7 @@ def cast_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[str, Dict[str
         name = str(c.get("name") or "").strip().lower()
         if not name:
             continue
-        url = str(c.get("url") or "").strip() or None
+        url = sanitize_media_url(c.get("url"))
         note = str(c.get("regen_note") or "").strip()[:500] or None
         if url or note:
             out[name] = {"url": url, "note": note}
@@ -574,6 +574,24 @@ def build_asset_request_decision(
     )
 
 
+def sanitize_media_url(url: Any) -> Optional[str]:
+    """Validate a caller-supplied media URL before it can reach shot_plan.json
+    and, from there, LLM prompts and rendered HTML. Only http(s), no quotes/
+    angle-brackets/whitespace/control chars (attribute/prompt breakout), ≤2000
+    chars. Returns the clean URL or None."""
+    u = str(url or "").strip()
+    if not u or len(u) > 2000:
+        return None
+    low = u.lower()
+    if not (low.startswith("http://") or low.startswith("https://")):
+        return None
+    if any(c in u for c in ('"', "'", "<", ">", "`", "\\")):
+        return None
+    if any(ord(c) < 33 for c in u):  # spaces + control chars
+        return None
+    return u
+
+
 def asset_request_responses(answer: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Normalize the responses list from an asset_request ``edit`` answer."""
     out: List[Dict[str, Any]] = []
@@ -586,7 +604,7 @@ def asset_request_responses(answer: Optional[Dict[str, Any]]) -> List[Dict[str, 
             continue
         out.append({
             "index": idx,
-            "url": (str(r.get("url")).strip() if r.get("url") else None),
+            "url": sanitize_media_url(r.get("url")),
             "text": (str(r.get("text")).strip()[:400] if r.get("text") else None),
             "choice": (str(r.get("choice")).strip()[:200] if r.get("choice") else None),
             "skipped": bool(r.get("skipped")),

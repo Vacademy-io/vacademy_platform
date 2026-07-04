@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -569,6 +570,126 @@ public class AudienceService {
                             .build();
                     Audience saved = audienceRepository.save(audience);
                     logger.info("Auto-provisioned Course Catalogue Leads audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    private static final String PHONE_ENQUIRIES_AUDIENCE_NAME = "Phone Enquiries";
+
+    /** A lead resolved — or created — from an inbound phone caller. */
+    public record InboundCallLeadRef(String responseId, String userId, String audienceId) {}
+
+    /**
+     * Resolve — or, if new, create — a lead for an inbound phone caller, so an inbound
+     * helpline call becomes a followable CRM lead. De-duped on the caller's phone:
+     * the auth-service user is find-or-create by mobile, and if that user is already
+     * a lead ANYWHERE in the institute we return the existing lead rather than mint a
+     * duplicate (covers a caller who's a lead in another campaign, or whose phone is
+     * only on the user record). A brand-new caller lands in the auto-provisioned
+     * per-institute "Phone Enquiries" audience with {@code parent_mobile} set, so the
+     * telephony last-10 phone-match binds subsequent calls to this same lead.
+     *
+     * <p>Runs in its OWN transaction (REQUIRES_NEW): a capture failure — or a later
+     * rollback of the outcome that triggered it — must never lose the lead, and the
+     * caller catches any exception without poisoning its own transaction. Idempotent
+     * under retry via the phone/user de-dup above. Enrichment (score / pool
+     * assignment) is best-effort. Returns null on invalid input or user-create failure.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InboundCallLeadRef captureInboundCallLead(String instituteId, String phone, String name) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(phone)) return null;
+
+        // 1. Find-or-create the auth-service user by mobile. No email on a phone caller,
+        //    so synthesize a non-deliverable placeholder (the same path Meta/Google
+        //    webhook leads with no email use — suppressed by every send path).
+        // Display name is a real name when known, else the phone NUMBER — never the
+        // synthesized placeholder email, which would otherwise show as the lead's name
+        // in Recent Leads and undercut "followable".
+        String email = placeholderEmailService.synthesize(name, phone, null);
+        String display = StringUtils.hasText(name) ? name.trim() : phone;
+        UserDTO userDTO = UserDTO.builder()
+                .email(email)
+                .fullName(display)
+                .mobileNumber(phone)
+                .build();
+        UserDTO createdUser;
+        try {
+            createdUser = authService.createUserFromAuthService(userDTO, instituteId, false);
+        } catch (Exception e) {
+            logger.error("Inbound-call lead: user create failed for {} inst {}: {}",
+                    phone, instituteId, e.getMessage());
+            return null;
+        }
+        String userId = createdUser != null ? createdUser.getId() : null;
+        if (!StringUtils.hasText(userId)) return null;
+
+        // 2. De-dup: if this user is ALREADY a lead anywhere in the institute, reuse it
+        //    — never a second lead for the same person.
+        List<String> existing = audienceResponseRepository.findResponseIdByInstituteAndUser(instituteId, userId);
+        if (existing != null && !existing.isEmpty()) {
+            String responseId = existing.get(0);
+            String audienceId = audienceResponseRepository.findById(responseId)
+                    .map(AudienceResponse::getAudienceId).orElse(null);
+            logger.info("Inbound-call lead: caller {} already a lead (response {}) — reused", phone, responseId);
+            return new InboundCallLeadRef(responseId, userId, audienceId);
+        }
+
+        // 3. New caller → create the lead in the auto-provisioned Phone Enquiries audience.
+        Audience audience = getOrCreatePhoneEnquiriesAudience(instituteId);
+        AudienceResponse saved = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("INBOUND_CALL")
+                .sourceId("INBOUND_CALL")
+                .userId(userId)
+                .parentMobile(phone)                                   // so phone-match binds the next call
+                .parentName(display)
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        // 4. Enrichment — best-effort; a captured lead is never lost over optional config.
+        try {
+            logLeadSubmitted(saved);
+        } catch (Exception e) {
+            logger.error("Inbound-call lead {}: logLeadSubmitted failed: {}", saved.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(saved.getId(), saved.getAudienceId(),
+                    instituteId, saved.getSourceType(), saved.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Inbound-call lead {}: score failed: {}", saved.getId(), e.getMessage());
+        }
+        // Counsellor assignment is intentionally left to the outcome pipeline —
+        // AiCallOutcomeProcessor assigns on a good disposition. Assigning here too would
+        // double-rotate the pool and double-notify the same pass once a pool is attached
+        // to Phone Enquiries (today it has none, so an intake assign is a no-op anyway).
+        // One assignment, in one place.
+
+        logger.info("Inbound-call lead captured: response={} user={} inst={}",
+                saved.getId(), userId, instituteId);
+        return new InboundCallLeadRef(saved.getId(), userId, audience.getId());
+    }
+
+    /**
+     * Resolve the per-institute "Phone Enquiries" audience, creating a minimal ACTIVE
+     * one on first use so an inbound helpline needs no manual campaign setup.
+     */
+    private Audience getOrCreatePhoneEnquiriesAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, PHONE_ENQUIRIES_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(PHONE_ENQUIRIES_AUDIENCE_NAME)
+                            .campaignType("PHONE_CALL")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from inbound phone calls to the AI helpline")
+                            .status("ACTIVE")
+                            .defaultInitialScore(0)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned Phone Enquiries audience {} for institute {}",
                             saved.getId(), instituteId);
                     return saved;
                 });

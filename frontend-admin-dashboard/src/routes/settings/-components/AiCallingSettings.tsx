@@ -91,6 +91,13 @@ export interface AiCallingSettingsData {
     // Counsellor assignment
     assignmentMode: AssignmentMode;
     assignExhaustedToHuman: boolean;
+
+    /**
+     * Auto-capture unknown INBOUND callers as leads. When the AI helpline answers a
+     * caller whose number isn't already a lead, a lead is created (or matched) so the
+     * call is followable in Recent Leads + the Call Log. Off by default.
+     */
+    inboundLeadCapture: { enabled: boolean };
 }
 
 const DISPOSITIONS = [
@@ -125,6 +132,7 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     stopOnDispositions: ['Not_Interested'],
     assignmentMode: 'ROUND_ROBIN',
     assignExhaustedToHuman: true,
+    inboundLeadCapture: { enabled: false },
 };
 
 const SETTING_KEY = 'AI_CALLING_SETTING';
@@ -482,6 +490,25 @@ export default function AiCallingSettings() {
                     <p className="text-xs text-muted-foreground">
                         Controls only the manual robot button in lead lists. Automated AI workflows
                         run regardless of this toggle.
+                    </p>
+
+                    <Separator />
+
+                    <div className="flex items-center gap-3">
+                        <Switch
+                            id="ai-inbound-lead-capture"
+                            checked={settings.inboundLeadCapture?.enabled ?? false}
+                            onCheckedChange={(v) => update({ inboundLeadCapture: { enabled: v } })}
+                        />
+                        <Label htmlFor="ai-inbound-lead-capture" className="cursor-pointer">
+                            Capture inbound callers as leads
+                        </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        For an inbound AI helpline: when someone calls and isn't already a lead, a lead
+                        is created (matched by phone, so repeat callers aren&apos;t duplicated) and the
+                        call attaches to it — so it shows in Recent Leads and the Call Log, and you can
+                        follow up. Off means unknown callers&apos; calls are recorded but no lead is made.
                     </p>
 
                     <Separator />

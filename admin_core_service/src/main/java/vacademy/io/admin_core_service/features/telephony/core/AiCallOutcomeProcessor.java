@@ -95,6 +95,14 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private AiAgentService aiAgentService;
 
+    // @Lazy: AudienceService is a large service that transitively reaches back into the
+    // lead/workflow graph — a final constructor dependency would risk an eager bean
+    // cycle. Used only on the inbound path to auto-capture an unknown caller as a lead
+    // (its captureInboundCallLead runs in its own REQUIRES_NEW transaction).
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
@@ -213,7 +221,7 @@ public class AiCallOutcomeProcessor {
             }
         }
 
-        Lead lead = resolveLead(r, existing);
+        Lead lead = resolveLead(r, existing, settings);
         String callLogId = upsertCallLog(r, lead, existing);
         if (callLogId != null) {
             r.setCallLogId(callLogId);
@@ -326,7 +334,7 @@ public class AiCallOutcomeProcessor {
 
     // ── lead resolution ─────────────────────────────────────────────────────────
 
-    private Lead resolveLead(AiCallResult r, TelephonyCallLog existing) {
+    private Lead resolveLead(AiCallResult r, TelephonyCallLog existing, AiCallingSettingsPojo settings) {
         // Prefer the bound call log's identity — but only when it actually identifies
         // a lead. An inbound row (now bound by corr, not created fresh) may carry no
         // responseId and a placeholder user, so fall through to the phone match below
@@ -348,13 +356,49 @@ public class AiCallOutcomeProcessor {
         }
         List<Object[]> rows = audienceResponseRepo
                 .findLeadIdAndUserByInstituteAndPhoneLast10(r.getInstituteId(), last10);
-        if (rows.isEmpty()) return new Lead(null, null, null, r.getInstituteId());
+        if (rows.isEmpty()) {
+            // Unknown inbound caller: if the institute opted into inbound lead capture,
+            // create (or match on the user record) a lead now so the call is followable.
+            Lead captured = captureInboundLeadIfEnabled(r, settings);
+            return captured != null ? captured : new Lead(null, null, null, r.getInstituteId());
+        }
         Object[] row = rows.get(0); // [audience_response.id, user_id]
         String responseId = (String) row[0];
         String userId = (String) row[1];
         String audienceId = audienceResponseRepo.findById(responseId)
                 .map(AudienceResponse::getAudienceId).orElse(null);
         return new Lead(responseId, userId, audienceId, r.getInstituteId());
+    }
+
+    /**
+     * Inbound helpline lead capture: when an INBOUND report's caller isn't a known lead
+     * and the institute opted in, create (or match) a lead so the call is followable.
+     * Only ever fires for a report already verified as owned by the institute (the
+     * corr-gate ran upstream), so a forged webhook can't inject junk leads. Best-effort
+     * — the capture runs in its own transaction and any failure returns null (the call
+     * simply stays an anonymous inbound row, exactly as before opt-in). Gated to inbound
+     * only: the direction is stamped INBOUND before resolveLead is called.
+     */
+    private Lead captureInboundLeadIfEnabled(AiCallResult r, AiCallingSettingsPojo settings) {
+        boolean inbound = CallDirection.INBOUND.name().equalsIgnoreCase(r.getDirection());
+        boolean enabled = settings != null && settings.getInboundLeadCapture() != null
+                && settings.getInboundLeadCapture().isEnabled();
+        if (!inbound || !enabled || r.getInstituteId() == null
+                || r.getPhoneNumber() == null || r.getPhoneNumber().isBlank()) {
+            return null;
+        }
+        try {
+            var ref = audienceService.captureInboundCallLead(r.getInstituteId(), r.getPhoneNumber(), null);
+            if (ref != null && ref.userId() != null) {
+                log.info("ai-call inbound: captured lead response={} user={} for caller {} inst {}",
+                        ref.responseId(), ref.userId(), r.getPhoneNumber(), r.getInstituteId());
+                return new Lead(ref.responseId(), ref.userId(), ref.audienceId(), r.getInstituteId());
+            }
+        } catch (Exception e) {
+            log.warn("ai-call inbound: lead capture failed for caller {} inst {}: {}",
+                    r.getPhoneNumber(), r.getInstituteId(), e.getMessage());
+        }
+        return null;
     }
 
     /** A call log's user_id identifies a real lead (not null/blank and not the
@@ -385,6 +429,22 @@ public class AiCallOutcomeProcessor {
                     .build();
             row.markNew();
             callLogRepo.save(row);
+        } else if (lead.userId() != null) {
+            // Back-fill attribution onto a previously-unattributed inbound row (created
+            // with user_id='UNKNOWN' at answer time) now that we've resolved/created the
+            // lead — so the call attaches to the lead's Call History and shows named in
+            // the Call Log. Only overwrite the placeholder; never a row that already
+            // identifies a real lead (e.g. an outbound row).
+            boolean changed = false;
+            if (!hasRealUser(row.getUserId())) {
+                row.setUserId(lead.userId());
+                changed = true;
+            }
+            if (lead.responseId() != null && row.getResponseId() == null) {
+                row.setResponseId(lead.responseId());
+                changed = true;
+            }
+            if (changed) callLogRepo.save(row);
         }
         // Reuse the canonical, rank-ordered idempotent update — the same path Exotel
         // uses — so duplicate/out-of-order reports can't move status backwards.

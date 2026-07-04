@@ -83,6 +83,15 @@ public class AiCallingSettingsPojo {
     private String assignmentMode = "ROUND_ROBIN";
     private boolean assignExhaustedToHuman = true;
 
+    /**
+     * Auto-capture unknown INBOUND callers as leads. When the AI helpline answers a
+     * caller whose number isn't already a lead, create (or match) a lead so the call
+     * is followable in Recent Leads + the Call Log. OFF by default — auto-creating
+     * leads changes CRM data, so it's an explicit per-institute opt-in (an inbound
+     * helpline wants it; a purely-outbound institute does not).
+     */
+    private InboundLeadCapture inboundLeadCapture = new InboundLeadCapture();
+
     public static AiCallingSettingsPojo defaults() {
         return new AiCallingSettingsPojo();
     }
@@ -121,6 +130,20 @@ public class AiCallingSettingsPojo {
     public static class Shift {
         private String start;
         private String end;
+    }
+
+    /**
+     * Inbound-caller lead capture config. {@link #enabled} off ⇒ current behaviour
+     * (an unknown inbound caller leaves only the ai_call_result row, no lead). On ⇒
+     * the outcome processor creates/matches a lead for the caller (de-duped by phone)
+     * and back-fills the call log so it shows named and followable.
+     */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class InboundLeadCapture {
+        private boolean enabled = false;
     }
 
     /**

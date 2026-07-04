@@ -15,6 +15,7 @@ import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositio
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallMetricsDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallRowDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallSearchFilterDTO;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -49,6 +50,7 @@ public class CallDashboardController {
     private final CallSearchService callSearchService;
     private final CallDispositionService callDispositionService;
     private final CallExportService callExportService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     @PostMapping("/search")
     public ResponseEntity<Page<CallRowDTO>> search(
@@ -57,6 +59,7 @@ public class CallDashboardController {
         if (filter == null || filter.getInstituteId() == null || filter.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
         }
+        instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         return ResponseEntity.ok(callSearchService.search(filter, user.getUserId(), unmask));
     }
@@ -69,6 +72,7 @@ public class CallDashboardController {
         if (instituteId == null || instituteId.isBlank()) {
             throw new VacademyException("instituteId is required");
         }
+        instituteAccessValidator.validateUserAccess(user, instituteId);
         List<CallDispositionCatalogDTO> out = callDispositionService.listForInstitute(instituteId).stream()
                 .map(CallDispositionCatalogDTO::from).toList();
         return ResponseEntity.ok(out);
@@ -84,6 +88,7 @@ public class CallDashboardController {
         if (req == null || req.getDispositionKey() == null || req.getDispositionKey().isBlank()) {
             throw new VacademyException("dispositionKey is required");
         }
+        instituteAccessValidator.validateUserAccess(user, instituteId);
         AppliedDisposition applied = callDispositionService.applyDisposition(
                 callLogId, instituteId, req.getDispositionKey().trim(), req.getNotes(),
                 req.getCallbackAtEpochMillis(), user.getUserId());
@@ -112,6 +117,7 @@ public class CallDashboardController {
         if (filter == null || filter.getInstituteId() == null || filter.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
         }
+        instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         return ResponseEntity.ok(callSearchService.metrics(filter, user.getUserId()));
     }
 
@@ -125,6 +131,7 @@ public class CallDashboardController {
         if (filter == null || filter.getInstituteId() == null || filter.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
         }
+        instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         List<CallRowDTO> rows = callSearchService.exportRows(filter, user.getUserId(), unmask, EXPORT_CAP);
         boolean xlsx = "xlsx".equalsIgnoreCase(format) || "excel".equalsIgnoreCase(format);

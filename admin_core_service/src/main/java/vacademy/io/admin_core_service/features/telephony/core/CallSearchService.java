@@ -285,11 +285,18 @@ public class CallSearchService {
                 .addValue("fromUtc", w.fromUtc(), Types.TIMESTAMP)
                 .addValue("toUtc", w.toUtc(), Types.TIMESTAMP);
 
+        // Scope: a scoped counsellor sees calls owned by a counsellor in their scope,
+        // PLUS unassigned INBOUND calls — a helpline / IVR-AI call belongs to the
+        // institute, not to any one counsellor (counsellor_user_id IS NULL), so it
+        // would otherwise be invisible to everyone. Institute-wide admins (scopeCsv
+        // NULL) already see everything. Still institute-bounded — never cross-tenant.
         StringBuilder sb = new StringBuilder("""
                 WHERE tcl.institute_id = :instituteId
                   AND COALESCE(tcl.start_time, tcl.created_at) >= :fromUtc
                   AND COALESCE(tcl.start_time, tcl.created_at) < :toUtc
-                  AND (:scopeCsv IS NULL OR tcl.counsellor_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+                  AND (:scopeCsv IS NULL
+                       OR tcl.counsellor_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ','))
+                       OR (tcl.direction = 'INBOUND' AND tcl.counsellor_user_id IS NULL))
                 """);
 
         if (notBlank(f.getDirection())) {

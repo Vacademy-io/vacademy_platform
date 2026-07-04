@@ -35,6 +35,7 @@ public class IvrMenuService {
 
     private final IvrMenuRepository menuRepo;
     private final IvrNodeRepository nodeRepo;
+    private final IvrPromptWarmer promptWarmer;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // ── Runtime (inbound call flow) ──────────────────────────────────────────
@@ -165,6 +166,16 @@ public class IvrMenuService {
                     .build());
         }
         nodeRepo.saveAll(nodes);
+
+        // Pre-synthesize every prompt into the bot's natural-voice cache now, so the
+        // first inbound call plays audio instead of silence (cold synth is slower than
+        // Plivo's <Play> fetch window). Fire-and-forget — never blocks the save.
+        List<String> prompts = nodes.stream()
+                .map(IvrNode::getPromptText)
+                .filter(t -> t != null && !t.isBlank())
+                .toList();
+        if (!prompts.isEmpty()) promptWarmer.warm(prompts);
+
         return toDto(menu, nodes);
     }
 

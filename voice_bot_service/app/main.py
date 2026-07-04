@@ -98,32 +98,44 @@ def _tts_chunks(text: str, limit: int = 450) -> list[str]:
     return out or [text[:limit]]
 
 
+async def _synth_chunk(session, chunk: str, speaker: str, model: str, lang: str, sample_rate: int):
+    body = {
+        "inputs": [chunk],
+        "target_language_code": lang,
+        "speaker": speaker,
+        "model": model,
+        "speech_sample_rate": sample_rate,
+    }
+    async with session.post(_SARVAM_TTS_URL, json=body,
+                            headers={"api-subscription-key": get_settings().sarvam_api_key},
+                            timeout=aiohttp.ClientTimeout(total=20)) as resp:
+        if resp.status != 200:
+            logger.warning("tts: sarvam %s for %r", resp.status, chunk[:40])
+            return None
+        data = await resp.json()
+    return data.get("audios") or []
+
+
 async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | None:
     """Sarvam Bulbul REST → one concatenated 8 kHz WAV. Returns None on failure so
-    the caller can fall back to Plivo's built-in TTS."""
+    the caller can fall back to Plivo's built-in TTS. Chunks are synthesized
+    CONCURRENTLY — cold latency is one Sarvam round-trip, not the sum — which keeps
+    even a long prompt inside Plivo's <Play> fetch window (pre-warming on save is
+    the real backstop, but this keeps an un-warmed prompt playable too)."""
     s = get_settings()
     session: aiohttp.ClientSession = app.state.http_session
+    chunks = _tts_chunks(text)
+    try:
+        results = await asyncio.gather(
+            *[_synth_chunk(session, c, speaker, model, lang, s.sample_rate) for c in chunks])
+    except Exception:
+        logger.exception("tts: sarvam call failed")
+        return None
+    if any(r is None for r in results):
+        return None
     frames, params = [], None
-    for chunk in _tts_chunks(text):
-        body = {
-            "inputs": [chunk],
-            "target_language_code": lang,
-            "speaker": speaker,
-            "model": model,
-            "speech_sample_rate": s.sample_rate,
-        }
-        try:
-            async with session.post(_SARVAM_TTS_URL, json=body,
-                                    headers={"api-subscription-key": s.sarvam_api_key},
-                                    timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                if resp.status != 200:
-                    logger.warning("tts: sarvam %s for %r", resp.status, chunk[:40])
-                    return None
-                data = await resp.json()
-        except Exception:
-            logger.exception("tts: sarvam call failed")
-            return None
-        for b64 in (data.get("audios") or []):
+    for audios in results:
+        for b64 in audios:
             with wave.open(io.BytesIO(base64.b64decode(b64)), "rb") as w:
                 params = w.getparams()
                 frames.append(w.readframes(w.getnframes()))

@@ -217,13 +217,58 @@ class SentinelGate(FrameProcessor):
         return buffer, ""
 
 
+# Sarvam Bulbul voices → grammatical gender. Hindi/Hinglish first-person verbs are
+# gendered, so a female voice saying masculine "kar raha hoon" is the #1 immersion
+# breaker on Indian calls. We know the voice, so we pin the grammar to match it.
+_MALE_VOICES = {"abhilash", "karun", "hitesh", "amol", "amartya", "arvind", "neel", "vian"}
+
+
+def _voice_gender(voice) -> str:
+    return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
+    institute = context.get("instituteName") or "our institute"
     extraction = agent.get("extractionQuestions") or []
     dispositions = agent.get("dispositions") or []
+    name = agent.get("name") or "the assistant"
+    gender = _voice_gender(agent.get("voice"))
+    direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
+
+    if gender == "female":
+        gender_line = (
+            "You are a woman. When you speak Hindi or Hinglish, ALWAYS use FEMININE "
+            "first-person verb forms for yourself — 'main kar rahi hoon', 'kar sakti hoon', "
+            "'karungi', 'deti hoon', 'bataungi', 'samajh gayi' — and NEVER the masculine "
+            "forms ('raha', 'sakta', 'karunga', 'deta', 'gaya'). Keep this consistent the whole call."
+        )
+    else:
+        gender_line = (
+            "You are a man. When you speak Hindi or Hinglish, ALWAYS use MASCULINE "
+            "first-person verb forms for yourself — 'main kar raha hoon', 'kar sakta hoon', "
+            "'karunga', 'deta hoon', 'samajh gaya' — and NEVER the feminine forms. "
+            "Keep this consistent the whole call."
+        )
+
+    if direction == "INBOUND":
+        intent_line = (
+            f"This person has CALLED {institute}. You are answering their call — greet them "
+            "warmly, quickly find out why they called, and help them."
+        )
+    else:
+        intent_line = (
+            f"You are PROACTIVELY CALLING this person on behalf of {institute} — YOU placed "
+            "this call, they did not call you. Never sound like you are answering their call. "
+            "Open with a clear reason for calling, lead the conversation confidently, and keep a "
+            "warm, positive, forward-moving tone that gives them a reason to engage right now."
+        )
+
     lines = [
         agent.get("systemPrompt") or "You are a friendly, concise phone assistant.",
+        f"You are {name}. {gender_line}",
+        intent_line,
         f"The caller's name is {lead_name}." if lead_name else "",
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",

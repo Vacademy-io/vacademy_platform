@@ -127,8 +127,10 @@ async def _synth_audio(text: str, speaker: str, model: str, lang: str) -> bytes 
     session: aiohttp.ClientSession = app.state.http_session
     chunks = _tts_chunks(text)
     try:
+        # 44.1 kHz (not the 8 kHz call rate) → MPEG-1 MP3, the only profile Plivo plays.
         results = await asyncio.gather(
-            *[_synth_chunk(session, c, speaker, model, lang, s.sample_rate) for c in chunks])
+            *[_synth_chunk(session, c, speaker, model, lang, s.tts_prompt_sample_rate)
+              for c in chunks])
     except Exception:
         logger.exception("tts: sarvam call failed")
         return None
@@ -164,7 +166,8 @@ async def tts(
     s = get_settings()
     speaker = (voice or s.sarvam_tts_voice).strip()
     model = s.sarvam_tts_model
-    key = hashlib.sha1(f"mp3|{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
+    key = hashlib.sha1(
+        f"mp3|{s.tts_prompt_sample_rate}|{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
     path = os.path.join(s.tts_cache_dir, key + ".mp3")
 
     if not os.path.exists(path):

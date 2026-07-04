@@ -122,6 +122,15 @@ class Settings:
     # prompts are static, so there is no recurring TTS cost.
     tts_cache_dir: str = field(default_factory=lambda: _env("TTS_CACHE_DIR", "/tmp/tts-cache"))
 
+    # IVR-prompt MP3 sample rate. MUST be 44100 (or 48000): at those rates Sarvam
+    # emits MPEG-1 layer III, the ONLY MP3 profile Plivo's decoder plays. 8 kHz
+    # forces MPEG-2.5, which Plivo renders as SILENCE (verified against Plivo's
+    # published spec: "MPEG v1, 128 kbps, 44.1 kHz"). Distinct from sample_rate,
+    # which is the 8 kHz telephony rate for the live-call audio stream.
+    tts_prompt_sample_rate: int = field(
+        default_factory=lambda: int(_env("TTS_PROMPT_SAMPLE_RATE", "44100"))
+    )
+
     def wss_url(self, query: str) -> str:
         base = self.public_base.replace("https://", "wss://").replace("http://", "ws://")
         return f"{base}/ws?{query}"

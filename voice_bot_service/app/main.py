@@ -16,12 +16,10 @@ import asyncio
 import base64
 import contextlib
 import hashlib
-import io
 import logging
 import os
 import re
 import time
-import wave
 from urllib.parse import urlencode
 from xml.sax.saxutils import escape
 
@@ -105,6 +103,10 @@ async def _synth_chunk(session, chunk: str, speaker: str, model: str, lang: str,
         "speaker": speaker,
         "model": model,
         "speech_sample_rate": sample_rate,
+        # MP3, not WAV: FreeSWITCH (Plivo's media engine, UA mod_httapi) fetched our
+        # valid 8 kHz WAV and still played SILENCE — its <Play> is picky about WAV
+        # containers, but plays MP3 reliably. MP3 is also the telephony default.
+        "output_audio_codec": "mp3",
     }
     async with session.post(_SARVAM_TTS_URL, json=body,
                             headers={"api-subscription-key": get_settings().sarvam_api_key},
@@ -116,12 +118,11 @@ async def _synth_chunk(session, chunk: str, speaker: str, model: str, lang: str,
     return data.get("audios") or []
 
 
-async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | None:
-    """Sarvam Bulbul REST → one concatenated 8 kHz WAV. Returns None on failure so
-    the caller can fall back to Plivo's built-in TTS. Chunks are synthesized
-    CONCURRENTLY — cold latency is one Sarvam round-trip, not the sum — which keeps
-    even a long prompt inside Plivo's <Play> fetch window (pre-warming on save is
-    the real backstop, but this keeps an un-warmed prompt playable too)."""
+async def _synth_audio(text: str, speaker: str, model: str, lang: str) -> bytes | None:
+    """Sarvam Bulbul REST → one MP3. Returns None on failure so the caller can fall
+    back to Plivo's built-in TTS. Chunks synthesize CONCURRENTLY (cold latency is one
+    Sarvam round-trip, not the sum); MP3 frames concatenate by raw byte join and play
+    back-to-back, so no container surgery is needed."""
     s = get_settings()
     session: aiohttp.ClientSession = app.state.http_session
     chunks = _tts_chunks(text)
@@ -133,43 +134,28 @@ async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | 
         return None
     if any(r is None for r in results):
         return None
-    frames, params = [], None
-    for audios in results:
-        for b64 in audios:
-            with wave.open(io.BytesIO(base64.b64decode(b64)), "rb") as w:
-                params = w.getparams()
-                frames.append(w.readframes(w.getnframes()))
-    if not frames or params is None:
-        return None
-    out = io.BytesIO()
-    with wave.open(out, "wb") as w:
-        w.setnchannels(params.nchannels)
-        w.setsampwidth(params.sampwidth)
-        w.setframerate(params.framerate)
-        for f in frames:
-            w.writeframes(f)
-    return out.getvalue()
+    out = b"".join(base64.b64decode(b64) for audios in results for b64 in audios)
+    return out or None
 
 
-# Both routes hit the same handler. Plivo (and some players) key on a file
-# extension, so the renderer uses /tts.wav; /tts stays for back-compat.
+# Renderer uses /tts.mp3 (FreeSWITCH keys on the extension). /tts and /tts.wav stay
+# as aliases but ALSO serve MP3 (audio/mpeg) — the content is what matters, and
+# FreeSWITCH plays our WAV as silence.
 @router.get("/tts")
 @router.get("/tts.wav")
+@router.get("/tts.mp3")
 async def tts(
     request: Request,
     text: str = Query(..., max_length=4000),
     voice: str = Query(""),
     lang: str = Query("hi-IN"),
 ):
-    """Natural-voice audio for a piece of prompt text (IVR menus etc.), in the SAME
-    Sarvam voice as the AI agent — so IVR prompts stop sounding like a foreign TTS
-    reading Hindi. Plivo <Play>s this URL. Synthesized ONCE per (text, voice, lang)
-    and cached to disk (a Docker volume), so playback on every subsequent call is
-    free — IVR prompts are static, so there is no recurring TTS cost.
-
-    Served via FileResponse so HTTP Range requests get a proper 206 + Accept-Ranges:
-    Plivo's media player streams audio with range requests and plays SILENCE when the
-    server answers 200-with-the-whole-body instead."""
+    """Natural-voice audio (MP3) for a piece of prompt text (IVR menus etc.), in the
+    SAME Sarvam voice as the AI agent — so IVR prompts stop sounding like a foreign TTS
+    reading Hindi. Plivo <Play>s this URL. Synthesized ONCE per (text, voice, lang) and
+    cached to disk (a Docker volume), so playback on every subsequent call is free —
+    IVR prompts are static, so there is no recurring TTS cost. Served via FileResponse
+    for proper HTTP Range (206) support."""
     logger.info("tts req path=%s xff=%s ua=%r range=%s",
                 request.url.path,
                 request.headers.get("x-forwarded-for"),
@@ -178,11 +164,11 @@ async def tts(
     s = get_settings()
     speaker = (voice or s.sarvam_tts_voice).strip()
     model = s.sarvam_tts_model
-    key = hashlib.sha1(f"{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
-    path = os.path.join(s.tts_cache_dir, key + ".wav")
+    key = hashlib.sha1(f"mp3|{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
+    path = os.path.join(s.tts_cache_dir, key + ".mp3")
 
     if not os.path.exists(path):
-        audio = _TTS_MEM.get(key) or await _synth_wav(text, speaker, model, lang)
+        audio = _TTS_MEM.get(key) or await _synth_audio(text, speaker, model, lang)
         if not audio:
             # Rare (Sarvam down + cold cache). Plivo skips a <Play> it can't fetch;
             # the GATHER's no-input branch recovers and it caches next time.
@@ -196,12 +182,12 @@ async def tts(
         except Exception:
             logger.exception("tts: disk cache write failed")
             # Fall back to an in-memory body (no range support, but better than 502).
-            return Response(content=audio, media_type="audio/wav")
+            return Response(content=audio, media_type="audio/mpeg")
         if len(_TTS_MEM) >= _TTS_MEM_MAX:
             _TTS_MEM.pop(next(iter(_TTS_MEM)))
         _TTS_MEM[key] = audio
 
-    return FileResponse(path, media_type="audio/wav",
+    return FileResponse(path, media_type="audio/mpeg",
                         headers={"Cache-Control": "public, max-age=31536000"})
 
 

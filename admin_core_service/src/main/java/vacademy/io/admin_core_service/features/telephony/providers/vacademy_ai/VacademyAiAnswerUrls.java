@@ -70,7 +70,9 @@ public class VacademyAiAnswerUrls {
         String ttsBase = (ivrTtsBaseUrl != null && !ivrTtsBaseUrl.isBlank())
                 ? ivrTtsBaseUrl.trim().replaceAll("/$", "")
                 : base() + "/voice-bot-service";
-        return ttsBase + "/tts.wav?text=" + enc(text)
+        // .mp3: FreeSWITCH (Plivo's media engine) plays MP3 reliably but rendered our
+        // WAV as silence.
+        return ttsBase + "/tts.mp3?text=" + enc(text)
                 + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
     }
 

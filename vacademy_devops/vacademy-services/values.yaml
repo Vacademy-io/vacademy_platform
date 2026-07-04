@@ -68,6 +68,15 @@ services:
       cpuThreads: "2"
       numWorkers: "1"
       modelSize: ""  # blank = use code default (medium for non-English, base for English)
+  # Vacademy AI Agent real-time voice bot (Plivo <Stream> ↔ Pipecat+Sarvam).
+  # Env (PUBLIC_BASE, ADMIN_CORE_BASE, VOICE_BOT_CLIENT_NAME/SECRET, SARVAM_API_KEY)
+  # is set by the docker-publish-voice-bot-service workflow, mirroring ai_service.
+  voice_bot_service:
+    enabled: true   # flip on once the ECR repo exists + secrets are set
+    port: 8090
+    image:
+      repository: public.ecr.aws/e0x1f4p4/voice-bot-service/voice-bot-service-repo
+      tag: latest
 
 environment:
   stage: stage

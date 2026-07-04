@@ -8,8 +8,13 @@ import {
     ASSISTANT_SESSION_MESSAGE,
     ASSISTANT_SESSION_STREAM,
     ASSISTANT_SESSION_CLOSE,
+    ASSISTANT_ACTION_CONFIRM,
+    ASSISTANT_ACTION_CANCEL,
 } from '@/constants/urls';
+import { useSelectedStudentMirrorStore } from '@/stores/assistant/selected-student-mirror';
 import type {
+    AssistantActionRequestData,
+    AssistantActionStatus,
     AssistantErrorData,
     AssistantMessage,
     AssistantMessageData,
@@ -50,6 +55,35 @@ function parseSseBuffer(buffer: string): { frames: StreamFrame[]; rest: string }
 const CREDITS_EXHAUSTED_MSG =
     'AI credits are exhausted for your institute. Please add credits to keep using the assistant.';
 const GENERIC_ERROR_MSG = 'Could not reach the assistant. Please try again in a moment.';
+
+/** Friendly one-liners shown while a tool runs, so waits feel purposeful. */
+const TOOL_ACTIVITY_LABELS: Record<string, string> = {
+    search_help_knowledge: 'Searching help articles…',
+    find_learner: 'Searching learners…',
+    get_student_360: 'Fetching learner data…',
+    get_payment_history: 'Fetching payment history…',
+    get_fee_dues: 'Checking fee dues…',
+    get_subscription_plans: 'Checking payment plans…',
+    list_batch_learners: 'Loading the batch roster…',
+    get_class_schedule: 'Checking the schedule…',
+    get_institute_overview: 'Gathering institute stats…',
+    trigger_full_report: 'Starting the full report…',
+    update_learner_profile: 'Preparing the change…',
+    manage_enrollment: 'Preparing the change…',
+};
+
+/**
+ * Current page context sent with every message so the assistant can resolve
+ * "this student" (route + the student open in the side view / profile overlay).
+ * Read non-reactively at send time — always the state at the moment of asking.
+ */
+function getPageContext(): Record<string, unknown> {
+    const student = useSelectedStudentMirrorStore.getState().student;
+    return {
+        route: typeof window !== 'undefined' ? window.location.pathname : '',
+        ...(student ? { selected_student: student } : {}),
+    };
+}
 
 /**
  * Drives one Vacademy Assistant conversation: creates/reuses a session, posts
@@ -149,8 +183,45 @@ export function useVacademyAssistant() {
                             if (data?.content) appendToStreamingAssistant(data.content);
                         } else if (frame.event === 'message') {
                             const data = frame.data as AssistantMessageData;
-                            // tool_call / tool_result are intermediate — not shown as bubbles in v1.
-                            if (data?.type === 'assistant') finalizeAssistant(data.content || '');
+                            if (data?.type === 'assistant') {
+                                finalizeAssistant(data.content || '');
+                            } else if (data?.type === 'tool_call') {
+                                // Surface tool activity as a small status line so the
+                                // user sees what the assistant is doing while it works.
+                                const toolName = String(
+                                    (data.metadata as { tool_name?: string } | null)?.tool_name ??
+                                        ''
+                                );
+                                const label = TOOL_ACTIVITY_LABELS[toolName];
+                                if (label) {
+                                    setMessages((prev) => [
+                                        ...prev,
+                                        {
+                                            id: `status-${data.id ?? crypto.randomUUID()}`,
+                                            role: 'status',
+                                            content: label,
+                                        },
+                                    ]);
+                                }
+                            }
+                            // tool_result stays hidden — the answer summarizes it.
+                        } else if (frame.event === 'action_request') {
+                            const data = frame.data as AssistantActionRequestData;
+                            if (data?.action_id) {
+                                setMessages((prev) => [
+                                    ...prev,
+                                    {
+                                        id: `action-${data.action_id}`,
+                                        role: 'action',
+                                        content: data.summary || 'Confirm this change?',
+                                        action: {
+                                            actionId: data.action_id,
+                                            summary: data.summary || '',
+                                            status: 'pending',
+                                        },
+                                    },
+                                ]);
+                            }
                         } else if (frame.event === 'error') {
                             const data = frame.data as AssistantErrorData;
                             setError(
@@ -189,16 +260,19 @@ export function useVacademyAssistant() {
             setStatus('connecting');
 
             try {
+                const contextMeta = getPageContext();
                 let sessionId = sessionIdRef.current;
                 if (!sessionId) {
                     const resp = await authenticatedAxiosInstance.post(ASSISTANT_SESSION_INIT, {
                         initial_message: trimmed,
+                        context_meta: contextMeta,
                     });
                     sessionId = resp.data?.session_id ?? null;
                     sessionIdRef.current = sessionId;
                 } else {
                     await authenticatedAxiosInstance.post(ASSISTANT_SESSION_MESSAGE(sessionId), {
                         message: trimmed,
+                        context_meta: contextMeta,
                     });
                 }
 
@@ -211,6 +285,52 @@ export function useVacademyAssistant() {
             }
         },
         [runStream, status]
+    );
+
+    const setActionStatus = useCallback((actionId: string, status: AssistantActionStatus) => {
+        setMessages((prev) =>
+            prev.map((m) =>
+                m.action?.actionId === actionId ? { ...m, action: { ...m.action, status } } : m
+            )
+        );
+    }, []);
+
+    /** Confirm or cancel a pending write action (the nonce-backed card). */
+    const resolveAction = useCallback(
+        async (actionId: string, decision: 'confirm' | 'cancel') => {
+            const sessionId = sessionIdRef.current;
+            if (!sessionId) return;
+            setActionStatus(actionId, 'working');
+            try {
+                const url =
+                    decision === 'confirm'
+                        ? ASSISTANT_ACTION_CONFIRM(sessionId, actionId)
+                        : ASSISTANT_ACTION_CANCEL(sessionId, actionId);
+                const resp = await authenticatedAxiosInstance.post(url);
+                const status = String(resp.data?.status || '').toLowerCase();
+                const mapped: AssistantActionStatus =
+                    status === 'executed'
+                        ? 'executed'
+                        : status === 'cancelled'
+                          ? 'cancelled'
+                          : 'failed';
+                setActionStatus(actionId, mapped);
+                if (resp.data?.message) {
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: crypto.randomUUID(),
+                            role: 'assistant',
+                            content: String(resp.data.message),
+                        },
+                    ]);
+                }
+            } catch {
+                setActionStatus(actionId, 'pending');
+                setError('Could not process that action. Please try again.');
+            }
+        },
+        [setActionStatus]
     );
 
     const reset = useCallback(async () => {
@@ -229,5 +349,5 @@ export function useVacademyAssistant() {
         }
     }, []);
 
-    return { messages, status, error, sendMessage, reset };
+    return { messages, status, error, sendMessage, reset, resolveAction };
 }

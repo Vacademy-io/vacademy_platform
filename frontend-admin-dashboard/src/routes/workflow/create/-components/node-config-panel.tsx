@@ -14,6 +14,7 @@ import { EventEntityPicker } from './event-entity-picker';
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
+import { useAiCampaignOptions } from '@/hooks/use-ai-campaign-options';
 import {
     getQueryKeysQuery,
     getTriggerEventsCatalogQuery,
@@ -121,6 +122,7 @@ export function NodeConfigPanel() {
     const { data: whatsappTemplatesLower } = useQuery(getTemplatesByTypeQuery(instituteId, 'whatsapp'));
     const whatsappTemplates = [...(whatsappTemplatesUpper ?? []), ...(whatsappTemplatesLower ?? [])];
     const { statuses: leadStatuses } = useLeadStatuses();
+    const { campaigns: aiCampaigns, defaultProvider: aiDefaultProvider } = useAiCampaignOptions();
 
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
 
@@ -1224,6 +1226,85 @@ export function NodeConfigPanel() {
                     </div>
                 )}
 
+                {/* AI Call node config — pick the agent by NAME; the backend resolves
+                    it to the active provider's campaign id at dial time. Vacademy AI
+                    agents are authored in Settings → AI Calling → AI Agents. */}
+                {data.nodeType === 'CALL_AI' && (
+                    <>
+                        <div>
+                            <Label className="text-xs">Agent</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.campaignName as string) ?? ''}
+                                onChange={(e) => handleConfigChange('campaignName', e.target.value)}
+                            >
+                                <option value="">Select agent...</option>
+                                {[
+                                    ...new Set(
+                                        aiCampaigns
+                                            .map((c) => c.name)
+                                            .filter(Boolean)
+                                            .concat(
+                                                (data.config.campaignName as string)
+                                                    ? [data.config.campaignName as string]
+                                                    : []
+                                            )
+                                    ),
+                                ].map((name) => (
+                                    <option key={name} value={name}>
+                                        {name}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Agents are registered in Settings → AI Calling (Campaigns / AI
+                                Agents). The call outcome comes back as{' '}
+                                <code>#ctx[&apos;callOutcome&apos;]</code> (ASSIGN | STOP | RETRY),{' '}
+                                <code>#ctx[&apos;callDisposition&apos;]</code> and{' '}
+                                <code>#ctx[&apos;callAnswers&apos;]</code>.
+                            </p>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Provider (optional)</Label>
+                            <select
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={(data.config.provider as string) ?? ''}
+                                onChange={(e) => handleConfigChange('provider', e.target.value)}
+                            >
+                                <option value="">
+                                    Institute default{aiDefaultProvider ? ` (${aiDefaultProvider})` : ''}
+                                </option>
+                                {[...new Set(aiCampaigns.map((c) => c.provider).filter(Boolean))].map(
+                                    (p) => (
+                                        <option key={p} value={p}>
+                                            {p}
+                                        </option>
+                                    )
+                                )}
+                            </select>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Extra metadata for the agent (JSON, optional)</Label>
+                            <textarea
+                                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                                rows={3}
+                                value={
+                                    typeof data.config.metadata === 'string'
+                                        ? data.config.metadata
+                                        : JSON.stringify(data.config.metadata ?? {}, null, 2)
+                                }
+                                onChange={(e) => {
+                                    try {
+                                        handleConfigChange('metadata', JSON.parse(e.target.value));
+                                    } catch {
+                                        handleConfigChange('metadata', e.target.value);
+                                    }
+                                }}
+                            />
+                        </div>
+                    </>
+                )}
+
                 {/* Generic JSON config for other types */}
                 {![
                     'TRIGGER',
@@ -1241,6 +1322,7 @@ export function NodeConfigPanel() {
                     'UPDATE_RECORD',
                     'SEND_PUSH_NOTIFICATION',
                     'SET_LEAD_STATUS',
+                    'CALL_AI',
                 ].includes(data.nodeType) && (
                     <div>
                         <Label className="text-xs">

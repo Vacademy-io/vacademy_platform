@@ -8,6 +8,7 @@ import { getAllUniqueFeatures } from "./registration-step";
 import { PaymentPlan } from "../-utils/helper";
 import { OneTimePlanSection } from "./onetime-plan-section";
 import { SelectedPayment } from "./types";
+import { getCurrencySymbol } from "@/utils/currency";
 
 interface DonationMetadata {
   allowCustomAmount: boolean;
@@ -36,18 +37,9 @@ interface PaymentSelectionStepProps {
   onValidationChange?: (isValid: boolean) => void;
 }
 
-const currencySymbols: { [key: string]: string } = {
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  INR: "₹",
-  AUD: "A$",
-  CAD: "C$",
-};
-
-export const getCurrencySymbol = (currencyCode: string) => {
-  return currencySymbols[currencyCode] || currencyCode;
-};
+// Currency symbols come from the shared currency util so every flow stays in sync.
+// Re-exported here because several enroll-flow files import it from this module.
+export { getCurrencySymbol };
 
 const PaymentSelectionStep = ({
   paymentOptions,

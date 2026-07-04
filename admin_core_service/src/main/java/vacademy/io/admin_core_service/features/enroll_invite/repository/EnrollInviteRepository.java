@@ -20,6 +20,10 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
 
     Optional<EnrollInvite> findByInviteCode(String inviteCode);
 
+    // Sub-org registration templates (tag=SUB_ORG_REGISTRATION) for the builder list.
+    List<EnrollInvite> findByInstituteIdAndTagAndStatusInOrderByCreatedAtDesc(
+            String instituteId, String tag, List<String> statuses);
+
     @Modifying
     @Transactional
     @Query("UPDATE EnrollInvite ei SET ei.status = :status WHERE ei.id IN :enrollInviteIds")
@@ -54,6 +58,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
     FROM enroll_invite ei
     WHERE ei.institute_id = :instituteId
       AND (:#{#tags == null || #tags.isEmpty()} = true OR ei.tag IN (:tags))
+      AND (:#{#tags == null || #tags.isEmpty()} = false OR ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION')
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
@@ -69,6 +74,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
     FROM enroll_invite ei
     WHERE ei.institute_id = :instituteId
       AND (:#{#tags == null || #tags.isEmpty()} = true OR ei.tag IN (:tags))
+      AND (:#{#tags == null || #tags.isEmpty()} = false OR ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION')
       AND (:#{#enrollInviteStatus == null || #enrollInviteStatus.isEmpty()} = true OR ei.status IN (:enrollInviteStatus))
       AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR EXISTS (
           SELECT 1 FROM package_session_learner_invitation_to_payment_option psl
@@ -100,6 +106,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
             "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +
             "LEFT JOIN package_session ps ON psl.package_session_id = ps.id " +
             "WHERE ei.institute_id = :instituteId " +
+            "AND ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION' " +
             "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
             "AND (:searchName IS NULL OR :searchName = '' OR " +
             "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +
@@ -110,6 +117,7 @@ public interface EnrollInviteRepository extends JpaRepository<EnrollInvite, Stri
                     "LEFT JOIN package_session_learner_invitation_to_payment_option psl ON ei.id = psl.enroll_invite_id " +
                     "LEFT JOIN package_session ps ON psl.package_session_id = ps.id " +
                     "WHERE ei.institute_id = :instituteId " +
+                    "AND ei.tag IS DISTINCT FROM 'SUB_ORG_REGISTRATION' " +
                     "AND (COALESCE(:enrollInviteStatus, NULL) IS NULL OR ei.status IN (:enrollInviteStatus)) " +
                     "AND (:searchName IS NULL OR :searchName = '' OR " +
                     "     LOWER(ei.name) LIKE LOWER(CONCAT('%', :searchName, '%')) OR " +

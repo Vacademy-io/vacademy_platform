@@ -3,6 +3,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PackageCourseSettingEditor } from './PackageCourseSettingEditor';
 import { LmsSettingsCard } from './LmsSettingsCard';
 import { CourseWorkflowTriggersCard } from './CourseWorkflowTriggersCard';
+import { SubOrgAssociatedCard } from './SubOrgAssociatedCard';
 
 interface PackageSettingsPanelProps {
     packageId: string;
@@ -31,6 +32,7 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
                 <TabsList>
                     <TabsTrigger value="lms">LMS Integration</TabsTrigger>
                     <TabsTrigger value="workflows">Workflow Triggers</TabsTrigger>
+                    <TabsTrigger value="suborg">Sub-organization</TabsTrigger>
                     <TabsTrigger value="json">Advanced Settings (JSON)</TabsTrigger>
                 </TabsList>
                 {/* key={packageId} remounts the cards when you switch courses, so prefilled
@@ -44,6 +46,9 @@ export const PackageSettingsPanel: React.FC<PackageSettingsPanelProps> = ({ pack
                 </TabsContent>
                 <TabsContent value="workflows" className="mt-4">
                     <CourseWorkflowTriggersCard key={packageId} packageId={packageId} />
+                </TabsContent>
+                <TabsContent value="suborg" className="mt-4">
+                    <SubOrgAssociatedCard key={packageId} packageId={packageId} />
                 </TabsContent>
                 <TabsContent value="json" className="mt-4">
                     <PackageCourseSettingEditor

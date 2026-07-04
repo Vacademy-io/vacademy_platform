@@ -52,7 +52,7 @@ export async function exportBatchLivePdf(meta: LivePdfMeta, summary: BatchLiveSu
         { label: 'Avg Attendance', value: `${summary.avgAttendancePct.toFixed(1)}%`, sub: `${summary.learnerCount} learners` },
         { label: 'Classes Held', value: `${summary.totalClassesHeld}` },
         { label: 'Avg Duration', value: formatDuration(summary.avgDurationMinutes), sub: 'per present learner' },
-        { label: 'Avg Engagement', value: `${summary.avgEngagementIndex}`, sub: 'interactions' },
+        { label: 'Avg Engagement', value: `${summary.avgEngagementIndex}`, sub: 'participation points' },
     ], y);
 
     y = sectionTitle(doc, 'Class-wise Attendance', y, theme);
@@ -118,7 +118,7 @@ export async function exportLearnerLivePdf(
         { label: 'Attendance', value: `${learner.attendancePercentage.toFixed(1)}%`, sub: `Batch ${batch.avgAttendancePct.toFixed(1)}%` },
         { label: 'Classes Attended', value: `${learner.attended}/${learner.total}` },
         { label: 'Avg Duration', value: formatDuration(learner.avgDurationMinutes), sub: `Batch ${formatDuration(batch.avgDurationMinutes)}` },
-        { label: 'Engagement', value: `${learner.engagementIndex}`, sub: `Batch ${batch.avgEngagementIndex}` },
+        { label: 'Engagement', value: `${learner.engagementIndex}`, sub: `Batch avg ${batch.avgEngagementIndex} pts` },
     ], y);
 
     y = sectionTitle(doc, 'Class History', y, theme);

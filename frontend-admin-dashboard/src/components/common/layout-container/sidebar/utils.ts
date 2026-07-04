@@ -406,6 +406,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'call-log',
             },
             {
+                subItem: 'AI Intelligence',
+                subItemLink: '/audience-manager/ai-intelligence',
+                subItemId: 'ai-intelligence',
+            },
+            {
                 subItem: 'Counsellors',
                 subItemLink: '/counsellors',
                 subItemId: 'counsellors',

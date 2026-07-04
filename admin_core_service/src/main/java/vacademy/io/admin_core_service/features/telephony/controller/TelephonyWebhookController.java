@@ -55,6 +55,12 @@ public class TelephonyWebhookController {
             HttpServletRequest req,
             @RequestBody(required = false) String body) {
 
+        // Plivo echoes the callback URL's query params INTO its POST body, and
+        // Spring joins duplicated params with a comma ("PLIVO,PLIVO") — which made
+        // every Plivo callback 410 on findById("id,id"). Keep the first value.
+        providerType = firstValue(providerType);
+        correlationId = firstValue(correlationId);
+
         if (correlationId == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
@@ -112,5 +118,12 @@ public class TelephonyWebhookController {
             // 2xx — provider should NOT retry an event we already half-stored.
         }
         return ResponseEntity.ok().build();
+    }
+
+    /** First value of a possibly comma-joined duplicated request param. */
+    private static String firstValue(String s) {
+        if (s == null) return null;
+        int i = s.indexOf(',');
+        return (i < 0 ? s : s.substring(0, i)).trim();
     }
 }

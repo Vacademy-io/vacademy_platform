@@ -12,8 +12,10 @@ export interface AssistantToolCatalogEntry {
     description: string;
     /** Roadmap phase: 1 = help/how-to, 2 = read data, 3 = write data. */
     phase: number;
-    /** On out-of-the-box (until an institute configures the setting). */
+    /** On out-of-the-box for every role (until an institute configures the setting). */
     defaultEnabled: boolean;
+    /** On out-of-the-box for THESE roles only (mirrors the backend registry's default_roles). */
+    defaultRoles?: string[];
 }
 
 export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
@@ -24,6 +26,66 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
             'Answers “how do I / where do I” questions about using the portal, with step-by-step instructions.',
         phase: 1,
         defaultEnabled: true,
+    },
+    {
+        key: 'learner_data',
+        label: 'Learner data lookup',
+        description:
+            'Find learners by name/email/phone and answer questions about their attendance, ' +
+            'assessment scores, activity, course progress and login summary — and generate their ' +
+            'full analysis report. On by default for Admins; grant to other roles below.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'payments',
+        label: 'Payments & fees',
+        description:
+            'Answer questions about a learner’s payment history, outstanding/overdue fees, and ' +
+            'payment plans. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'batch_data',
+        label: 'Batch rosters',
+        description:
+            'List the learners in a batch and answer batch headcount questions. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'schedule',
+        label: 'Class schedule',
+        description:
+            'Answer “what classes are live/upcoming” and “what do I have today” from the live-session ' +
+            'schedule. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'institute_overview',
+        label: 'Institute overview',
+        description:
+            'Institute-wide snapshots: total overdue fees, live classes right now, active learner ' +
+            'counts. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'learner_edits',
+        label: 'Learner edits (actions)',
+        description:
+            'Let the assistant PROPOSE changes — edit a learner’s details, extend access, move ' +
+            'batch, activate/deactivate. Every change requires the user to press Confirm on a card ' +
+            'before anything is applied. Off for everyone by default.',
+        phase: 3,
+        defaultEnabled: false,
     },
 ];
 
@@ -46,8 +108,21 @@ export interface AssistantToolsSettingData {
 }
 
 export function defaultAssistantToolsSetting(): AssistantToolsSettingData {
+    // Role-scoped defaults land in role_overrides so SAVING the settings page
+    // preserves them (the backend's default_roles fallback only applies while
+    // no setting has ever been saved).
+    const role_overrides: Record<string, { enabled_tools: string[] }> = {};
+    for (const tool of ASSISTANT_TOOL_CATALOG) {
+        for (const role of tool.defaultRoles ?? []) {
+            const entry = role_overrides[role] ?? { enabled_tools: [] };
+            role_overrides[role] = entry;
+            if (!entry.enabled_tools.includes(tool.key)) {
+                entry.enabled_tools.push(tool.key);
+            }
+        }
+    }
     return {
         enabled_tools: ASSISTANT_TOOL_CATALOG.filter((t) => t.defaultEnabled).map((t) => t.key),
-        role_overrides: {},
+        role_overrides,
     };
 }

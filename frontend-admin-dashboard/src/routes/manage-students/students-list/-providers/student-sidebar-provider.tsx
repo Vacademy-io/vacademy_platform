@@ -1,8 +1,9 @@
 // StudentSidebarProvider.tsx
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { StudentSidebarContext } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentTable } from '@/types/student-table-types';
 import { StudentProfileOverlay } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-profile-overlay';
+import { useSelectedStudentMirrorStore } from '@/stores/assistant/selected-student-mirror';
 
 interface StudentSidebarProviderProps {
     children: ReactNode;
@@ -15,6 +16,24 @@ export const StudentSidebarProvider = ({ children }: StudentSidebarProviderProps
     const [selectedStudent, _setSelectedStudent] = useState<StudentTable | null>(null);
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
     const [learnerList, setLearnerListState] = useState<StudentTable[]>([]);
+
+    // Mirror the selection (identifiers only) into the global assistant store so
+    // the Vacademy Assistant — mounted outside this context — can resolve
+    // "this student" from page context. Covers every consumer surface at once.
+    const mirrorStudent = useSelectedStudentMirrorStore((s) => s.setStudent);
+    useEffect(() => {
+        mirrorStudent(
+            selectedStudent?.user_id
+                ? {
+                      user_id: selectedStudent.user_id,
+                      full_name: selectedStudent.full_name,
+                      package_session_id: selectedStudent.package_session_id || undefined,
+                      institute_enrollment_id: selectedStudent.institute_enrollment_id || undefined,
+                  }
+                : null
+        );
+        return () => mirrorStudent(null);
+    }, [selectedStudent, mirrorStudent]);
 
     /**
      * Setting a NEW student (different user_id than the currently selected one)
@@ -61,12 +80,9 @@ export const StudentSidebarProvider = ({ children }: StudentSidebarProviderProps
      * when the consumer unmounts). A reference-equal short-circuit avoids
      * spurious re-renders when react-query re-emits the same array.
      */
-    const setLearnerList = useCallback(
-        (list: StudentTable[]) => {
-            setLearnerListState((prev) => (prev === list ? prev : list));
-        },
-        []
-    );
+    const setLearnerList = useCallback((list: StudentTable[]) => {
+        setLearnerListState((prev) => (prev === list ? prev : list));
+    }, []);
 
     /** Where the active learner sits in the published list — null when not
      *  in the list at all (e.g. overlay opened from a non-list surface). */
@@ -84,10 +100,7 @@ export const StudentSidebarProvider = ({ children }: StudentSidebarProviderProps
     }, [learnerList, learnerListPosition]);
 
     const goNextLearner = useCallback(() => {
-        if (
-            !learnerListPosition ||
-            learnerListPosition.index >= learnerListPosition.total - 1
-        )
+        if (!learnerListPosition || learnerListPosition.index >= learnerListPosition.total - 1)
             return;
         const next = learnerList[learnerListPosition.index + 1];
         if (next) _setSelectedStudent(next);

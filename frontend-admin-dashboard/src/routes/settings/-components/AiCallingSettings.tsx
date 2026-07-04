@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { AiAgentsCard } from './AiAgentsCard';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // Stored under the institute's AI_CALLING_SETTING JSON. The backend EVALUATE
@@ -154,6 +155,16 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
         campaignPlaceholder: 'Campaign ID from your provider',
         campaignHelp:
             'The campaign that defines the AI script/persona for outbound calls. Provided by your AI-calling provider.',
+    },
+    VACADEMY_AI: {
+        label: 'Vacademy AI Agent',
+        companyCodeLabel: 'Account Code',
+        companyCodePlaceholder: 'Not needed — calls run on your Vacademy Voice number',
+        tokenLabel: 'API Token',
+        tokenPlaceholder: 'Not needed for Vacademy AI',
+        campaignPlaceholder: 'Pick an agent from the AI Agents section below',
+        campaignHelp:
+            'Vacademy AI agents are authored in the "AI Agents" section below — saving one registers it here automatically (its id is the campaign id).',
     },
 };
 const titleCase = (code: string) =>
@@ -401,6 +412,26 @@ export default function AiCallingSettings() {
         setHasChanges(true);
     };
 
+    // Saving/deleting a Vacademy AI agent bridges its campaign entry into
+    // AI_CALLING_SETTING server-side. Mirror that into the LOCAL unsaved state
+    // (same replace-by-campaignId logic as the backend bridge, no setHasChanges)
+    // so a later "Save changes" on this screen doesn't clobber the bridged entry.
+    const mirrorBridgedCampaign = (c: Campaign) => {
+        setSettings((prev) => ({
+            ...prev,
+            campaigns: [
+                ...(prev.campaigns ?? []).filter((x) => x.campaignId !== c.campaignId),
+                c,
+            ],
+        }));
+    };
+    const mirrorRemovedCampaign = (agentId: string) => {
+        setSettings((prev) => ({
+            ...prev,
+            campaigns: (prev.campaigns ?? []).filter((x) => x.campaignId !== agentId),
+        }));
+    };
+
     const handleSave = () => {
         if (settings.enabled && !settings.defaultCampaignId.trim()) {
             toast.error('A default Campaign ID is required to enable AI calling.');
@@ -573,6 +604,14 @@ export default function AiCallingSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* ── Vacademy AI agent registry (personas for our own caller) ── */}
+            {providerCodes.includes('VACADEMY_AI') && (
+                <AiAgentsCard
+                    onBridged={mirrorBridgedCampaign}
+                    onRemoved={mirrorRemovedCampaign}
+                />
+            )}
 
             {/* ── Credentials ── */}
             <Card>

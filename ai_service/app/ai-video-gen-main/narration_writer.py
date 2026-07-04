@@ -126,6 +126,54 @@ NARRATION_WRITER_SYSTEM_PROMPT = (
     "signature_device). The whole narration must advance the controlling idea and LAND the emotional "
     "arc; match the tonal_register (it wins over a generic brand tone if they conflict); name or evoke "
     "the visual metaphor in words where natural. Don't restate the concept verbatim — embody it.\n"
+    "15. **GROUND EVERY CLAIM in the SOURCE REQUEST (when provided).** The input may carry a "
+    "`source_request` — the user's original words. Any number, name, price, date, offer, or quote "
+    "in the source that serves a shot's brief must appear VERBATIM in the narration — never round "
+    "a statistic, never paraphrase it, never invent one. If the source has no specifics for a "
+    "claim, write concrete sensory detail instead of vague hype — 'world-class', 'seamless', "
+    "'cutting-edge', 'best-in-class' are BANNED unless attached to a fact from the source.\n"
+    "16. **A shot's `real_data` field is a USER-CONFIRMED fact — state it VERBATIM** "
+    "in that shot's narration; never round or paraphrase it.\n\n"
+
+    "**HOOK CRAFT — the video's most valuable 4 seconds. Write the hook LAST, after the rest.**\n"
+    "Pick ONE technique and execute it fully:\n"
+    "  (a) QUANTIFIED CLAIM — a specific number that sounds wrong until explained.\n"
+    "  (b) CURIOSITY GAP — name what the viewer will learn, withhold the mechanism "
+    "('One habit separates the top 1% of students — and it costs nothing').\n"
+    "  (c) DIRECT CALLOUT — name the viewer's exact situation in their own words.\n"
+    "  (d) REVERSAL — state the common belief, break it in the same breath.\n"
+    "  (e) COLD OPEN — drop into a concrete scene mid-action.\n"
+    "The hook MUST open a loop that ONLY the final shot closes — write the pair together and make "
+    "the close answer the hook's exact words. The hook line must also land the SAME idea as shot 0's "
+    "visual (read its visual_description) — narration and image say one thing, not two.\n\n"
+
+    "**CTA CRAFT (when the close is a CTA):** ONE action only, imperative verb first, name exactly "
+    "where to go ('Start your free trial at vacademy.io'), ≤ 8 words. Never stack two asks. For "
+    "story/documentary registers close on the image, not an ask.\n"
+)
+
+
+# Ad-copy craft for ad/hype registers — ported from the legacy v2 _draft_script
+# product_promo block (automation_pipeline.py) so the v3 NarrationWriter, which
+# marketing videos actually use, gets the same discipline. Appended to the
+# system prompt by write_narration when the tonal register is ad/hype.
+AD_NARRATION_EXTENSION = (
+    "\n\n🛍️ AD-COPY MODE (this run's register is ad/hype):\n"
+    "This is a product/brand ad, NOT an explainer. Write the narration as ad copy:\n"
+    "- 3-act structure across the shots: HOOK (sensory image, ≤6 words) → PROMISE (one "
+    "specific product benefit) → CALL (tagline + CTA). All three inside the word budget.\n"
+    "- Punchy fragments, not long sentences. 'Snap. Crunch. Smile.' is ad copy. "
+    "'Parle-G is a popular biscuit that has been enjoyed for decades' is NOT — that's an "
+    "encyclopedia entry.\n"
+    "- Use the source request's brand words verbatim — name the product, quote its claims. "
+    "Never paraphrase the brand into a generic category ('a snack', 'a platform', 'a service').\n"
+    "- BANNED agency boilerplate: 'in today's fast-paced world', 'have you ever wondered', "
+    "'let's take your brand on an adventure', 'elevate your business', 'take your brand to "
+    "the next level', 'marketing without borders'.\n"
+    "- Close on a tagline, not a recap. Last ~5 words = brand + verb "
+    "(e.g. 'Parle-G — taste the moment.').\n"
+    "- Ad copy is short by definition. Do NOT pad to fill time — leave room for pauses, "
+    "brand stings, product reveals.\n"
 )
 
 
@@ -148,6 +196,9 @@ def _shot_summary_for_prompt(shot: Dict[str, Any]) -> Dict[str, Any]:
     # Include `role` if present (e.g., product_proof) — affects tone.
     if shot.get("role"):
         summary["role"] = shot["role"]
+    # User-confirmed real figure (asset_request gate) — must appear verbatim.
+    if shot.get("real_data"):
+        summary["real_data"] = str(shot["real_data"])[:300]
     # Visual description helps the narrator describe what's on screen.
     if shot.get("visual_description"):
         summary["visual_description"] = str(shot["visual_description"])[:200]
@@ -166,6 +217,7 @@ def build_narration_writer_user_prompt(
     continuity_notes: Optional[str] = None,
     wpm_override: Optional[float] = None,
     regen_note: Optional[str] = None,
+    source_request: Optional[str] = None,
 ) -> str:
     """Compose the NarrationWriter user prompt from the ShotPlanner output.
 
@@ -189,6 +241,11 @@ def build_narration_writer_user_prompt(
     _cc = shot_plan.get("creative_concept")
     if isinstance(_cc, dict) and _cc:
         payload["creative_concept"] = _cc
+    # The user's original request — the ground truth for every number, name,
+    # price, and claim (system-prompt rule 15). Without it the writer can only
+    # paraphrase 1-2 sentence briefs and back-fills with generic prose.
+    if source_request and str(source_request).strip():
+        payload["source_request"] = str(source_request).strip()[:1500]
 
     effective_wpm = float(wpm_override) if (wpm_override and wpm_override > 0) else DEFAULT_WPM
     expected_words = sum(
@@ -309,6 +366,123 @@ def _parse_narration_response(text: str) -> Dict[int, str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Deterministic quality check (converts the prompt's banned lists from a bluff
+# into a real gate — mirrors the concept-conformance corrective pattern in
+# shot_planner.py). Pure string heuristics; no LLM, no network.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BANNED_OPENER_RE = re.compile(
+    r"^\s*[\"'‘’“”]*\s*("
+    r"have you ever wondered|imagine a world where|in today'?s video|did you know"
+    r"|let'?s dive in|picture this|today we'?ll learn|welcome to|in today'?s fast[- ]paced world"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_BANNED_FILLER_RE = re.compile(
+    r"\b("
+    r"fascinating|important to note|as we can see|it turns out|at the end of the day"
+    r"|delve|game[- ]changer|in conclusion|elevate your business"
+    r"|take your (?:brand|business) to the next level|unlock(?:ing)? the (?:power|potential|secrets?)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Vague-hype adjectives that rule 15 bans unless attached to a source fact.
+_VAGUE_HYPE_RE = re.compile(
+    r"\b(world[- ]class|seamless(?:ly)?|cutting[- ]edge|best[- ]in[- ]class|state[- ]of[- ]the[- ]art)\b",
+    re.IGNORECASE,
+)
+
+# Contrast/tension markers that make a hook feel specific rather than generic.
+_HOOK_TENSION_RE = re.compile(
+    r"(\d|%|\b(but|wrong|never|stop|not|no one|nobody|every|only|until|except|lost|missed?|slip)\b|\?)",
+    re.IGNORECASE,
+)
+
+_CTA_VERB_RE = re.compile(
+    r"\b(start|get|try|join|visit|book|enroll|enrol|download|see|discover|claim|grab|sign|call|talk|switch|build|launch)\b",
+    re.IGNORECASE,
+)
+
+
+def check_narration_quality(
+    shots: List[Dict[str, Any]],
+    *,
+    register: Optional[str] = None,
+    wpm: float = DEFAULT_WPM,
+) -> List[str]:
+    """Scan drafted narration for deterministic quality violations.
+
+    Returns human-readable issue strings (empty list = clean). Checks:
+    banned openers / filler / vague hype, consecutive shots opening with the
+    same word, per-shot word counts wildly off the duration budget, a hook
+    with no tension marker (digit/contrast/question), and — for ad/hype —
+    a close with no imperative verb.
+    """
+    issues: List[str] = []
+    narrated = [
+        s for s in shots
+        if isinstance(s, dict)
+        and (s.get("audio_policy") or "narration_only") != "intrinsic_only"
+        and str(s.get("narration_text") or "").strip()
+    ]
+    if not narrated:
+        return issues
+
+    prev_first_word: Optional[str] = None
+    for s in narrated:
+        idx = s.get("shot_index")
+        text = str(s.get("narration_text") or "").strip()
+
+        m = _BANNED_OPENER_RE.match(text)
+        if m:
+            issues.append(f"shot {idx}: opens with banned generic opener '{m.group(1)}'")
+        for m in _BANNED_FILLER_RE.finditer(text):
+            issues.append(f"shot {idx}: banned filler/cliché '{m.group(1)}'")
+        for m in _VAGUE_HYPE_RE.finditer(text):
+            # Vague hype is allowed only when a digit (a fact) sits in the same shot.
+            if not re.search(r"\d", text):
+                issues.append(
+                    f"shot {idx}: vague hype '{m.group(1)}' with no concrete fact in the shot"
+                )
+
+        first_word = re.sub(r"[^\w']", "", text.split()[0]).lower() if text.split() else ""
+        if first_word and first_word == prev_first_word:
+            issues.append(
+                f"shot {idx}: starts with the same word ('{first_word}') as the previous shot"
+            )
+        prev_first_word = first_word
+
+        dur = float(s.get("duration_estimate_s") or 0.0)
+        if dur > 0:
+            target = dur * wpm / 60.0
+            words = len(text.split())
+            if target >= 5 and (words < target * 0.55 or words > target * 1.45):
+                issues.append(
+                    f"shot {idx}: {words} words vs ~{target:.0f} budget "
+                    f"({dur:.1f}s × {wpm:.0f}wpm) — off by >45%"
+                )
+
+    hook_text = str(narrated[0].get("narration_text") or "")
+    if len(hook_text.split()) >= 4 and not _HOOK_TENSION_RE.search(hook_text):
+        issues.append(
+            "hook (shot 0): no tension marker — no number, no contrast word, no question; "
+            "reads generic"
+        )
+
+    if (register or "").strip().lower() in ("ad", "hype"):
+        close_text = str(narrated[-1].get("narration_text") or "")
+        if not _CTA_VERB_RE.search(close_text):
+            issues.append(
+                "close (ad register): final shot has no imperative/action verb — "
+                "ad copy must end on tagline/CTA energy"
+            )
+
+    return issues
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -324,6 +498,7 @@ def write_narration(
     brand_system_prompt: Optional[str] = None,
     wpm_override: Optional[float] = None,
     regen_note: Optional[str] = None,
+    source_request: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 6000,
 ) -> Dict[str, Any]:
@@ -385,8 +560,20 @@ def write_narration(
         continuity_notes=shot_plan.get("continuity_notes"),
         wpm_override=wpm_override,
         regen_note=regen_note,
+        source_request=source_request,
     )
     narration_system = NARRATION_WRITER_SYSTEM_PROMPT
+    # Resolve the tonal register (brand_voice wins, then creative_concept) —
+    # ad/hype registers get the ported v2 ad-copy craft block.
+    _cc_reg = (shot_plan.get("creative_concept") or {}) if isinstance(
+        shot_plan.get("creative_concept"), dict) else {}
+    register = str(
+        (brand_voice or {}).get("tonal_register")
+        or _cc_reg.get("tonal_register")
+        or ""
+    ).strip().lower()
+    if register in ("ad", "hype"):
+        narration_system = narration_system + AD_NARRATION_EXTENSION
     # Brand direction (kit system_prompt or per-video override) — shapes the
     # narration voice/tone too, not just the visuals. Subordinated to the JSON
     # output contract by the block wrapper.
@@ -416,21 +603,80 @@ def write_narration(
             f"NarrationWriter response unparseable. Head: {(text or '')[:200]!r}"
         )
 
-    # Apply narration_text per shot, honoring audio_policy contract.
-    for s in shots:
-        if not isinstance(s, dict):
-            continue
-        idx = s.get("shot_index")
-        try:
-            idx_int = int(idx)
-        except (TypeError, ValueError):
-            continue
-        if (s.get("audio_policy") or "narration_only") == "intrinsic_only":
-            s["narration_text"] = ""
-            continue
-        s["narration_text"] = narration_by_idx.get(idx_int, "")
+    def _apply(mapping: Dict[int, str]) -> None:
+        """Write narration_text onto shots, honoring the audio_policy contract."""
+        for s in shots:
+            if not isinstance(s, dict):
+                continue
+            try:
+                idx_int = int(s.get("shot_index"))
+            except (TypeError, ValueError):
+                continue
+            if (s.get("audio_policy") or "narration_only") == "intrinsic_only":
+                s["narration_text"] = ""
+                continue
+            s["narration_text"] = mapping.get(idx_int, "")
 
-    return {"shots": shots, "usage": usage or {}, "raw": text or ""}
+    _apply(narration_by_idx)
+
+    # Deterministic quality gate + ONE corrective rewrite. The banned lists in
+    # the system prompt used to be unenforced; this converts them into a real
+    # gate at the cost of one extra cheap-model call only when the draft fails.
+    effective_wpm = float(wpm_override) if (wpm_override and wpm_override > 0) else DEFAULT_WPM
+    total_usage: Dict[str, Any] = dict(usage or {})
+    try:
+        issues = check_narration_quality(shots, register=register, wpm=effective_wpm)
+    except Exception:
+        issues = []
+    if issues:
+        print(f"   ✍️ Narration quality gate: {len(issues)} issue(s) — corrective rewrite")
+        for _iss in issues[:6]:
+            print(f"      - {_iss}")
+        corrective = (
+            "QUALITY REVIEW FAILED — your draft violates these rules:\n"
+            + "\n".join(f"- {i}" for i in issues[:12])
+            + "\n\nRewrite the narration fixing EVERY issue above. Keep everything that already "
+            "works — change only what the issues name plus whatever each fix forces. Keep the "
+            "same shot_index coverage and word budgets. Output the full corrected JSON object only."
+        )
+        try:
+            text2, usage2 = llm_chat(
+                messages
+                + [
+                    {"role": "assistant", "content": (text or "")[:6000]},
+                    {"role": "user", "content": corrective},
+                ],
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+            # Tokens were spent regardless of whether the rewrite is kept —
+            # merge usage BEFORE the accept/revert decision.
+            for k, v in (usage2 or {}).items():
+                if isinstance(v, (int, float)) and isinstance(total_usage.get(k), (int, float)):
+                    total_usage[k] = total_usage[k] + v
+                elif k not in total_usage:
+                    total_usage[k] = v
+            revised = _parse_narration_response(text2 or "")
+            if revised:
+                _apply(revised)
+                new_issues = check_narration_quality(shots, register=register, wpm=effective_wpm)
+                if len(new_issues) < len(issues):
+                    print(
+                        f"   ✍️ Corrective rewrite accepted: {len(issues)} → {len(new_issues)} issue(s)"
+                    )
+                    text = text2
+                else:
+                    print(
+                        f"   ✍️ Corrective rewrite NOT better ({len(issues)} → {len(new_issues)}) — keeping first draft"
+                    )
+                    _apply(narration_by_idx)
+        except Exception as _corr_err:
+            print(f"   ⚠️ Corrective rewrite failed ({_corr_err}) — keeping first draft")
+            _apply(narration_by_idx)
+
+    return {"shots": shots, "usage": total_usage, "raw": text or ""}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

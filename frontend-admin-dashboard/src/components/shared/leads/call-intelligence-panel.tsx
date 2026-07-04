@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
     Sparkle,
     Star,
@@ -8,9 +8,19 @@ import {
     Target,
     CheckCircle,
     Quotes,
+    ArrowsClockwise,
 } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { fetchCallIntelligence, type CallIntelligenceDto } from './services/call-intelligence';
+import {
+    fetchCallIntelligence,
+    triggerCallIntelligence,
+    type CallIntelligenceDto,
+} from './services/call-intelligence';
+import { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
+
+/** Statuses that mean the pipeline is still running — poll while in these. */
+const IN_PROGRESS_STATUSES = new Set(['PENDING', 'TRANSCRIBING', 'ANALYZING']);
 
 /**
  * Per-call AI analysis panel. Lazily fetches the call_intelligence row on first
@@ -244,13 +254,55 @@ export function CallIntelligencePanel({
     callLogId: string;
     className?: string;
 }) {
+    const featureEnabled = useCallIntelligenceEnabled();
     const [expanded, setExpanded] = useState(false);
     const query = useQuery({
         queryKey: ['call-intelligence', callLogId],
         queryFn: () => fetchCallIntelligence(callLogId),
-        enabled: expanded,
+        enabled: expanded && featureEnabled,
         staleTime: 60 * 1000,
+        // While the pipeline is running, poll so the panel updates live (and after
+        // an on-demand Analyze, watch PENDING → COMPLETED without a manual refresh).
+        refetchInterval: (q) =>
+            IN_PROGRESS_STATUSES.has((q.state.data as CallIntelligenceDto | null)?.status ?? '')
+                ? 5000
+                : false,
     });
+
+    const analyze = useMutation({
+        mutationFn: () => triggerCallIntelligence(callLogId),
+        onSuccess: () => {
+            toast.success('Analysis queued — this updates automatically.');
+            void query.refetch();
+        },
+        onError: (err: unknown) => {
+            const status = (err as { response?: { data?: { status?: string } } })?.response?.data
+                ?.status;
+            toast.error(
+                status === 'NO_RECORDING'
+                    ? 'No recording is available for this call to analyze.'
+                    : status === 'DISABLED'
+                      ? 'Call Intelligence is turned off for this institute.'
+                      : 'Could not queue analysis.'
+            );
+        },
+    });
+
+    // Hide the whole affordance when Call Intelligence is off for the institute —
+    // showing it would just promise an analysis that never runs.
+    if (!featureEnabled) return null;
+
+    const AnalyzeButton = ({ label }: { label: string }) => (
+        <button
+            type="button"
+            disabled={analyze.isPending}
+            onClick={() => analyze.mutate()}
+            className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary-200 bg-white px-2 py-1 text-caption text-primary-700 hover:bg-primary-50 disabled:opacity-60"
+        >
+            <ArrowsClockwise className={cn('size-4', analyze.isPending && 'animate-spin')} />
+            {analyze.isPending ? 'Queuing…' : label}
+        </button>
+    );
 
     if (!expanded) {
         return (
@@ -280,14 +332,38 @@ export function CallIntelligencePanel({
             </div>
             {query.isLoading ? (
                 <p className="text-body text-neutral-500">Loading analysis…</p>
-            ) : !ci ? (
-                <p className="text-body text-neutral-500">This call hasn’t been analyzed.</p>
-            ) : ci.status === 'COMPLETED' ? (
-                <CompletedView ci={ci} />
-            ) : ci.status === 'SKIPPED' ? (
-                <p className="text-body text-neutral-500">
-                    {(ci.skipReason && SKIP_NOTE[ci.skipReason]) ?? 'Not analyzed.'}
+            ) : query.isError ? (
+                <p className="text-body text-danger-600">
+                    Couldn’t reach the analysis service. If you’re on a backend without Call
+                    Intelligence deployed, this endpoint won’t exist yet.
                 </p>
+            ) : !ci ? (
+                <>
+                    <p className="text-body text-neutral-500">
+                        This call hasn’t been analyzed yet.
+                    </p>
+                    <AnalyzeButton label="Analyze this call" />
+                </>
+            ) : ci.status === 'COMPLETED' ? (
+                <>
+                    <CompletedView ci={ci} />
+                    <AnalyzeButton label="Re-analyze" />
+                </>
+            ) : ci.status === 'SKIPPED' ? (
+                <>
+                    <p className="text-body text-neutral-500">
+                        {(ci.skipReason && SKIP_NOTE[ci.skipReason]) ?? 'Not analyzed.'}
+                    </p>
+                    <AnalyzeButton label="Analyze anyway" />
+                </>
+            ) : ci.status === 'FAILED' ? (
+                <>
+                    <p className="text-body text-danger-600">
+                        {STATUS_NOTE.FAILED}
+                        {ci.skipReason ? ` (${ci.skipReason})` : ''}
+                    </p>
+                    <AnalyzeButton label="Retry analysis" />
+                </>
             ) : (
                 <p className="text-body text-neutral-500">
                     {STATUS_NOTE[ci.status] ?? 'Analysis in progress…'}

@@ -1,0 +1,15 @@
+{{- if .Values.services.voice_bot_service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-bot-service
+  namespace: default
+spec:
+  selector:
+    app: voice-bot-service
+  ports:
+    - name: http
+      port: {{ .Values.services.voice_bot_service.port }}
+      targetPort: {{ .Values.services.voice_bot_service.port }}
+  type: NodePort
+{{- end }}

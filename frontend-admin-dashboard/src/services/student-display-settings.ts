@@ -156,6 +156,9 @@ function mergeWithDefaults(
             ratingsAndReviewsVisible:
                 incoming?.courseDetails?.ratingsAndReviewsVisible ??
                 d.courseDetails.ratingsAndReviewsVisible,
+            hideAuthorName:
+                incoming?.courseDetails?.hideAuthorName ??
+                d.courseDetails.hideAuthorName,
             showCourseConfiguration:
                 incoming?.courseDetails?.showCourseConfiguration ??
                 d.courseDetails.showCourseConfiguration,
@@ -206,6 +209,9 @@ function mergeWithDefaults(
                 visible: t.visible ?? d.allCourses.tabs.find((x) => x.id === t.id)?.visible ?? true,
             })),
             defaultTab: incoming?.allCourses?.defaultTab ?? d.allCourses.defaultTab,
+            hideInstructorName:
+                incoming?.allCourses?.hideInstructorName ??
+                d.allCourses.hideInstructorName,
         },
         notifications: {
             allowSystemAlerts:

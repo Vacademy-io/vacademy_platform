@@ -17,11 +17,25 @@ import {
 interface TabItem {
     label: string;
     content: string; // rich-text HTML
+    color?: string; // optional per-tab colour-coding (empty → default accent)
 }
 
 const DEFAULT_TABS: TabItem[] = [
     { label: 'Tab 1', content: '' },
     { label: 'Tab 2', content: '' },
+];
+
+// Curated palette for colour-coding tabs. Empty value → the default accent.
+const TAB_COLORS: { value: string; label: string }[] = [
+    { value: '', label: 'Default' },
+    { value: '#2563eb', label: 'Blue' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#16a34a', label: 'Green' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#dc2626', label: 'Red' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#ea580c', label: 'Orange' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#9333ea', label: 'Purple' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#0d9488', label: 'Teal' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#db2777', label: 'Pink' }, // design-lint-ignore: user-selectable tab colour
+    { value: '#4b5563', label: 'Gray' }, // design-lint-ignore: user-selectable tab colour
 ];
 
 // Tab chrome colours — centralised so the file carries no scattered literal hex.
@@ -38,6 +52,9 @@ const C = {
     iconMuted: '#999999', // design-lint-ignore: Yoopta editor chrome — inline style required
     white: '#ffffff', // design-lint-ignore: Yoopta editor chrome — inline style required
 };
+
+// A tab's colour-code, falling back to the default accent when unset.
+const tabColorOf = (t?: TabItem): string => (t && t.color) || C.accent;
 
 export function TabsBlock({
     element,
@@ -116,6 +133,10 @@ export function TabsBlock({
 
     const updateTabContent = (index: number, content: string) => {
         commitTabs(tabsRef.current.map((t, i) => (i === index ? { ...t, content } : t)));
+    };
+
+    const updateTabColor = (index: number, color: string) => {
+        commitTabs(tabsRef.current.map((t, i) => (i === index ? { ...t, color } : t)));
     };
 
     const addTab = () => {
@@ -213,6 +234,7 @@ export function TabsBlock({
                 {tabs.map((tab, index) => {
                     const isActive = activeTab === index;
                     const isRenaming = renamingIndex === index;
+                    const tc = tabColorOf(tab);
                     return (
                         <button
                             key={index}
@@ -231,10 +253,12 @@ export function TabsBlock({
                                 padding: '8px 14px',
                                 fontSize: '13px',
                                 fontWeight: isActive ? 600 : 500,
-                                color: isActive ? C.accent : C.muted,
+                                color: isActive ? tc : C.muted,
                                 backgroundColor: isActive ? C.white : 'transparent',
                                 border: 'none',
-                                borderTop: `2px solid ${isActive ? C.accent : 'transparent'}`,
+                                // Colour-code: every tab shows its colour as a top bar;
+                                // the active tab is emphasised (white bg + bold + colour).
+                                borderTop: `3px solid ${tc}`,
                                 borderLeft: `1px solid ${isActive ? C.border : 'transparent'}`,
                                 borderRight: `1px solid ${isActive ? C.border : 'transparent'}`,
                                 borderTopLeftRadius: '6px',
@@ -353,16 +377,61 @@ export function TabsBlock({
                 })}
             </div>
 
-            {/* Tab Content — the same rich text editor as the quiz block */}
-            <div style={{ padding: '12px', minHeight: '80px', backgroundColor: C.white }}>
+            {/* Tab Content — the same rich text editor as the quiz block. Top
+                border echoes the active tab's colour-code. */}
+            <div
+                style={{
+                    padding: '12px',
+                    minHeight: '80px',
+                    backgroundColor: C.white,
+                    borderTop: `3px solid ${tabColorOf(tabs[activeTab])}`,
+                }}
+            >
                 {isEditing ? (
-                    <RichTextField
-                        key={activeTab}
-                        value={tabs[activeTab]?.content || ''}
-                        onChange={(html) => updateTabContent(activeTab, html)}
-                        placeholder={`Content for "${tabs[activeTab]?.label || 'Tab'}"…`}
-                        minHeight={100}
-                    />
+                    <>
+                        {/* Per-tab colour picker */}
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                marginBottom: '10px',
+                                flexWrap: 'wrap',
+                            }}
+                        >
+                            <span style={{ fontSize: '11px', color: C.muted }}>Tab colour:</span>
+                            {TAB_COLORS.map((c) => {
+                                const selected = (tabs[activeTab]?.color || '') === c.value;
+                                return (
+                                    <button
+                                        key={c.value || 'default'}
+                                        type="button"
+                                        onClick={() => updateTabColor(activeTab, c.value)}
+                                        title={c.label}
+                                        style={{
+                                            width: '18px',
+                                            height: '18px',
+                                            borderRadius: '50%',
+                                            border: selected
+                                                ? `2px solid ${C.text}`
+                                                : `1px solid ${C.btnBorder}`,
+                                            backgroundColor: c.value || C.accent,
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                            flexShrink: 0,
+                                        }}
+                                    />
+                                );
+                            })}
+                        </div>
+                        <RichTextField
+                            key={activeTab}
+                            value={tabs[activeTab]?.content || ''}
+                            onChange={(html) => updateTabContent(activeTab, html)}
+                            placeholder={`Content for "${tabs[activeTab]?.label || 'Tab'}"…`}
+                            minHeight={100}
+                        />
+                    </>
                 ) : !isRichTextEmpty(tabs[activeTab]?.content) ? (
                     <RichTextHtml
                         html={tabs[activeTab]?.content || ''}
@@ -475,7 +544,8 @@ export const TabsPlugin = new YooptaPlugin<{ tabbedContent: any }>({
                             const label = (tab && tab.label ? String(tab.label) : `Tab ${i + 1}`)
                                 .replace(/</g, '&lt;')
                                 .replace(/>/g, '&gt;');
-                            return `<div style="padding: 8px 16px; font-size: 13px; font-weight: ${i === 0 ? 600 : 400}; color: ${i === 0 ? C.accent : C.muted}; border-bottom: 2px solid ${i === 0 ? C.accent : 'transparent'}; cursor: pointer;">${label}</div>`;
+                            const tc = tabColorOf(tab);
+                            return `<div style="padding: 8px 16px; font-size: 13px; font-weight: ${i === 0 ? 600 : 400}; color: ${i === 0 ? tc : C.muted}; border-top: 3px solid ${tc}; cursor: pointer;">${label}</div>`;
                         })
                         .join('');
                     contents = tabs

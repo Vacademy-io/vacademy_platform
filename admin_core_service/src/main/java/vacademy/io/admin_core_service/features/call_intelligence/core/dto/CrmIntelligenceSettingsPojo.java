@@ -59,11 +59,8 @@ public class CrmIntelligenceSettingsPojo {
         /** Analyze calls that never connected (no answer / busy). Usually no audio. */
         private boolean analyzeNotConnected = false;
 
-        /**
-         * Per-institute override of the credit price per analyzed call. {@code null}
-         * = use the DB-managed global price (credit_pricing 'call_intelligence').
-         */
-        private BigDecimal creditCostOverride;
+        // Credit pricing is DB-only (credit_pricing 'call_intelligence', per minute).
+        // There is deliberately no per-institute settings override here.
 
         /** Rating scale upper bound for both ratings (both default to 0-10). */
         private int ratingScale = 10;
@@ -90,9 +87,14 @@ public class CrmIntelligenceSettingsPojo {
         /** Optional hint to bias goal inference (e.g. "book a campus demo"). Null = pure inference. */
         private String objectiveHint;
 
-        /** Quality dimensions scored within caller_self_goal_rating.qualities[]. */
-        private List<String> qualities = List.of(
-                "rapport", "needs_discovery", "objection_handling", "next_step_secured");
+        /**
+         * Rated metrics scored within caller_self_goal_rating.qualities[]. Kept as a
+         * loose {@code List<Object>} so BOTH the legacy shape (["rapport", …]) and the
+         * current one ([{"key":"rapport","description":"…"}]) deserialize without error.
+         * Java only gates on enabled/source/credit — it never reads this; ai_service
+         * (Python) consumes it (term + meaning) when building the analysis prompt.
+         */
+        private List<Object> qualities;
 
         /** Optional per-quality weights (sum need not be 1; normalized at scoring time). */
         private Map<String, BigDecimal> weights;

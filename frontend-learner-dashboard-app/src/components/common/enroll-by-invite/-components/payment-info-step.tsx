@@ -8,6 +8,7 @@ import {
 import { CashfreeCheckoutForm } from "./cashfree-checkout-form";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
+import { useSearch } from "@tanstack/react-router";
 import { Route } from "@/routes/learner-invitation-response";
 import { useQuery } from "@tanstack/react-query";
 import { handlePaymentGatewaykeys } from "../-services/enroll-invite-services";
@@ -24,6 +25,12 @@ interface PaymentInfoStepProps {
   vendor?: PaymentVendor;
   amount?: number;
   currency?: string;
+  /**
+   * Institute id override for flows rendered outside
+   * /learner-invitation-response (e.g. sub-org registration). When omitted,
+   * it falls back to that route's search params — the original behavior.
+   */
+  instituteId?: string;
   onEwayPaymentReady?: (encryptedData: {
     encryptedNumber: string;
     encryptedCVN: string;
@@ -62,6 +69,8 @@ interface PaymentInfoStepProps {
   cashfreeOrderId?: string;
   cashfreeInitLoading?: boolean;
   cashfreeInstituteId?: string;
+  /** "sandbox" | "production" from the backend — must match the session. */
+  cashfreeEnvironment?: string | null;
   onCashfreePayClick?: () => void;
   onCashfreePayError?: () => void;
 }
@@ -131,6 +140,7 @@ const PaymentInfoStep = ({
   vendor = "STRIPE",
   amount,
   currency,
+  instituteId: instituteIdProp,
   onEwayPaymentReady,
   onEwayError,
   onStripePaymentReady,
@@ -148,10 +158,16 @@ const PaymentInfoStep = ({
   cashfreeOrderId,
   cashfreeInitLoading,
   cashfreeInstituteId,
+  cashfreeEnvironment,
   onCashfreePayClick,
   onCashfreePayError,
 }: PaymentInfoStepProps) => {
-  const { instituteId } = Route.useSearch();
+  // Unconditional hook call. `shouldThrow: false` makes it return undefined
+  // (instead of throwing) when this component renders outside
+  // /learner-invitation-response — those flows pass instituteId as a prop.
+  // (Route.useSearch() can't be used for this: it drops strict/shouldThrow.)
+  const search = useSearch({ from: Route.id, shouldThrow: false });
+  const instituteId = instituteIdProp ?? search?.instituteId;
 
   // Fetch Stripe publishable key
   const {
@@ -159,7 +175,7 @@ const PaymentInfoStep = ({
     isLoading: isLoadingStripeKey,
     error: stripeKeyError,
   } = useQuery({
-    ...handlePaymentGatewaykeys(instituteId, "STRIPE"),
+    ...handlePaymentGatewaykeys(instituteId ?? "", "STRIPE"),
     enabled: vendor === "STRIPE" && !!instituteId,
   });
 
@@ -297,16 +313,45 @@ const PaymentInfoStep = ({
           returnUrl={cashfreeReturnUrl}
           orderId={cashfreeOrderId}
           instituteId={cashfreeInstituteId}
+          environment={cashfreeEnvironment}
           onPayClick={onCashfreePayClick}
           onPayError={onCashfreePayError}
           isProcessing={isProcessing || cashfreeInitLoading}
         />
       )}
 
+      {vendor === "PHONEPE" && (
+        <div className="w-full max-w-md mx-auto">
+          <div className="bg-white rounded-md border border-gray-200 p-6 text-center">
+            <h2 className="text-xl font-bold text-gray-800 mb-2">
+              Pay with PhonePe
+            </h2>
+            <p className="text-gray-600 mb-4">
+              You'll be securely redirected to PhonePe to complete your payment
+              {typeof amount === "number" && amount > 0
+                ? ` of ${currency || "INR"} ${amount}`
+                : ""}
+              . After paying, you'll be brought back here automatically.
+            </p>
+            <p className="text-sm text-gray-500">
+              Click <span className="font-semibold">Confirm &amp; Pay</span>{" "}
+              below to continue.
+            </p>
+            {error && (
+              <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
+                <strong className="text-red-800">Error</strong>
+                <p className="text-red-700 text-sm mt-1">{error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {vendor !== "STRIPE" &&
         vendor !== "EWAY" &&
         vendor !== "RAZORPAY" &&
-        vendor !== "CASHFREE" && (
+        vendor !== "CASHFREE" &&
+        vendor !== "PHONEPE" && (
         <div className="w-full max-w-md mx-auto">
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-6 text-center">
             <h2 className="text-xl font-bold text-yellow-800 mb-2">

@@ -3,9 +3,18 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarBlank, ArrowsClockwise } from '@phosphor-icons/react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { CalendarBlank, ArrowsClockwise, FacebookLogo, MapPin } from '@phosphor-icons/react';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import type { DayTemplates } from '@/types/challenge-analytics';
+
+type LeadSource = 'zoho' | 'facebook';
 
 interface AnalyticsFiltersProps {
     startDate: string;
@@ -17,6 +26,9 @@ interface AnalyticsFiltersProps {
     onTemplatesChange: (templates: string[]) => void;
     isLoading: boolean;
     onRefresh: () => void;
+    /** Optional global lead-source switch (Zoho challenge vs Facebook leads). */
+    source?: LeadSource;
+    onSourceChange?: (source: LeadSource) => void;
 }
 
 const quickFilterOptions = [
@@ -33,6 +45,8 @@ export function AnalyticsFilters({
     onEndDateChange,
     isLoading,
     onRefresh,
+    source,
+    onSourceChange,
 }: AnalyticsFiltersProps) {
     const [startOpen, setStartOpen] = useState(false);
     const [endOpen, setEndOpen] = useState(false);
@@ -59,8 +73,37 @@ export function AnalyticsFilters({
     return (
         <Card className="mb-4 border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4">
-                {/* Row 1: Date Range and Quick Filters */}
+                {/* Row 1: Lead source, Date Range and Quick Filters */}
                 <div className="flex flex-wrap items-center gap-3">
+                    {/* Lead source switch */}
+                    {onSourceChange && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-gray-500">Lead source:</span>
+                            <Select
+                                value={source}
+                                onValueChange={(v) => onSourceChange(v as LeadSource)}
+                            >
+                                <SelectTrigger className="w-44">
+                                    <SelectValue placeholder="Select source" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="zoho">
+                                        <span className="flex items-center gap-2">
+                                            <MapPin className="size-4" />
+                                            Zoho Forms
+                                        </span>
+                                    </SelectItem>
+                                    <SelectItem value="facebook">
+                                        <span className="flex items-center gap-2">
+                                            <FacebookLogo className="size-4" />
+                                            Facebook Leads
+                                        </span>
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
                     {/* Date Filters */}
                     <div className="flex items-center gap-2">
                         <Popover open={startOpen} onOpenChange={setStartOpen}>

@@ -199,7 +199,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                         </MyButton>
                     )}
                 </DialogTrigger>
-                <DialogContent className="flex h-4/5 w-1/3 flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600">
+                <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                     <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                         Edit Institute
                     </h1>
@@ -398,7 +398,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     </FormItem>
                                                 )}
                                             />
-                                            <div className="flex flex-wrap items-start justify-between gap-4">
+                                            <div className="flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                                                 <FormField
                                                     control={form.control}
                                                     name="instituteCity"
@@ -417,7 +417,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                             .instituteCity?.message
                                                                     }
                                                                     size="large"
-                                                                    className="w-auto"
+                                                                    className="w-full sm:w-auto"
                                                                     label="City/Village"
                                                                     {...field}
                                                                 />
@@ -442,7 +442,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                         form.formState.errors
                                                                             .instituteState?.message
                                                                     }
-                                                                    className="w-auto"
+                                                                    className="w-full sm:w-auto"
                                                                     size="large"
                                                                     label="State"
                                                                     {...field}
@@ -564,7 +564,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         scale="medium"
                                                         buttonType="secondary"
                                                         layoutVariant="default"
-                                                        className="w-1/3 text-sm"
+                                                        className="text-sm sm:w-1/3"
                                                         onClick={() => setThemeDialog(true)}
                                                     >
                                                         Change Theme
@@ -594,7 +594,7 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
             </Dialog>
 
             <Dialog open={openThemeDialog} onOpenChange={setThemeDialog}>
-                <DialogContent className="flex h-4/5 w-1/3 flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600">
+                <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
                     <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                         Select Theme
                     </h1>

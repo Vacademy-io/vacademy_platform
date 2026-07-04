@@ -1,9 +1,12 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
+    CALL_INTELLIGENCE_ANALYZE,
     CALL_INTELLIGENCE_BY_CALL,
     CALL_INTELLIGENCE_BY_LEAD,
     CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS,
+    CALL_INTELLIGENCE_COUNSELLOR_COACHING,
     CALL_INTELLIGENCE_TEAM_ANALYTICS,
+    CALL_INTELLIGENCE_TEAM_COACHING,
 } from '@/constants/urls';
 
 // ─── Types (mirror the admin-core CallIntelligenceDto / AnalyticsDto) ──────────
@@ -106,6 +109,47 @@ export interface CallIntelligenceAnalyticsDto {
     perCounsellor?: CounsellorStat[] | null;
 }
 
+export interface CoachingWeakCounsellor {
+    counsellorUserId: string;
+    name?: string | null;
+    avgScore?: number | null;
+}
+export interface CoachingQualityAvg {
+    key: string;
+    avgScore?: number | null;
+    count: number;
+    /** Team coaching only: counsellors weakest in this quality. */
+    weakCounsellors?: CoachingWeakCounsellor[] | null;
+}
+export interface CoachingTipStat {
+    text: string;
+    count: number;
+}
+export interface CoachingObjectionStat {
+    objection: string;
+    count: number;
+    handledCount: number;
+}
+export interface CoachingRecentCall {
+    callLogId: string;
+    callStartedAt?: string | null;
+    callerSelfGoalRating?: number | null;
+    callOutputRating?: number | null;
+    genericStatus?: string | null;
+    summary?: string | null;
+}
+export interface CallIntelligenceCoachingDto {
+    counsellorUserId?: string | null;
+    totalAnalyzed: number;
+    avgCallerSelfGoalRating?: number | null;
+    avgCallOutputRating?: number | null;
+    qualityAverages: CoachingQualityAvg[];
+    topCoachingTips: CoachingTipStat[];
+    topObjections: CoachingObjectionStat[];
+    sentimentDistribution: Record<string, number>;
+    recentCalls: CoachingRecentCall[];
+}
+
 // ─── API ───────────────────────────────────────────────────────────────────────
 
 /** Intelligence for a single call. Returns null on 404 (not analyzed / not enabled). */
@@ -124,6 +168,12 @@ export const fetchCallIntelligence = async (
     }
 };
 
+/** Queue on-demand (re)analysis for a call. Resolves once accepted; the row then
+ *  progresses PENDING → COMPLETED, observed by polling fetchCallIntelligence. */
+export const triggerCallIntelligence = async (callLogId: string): Promise<void> => {
+    await authenticatedAxiosInstance.post(CALL_INTELLIGENCE_ANALYZE(callLogId));
+};
+
 export const fetchLeadCallIntelligence = async (
     responseId: string
 ): Promise<CallIntelligenceDto[]> => {
@@ -140,6 +190,28 @@ export const fetchCounsellorCallIntelligence = async (
 ): Promise<CallIntelligenceAnalyticsDto> => {
     const { data } = await authenticatedAxiosInstance.get<CallIntelligenceAnalyticsDto>(
         CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS(counsellorUserId, from, to)
+    );
+    return data;
+};
+
+export const fetchCounsellorCoaching = async (
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+): Promise<CallIntelligenceCoachingDto> => {
+    const { data } = await authenticatedAxiosInstance.get<CallIntelligenceCoachingDto>(
+        CALL_INTELLIGENCE_COUNSELLOR_COACHING(counsellorUserId, from, to)
+    );
+    return data;
+};
+
+export const fetchTeamCoaching = async (
+    instituteId: string,
+    from?: number,
+    to?: number
+): Promise<CallIntelligenceCoachingDto> => {
+    const { data } = await authenticatedAxiosInstance.get<CallIntelligenceCoachingDto>(
+        CALL_INTELLIGENCE_TEAM_COACHING(instituteId, from, to)
     );
     return data;
 };

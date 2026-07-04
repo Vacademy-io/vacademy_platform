@@ -18,9 +18,16 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 type CallSource = 'MANUAL' | 'TELEPHONY' | 'AI';
 
+/** One rated metric: the term the AI scores + a plain-English meaning that
+ *  guides how it's graded (sent to the analysis prompt). */
+interface RubricQuality {
+    key: string;
+    description?: string;
+}
+
 interface RubricSettings {
     objectiveHint: string | null;
-    qualities: string[];
+    qualities: RubricQuality[];
     weights?: Record<string, number> | null;
 }
 
@@ -29,8 +36,6 @@ interface CallsSettings {
     sources: Record<CallSource, boolean>;
     minDurationSeconds: number;
     analyzeNotConnected: boolean;
-    /** null = use the DB-managed global price (credit_pricing 'call_intelligence'). */
-    creditCostOverride: number | null;
     ratingScale: number;
     rubric: RubricSettings;
 }
@@ -40,18 +45,81 @@ interface CrmIntelligenceSettingsData {
     calls: CallsSettings;
 }
 
+const DEFAULT_QUALITY_KEYS = [
+    'rapport',
+    'needs_discovery',
+    'objection_handling',
+    'next_step_secured',
+] as const;
+
+/**
+ * Plain-English, sales-team definitions for the common rubric qualities — shown
+ * under each field so admins know exactly what the AI grades. Keyed by the
+ * normalized quality (lowercase, spaces → underscores). Custom qualities an
+ * institute adds simply won't have a hint (that's fine — the term itself guides
+ * the AI). Add new well-known sales terms here as they come up.
+ */
+const QUALITY_DESCRIPTIONS: Record<string, string> = {
+    rapport: 'Building trust early — warm opening, using the lead’s name, matching their tone.',
+    needs_discovery:
+        'Asking questions to uncover the lead’s goals, situation and pain before pitching.',
+    objection_handling:
+        'Acknowledging and resolving concerns (price, timing, trust) instead of talking past them.',
+    next_step_secured:
+        'Locking a concrete next action — demo booked, callback time set, payment link sent.',
+    value_articulation: 'Explaining the offering’s value in terms relevant to this lead’s needs.',
+    pitch_clarity: 'Presenting the course/offer clearly and concisely, without rambling.',
+    active_listening:
+        'Letting the lead speak, not interrupting, and reflecting back what they said.',
+    urgency_creation:
+        'Giving a genuine reason to act now (limited seats, deadline, current offer).',
+    closing: 'Asking for the commitment and driving toward a clear decision.',
+    talk_listen_balance: 'A healthy talk-vs-listen ratio — not dominating the call.',
+    follow_up_commitment: 'Getting the lead to agree to a specific follow-up, not a vague “maybe”.',
+    tone_confidence: 'Speaking with confidence, energy and professionalism throughout.',
+};
+
+const qualityDescription = (q: string): string | undefined =>
+    QUALITY_DESCRIPTIONS[q.trim().toLowerCase().replace(/\s+/g, '_')];
+
 const DEFAULT_RUBRIC: RubricSettings = {
     objectiveHint: null,
-    qualities: ['rapport', 'needs_discovery', 'objection_handling', 'next_step_secured'],
+    qualities: DEFAULT_QUALITY_KEYS.map((key) => ({ key, description: QUALITY_DESCRIPTIONS[key] })),
     weights: null,
 };
+
+/**
+ * Accept both the legacy shape (qualities: string[]) and the current one
+ * (qualities: {key, description}[]) so saved settings keep working. Strings get
+ * the built-in description for known terms.
+ */
+function normalizeQualities(raw: unknown): RubricQuality[] {
+    if (!Array.isArray(raw)) return DEFAULT_RUBRIC.qualities;
+    return raw
+        .map((q): RubricQuality | null => {
+            if (typeof q === 'string') return { key: q, description: qualityDescription(q) };
+            if (q && typeof q === 'object' && 'key' in q) {
+                const o = q as { key?: unknown; description?: unknown };
+                const key = String(o.key ?? '').trim();
+                if (!key) return null;
+                return {
+                    key,
+                    description:
+                        typeof o.description === 'string' && o.description.trim()
+                            ? o.description
+                            : qualityDescription(key),
+                };
+            }
+            return null;
+        })
+        .filter((q): q is RubricQuality => q != null);
+}
 
 const DEFAULT_CALLS: CallsSettings = {
     enabled: false,
     sources: { MANUAL: true, TELEPHONY: true, AI: true },
     minDurationSeconds: 20,
     analyzeNotConnected: false,
-    creditCostOverride: null,
     ratingScale: 10,
     rubric: DEFAULT_RUBRIC,
 };
@@ -96,7 +164,12 @@ const fetchSettings = async (): Promise<CrmIntelligenceSettingsData> => {
             ...DEFAULT_CALLS,
             ...(saved.calls ?? {}),
             sources: { ...DEFAULT_CALLS.sources, ...(saved.calls?.sources ?? {}) },
-            rubric: { ...DEFAULT_RUBRIC, ...(saved.calls?.rubric ?? {}) },
+            rubric: {
+                ...DEFAULT_RUBRIC,
+                ...(saved.calls?.rubric ?? {}),
+                // Coerce legacy string[] → {key, description}[].
+                qualities: normalizeQualities(saved.calls?.rubric?.qualities),
+            },
         },
     };
 };
@@ -157,16 +230,27 @@ export default function CrmIntelligenceSettings() {
     const toggleSource = (key: CallSource, on: boolean) =>
         updateCalls({ sources: { ...settings.calls.sources, [key]: on } });
 
-    const setQuality = (i: number, value: string) =>
+    const setQualityKey = (i: number, key: string) =>
         updateRubric({
-            qualities: settings.calls.rubric.qualities.map((q, idx) => (idx === i ? value : q)),
+            qualities: settings.calls.rubric.qualities.map((q, idx) =>
+                idx === i ? { ...q, key } : q
+            ),
         });
-    const addQuality = () => updateRubric({ qualities: [...settings.calls.rubric.qualities, ''] });
+    const setQualityDescription = (i: number, description: string) =>
+        updateRubric({
+            qualities: settings.calls.rubric.qualities.map((q, idx) =>
+                idx === i ? { ...q, description } : q
+            ),
+        });
+    const addQuality = () =>
+        updateRubric({
+            qualities: [...settings.calls.rubric.qualities, { key: '', description: '' }],
+        });
     const removeQuality = (i: number) =>
         updateRubric({ qualities: settings.calls.rubric.qualities.filter((_, idx) => idx !== i) });
 
     const handleSave = () => {
-        // Trim empty rubric qualities before persisting.
+        // Trim, drop unnamed metrics, and keep each metric's meaning alongside it.
         const cleaned: CrmIntelligenceSettingsData = {
             ...settings,
             calls: {
@@ -174,7 +258,12 @@ export default function CrmIntelligenceSettings() {
                 rubric: {
                     ...settings.calls.rubric,
                     objectiveHint: settings.calls.rubric.objectiveHint?.trim() || null,
-                    qualities: settings.calls.rubric.qualities.map((q) => q.trim()).filter(Boolean),
+                    qualities: settings.calls.rubric.qualities
+                        .map((q) => ({
+                            key: q.key.trim(),
+                            description: q.description?.trim() || undefined,
+                        }))
+                        .filter((q) => q.key.length > 0),
                 },
             },
         };
@@ -282,30 +371,6 @@ export default function CrmIntelligenceSettings() {
                                                 blips.
                                             </p>
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="credit-override">
-                                                Credit cost per call (override)
-                                            </Label>
-                                            <Input
-                                                id="credit-override"
-                                                type="number"
-                                                min={0}
-                                                placeholder="Default"
-                                                value={settings.calls.creditCostOverride ?? ''}
-                                                onChange={(e) =>
-                                                    updateCalls({
-                                                        creditCostOverride:
-                                                            e.target.value === ''
-                                                                ? null
-                                                                : Number(e.target.value),
-                                                    })
-                                                }
-                                                className="w-28"
-                                            />
-                                            <p className="text-caption text-muted-foreground">
-                                                Leave blank to use the platform default price.
-                                            </p>
-                                        </div>
                                     </div>
 
                                     <div className="flex items-center gap-3">
@@ -333,9 +398,12 @@ export default function CrmIntelligenceSettings() {
                             <CardHeader>
                                 <CardTitle>Scoring Rubric</CardTitle>
                                 <CardDescription>
-                                    The call objective is inferred from the conversation; an
-                                    optional hint nudges that. The qualities below are scored
-                                    individually within the caller’s self-goal rating.
+                                    These are the sales-call skills the AI grades each rep on. The
+                                    call objective is inferred from the conversation (an optional
+                                    hint nudges it); each quality below is scored 0–10 within the
+                                    caller’s rating, and drives the “Skill breakdown” in Coaching.
+                                    Changes apply to calls analyzed after you save — use
+                                    “Re-analyze” on a past call to rescore it against a new rubric.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -353,23 +421,49 @@ export default function CrmIntelligenceSettings() {
                                     />
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label>Rated qualities</Label>
+                                <div className="space-y-4">
+                                    <div className="grid gap-0.5">
+                                        <Label>Rated metrics</Label>
+                                        <p className="text-caption text-muted-foreground">
+                                            Add any metric your sales team cares about. The
+                                            <span className="font-medium"> meaning</span> you write
+                                            is sent to the AI so it grades a custom metric exactly
+                                            the way you define it.
+                                        </p>
+                                    </div>
                                     {settings.calls.rubric.qualities.map((q, i) => (
-                                        <div key={i} className="flex items-center gap-2">
+                                        <div
+                                            key={i}
+                                            className="flex flex-col gap-2 rounded-md border border-neutral-200 p-3"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    value={q.key}
+                                                    placeholder="Metric (e.g. objection_handling)"
+                                                    onChange={(e) =>
+                                                        setQualityKey(i, e.target.value)
+                                                    }
+                                                    className="max-w-md flex-1"
+                                                />
+                                                <MyButton
+                                                    buttonType="secondary"
+                                                    scale="medium"
+                                                    onClick={() => removeQuality(i)}
+                                                >
+                                                    <Trash className="size-4" />
+                                                </MyButton>
+                                            </div>
                                             <Input
-                                                value={q}
-                                                placeholder="e.g. objection_handling"
-                                                onChange={(e) => setQuality(i, e.target.value)}
-                                                className="max-w-md flex-1"
+                                                value={q.description ?? ''}
+                                                placeholder={
+                                                    qualityDescription(q.key) ??
+                                                    'What does this metric mean? (used by the AI to grade it)'
+                                                }
+                                                onChange={(e) =>
+                                                    setQualityDescription(i, e.target.value)
+                                                }
+                                                className="text-caption"
                                             />
-                                            <MyButton
-                                                buttonType="secondary"
-                                                scale="medium"
-                                                onClick={() => removeQuality(i)}
-                                            >
-                                                <Trash className="size-4" />
-                                            </MyButton>
                                         </div>
                                     ))}
                                     <MyButton
@@ -377,7 +471,7 @@ export default function CrmIntelligenceSettings() {
                                         scale="medium"
                                         onClick={addQuality}
                                     >
-                                        <Plus className="size-4" /> Add quality
+                                        <Plus className="size-4" /> Add metric
                                     </MyButton>
                                 </div>
                             </CardContent>

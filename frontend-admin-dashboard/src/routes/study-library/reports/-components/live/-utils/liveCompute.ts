@@ -61,16 +61,21 @@ function addEngagement(a: Engagement, b: Engagement): Engagement {
 
 /**
  * A single transparent "engagement index" — a weighted count of interactions,
- * NOT a percentage (so it can never read as >100%). Talk time dominates,
- * structured participation (talks, polls) weighs more than passive signals.
+ * NOT a percentage (so it can never read as >100%).
+ *
+ * Deliberately driven by ACTUAL talk time (minutes spoken) and structured
+ * participation (chats, polls, raise-hands). We do NOT use the provider's raw
+ * `talks` segment-count: it counts every micro-unmute/audio blip (hundreds per
+ * learner over a term) and, when weighted, completely dominated the score —
+ * turning "engagement" into "who unmuted most often". Talk time already
+ * captures meaningful speaking, so the segment count is dropped.
  */
 export function engagementIndex(e: Engagement): number {
     return Math.round(
-        e.talkTimeSeconds / 60 +
+        (e.talkTimeSeconds / 60) * 3 +
             e.chats +
-            e.talks * 2 +
-            e.raiseHand +
             e.pollVotes * 2 +
+            e.raiseHand +
             e.emojis * 0.5
     );
 }
@@ -175,6 +180,15 @@ export interface LeaderboardRow {
     total: number;
     avgDurationMinutes: number | null;
     engagementIndex: number;
+    /** 0–100 participation score (per-class, normalized to the batch's most active learner). */
+    engagementScore: number;
+    /** Raw interaction totals behind the score (talk time, chats, polls, raise-hands…). */
+    engagement: Engagement;
+}
+
+/** Per-class participation (raw weighted interactions ÷ classes attended). */
+export function perClassEngagement(index: number, attended: number): number {
+    return attended > 0 ? index / attended : 0;
 }
 
 export interface BatchLiveSummary {
@@ -183,6 +197,10 @@ export interface BatchLiveSummary {
     avgAttendancePct: number;
     avgDurationMinutes: number | null;
     avgEngagementIndex: number;
+    /** Highest per-class engagement in the batch — the 100-point reference. */
+    maxEngagementPerClass: number;
+    /** Batch-average 0–100 engagement score. */
+    avgEngagementScore: number;
     avgEngagement: Engagement;
     timeline: AttendancePoint[];
     perClass: PerClassStats[];
@@ -260,6 +278,17 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
     perClass.sort(byDate);
     timeline.sort(byDate);
 
+    // 0–100 engagement score: per-class participation normalized to the batch's
+    // most-active learner (so it's fair regardless of how many classes attended).
+    const maxEngagementPerClass = Math.max(
+        0,
+        ...learnerStats.map((s) => perClassEngagement(s.engagementIndex, s.attended))
+    );
+    const scoreFor = (s: LearnerLiveStats) =>
+        maxEngagementPerClass > 0
+            ? Math.round((perClassEngagement(s.engagementIndex, s.attended) / maxEngagementPerClass) * 100)
+            : 0;
+
     // Leaderboard: attendance desc, engagement index as tiebreaker, dense rank.
     const ranked = [...learnerStats].sort(
         (a, b) =>
@@ -284,6 +313,8 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
             total: s.total,
             avgDurationMinutes: s.avgDurationMinutes,
             engagementIndex: s.engagementIndex,
+            engagementScore: scoreFor(s),
+            engagement: s.engagement,
         });
     });
 
@@ -308,6 +339,10 @@ export function computeBatchSummary(students: LiveStudentReport[]): BatchLiveSum
         avgAttendancePct: mean(learnerStats.map((s) => s.attendancePercentage)),
         avgDurationMinutes: learnerDurations.length ? mean(learnerDurations) : null,
         avgEngagementIndex: Math.round(mean(learnerStats.map((s) => s.engagementIndex))),
+        maxEngagementPerClass,
+        avgEngagementScore: learnerStats.length
+            ? Math.round(mean(learnerStats.map((s) => scoreFor(s))))
+            : 0,
         avgEngagement,
         timeline,
         perClass,

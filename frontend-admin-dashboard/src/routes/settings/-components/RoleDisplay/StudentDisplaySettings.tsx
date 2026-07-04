@@ -870,6 +870,20 @@ export default function StudentDisplaySettings(): JSX.Element {
                         <Label className="text-xs">Ratings & Reviews Visible</Label>
                     </div>
 
+                    {/* Hide author name on the course-details Course Overview panel */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.courseDetails.hideAuthorName ?? false}
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    hideAuthorName: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Hide Author Name (Course Details Page)</Label>
+                    </div>
+
                     {/* General visibility toggles */}
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1051,6 +1065,20 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 <SelectItem value="AllCourses">AllCourses</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+
+                    {/* Hide instructor name on each course card in the list */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.allCourses.hideInstructorName ?? false}
+                            onCheckedChange={(v) =>
+                                update('allCourses', {
+                                    ...settings.allCourses,
+                                    hideInstructorName: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Hide Instructor Name (Course Cards)</Label>
                     </div>
                 </div>
             </Card>

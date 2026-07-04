@@ -2002,7 +2002,7 @@ export const usePreviewMode = () => {
     const handleMessage = (event: MessageEvent) => {
       // Validate origin (adjust for your admin portal URL)
       const allowedOrigins = [
-        "https://admin.vacademy.io",
+        "https://dash.vacademy.io",
         "http://localhost:5173", // Dev
       ];
 

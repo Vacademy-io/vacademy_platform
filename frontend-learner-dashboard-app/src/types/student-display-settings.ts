@@ -114,6 +114,8 @@ export interface StudentCourseDetailsSettings {
   defaultTab: StudentCourseDetailsTabId;
   outlineMode: OutlineMode;
   ratingsAndReviewsVisible: boolean;
+  /** Hide the "Author" row in the course-details Course Overview panel. Default false (author shown). */
+  hideAuthorName?: boolean;
   // New flags
   showCourseConfiguration: boolean;
   showCourseContentPrefixes: boolean;
@@ -143,6 +145,8 @@ export interface StudentAllCoursesTabConfig {
 export interface StudentAllCoursesSettings {
   tabs: StudentAllCoursesTabConfig[];
   defaultTab: StudentAllCoursesTabId;
+  /** Hide the instructor/teacher name block on each course card in the All Courses list. Default false (shown). */
+  hideInstructorName?: boolean;
 }
 
 // UI

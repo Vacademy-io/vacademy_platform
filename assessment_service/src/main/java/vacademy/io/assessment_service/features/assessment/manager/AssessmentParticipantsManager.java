@@ -1172,6 +1172,13 @@ public class AssessmentParticipantsManager {
      * @param participantPdfReport The generated PDF report as a byte array.
      */
     private void sendNotificationToStudent(Map<StudentAttempt, byte[]> participantPdfReport, String assessmentId, String instituteId) {
+        // Learner result/report emails are opt-out via Assessment Settings
+        // (ASSESSMENT_SETTING.resultNotifications). Default is ON, so this only
+        // skips when an admin explicitly turns the learner/student toggle off.
+        if (!adminCoreServiceClient.isLearnerResultNotificationEnabled(instituteId)) {
+            log.info("[result-notification] learner notifications disabled for institute {} — skipping report email", instituteId);
+            return;
+        }
         assessmentReportNotificationService.sendAssessmentReportsToLearners(participantPdfReport, assessmentId, instituteId);
         log.info("Notification Check");
     }

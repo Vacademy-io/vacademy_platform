@@ -15,6 +15,12 @@ interface CashfreeCheckoutFormProps {
   returnUrl?: string;
   orderId?: string;
   instituteId?: string;
+  /**
+   * "sandbox" | "production" from the backend's response_data. The SDK mode
+   * MUST match the environment the session was minted in — a sandbox-mode SDK
+   * rejects prod sessions with Cashfree's "Broken Link!" page (and vice versa).
+   */
+  environment?: string | null;
   onPayClick?: () => void;
   onPayError?: () => void;
   isProcessing?: boolean;
@@ -28,6 +34,7 @@ export const CashfreeCheckoutForm = ({
   returnUrl,
   orderId,
   instituteId,
+  environment,
   onPayClick,
   onPayError,
   isProcessing = false,
@@ -44,11 +51,16 @@ export const CashfreeCheckoutForm = ({
     setCardError(null);
 
     try {
-      // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
-      const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
-      const cashfree = await loadCashfree({
-        mode: isSandbox ? "sandbox" : "production",
-      });
+      // Backend-reported environment wins (it matches the session's keys);
+      // VITE_CASHFREE_SANDBOX=true forces sandbox for local testing against
+      // older backends that don't send it. Default: production.
+      const mode =
+        environment === "sandbox" || environment === "production"
+          ? environment
+          : import.meta.env.VITE_CASHFREE_SANDBOX === "true"
+            ? "sandbox"
+            : "production";
+      const cashfree = await loadCashfree({ mode });
 
       if (!cashfree) {
         setCardError("Payment gateway not available.");

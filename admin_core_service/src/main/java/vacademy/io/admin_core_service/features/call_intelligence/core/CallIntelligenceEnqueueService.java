@@ -9,6 +9,8 @@ import vacademy.io.admin_core_service.features.call_intelligence.persistence.ent
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.repository.CallIntelligenceRepository;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 
@@ -38,6 +40,7 @@ public class CallIntelligenceEnqueueService {
 
     private final CrmIntelligenceSettingsService settingsService;
     private final CallIntelligenceRepository repo;
+    private final TelephonyCallLogRepository callLogRepo;
 
     /**
      * Insert a PENDING analysis row for {@code row} if the institute has call
@@ -92,6 +95,57 @@ public class CallIntelligenceEnqueueService {
             log.warn("call-intelligence: failed to enqueue call {} — skipping (recording flow unaffected)",
                     row != null ? row.getId() : null, e);
         }
+    }
+
+    /**
+     * On-demand (re)analysis for a single call, triggered explicitly by a user from
+     * the call's intelligence panel. Unlike {@link #enqueueIfEligible}, this BYPASSES
+     * the per-source toggle and the min-duration gate (the user asked for THIS call) —
+     * it only still requires the feature to be on for the institute and a recording to
+     * exist. Creates the PENDING row, or resets an existing FAILED/SKIPPED/COMPLETED
+     * row back to PENDING so the poller re-runs it. Credit dedup (idempotency_key =
+     * call_intelligence:{callLogId}) means a re-analyze never double-charges.
+     *
+     * @return a status code for the API: QUEUED | NOT_FOUND | DISABLED | NO_RECORDING.
+     */
+    @Transactional
+    public String triggerManual(String callLogId) {
+        if (isBlank(callLogId)) return "NOT_FOUND";
+        TelephonyCallLog row = callLogRepo.findById(callLogId).orElse(null);
+        if (row == null) return "NOT_FOUND";
+
+        CrmIntelligenceSettingsPojo settings = settingsService.get(row.getInstituteId());
+        if (!settings.callsEnabled()) return "DISABLED";
+        if (isBlank(row.getRecordingStorageKey())) return "NO_RECORDING";
+
+        CallIntelligence ci = repo.findByCallLogId(callLogId).orElse(null);
+        if (ci == null) {
+            ci = CallIntelligence.builder()
+                    .callLogId(row.getId())
+                    .instituteId(row.getInstituteId())
+                    .counsellorUserId(row.getCounsellorUserId())
+                    .responseId(row.getResponseId())
+                    .userId(row.getUserId())
+                    .source(sourceBucket(row.getProviderType()))
+                    .direction(row.getDirection())
+                    .callStartedAt(callStartedAt(row))
+                    .durationSeconds(row.getDurationSeconds())
+                    .status("PENDING")
+                    .attempts(0)
+                    .build();
+        } else {
+            // Reset for a fresh run (retry a failure, or re-analyze a completed call).
+            ci.setStatus("PENDING");
+            ci.setSkipReason(null);
+            ci.setError(null);
+            ci.setAttempts(0);
+            ci.setJobId(null);
+            ci.setCompletedAt(null);
+        }
+        repo.save(ci);
+        log.info("call-intelligence: manual (re)analyze queued for call {} (institute {})",
+                row.getId(), row.getInstituteId());
+        return "QUEUED";
     }
 
     /** Bucket a provider type into the source toggle keys: MANUAL | AI | TELEPHONY. */

@@ -15,7 +15,8 @@
   (dict "path" "/community-service" "svc" "community-service" "key" "community_service")
   (dict "path" "/media-service" "svc" "media-service" "key" "media_service")
   (dict "path" "/notification-service" "svc" "notification-service" "key" "notification_service")
-  (dict "path" "/ai-service" "svc" "ai-service" "key" "ai_service") }}
+  (dict "path" "/ai-service" "svc" "ai-service" "key" "ai_service")
+  (dict "path" "/voice-bot-service" "svc" "voice-bot-service" "key" "voice_bot_service") }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -165,6 +166,18 @@ spec:
                 name: ai-service
                 port:
                   number: {{ .Values.services.ai_service.port }}
+{{- if .Values.services.voice_bot_service.enabled }}
+          # Vacademy AI voice bot — Plivo fetches /answer and opens the <Stream>
+          # WebSocket on /ws here (wss rides the existing host TLS; the 1800s
+          # proxy timeouts above keep long calls alive).
+          - path: /voice-bot-service
+            pathType: Prefix
+            backend:
+              service:
+                name: voice-bot-service
+                port:
+                  number: {{ .Values.services.voice_bot_service.port }}
+{{- end }}
           - path: /login/oauth2
             pathType: Prefix
             backend:

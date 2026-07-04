@@ -10,6 +10,9 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,6 +22,7 @@ import java.util.stream.Collectors;
 public class AudienceAnalyticsService {
 
     private final AudienceRepository audienceRepository;
+    private final LeadReportSettingService leadReportSettingService;
 
     /**
      * Get center interaction heatmap showing audience campaign engagement
@@ -35,12 +39,17 @@ public class AudienceAnalyticsService {
             Timestamp endDate,
             String status) {
         
-        log.info("Fetching center heatmap for institute: {}, startDate: {}, endDate: {}, status: {}", 
+        log.info("Fetching center heatmap for institute: {}, startDate: {}, endDate: {}, status: {}",
                 instituteId, startDate, endDate, status);
 
-        // Convert null values to empty string for COALESCE to work
-        String startDateStr = startDate != null ? startDate.toString() : "";
-        String endDateStr = endDate != null ? endDate.toString() : "";
+        // The incoming start/end are institute-local wall-clock (the FE sends a
+        // tz-less yyyy-MM-dd'T'HH:mm:ss), but created_at is stored in UTC. Convert
+        // the window to UTC using the institute's timezone so the date filter lines
+        // up with how leads are reported locally (otherwise early-morning-local
+        // leads fall on the previous day and drop off the window edge).
+        ZoneId zone = leadReportSettingService.zoneOf(instituteId);
+        String startDateStr = toUtcString(startDate, zone);
+        String endDateStr = toUtcString(endDate, zone);
         String statusFilter = status != null ? status : "";
 
         List<Object[]> results = audienceRepository.getCenterHeatmapByInstitute(
@@ -69,6 +78,18 @@ public class AudienceAnalyticsService {
                 .totalResponses(totalResponses)
                 .centerHeatmap(heatmapData)
                 .build();
+    }
+
+    /**
+     * Reinterpret an institute-local wall-clock timestamp as UTC for comparison
+     * against UTC-stored {@code created_at}. Returns "" when null (so the query's
+     * COALESCE treats it as no bound).
+     */
+    private String toUtcString(Timestamp localWallClock, ZoneId zone) {
+        if (localWallClock == null) return "";
+        LocalDateTime local = localWallClock.toLocalDateTime();
+        LocalDateTime utc = local.atZone(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+        return Timestamp.valueOf(utc).toString();
     }
 
     /**

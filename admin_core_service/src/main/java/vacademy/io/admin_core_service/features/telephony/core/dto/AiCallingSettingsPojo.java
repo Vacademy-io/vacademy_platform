@@ -47,6 +47,16 @@ public class AiCallingSettingsPojo {
     private int maxRetries = 3;
     private int maxCallsPerDayPerLead = 3;
 
+    /**
+     * Hard ceiling on AI dials for the WHOLE institute in a rolling 24h window
+     * (across every lead, campaign and click-to-call — all funnel through
+     * {@code AiCallService.placeCall}). The cheapest runaway-spend guardrail: one
+     * fat-fingered bulk campaign can otherwise place hundreds of calls, each
+     * billing telephony + STT + LLM + TTS. 0 = fall back to the server-wide
+     * default ({@code telephony.ai.max-calls-per-day-default}).
+     */
+    private int maxCallsPerDay = 0;
+
     /** Minutes the CALL_AI node waits before re-dialing a no-answer lead (per pause/resume cycle). */
     private int retryGapMinutes = 120;
     /** Minutes before re-checking a lead deferred for being outside its calling shift / at the day cap. */

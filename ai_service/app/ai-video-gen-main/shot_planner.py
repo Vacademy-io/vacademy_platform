@@ -215,7 +215,20 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "here is the source.' MUST set `template_id: \"article_focus_zoom_pan\"` and `template_params` "
     "with `screenshot_id` (one of the AVAILABLE ARTICLE SCREENSHOTS), `quote_text` (verbatim "
     "sentence, ≤120 chars), `highlight_box_pct` (rect to zoom toward, 0–100 scale), and optional "
-    "`source_label` (e.g. 'BBC News'). Best at 3–5s shot duration.\n\n"
+    "`source_label` (e.g. 'BBC News'). Best at 3–5s shot duration.\n"
+    "- **DIALOGUE_SCENE** *(only when dialogue scenes are enabled)*: A cinematic AI-generated clip "
+    "where CHARACTERS SPEAK on screen (storybook/drama beats). The clip is fully generated (video + "
+    "lip-synced speech + ambience) — no HTML, no narrator. MUST set: `dialogue` = ordered list of "
+    "`{character, line}` (1-3 short lines, total spoken time ≤ 12s at natural pace); "
+    "`scene_description` = one vivid sentence staging the scene (location, mood, camera feel, what "
+    "the characters are doing); `character_names` = the characters appearing; "
+    "`audio_policy: \"intrinsic_only\"` (the clip carries its own audio — the master narrator is "
+    "silent here); `duration_estimate_s` between 5 and 15. When you use DIALOGUE_SCENE anywhere, "
+    "you MUST also emit a top-level `characters` array — [{name, visual_description, voice_hint}] — "
+    "where `visual_description` is a REUSABLE VERBATIM portrait (age, build, hair, clothing, one "
+    "distinctive detail) that stays IDENTICAL across the video, and `voice_hint` describes the "
+    "voice (e.g. 'warm female voice, 30s, measured'). Keep the cast small (≤3). Interleave with "
+    "narrated shots: narrator sets up → characters play the moment → narrator resolves.\n\n"
 
     "**RULES**:\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
@@ -440,6 +453,10 @@ def build_shot_planner_user_prompt(
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
     source_clip_available: bool = False,
+    dialogue_scenes_enabled: bool = False,
+    dialogue_mode: str = "storybook",
+    saved_cast: Optional[List[Dict[str, Any]]] = None,
+    asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -464,6 +481,26 @@ def build_shot_planner_user_prompt(
     if subject_domain:
         lines.append(f"SUBJECT DOMAIN: {subject_domain}")
 
+    # Marketing shot-mix bias — fires ONLY for promotional/product content so
+    # educational lectures (where TEXT_DIAGRAM is the right default) are
+    # untouched. Counters the planner's default of routing every "explanation"
+    # beat to a text/diagram panel, which is what makes marketing videos feel
+    # text-heavy and robotic.
+    _sd = (subject_domain or "").strip().lower()
+    _ct = (content_type or "").strip().lower()
+    if _sd in ("saas_marketing", "business_marketing", "saas_demo") or _ct in ("ad", "marketing"):
+        lines.append("")
+        lines.append(
+            "MARKETING SHOT MIX — this is a promotional/product video, NOT a lecture. "
+            "Lead with VISUALS, keep on-screen text minimal:\n"
+            "  - FAVOR IMAGE_HERO / VIDEO_HERO / DEVICE_MOCKUP / PRODUCT_HERO / ANIMATED_ASSET "
+            "(real imagery, footage, product & device moments) over text-panel shots.\n"
+            "  - Use TEXT_DIAGRAM / INFOGRAPHIC_SVG SPARINGLY — at most ~1 in 4 shots, and only "
+            "when a diagram genuinely beats showing it. Do NOT default explanations to TEXT_DIAGRAM.\n"
+            "  - The hook MUST be a visual or kinetic-title moment, never a text diagram.\n"
+            "  - Think modern brand film / social ad: imagery carries the story; text is punchy keywords."
+        )
+
     # AI video gating
     if ai_video_enabled:
         audio_note = (
@@ -482,6 +519,66 @@ def build_shot_planner_user_prompt(
         lines.append(
             "AI_VIDEO_HERO IS NOT ENABLED — do NOT pick shot_type=AI_VIDEO_HERO. "
             "Use VIDEO_HERO / IMAGE_HERO / motion-graphics shots instead."
+        )
+
+    # Dialogue-scene gating (storybook/drama mode)
+    if dialogue_scenes_enabled and str(dialogue_mode or "").lower() == "drama":
+        lines.append("")
+        lines.append(
+            "DRAMA MODE — this video is a PURE dialogue drama: EVERY shot MUST be a "
+            "DIALOGUE_SCENE. There is NO narrator (write narration_brief=\"\" everywhere). "
+            "Structure it as 3-6 scenes with a dramatic arc (setup → tension → turn → "
+            "resolution); consecutive shots in the SAME location continue the scene "
+            "(they will be visually chained). Keep each shot's spoken lines ≤ 12s. Emit "
+            "the top-level `characters` cast array with VERBATIM-reusable visual "
+            "descriptions — the SAME characters recur across scenes."
+        )
+    elif dialogue_scenes_enabled:
+        lines.append("")
+        lines.append(
+            "DIALOGUE SCENES ARE ENABLED — this video may include 1-4 DIALOGUE_SCENE shots "
+            "(characters speaking on camera in fully AI-generated clips). Use them for the "
+            "story's dramatic moments; keep the narrator for setup/resolution. Emit the "
+            "top-level `characters` cast array with VERBATIM-reusable visual descriptions."
+        )
+    else:
+        lines.append(
+            "DIALOGUE SCENES ARE NOT ENABLED — do NOT pick shot_type=DIALOGUE_SCENE and do "
+            "NOT emit a `characters` array."
+        )
+    if asset_asks_enabled:
+        lines.append("")
+        lines.append(
+            "ASSET REQUESTS — the user is in assist mode and can hand you REAL assets. "
+            "Where a real user asset would DRAMATICALLY beat anything generated, emit a "
+            "top-level `asset_requests` array (AT MOST 4 items; only where authenticity "
+            "matters — do not ask for things generation handles well). Each item: "
+            "{\"shot_index\": <int or null>, \"kind\": \"screenshot|photo|data|inspiration\", "
+            "\"ask\": <one plain question to the user>, \"why\": <one line on what it improves>, "
+            "\"options\": [<2-3 strings, ONLY for kind=inspiration>]}. Use:\n"
+            "  - kind=screenshot for every DEVICE_MOCKUP that depicts the user's own product "
+            "(a real screenshot beats an invented interface every time);\n"
+            "  - kind=photo when a real product/team/place photo would anchor a hero shot;\n"
+            "  - kind=data when the narration will state a specific statistic — ask the user "
+            "to confirm THEIR real number;\n"
+            "  - kind=inspiration when you genuinely hesitate between visual directions — "
+            "offer the options as short named choices.\n"
+            "Every request is skippable — plan every shot to work WITHOUT the asset too."
+        )
+
+    if dialogue_scenes_enabled and saved_cast:
+        lines.append("")
+        cast_lines = "\n".join(
+            f"  - {c.get('name')}: {c.get('visual_description')}"
+            + (f" (voice: {c.get('voice_hint')})" if c.get('voice_hint') else "")
+            for c in saved_cast if isinstance(c, dict) and c.get("name")
+        )
+        lines.append(
+            "USE THIS EXISTING SAVED CAST — these characters already exist with locked "
+            "portraits and voices from earlier videos in this series. Use EXACTLY these "
+            "names, and emit EXACTLY these visual_description values VERBATIM in your "
+            "top-level `characters` array. Do NOT invent new main characters (background "
+            "extras without dialogue are fine):\n" + cast_lines
         )
 
     # Source clip gating
@@ -795,6 +892,14 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "source_end",
         "role",
         "pacing_role",
+        # DIALOGUE_SCENE (storybook/drama mode): spoken lines + scene staging.
+        "dialogue",
+        "scene_description",
+        "character_names",
+        # Asset-request gate answers (assist): real user assets + figures.
+        "user_asset_url",
+        "user_asset_kind",
+        "real_data",
     ):
         if field in raw and raw[field] is not None:
             out[field] = raw[field]
@@ -994,7 +1099,62 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         "recurring_motifs": _normalize_recurring_motifs(plan.get("recurring_motifs")),
         "music_plan": _normalize_music_plan(plan.get("music_plan")),
         "audio_mood": audio_mood,
+        # DIALOGUE_SCENE cast — [{name, visual_description, voice_hint}].
+        # The verbatim visual_description block is what keeps a character
+        # looking the same across independently generated clips.
+        "characters": _normalize_characters(plan.get("characters")),
+        "asset_requests": _normalize_asset_requests(plan.get("asset_requests")),
     }
+
+
+def _normalize_asset_requests(raw: Any) -> List[Dict[str, Any]]:
+    """Coerce the planner's agent-initiated asks. Empty when absent/malformed."""
+    out: List[Dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    for i, r in enumerate(raw[:4]):
+        if not isinstance(r, dict):
+            continue
+        kind = str(r.get("kind") or "").strip().lower()
+        ask = str(r.get("ask") or "").strip()
+        if kind not in ("screenshot", "photo", "data", "inspiration") or not ask:
+            continue
+        item: Dict[str, Any] = {
+            "index": len(out),
+            "kind": kind,
+            "ask": ask[:300],
+            "why": str(r.get("why") or "").strip()[:200],
+        }
+        try:
+            item["shot_index"] = int(r.get("shot_index"))
+        except (TypeError, ValueError):
+            item["shot_index"] = None
+        if kind == "inspiration":
+            opts = [str(o).strip()[:120] for o in (r.get("options") or []) if str(o).strip()]
+            item["options"] = opts[:3]
+            if not item["options"]:
+                continue  # an inspiration ask without options is useless
+        out.append(item)
+    return out
+
+
+def _normalize_characters(raw: Any) -> List[Dict[str, str]]:
+    """Coerce the plan-level cast list. Empty when absent/malformed."""
+    out: List[Dict[str, str]] = []
+    if not isinstance(raw, list):
+        return out
+    for c in raw[:6]:
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name") or "").strip()
+        if not name:
+            continue
+        out.append({
+            "name": name[:60],
+            "visual_description": str(c.get("visual_description") or "").strip()[:500],
+            "voice_hint": str(c.get("voice_hint") or "").strip()[:120],
+        })
+    return out
 
 
 def _parse_shot_plan(text: str) -> Dict[str, Any]:
@@ -1051,6 +1211,10 @@ def plan_shots(
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
     source_clip_available: bool = False,
+    dialogue_scenes_enabled: bool = False,
+    dialogue_mode: str = "storybook",
+    saved_cast: Optional[List[Dict[str, Any]]] = None,
+    asset_asks_enabled: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
     cultural_context: Any = None,
@@ -1116,6 +1280,10 @@ def plan_shots(
         ai_video_audio_enabled=ai_video_audio_enabled,
         ai_video_cost_cap_usd=ai_video_cost_cap_usd,
         source_clip_available=source_clip_available,
+        dialogue_scenes_enabled=dialogue_scenes_enabled,
+        dialogue_mode=dialogue_mode,
+        saved_cast=saved_cast,
+        asset_asks_enabled=asset_asks_enabled,
         article_screenshots=article_screenshots,
         subject_domain=subject_domain,
         cultural_context=cultural_context,

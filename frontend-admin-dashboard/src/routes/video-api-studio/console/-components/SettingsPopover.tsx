@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +76,9 @@ import {
     VisualPreferences,
     FamilyBias,
     TextDensity,
+    VisualStyleMode,
+    listCasts,
+    VideoCast,
     VISUAL_PREFERENCE_FAMILIES,
     hasActiveVisualPreferences,
     AI_VIDEO_MODELS,
@@ -110,6 +113,8 @@ import type { AIModel } from '@/types/ai-models';
 interface SettingsPopoverProps {
     options: Omit<GenerateVideoRequest, 'prompt'>;
     onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
+    /** Institute API key — used by the saved-cast picker's list fetch. */
+    apiKey?: string | null;
     reviewModeEnabled?: boolean;
     onReviewModeChange?: (enabled: boolean) => void;
     /** Voice metadata — fetched in Composer; passed in here. */
@@ -200,6 +205,7 @@ function computeNonDefaultCount(
         if (options[key] !== DEFAULT_OPTIONS[key]) n++;
     }
     if (options.sub_shots_enabled) n++;
+    if (options.dialogue_scenes_enabled) n++;
     if (options.ai_video_enabled) n++;
     if (options.host) n++;
     if (hasActiveVisualPreferences(options.visual_preferences)) n++;
@@ -212,6 +218,7 @@ function computeNonDefaultCount(
 function SettingsBody({
     options,
     onOptionsChange,
+    apiKey,
     reviewModeEnabled,
     onReviewModeChange,
     availableVoices,
@@ -1058,6 +1065,71 @@ function SettingsBody({
                     </p>
                 </div>
 
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-1.5 text-xs">
+                            <Users className="size-3.5 text-muted-foreground" />
+                            Story dialogue scenes
+                            <Badge
+                                variant="outline"
+                                className="h-4 px-1 text-[9px] uppercase tracking-wide"
+                            >
+                                Exp
+                            </Badge>
+                        </Label>
+                        <Switch
+                            checked={!!options.dialogue_scenes_enabled}
+                            onCheckedChange={(v) => update('dialogue_scenes_enabled', v)}
+                        />
+                    </div>
+                    <p className="pl-5 text-[10px] text-muted-foreground">
+                        Characters act out key moments in AI-generated clips, speaking in
+                        consistent voices (lip-synced). Adds generation cost per scene.
+                    </p>
+                    {!!options.dialogue_scenes_enabled && (
+                        <div className="space-y-1.5 pl-5 pt-1">
+                            <div className="flex gap-1.5">
+                                {(
+                                    [
+                                        {
+                                            v: 'storybook',
+                                            label: 'Storybook',
+                                            desc: 'Narrator carries the video; 1-4 dialogue scenes at key moments.',
+                                        },
+                                        {
+                                            v: 'drama',
+                                            label: 'Drama',
+                                            desc: 'Pure dialogue film — every shot is a scene, no narrator, music off. Higher clip budget.',
+                                        },
+                                    ] as const
+                                ).map((m) => {
+                                    const active = (options.dialogue_mode ?? 'storybook') === m.v;
+                                    return (
+                                        <button
+                                            key={m.v}
+                                            type="button"
+                                            title={m.desc}
+                                            onClick={() => update('dialogue_mode', m.v)}
+                                            className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
+                                                active
+                                                    ? 'border-primary-500 bg-primary-50 text-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <CastPicker
+                                apiKey={apiKey ?? undefined}
+                                castId={options.cast_id}
+                                onChange={(v) => update('cast_id', v)}
+                            />
+                        </div>
+                    )}
+                </div>
+
                 <AiVideoPanel
                     enabled={!!options.ai_video_enabled}
                     audioEnabled={!!options.ai_video_audio_enabled}
@@ -1261,6 +1333,17 @@ const TEXT_DENSITY_OPTIONS: ReadonlyArray<{
     { value: 'rich', label: 'Rich', desc: 'Full headlines + supporting labels.' },
 ];
 
+const VISUAL_STYLE_OPTIONS: ReadonlyArray<{
+    value: VisualStyleMode;
+    label: string;
+    desc: string;
+}> = [
+    { value: 'auto', label: 'Auto', desc: 'Detect from topic — marketing looks premium, lessons stay clean.' },
+    { value: 'educational', label: 'Clean', desc: 'Flat whiteboard look. Best for lessons & explainers.' },
+    { value: 'marketing', label: 'Premium', desc: 'Modern brand-film look: depth, motion, finishing, minimal text.' },
+    { value: 'bold', label: 'Bold', desc: 'Premium + high-energy social-ad styling.' },
+];
+
 function VisualPreferencesPanel({
     prefs,
     qualityTier,
@@ -1277,10 +1360,24 @@ function VisualPreferencesPanel({
     const directorRuns =
         qualityTier === 'premium' || qualityTier === 'ultra' || qualityTier === 'super_ultra';
     const textDensity: TextDensity = (current.text_density ?? 'auto') as TextDensity;
+    const styleMode: VisualStyleMode = (current.visual_style_mode ?? 'auto') as VisualStyleMode;
     const showCaptionsHint =
         (textDensity === 'minimal' || textDensity === 'low') && !captionsEnabled;
 
-    function setBias(family: keyof Omit<VisualPreferences, 'text_density'>, value: FamilyBias) {
+    function setStyleMode(value: VisualStyleMode) {
+        const next: VisualPreferences = { ...current };
+        if (value === 'auto') {
+            delete next.visual_style_mode;
+        } else {
+            next.visual_style_mode = value;
+        }
+        onChange(hasActiveVisualPreferences(next) ? next : undefined);
+    }
+
+    function setBias(
+        family: keyof Omit<VisualPreferences, 'text_density' | 'visual_style_mode'>,
+        value: FamilyBias,
+    ) {
         const next: VisualPreferences = { ...current };
         // Drop the field entirely on "auto" so the persisted slider state stays
         // small and the BE distinguishes "explicitly auto" from "untouched"
@@ -1373,6 +1470,37 @@ function VisualPreferencesPanel({
                         </div>
                     );
                 })}
+            </div>
+
+            {/* Visual style — overall aesthetic for the whole video */}
+            <div className="space-y-1 pt-1.5">
+                <Label className="flex items-center gap-1.5 text-[11px]">
+                    <SparklesIcon className="size-3.5 text-muted-foreground" />
+                    Visual style
+                </Label>
+                <div className="flex w-full rounded-md border bg-muted p-0.5">
+                    {VISUAL_STYLE_OPTIONS.map((opt) => {
+                        const active = styleMode === opt.value;
+                        return (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setStyleMode(opt.value)}
+                                title={opt.desc}
+                                className={`flex-1 rounded-sm px-2 py-1 text-[10px] transition-colors ${
+                                    active
+                                        ? 'bg-background text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                    {VISUAL_STYLE_OPTIONS.find((o) => o.value === styleMode)?.desc}
+                </p>
             </div>
 
             {/* Text density slider */}
@@ -2708,5 +2836,69 @@ export function SettingsPopover(props: SettingsPopoverProps) {
                 </div>
             </SheetContent>
         </Sheet>
+    );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// CastPicker — reuse a saved storybook/drama cast (same faces + voices).
+// Fetches once per mount; renders nothing heavier than a compact select.
+// ─────────────────────────────────────────────────────────────────────────
+function CastPicker({
+    apiKey,
+    castId,
+    onChange,
+}: {
+    apiKey?: string;
+    castId?: string;
+    onChange: (castId: string | undefined) => void;
+}) {
+    const [casts, setCasts] = useState<VideoCast[]>([]);
+    const [loaded, setLoaded] = useState(false);
+
+    useEffect(() => {
+        if (!apiKey || loaded) return;
+        let cancelled = false;
+        listCasts(apiKey)
+            .then((c) => {
+                if (!cancelled) {
+                    setCasts(c);
+                    setLoaded(true);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setLoaded(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [apiKey, loaded]);
+
+    if (loaded && casts.length === 0) {
+        return (
+            <p className="text-[10px] text-muted-foreground">
+                New characters this video. Finish a story, then “Save cast” to reuse them in
+                the next one.
+            </p>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-muted-foreground">Cast</span>
+            <select
+                value={castId ?? ''}
+                onChange={(e) => onChange(e.target.value || undefined)}
+                aria-label="Saved cast"
+                className="h-6 flex-1 rounded-md border bg-background px-1.5 text-[10px] text-foreground outline-none"
+            >
+                <option value="">New cast this video</option>
+                {casts.map((c) => (
+                    <option key={c.cast_id} value={c.cast_id}>
+                        {c.name} · {c.characters.length} character{c.characters.length === 1 ? '' : 's'}
+                    </option>
+                ))}
+            </select>
+        </div>
     );
 }

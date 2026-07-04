@@ -1,0 +1,51 @@
+# Vacademy voice-bot — standalone Mumbai anchor (Linode ap-west).
+#
+# Why this exists: the main cluster is in Singapore, but the caller, Plivo's
+# media servers and Sarvam (STT/TTS) are all in India — anchoring the audio
+# path here saves ~150-300ms per conversational turn and makes barge-in
+# noticeably snappier. The bot is stateless (no DB): it only needs HTTPS/WSS
+# in and three control-plane HTTP calls out to admin_core in Singapore.
+#
+# CI rolls the exact :<git-sha> image by rewriting VOICE_BOT_IMAGE in .env
+# (see docker-publish-voice-bot-service.yml) — never rely on :latest, the
+# ECR public CDN can serve it stale.
+
+services:
+  voice-bot:
+    image: ${VOICE_BOT_IMAGE:-public.ecr.aws/e0x1f4p4/voice-bot-service/voice-bot-service-repo:latest}
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "8090"
+    volumes:
+      # Persist synthesized IVR-prompt audio across restarts/redeploys, so each
+      # prompt is synthesized once (ever) and replayed free — no recurring TTS cost.
+      - tts_cache:/tmp/tts-cache
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/voice-bot-service/health', timeout=5)\""]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:
+  tts_cache:

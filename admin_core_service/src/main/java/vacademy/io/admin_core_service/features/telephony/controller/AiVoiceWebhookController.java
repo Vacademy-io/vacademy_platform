@@ -3,7 +3,6 @@ package vacademy.io.admin_core_service.features.telephony.controller;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -37,9 +36,6 @@ public class AiVoiceWebhookController {
     private final AiVoiceWebhookService service;
     private final AiCallOutcomeProcessor outcomeProcessor;
     private final AiCallingConfigService configService;
-
-    @Value("${aavtaar.webhook.secret:}")
-    private String webhookSecret;
 
     @PostMapping("/aavtaar")
     public ResponseEntity<Map<String, Object>> aavtaar(
@@ -99,11 +95,11 @@ public class AiVoiceWebhookController {
     }
 
     private boolean authorized(String instituteId, String token, String headerToken) {
-        // Prefer the institute's configured webhook secret; fall back to the global property.
-        String secret = configService.getDecrypted(instituteId)
-                .map(AiCallingConfigService.DecryptedCreds::webhookSecret)
-                .filter(s -> s != null && !s.isBlank())
-                .orElse(webhookSecret);
+        // ONE source of truth (institute secret else the global property), shared with
+        // VoiceBotInternalController.callContext — so the token our own voice bot
+        // presents is provably the token checked here. Reading different sources
+        // 401-dropped every VACADEMY_AI report on envs with a global secret set.
+        String secret = configService.getEffectiveWebhookSecret(instituteId);
         if (secret == null || secret.isBlank()) {
             log.warn("ai-voice webhook: no webhook secret configured for institute {} — accepting unauthenticated POST", instituteId);
             return true;

@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorA
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallDecision;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.CallDirection;
+import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.AiCallResult;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
@@ -76,6 +77,7 @@ public class AiCallOutcomeProcessor {
     private final CallLogService callLogService;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final AiCallRecordingService aiCallRecordingService;
+    private final AiCallingConfigService configService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // @Lazy + field injection (NOT constructor): WorkflowTriggerService transitively
@@ -86,10 +88,23 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private WorkflowTriggerService workflowTriggerService;
 
+    // @Lazy (defensive, matching the pattern above): the registry-agent disposition
+    // list makes the classifier agent-aware so a connected call with a custom
+    // disposition isn't re-dialed as "neutral". Read-only lookup on the outcome path.
+    @Autowired
+    @Lazy
+    private AiAgentService aiAgentService;
+
     private record Lead(String responseId, String userId, String audienceId, String instituteId) {}
 
     @Transactional
     public void process(String aiCallResultId) {
+        // Atomic claim FIRST (status-guarded UPDATE, same transaction): providers
+        // retry report POSTs and the webhook runs this synchronously — two requests
+        // must not both process the same result (double counsellor-assignment). A
+        // duplicate blocks on the row lock, re-evaluates after our commit and
+        // no-ops; a rollback restores the prior status so genuine retries heal.
+        if (aiCallResultRepo.claimForProcessing(aiCallResultId) == 0) return;
         AiCallResult r = aiCallResultRepo.findById(aiCallResultId).orElse(null);
         if (r == null) return;
         if ("PROCESSED".equals(r.getProcessingStatus())) return;
@@ -105,13 +120,66 @@ public class AiCallOutcomeProcessor {
         // correlation id / provider call id to bind — skip outbound matching entirely and
         // resolve the lead by phone (resolveLead's last-10 path). Stamp INBOUND so the new
         // telephony_call_log row records the right direction.
+        // SECURITY (P0): the AI-voice report webhook is PUBLIC and, for an institute
+        // with no configured webhook secret (the norm for VACADEMY_AI), accepts
+        // unauthenticated POSTs. Our own bot authenticates by CAPABILITY: it always
+        // echoes the unguessable correlationId = the telephony_call_log id we created
+        // when the call was placed (outbound) or answered (inbound IVR). Require that
+        // corr to resolve to a call log OWNED by the report's institute before this
+        // report may touch ANY lead. Without it, a forger who knows only a (non-secret)
+        // instituteId + a lead's phone could inject a fabricated outcome and mark the
+        // lead Not-Interested / hijack its workflow via the phone-match binding below.
+        // Trusted binding = a call log we can PROVE we own: our unguessable
+        // correlationId (VACADEMY_AI echoes it), OR a provider_call_id our own dial
+        // recorded that matches the report's call_uuid. Computed for ALL providers —
+        // the provider string comes from the attacker-chosen URL path, so it must not
+        // gate the security check.
+        TelephonyCallLog ownedCall = null;
+        if (r.getInstituteId() != null) {
+            if (r.getCorrelationId() != null) {
+                ownedCall = callLogRepo.findById(r.getCorrelationId())
+                        .filter(c -> r.getInstituteId().equals(c.getInstituteId()))
+                        .orElse(null);
+            }
+            if (ownedCall == null && r.getCallUuid() != null && r.getProvider() != null) {
+                ownedCall = callLogRepo
+                        .findByProviderTypeAndProviderCallId(r.getProvider(), r.getCallUuid())
+                        .filter(c -> r.getInstituteId().equals(c.getInstituteId()))
+                        .orElse(null);
+            }
+        }
+        // SECURITY (P0): the report webhook is PUBLIC and fails open when the institute
+        // has no configured webhook secret (the norm for VACADEMY_AI). A report that is
+        // neither authenticated by that secret NOR bound to a call we own must not be
+        // allowed to phone-match and mutate a real lead — otherwise anyone who knows a
+        // (non-secret) instituteId + a lead's phone forges an outcome, and relabeling
+        // the provider in the URL (e.g. /webhook/aavtaar) would dodge a provider-scoped
+        // check. Require the capability (owned call) whenever unauthenticated.
+        String webhookSecret = configService.getEffectiveWebhookSecret(r.getInstituteId());
+        boolean authenticated = webhookSecret != null && !webhookSecret.isBlank();
+        if (!authenticated && ownedCall == null) {
+            log.warn("ai-call outcome: result {} REJECTED — unauthenticated (no webhook secret) and correlationId {} / callUuid {} resolves to no call log owned by institute {} (possible forged report)",
+                    r.getId(), r.getCorrelationId(), r.getCallUuid(), r.getInstituteId());
+            r.setProcessingStatus("REJECTED_UNVERIFIED");
+            aiCallResultRepo.save(r);
+            return;
+        }
+
         boolean isInbound = isInboundCampaign(r.getCampaignId(), settings);
+        // VACADEMY_AI binds to the EXACT verified call log (both directions) — never
+        // phone-matched — so a report can only ever affect the call it belongs to.
+        // Deriving direction from the owned row also fixes inbound reports creating a
+        // second call-log row (the phone-match path did) and BOTH-direction agents
+        // being mis-detected as OUTBOUND.
+        TelephonyCallLog existing = ownedCall;
+        if (existing != null && CallDirection.INBOUND.name().equalsIgnoreCase(existing.getDirection())) {
+            isInbound = true;
+        }
         if (isInbound) {
             r.setDirection(CallDirection.INBOUND.name());
         }
 
-        TelephonyCallLog existing = null;
-        if (!isInbound) {
+        if (existing == null && !isInbound) {
             existing = (r.getCorrelationId() == null) ? null
                     : callLogRepo.findById(r.getCorrelationId()).orElse(null);
             // Exact match: when the provider returns its call id at placement (Aavtaar now
@@ -205,8 +273,17 @@ public class AiCallOutcomeProcessor {
         instituteId = lead.instituteId() != null ? lead.instituteId() : r.getInstituteId();
         settings = settingsService.get(instituteId);
         int priorAttempts = r.getCallRetry() == null ? 0 : r.getCallRetry();
+        // Agent-defined dispositions (VACADEMY_AI registry agent) make a connected call
+        // carrying a custom outcome terminal instead of re-dialed. Empty for Aavtaar.
+        List<String> agentDispositions = List.of();
+        if (ProviderType.VACADEMY_AI.equals(r.getProvider()) && r.getCampaignId() != null) {
+            agentDispositions = aiAgentService.find(r.getCampaignId(), instituteId)
+                    .map(a -> aiAgentService.parseList(a.getDispositions()))
+                    .orElse(List.of());
+        }
         AiCallDecision decision = classifier.classify(
-                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings);
+                r.getStatus(), r.getDurationSeconds(), r.getDisposition(), priorAttempts, settings,
+                agentDispositions);
         boolean connected = isConnected(r, settings);
 
         log.info("ai-call outcome: result={} lead={} disposition={} status={} -> {} ({})",
@@ -250,7 +327,13 @@ public class AiCallOutcomeProcessor {
     // ── lead resolution ─────────────────────────────────────────────────────────
 
     private Lead resolveLead(AiCallResult r, TelephonyCallLog existing) {
-        if (existing != null) {
+        // Prefer the bound call log's identity — but only when it actually identifies
+        // a lead. An inbound row (now bound by corr, not created fresh) may carry no
+        // responseId and a placeholder user, so fall through to the phone match below
+        // rather than returning an anonymous lead (the pre-corr-gate inbound path did
+        // phone-match; keep that attribution).
+        if (existing != null
+                && (existing.getResponseId() != null || hasRealUser(existing.getUserId()))) {
             String audienceId = existing.getResponseId() == null ? null
                     : audienceResponseRepo.findById(existing.getResponseId())
                         .map(AudienceResponse::getAudienceId).orElse(null);
@@ -272,6 +355,12 @@ public class AiCallOutcomeProcessor {
         String audienceId = audienceResponseRepo.findById(responseId)
                 .map(AudienceResponse::getAudienceId).orElse(null);
         return new Lead(responseId, userId, audienceId, r.getInstituteId());
+    }
+
+    /** A call log's user_id identifies a real lead (not null/blank and not the
+     *  inbound "UNKNOWN" placeholder). */
+    private static boolean hasRealUser(String userId) {
+        return userId != null && !userId.isBlank() && !"UNKNOWN".equalsIgnoreCase(userId);
     }
 
     // ── call-log promotion ──────────────────────────────────────────────────────

@@ -40,6 +40,7 @@ export function CounsellorsTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
     const navigate = useNavigate();
 
@@ -51,9 +52,17 @@ export function CounsellorsTab({
             toDate,
             teamId,
             counsellorUserId,
+            audienceId,
         ],
         queryFn: () =>
-            fetchCounselorPerformance(instituteId, fromDate, toDate, teamId, counsellorUserId),
+            fetchCounselorPerformance(
+                instituteId,
+                fromDate,
+                toDate,
+                teamId,
+                counsellorUserId,
+                audienceId
+            ),
         enabled: !!instituteId,
         staleTime: 60_000,
         retry: false,

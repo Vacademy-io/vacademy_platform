@@ -36,6 +36,18 @@ public class BatchController {
         return ResponseEntity.ok(batchService.deletePackageSession(packageSessionIds, userDetails));
     }
 
+    /**
+     * Toggle the "sub-org associated" flag on the given package sessions.
+     * Backs the "is sub-org associated" toggle on the Course Details settings.
+     */
+    @PutMapping("/sub-org-associated")
+    public ResponseEntity<Boolean> setSubOrgAssociated(
+            @RequestBody List<String> packageSessionIds,
+            @RequestParam("isOrgAssociated") boolean isOrgAssociated,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(batchService.setOrgAssociated(packageSessionIds, isOrgAssociated));
+    }
+
     @PostMapping("/search")
     public ResponseEntity<Page<PackageDTOWithBatchDetails>> searchPackages(
             @RequestBody PackageSearchRequestDTO searchRequest,

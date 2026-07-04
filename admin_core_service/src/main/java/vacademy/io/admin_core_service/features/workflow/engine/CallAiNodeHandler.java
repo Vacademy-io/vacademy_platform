@@ -20,8 +20,10 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
+import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -58,7 +60,13 @@ public class CallAiNodeHandler implements NodeHandler {
     private final UserLeadProfileRepository userLeadProfileRepository;
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
+    private final SpelEvaluator spelEvaluator;
+    private final vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository callLogRepo;
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /** Server-wide fallback institute daily-cap (mirrors AiCallService); 0 disables. */
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.max-calls-per-day-default:500}")
+    private int globalMaxCallsPerDay;
 
     /**
      * Field-injected with {@code @Lazy} to break an init-time bean cycle:
@@ -79,6 +87,15 @@ public class CallAiNodeHandler implements NodeHandler {
     public Map<String, Object> handle(Map<String, Object> context, String nodeConfigJson,
                                       Map<String, NodeTemplate> nodeTemplates, int countProcessed) {
         Map<String, Object> out = new HashMap<>();
+
+        // Cohort (forEach) mode: when the node config carries a "forEach" block, iterate a
+        // source list from context (e.g. a QUERY node's ssigm_list) and enqueue one paced AI
+        // call per item — a provider-agnostic broadcast. Distinct from the single-subject
+        // retry flow below (which runs whenever there is no forEach). No per-item pause/retry.
+        JsonNode forEach = readConfigNode(nodeConfigJson, "forEach");
+        if (forEach != null && forEach.isObject()) {
+            return handleCohort(context, nodeConfigJson, forEach, out);
+        }
 
         String instituteId = str(context.get("instituteId"));
         String userId = firstNonBlank(str(context.get("leadUserId")), str(context.get("userId")));
@@ -135,7 +152,7 @@ public class CallAiNodeHandler implements NodeHandler {
             return out;   // routes to next node via normal traversal; does NOT pause/dial; does NOT call giveUpAfterRetries
         }
 
-        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay);
+        Plan plan = plan(instituteId, userId, attempts, callsToday, callsDay, provider);
 
         switch (plan.action()) {
             case STOP -> {
@@ -244,6 +261,106 @@ public class CallAiNodeHandler implements NodeHandler {
         }
     }
 
+    /** Read a raw JSON node from the node config (for nested config blocks like forEach). */
+    private JsonNode readConfigNode(String json, String key) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode v = mapper.readTree(json).get(key);
+            return (v == null || v.isNull()) ? null : v;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Cohort broadcast: enqueue one paced AI call per item in a source list (e.g. a QUERY
+     * node's {@code ssigm_list}). Each item's fields map to the call — defaults match
+     * fetch_ssigm_by_package (userId / mobileNumber / packageSessionId / fullName); override
+     * via the forEach config. Fire-and-forget + paced (no per-item pause/retry); each call's
+     * answers land on ai_call_result, subject-tagged. The node then completes so the workflow
+     * continues to its next node. Provider-agnostic: agent name + provider come from node
+     * config (or context), exactly like the single-subject path.
+     *
+     * Config shape:
+     * {
+     *   "forEach": { "source": "#ctx['ssigm_list']", "subjectType": "PACKAGE_SESSION_STUDENT",
+     *                "userIdField": "userId", "phoneField": "mobileNumber",
+     *                "subjectIdField": "packageSessionId", "nameField": "fullName" },
+     *   "campaignName": "Class Feedback", "provider": "MOCK",
+     *   "metadata": { "sessionName": "..." }
+     * }
+     */
+    private Map<String, Object> handleCohort(Map<String, Object> context, String nodeConfigJson,
+                                             JsonNode forEach, Map<String, Object> out) {
+        String source = forEach.path("source").asText("");
+        if (isBlank(source)) {
+            out.put("aiCallCohortError", "forEach.source is required");
+            return out;
+        }
+        Object listObj;
+        try {
+            listObj = spelEvaluator.evaluate(source, context);
+        } catch (Exception e) {
+            out.put("aiCallCohortError", "could not evaluate forEach.source: " + e.getMessage());
+            return out;
+        }
+        if (!(listObj instanceof Collection)) {
+            out.put("aiCallCohortError", "forEach.source did not resolve to a list");
+            return out;
+        }
+
+        String instituteId = str(context.get("instituteId"));
+        // Agent + provider — same resolution as the single-subject path (config wins, else context).
+        String campaignName = firstNonBlank(readConfig(nodeConfigJson, "campaignName"), str(context.get("campaignName")));
+        String campaignId = firstNonBlank(readConfig(nodeConfigJson, "campaignId"), str(context.get("campaignId")));
+        String provider = firstNonBlank(readConfig(nodeConfigJson, "provider"), str(context.get("provider")));
+
+        // Subject + per-item field mapping (defaults align with fetch_ssigm_by_package output).
+        String subjectType = firstNonBlank(forEach.path("subjectType").asText(null), "PACKAGE_SESSION_STUDENT");
+        String userIdField = forEach.path("userIdField").asText("userId");
+        String phoneField = forEach.path("phoneField").asText("mobileNumber");
+        String subjectIdField = forEach.path("subjectIdField").asText("packageSessionId");
+        String nameField = forEach.path("nameField").asText("fullName");
+        Map<String, Object> metaTemplate = readConfigMap(nodeConfigJson, "metadata");
+
+        int queued = 0, skipped = 0;
+        for (Object it : (Collection<?>) listObj) {
+            if (!(it instanceof Map<?, ?> item)) { skipped++; continue; }
+            String userId = str(item.get(userIdField));
+            if (isBlank(userId)) { skipped++; continue; } // telephony_call_log.user_id is NOT NULL
+            String phone = str(item.get(phoneField));
+            String subjectId = firstNonBlank(str(item.get(subjectIdField)), str(context.get("subjectId")));
+            String name = str(item.get(nameField));
+
+            AiCallRequestDTO req = new AiCallRequestDTO();
+            req.setInstituteId(instituteId);
+            req.setUserId(userId);
+            req.setPhoneNumber(phone);          // blank ⇒ AiCallService resolves from the user profile
+            req.setProvider(provider);
+            req.setCampaignName(campaignName);
+            req.setCampaignId(campaignId);
+            req.setSubjectType(subjectType);
+            req.setSubjectId(subjectId);
+            req.setCustomerName(name);
+
+            Map<String, Object> meta = new HashMap<>();
+            if (metaTemplate != null) meta.putAll(metaTemplate);
+            if (name != null) meta.put("studentName", name);
+            if (subjectId != null) meta.put("packageSessionId", subjectId);
+            req.setMetadata(meta.isEmpty() ? null : meta);
+
+            aiCallDispatcher.enqueue(req);      // paced, async; placeCall records + dials (or MOCKs)
+            queued++;
+        }
+
+        out.put("aiCallCohortQueued", queued);
+        out.put("aiCallCohortSkipped", skipped);
+        out.put("aiCallDone", true);            // node completes; workflow continues to the next node
+        log.info("CALL_AI cohort: source='{}' subjectType={} -> {} queued, {} skipped (agent='{}', provider='{}')",
+                source, subjectType, queued, skipped, campaignName, provider);
+        return out;
+    }
+
     private int asInt(Object o) {
         if (o instanceof Number n) return n.intValue();
         if (o instanceof String s && !s.isBlank()) {
@@ -274,7 +391,8 @@ public class CallAiNodeHandler implements NodeHandler {
     /** {@code resumeAt} = next-run time after a DIAL (gap) or DEFER (recheck); null for STOP. */
     private record Plan(Action action, Instant resumeAt, String reason) {}
 
-    private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay) {
+    private Plan plan(String instituteId, String userId, int attempts, int callsToday, String callsDay,
+                      String provider) {
         AiCallingSettingsPojo s = settingsService.get(instituteId);
         if (s == null || !s.isEnabled()) return new Plan(Action.STOP, null, "ai_calling_disabled");
         if (leadAlreadyAssigned(userId, instituteId)) return new Plan(Action.STOP, null, "assigned");
@@ -298,6 +416,21 @@ public class CallAiNodeHandler implements NodeHandler {
         int effectiveToday = today.toString().equals(callsDay) ? callsToday : 0;
         if (effectiveToday >= Math.max(1, s.getMaxCallsPerDayPerLead())) {
             return new Plan(Action.DEFER, recheck, "day_cap");
+        }
+        // Institute-wide daily budget (distinct from the per-lead cap above). DEFER
+        // rather than DIAL so a lead over the shared budget WAITS for capacity — the
+        // same guardrail AiCallService.placeCall enforces, but decided HERE so a
+        // capped dial never consumes a retry and never mislabels the lead AI_NO_ANSWER.
+        int instCap = s.getMaxCallsPerDay() > 0 ? s.getMaxCallsPerDay() : globalMaxCallsPerDay;
+        String effProvider = firstNonBlank(provider, s.getProvider());
+        if (instCap > 0 && !isBlank(effProvider)) {
+            long placedToday = callLogRepo.countOutboundSince(instituteId, effProvider,
+                    java.sql.Timestamp.from(now.minus(24, ChronoUnit.HOURS)));
+            if (placedToday >= instCap) {
+                log.info("CALL_AI node: institute {} over daily cap {} for {} ({} in 24h) — deferring lead {}",
+                        instituteId, instCap, effProvider, placedToday, userId);
+                return new Plan(Action.DEFER, recheck, "institute_day_cap");
+            }
         }
         return new Plan(Action.DIAL, now.plus(Math.max(1, s.getRetryGapMinutes()), ChronoUnit.MINUTES), "dial");
     }

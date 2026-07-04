@@ -67,6 +67,18 @@ class ToolContext:
     db: Session
     principal: PinnedPrincipal
     keys: tuple  # pre-resolved (openrouter_key, gemini_key, model) for embeddings
+    # The caller's own JWT, replayed on tools that hit normal (JWT-authenticated)
+    # admin endpoints — so the REAL user identity reaches Java, and the caller can
+    # never do via the assistant what they couldn't do directly in the UI.
+    bearer_token: Optional[str] = None
+    # The chat session this call belongs to — write tools persist their pending
+    # confirmation row against it.
+    session_id: Optional[str] = None
+    # OUT-parameter: a WRITE tool's proposer sets this so the agent loop can emit
+    # an `action_request` SSE event (incl. the nonce) to the FE. Deliberately NOT
+    # part of the tool result string — the model never sees the nonce, so it can
+    # never fabricate a confirmation.
+    pending_action: Optional[Dict[str, Any]] = None
 
 
 # Executor signature: async (args: dict, ctx: ToolContext) -> str
@@ -81,7 +93,8 @@ class ToolSpec:
     executor: ToolExecutor
     required_permission: Optional[str] = None  # RBAC leg; None = no permission required
     setting_key: Optional[str] = None          # Settings-leg key; defaults to ``name``
-    default_enabled: bool = False              # on when institute has no ASSISTANT_TOOLS_SETTING
+    default_enabled: bool = False              # on for EVERY role when no ASSISTANT_TOOLS_SETTING
+    default_roles: Optional[List[str]] = None  # on for THESE roles when no setting (e.g. ["ADMIN"])
     phase: int = 1                             # roadmap phase (1=help, 2=read, 3=write)
     mode: str = "READ"                         # READ | WRITE
 
@@ -175,8 +188,907 @@ async def _execute_search_help_knowledge(args: Dict[str, Any], ctx: ToolContext)
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# The registry. Phase-2 (read) and Phase-3 (write) tools register here later,
-# each with its own required_permission + default_enabled=False.
+# Phase-2 tools: find_learner (resolver) + get_student_360 (data aggregate).
+# ──────────────────────────────────────────────────────────────────────────
+
+_FIND_LEARNER_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "find_learner",
+        "description": (
+            "Find learners in this institute by ONE free-text query — matches name, "
+            "email, phone number, username, or enrollment number. Use this FIRST "
+            "whenever the user names a learner and the page context does not already "
+            "identify them. If more than one learner matches, list the matches and ask "
+            "the user which one they mean — never guess."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The learner's name / email / phone / enrollment number.",
+                },
+                "statuses": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Enrollment statuses to include. Default ['ACTIVE']; "
+                                   "widen to ['ACTIVE','INACTIVE','INVITED'] if nothing is found.",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+_STUDENT_360_MODULES = [
+    "attendance", "live_classes", "academics", "activity",
+    "progress", "certificates", "assignments", "doubts", "login",
+]
+
+_GET_STUDENT_360_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_student_360",
+        "description": (
+            "Fetch a learner's data for SPECIFIC modules: attendance (live-class "
+            "presence %), live_classes (attended/missed), academics (assessment scores "
+            "vs batch — SLOW, request only when asked about tests/scores), activity "
+            "(study time & habits), progress (course completion), certificates, "
+            "assignments, doubts, login (last login & session time). Request ONLY the "
+            "modules the question needs. Requires the learner's user id — from the page "
+            "context's selected student or a prior find_learner result."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {
+                    "type": "string",
+                    "description": "The learner's user_id (NOT their name).",
+                },
+                "modules": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": _STUDENT_360_MODULES},
+                    "description": "Only the modules the question actually needs (1-3 usually).",
+                },
+                "batch_id": {
+                    "type": "string",
+                    "description": "Optional package_session_id to scope attendance/progress "
+                                   "(from page context or the find_learner result).",
+                },
+                "start_date": {"type": "string", "description": "YYYY-MM-DD. Default: 30 days ago."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD. Default: today."},
+            },
+            "required": ["target_user_id", "modules"],
+        },
+    },
+}
+
+
+def _mask_mobile(mobile: Optional[str]) -> Optional[str]:
+    if not mobile:
+        return None
+    digits = str(mobile)
+    return ("*" * max(0, len(digits) - 4)) + digits[-4:]
+
+
+async def _execute_find_learner(args: Dict[str, Any], ctx: ToolContext) -> str:
+    """Search learners within the pinned institute via the students-list endpoint.
+
+    Calls the normal admin endpoint WITH THE CALLER'S OWN JWT — the caller can
+    only see what they could already see in the portal. institute_ids is forced
+    from the pinned principal; the response is reduced to a compact projection
+    (never the full row: no address, parent contacts, or custom fields).
+    """
+    import httpx
+    from ..config import get_settings
+
+    query = str((args or {}).get("query") or "").strip()
+    if not query:
+        return json.dumps({"matches": [], "note": "No search query was provided."})
+    if not ctx.bearer_token:
+        return json.dumps({"error": "no_auth", "message": "Learner search is unavailable right now."})
+
+    statuses = args.get("statuses") or ["ACTIVE"]
+    settings = get_settings()
+    url = (
+        f"{settings.admin_core_service_base_url}"
+        "/admin-core-service/institute/institute_learner/get/v2/all"
+    )
+    body = {
+        "name": query,
+        "institute_ids": [ctx.principal.institute_id],  # forced — never model-supplied
+        "statuses": [str(s) for s in statuses][:6],
+        "package_session_ids": [],
+        "group_ids": [],
+        "gender": [],
+        "sort_columns": {},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                url,
+                params={"pageNo": 0, "pageSize": 10},
+                json=body,
+                headers=_jwt_headers(ctx),
+            )
+        if resp.status_code != 200:
+            logger.warning("find_learner: %s from students-list (%s)", resp.status_code, resp.text[:200])
+            return json.dumps({"error": "search_failed", "status": resp.status_code})
+        data = resp.json() or {}
+    except Exception as e:
+        logger.warning("find_learner failed: %s", e)
+        return json.dumps({"error": "search_failed"})
+
+    matches = []
+    for row in (data.get("content") or [])[:10]:
+        matches.append({
+            "user_id": row.get("user_id"),
+            "full_name": row.get("full_name"),
+            "email": row.get("email"),
+            "mobile": _mask_mobile(row.get("mobile_number")),
+            "enrollment_no": row.get("institute_enrollment_number"),
+            "status": row.get("status"),
+            "payment_status": row.get("payment_status"),
+            "package_session_id": row.get("package_session_id"),
+            "expiry_date": row.get("expiry_date"),
+        })
+    return json.dumps({
+        "matches": matches,
+        "total_matches": data.get("total_elements", len(matches)),
+        "note": "If more than one match, ask the user which learner they mean." if len(matches) > 1 else None,
+    })
+
+
+def _prune_nulls(obj: Any) -> Any:
+    """Drop null values / empty dicts from the report so the LLM context stays lean."""
+    if isinstance(obj, dict):
+        pruned = {k: _prune_nulls(v) for k, v in obj.items() if v is not None}
+        return {k: v for k, v in pruned.items() if v not in (None, {}, [])}
+    if isinstance(obj, list):
+        return [_prune_nulls(v) for v in obj if v is not None]
+    return obj
+
+
+async def _execute_get_student_360(args: Dict[str, Any], ctx: ToolContext) -> str:
+    """Synchronous Layer-1 student report (selected modules) via the internal endpoint.
+
+    The internal endpoint verifies the target learner belongs to the pinned
+    institute (404 otherwise), so a session pinned to institute A can never read
+    institute B's learners even though the call carries service-level trust.
+    """
+    import httpx
+    from ..config import get_settings
+    from .internal_auth import internal_auth_headers
+
+    target_user_id = str((args or {}).get("target_user_id") or "").strip()
+    if not target_user_id:
+        return json.dumps({"error": "missing_target", "message": "target_user_id is required."})
+
+    modules = [m for m in (args.get("modules") or []) if m in _STUDENT_360_MODULES]
+    if not modules:
+        return json.dumps({"error": "missing_modules",
+                           "message": f"Pick 1-3 modules from: {', '.join(_STUDENT_360_MODULES)}."})
+
+    settings = get_settings()
+    params: Dict[str, Any] = {
+        "userId": target_user_id,
+        "instituteId": ctx.principal.institute_id,  # forced — never model-supplied
+        "modules": ",".join(modules),
+    }
+    if args.get("batch_id"):
+        params["batchId"] = str(args["batch_id"])
+    if args.get("start_date"):
+        params["startDate"] = str(args["start_date"])
+    if args.get("end_date"):
+        params["endDate"] = str(args["end_date"])
+
+    url = f"{settings.admin_core_service_base_url}/admin-core-service/internal/student-analysis/student-360"
+    try:
+        headers = await internal_auth_headers()
+        async with httpx.AsyncClient(timeout=65.0) as client:
+            resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code == 404:
+            return json.dumps({"error": "not_found",
+                               "message": "This learner has no enrollment in your institute."})
+        if resp.status_code != 200:
+            logger.warning("get_student_360: %s (%s)", resp.status_code, resp.text[:200])
+            return json.dumps({"error": "fetch_failed", "status": resp.status_code})
+        report = resp.json() or {}
+    except Exception as e:
+        logger.warning("get_student_360 failed: %s", e)
+        return json.dumps({"error": "fetch_failed"})
+
+    return json.dumps(_prune_nulls(report))
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase-2b tools: payments, batch roster, schedule, institute overview,
+# trigger-full-report. All call EXISTING admin endpoints with the caller's own
+# JWT (institute/user identity forced from the pinned principal).
+# ──────────────────────────────────────────────────────────────────────────
+
+def _jwt_headers(ctx: ToolContext) -> Dict[str, str]:
+    """Auth headers for normal (JWT) admin endpoints: the caller's own token plus
+    the pinned institute as clientId (Java's JwtAuthFilter keys the user lookup
+    on `${clientId}@${username}`)."""
+    return {
+        "Authorization": f"Bearer {ctx.bearer_token}",
+        "clientId": ctx.principal.institute_id,
+    }
+
+
+def _compact(obj: Any, max_items: int = 15, max_str: int = 300) -> Any:
+    """Shape-agnostic trim for tool results: drop nulls, cap list lengths, and
+    truncate long strings so unverified response shapes can't flood the context."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            c = _compact(v, max_items, max_str)
+            if c not in (None, {}, []):
+                out[k] = c
+        return out
+    if isinstance(obj, list):
+        trimmed = [_compact(v, max_items, max_str) for v in obj[:max_items]]
+        trimmed = [v for v in trimmed if v not in (None, {}, [])]
+        if len(obj) > max_items:
+            trimmed.append({"_truncated": f"{len(obj) - max_items} more items omitted"})
+        return trimmed
+    if isinstance(obj, str) and len(obj) > max_str:
+        return obj[:max_str] + "…"
+    return obj
+
+
+async def _admin_core_json(
+    ctx: ToolContext,
+    method: str,
+    path: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    body: Optional[Dict[str, Any]] = None,
+    timeout: float = 20.0,
+) -> Any:
+    """One JWT-authenticated call to admin_core; returns parsed JSON or an error dict."""
+    import httpx
+    from ..config import get_settings
+
+    if not ctx.bearer_token:
+        return {"error": "no_auth", "message": "This lookup is unavailable right now."}
+    url = f"{get_settings().admin_core_service_base_url}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(
+                method, url, params=params, json=body, headers=_jwt_headers(ctx)
+            )
+        if resp.status_code != 200:
+            logger.warning("assistant %s %s -> %s (%s)", method, path, resp.status_code, resp.text[:150])
+            return {"error": "fetch_failed", "status": resp.status_code}
+        return resp.json()
+    except Exception as e:
+        logger.warning("assistant %s %s failed: %s", method, path, e)
+        return {"error": "fetch_failed"}
+
+
+_GET_PAYMENT_HISTORY_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_payment_history",
+        "description": (
+            "A learner's payment TRANSACTIONS (what was actually paid, when, via which "
+            "gateway). Use for 'did they pay / when / how much was the last payment'. "
+            "For outstanding balance or overdue installments use get_fee_dues instead."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "payment_statuses": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Optional filter, e.g. ['PAID','FAILED','PENDING'].",
+                },
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_payment_history(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    body: Dict[str, Any] = {
+        "institute_id": ctx.principal.institute_id,  # forced
+        "user_id": target,
+    }
+    if args.get("payment_statuses"):
+        body["payment_statuses"] = [str(s) for s in args["payment_statuses"]][:6]
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/user-plan/payment-logs",
+        params={"pageNo": 0, "pageSize": 10}, body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    items = []
+    for row in (data.get("content") or [])[:10]:
+        log_ = row.get("payment_log") or {}
+        plan = (row.get("user_plan") or {}).get("payment_plan_dto") or {}
+        items.append({
+            "date": log_.get("date"),
+            "amount": log_.get("payment_amount"),
+            "currency": log_.get("currency"),
+            "status": log_.get("payment_status") or log_.get("status"),
+            "vendor": log_.get("vendor"),
+            "transaction_id": log_.get("transaction_id"),
+            "plan": plan.get("name"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(items)))
+    return json.dumps({"payments": items, "total_transactions": total})
+
+
+_GET_FEE_DUES_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_fee_dues",
+        "description": (
+            "A learner's fee DUES: total expected/paid/outstanding and per-installment "
+            "rows with due dates and overdue flags. Use for 'has X cleared fees / what's "
+            "outstanding / is anything overdue'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "status": {
+                    "type": "string",
+                    "description": "Optional: 'OVERDUE' to list only overdue installments.",
+                },
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_fee_dues(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    body: Dict[str, Any] = {"fetch_all": True}
+    if args.get("status"):
+        body["status"] = str(args["status"])
+    data = await _admin_core_json(
+        ctx, "POST", f"/admin-core-service/v1/admin/student-fee/{target}/dues",
+        params={"instituteId": ctx.principal.institute_id}, body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    installments = []
+    for r in (data.get("content") or [])[:15]:
+        installments.append({
+            "fee": r.get("fee_type_name") or r.get("cpo_name"),
+            "expected": r.get("amount_expected"),
+            "paid": r.get("amount_paid"),
+            "due": r.get("amount_due"),
+            "due_date": r.get("due_date"),
+            "status": r.get("status"),
+            "is_overdue": r.get("is_overdue"),
+            "days_overdue": r.get("days_overdue"),
+        })
+    return json.dumps({
+        "total_fee": data.get("total_fee"),
+        "total_paid": data.get("total_paid"),
+        "total_due": data.get("total_due"),
+        "installments": installments,
+    })
+
+
+_GET_SUBSCRIPTION_PLANS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_subscription_plans",
+        "description": (
+            "A learner's enrollment payment plans/subscriptions (plan name, price, "
+            "status, validity window). Use for 'what plan is X on / when does it end'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_get_subscription_plans(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/user-plan/all",
+        params={"pageNo": 0, "pageSize": 10},
+        body={"user_id": target, "institute_id": ctx.principal.institute_id},
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    plans = []
+    for row in (data.get("content") or [])[:10]:
+        plan = row.get("payment_plan_dto") or {}
+        option = row.get("payment_option") or {}
+        plans.append({
+            "plan": plan.get("name"),
+            "price": plan.get("actual_price"),
+            "currency": plan.get("currency"),
+            "option": option.get("name"),
+            "option_type": option.get("type"),
+            "status": row.get("status"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+        })
+    return json.dumps({"plans": plans})
+
+
+_LIST_BATCH_LEARNERS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "list_batch_learners",
+        "description": (
+            "The learners enrolled in one batch (roster + total count). Use for 'who is "
+            "in batch X / how many active learners'. Needs the batch's "
+            "package_session_id (from page context or a find_learner result)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "package_session_id": {"type": "string", "description": "The batch id."},
+                "statuses": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Default ['ACTIVE'].",
+                },
+                "page": {"type": "integer", "description": "0-based page (20 per page)."},
+            },
+            "required": ["package_session_id"],
+        },
+    },
+}
+
+
+async def _execute_list_batch_learners(args: Dict[str, Any], ctx: ToolContext) -> str:
+    batch = str((args or {}).get("package_session_id") or "").strip()
+    if not batch:
+        return json.dumps({"error": "missing_batch"})
+    statuses = [str(s) for s in (args.get("statuses") or ["ACTIVE"])][:6]
+    page = int(args.get("page") or 0)
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/institute/institute_learner/get/v2/all",
+        params={"pageNo": page, "pageSize": 20},
+        body={
+            "institute_ids": [ctx.principal.institute_id],  # forced
+            "package_session_ids": [batch],
+            "statuses": statuses,
+            "group_ids": [], "gender": [], "sort_columns": {},
+        },
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    learners = []
+    for row in (data.get("content") or [])[:20]:
+        learners.append({
+            "user_id": row.get("user_id"),
+            "full_name": row.get("full_name"),
+            "enrollment_no": row.get("institute_enrollment_number"),
+            "status": row.get("status"),
+            "payment_status": row.get("payment_status"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(learners)))
+    return json.dumps({"learners": learners, "total": total, "page": page})
+
+
+_GET_CLASS_SCHEDULE_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_class_schedule",
+        "description": (
+            "Live-class schedule for this institute: scope 'live' = classes running "
+            "right now, 'upcoming' = the upcoming schedule (grouped by date), 'mine' = "
+            "the classes assigned to the person asking. Use for 'what classes are on "
+            "today / what do I have today / is anything live right now'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["live", "upcoming", "mine"]},
+            },
+            "required": ["scope"],
+        },
+    },
+}
+
+
+async def _execute_get_class_schedule(args: Dict[str, Any], ctx: ToolContext) -> str:
+    scope = str((args or {}).get("scope") or "upcoming")
+    if scope == "mine":
+        path, params = "/admin-core-service/get-sessions/by-user-id", {"userId": ctx.principal.user_id}
+    elif scope == "live":
+        path, params = "/admin-core-service/get-sessions/live", {"instituteId": ctx.principal.institute_id}
+    else:
+        path, params = "/admin-core-service/get-sessions/upcoming", {"instituteId": ctx.principal.institute_id}
+    data = await _admin_core_json(ctx, "GET", path, params=params)
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    return json.dumps({"scope": scope, "schedule": _compact(data, max_items=12, max_str=200)})
+
+
+_GET_INSTITUTE_OVERVIEW_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_institute_overview",
+        "description": (
+            "Institute-level snapshot. sections: 'outstanding_fees' (total overdue "
+            "amount + count across the institute), 'live_now' (classes running right "
+            "now), 'enrollment_counts' (active learner count). Use for 'how much fees "
+            "is pending overall / how many active learners do we have'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "sections": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["outstanding_fees", "live_now", "enrollment_counts"]},
+                },
+            },
+            "required": ["sections"],
+        },
+    },
+}
+
+
+async def _execute_get_institute_overview(args: Dict[str, Any], ctx: ToolContext) -> str:
+    sections = [s for s in (args.get("sections") or []) if isinstance(s, str)]
+    out: Dict[str, Any] = {}
+    if "outstanding_fees" in sections:
+        rows = await _admin_core_json(
+            ctx, "POST", "/admin-core-service/v1/admin/student-fee/adjustment/pending",
+            params={"instituteId": ctx.principal.institute_id}, body={}, timeout=30.0,
+        )
+        if isinstance(rows, list):
+            overdue = [r for r in rows if r.get("is_overdue") or r.get("status") == "OVERDUE"]
+            out["outstanding_fees"] = {
+                "overdue_total": round(sum(float(r.get("amount_due") or 0) for r in overdue), 2),
+                "overdue_installments": len(overdue),
+                "learners_affected": len({r.get("user_id") for r in overdue if r.get("user_id")}),
+            }
+        else:
+            out["outstanding_fees"] = rows  # error dict
+    if "live_now" in sections:
+        data = await _admin_core_json(
+            ctx, "GET", "/admin-core-service/get-sessions/live",
+            params={"instituteId": ctx.principal.institute_id},
+        )
+        out["live_now"] = _compact(data, max_items=8, max_str=150)
+    if "enrollment_counts" in sections:
+        data = await _admin_core_json(
+            ctx, "POST", "/admin-core-service/institute/institute_learner/get/v2/all",
+            params={"pageNo": 0, "pageSize": 1},
+            body={"institute_ids": [ctx.principal.institute_id], "statuses": ["ACTIVE"],
+                  "package_session_ids": [], "group_ids": [], "gender": [], "sort_columns": {}},
+        )
+        if isinstance(data, dict) and not data.get("error"):
+            out["enrollment_counts"] = {
+                "active_learners": data.get("totalElements", data.get("total_elements"))
+            }
+        else:
+            out["enrollment_counts"] = data
+    return json.dumps(out or {"error": "no_sections"})
+
+
+_TRIGGER_FULL_REPORT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "trigger_full_report",
+        "description": (
+            "Start generating a learner's FULL analysis report (all modules, with AI "
+            "narrative — runs in the background, takes a few minutes, may spend AI "
+            "credits). Offer this when a quick answer isn't enough. The report appears "
+            "under the learner's Reports tab and notifies when ready."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "batch_id": {"type": "string", "description": "Optional package_session_id."},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD. Default: 30 days ago."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD. Default: today."},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_trigger_full_report(args: Dict[str, Any], ctx: ToolContext) -> str:
+    from datetime import date, timedelta
+
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    end = str(args.get("end_date") or date.today().isoformat())
+    start = str(args.get("start_date") or (date.today() - timedelta(days=30)).isoformat())
+    body: Dict[str, Any] = {
+        "user_id": target,
+        "institute_id": ctx.principal.institute_id,  # forced
+        "start_date_iso": start,
+        "end_date_iso": end,
+        "report_version": "v2",
+        "send_email": True,
+    }
+    if args.get("batch_id"):
+        body["package_session_id"] = str(args["batch_id"])
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/student-analysis/initiate", body=body
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    return json.dumps({
+        "process_id": data.get("process_id"),
+        "status": data.get("status"),
+        "note": "Report generation started in the background — it will appear in the learner's "
+                "Reports tab and the requester is notified when it's ready.",
+    })
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase-3 WRITE tools — confirmation-card protocol.
+#
+# A WRITE tool's executor NEVER hits Java. It validates, verifies the target
+# belongs to the pinned institute, persists a `pending_action` row (nonce + TTL,
+# in chat_messages) and sets ctx.pending_action so the loop shows the FE a
+# confirmation card. Only the /action/{nonce}/confirm endpoint — a separate
+# authenticated request from the human — executes the change, re-checking the
+# AND-gate first. The model never sees the nonce, so "the user already said yes"
+# can never bypass the card.
+# ──────────────────────────────────────────────────────────────────────────
+
+#: Pending write confirmations expire after this many minutes.
+PENDING_ACTION_TTL_MINUTES = 10
+
+#: message_type used for pending-confirmation rows in chat_messages.
+PENDING_ACTION_MESSAGE_TYPE = "pending_action"
+
+
+def _target_in_institute(ctx: ToolContext, target_user_id: str) -> bool:
+    """Membership pre-check: the write endpoints trust the request body, so WE
+    must ensure the target learner belongs to the pinned institute."""
+    from sqlalchemy import text as sql_text
+    try:
+        row = ctx.db.execute(
+            sql_text(
+                "SELECT 1 FROM student_session_institute_group_mapping "
+                "WHERE user_id = :u AND institute_id = :i LIMIT 1"
+            ),
+            {"u": target_user_id, "i": ctx.principal.institute_id},
+        ).first()
+        return row is not None
+    except Exception as e:
+        logger.warning("membership pre-check failed (deny): %s", e)
+        return False
+
+
+async def _propose_action(
+    ctx: ToolContext,
+    tool: str,
+    perform_args: Dict[str, Any],
+    summary: str,
+) -> str:
+    """Persist a pending action (nonce + TTL) and hand the card to the FE."""
+    import uuid
+    from datetime import datetime, timedelta, timezone
+    from ..repositories.chat_message_repository import ChatMessageRepository
+
+    if not ctx.session_id:
+        return json.dumps({"error": "no_session"})
+
+    nonce = str(uuid.uuid4())
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=PENDING_ACTION_TTL_MINUTES)
+    ).isoformat()
+    ChatMessageRepository(ctx.db).create_message(
+        session_id=ctx.session_id,
+        message_type=PENDING_ACTION_MESSAGE_TYPE,
+        content=summary,
+        metadata={
+            "nonce": nonce,
+            "tool": tool,
+            "args": perform_args,
+            "status": "PENDING",
+            "expires_at": expires_at,
+            "proposed_by": ctx.principal.user_id,
+            "institute_id": ctx.principal.institute_id,
+        },
+    )
+    ctx.pending_action = {
+        "action_id": nonce,
+        "tool": tool,
+        "summary": summary,
+        "expires_at": expires_at,
+    }
+    return json.dumps({
+        "status": "awaiting_user_confirmation",
+        "summary": summary,
+        "note": (
+            "A confirmation card has been shown to the user. The change has NOT been made. "
+            "Tell the user to press Confirm on the card (or Cancel). Do not claim it is done."
+        ),
+    })
+
+
+# Editable profile fields (schema-level whitelist). Deliberately EXCLUDES
+# user_name / password / face_file_id / institute_name even though the backend
+# accepts them — the assistant must not touch credentials.
+_PROFILE_EDITABLE_FIELDS = [
+    "email", "full_name", "contact_number", "gender", "address_line",
+    "state", "pin_code", "father_name", "mother_name",
+    "parents_mobile_number", "parents_email",
+]
+
+_UPDATE_LEARNER_PROFILE_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "update_learner_profile",
+        "description": (
+            "PROPOSE an edit to a learner's profile details (name, contact, address, "
+            "parent info). The user gets a confirmation card and the change only "
+            "happens after they press Confirm. Supply ONLY the fields to change."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                **{f: {"type": "string"} for f in _PROFILE_EDITABLE_FIELDS},
+            },
+            "required": ["target_user_id"],
+        },
+    },
+}
+
+
+async def _execute_update_learner_profile(args: Dict[str, Any], ctx: ToolContext) -> str:
+    target = str((args or {}).get("target_user_id") or "").strip()
+    if not target:
+        return json.dumps({"error": "missing_target"})
+    changes = {
+        f: str(args[f]).strip()
+        for f in _PROFILE_EDITABLE_FIELDS
+        if args.get(f) is not None and str(args[f]).strip() != ""
+    }
+    if not changes:
+        return json.dumps({"error": "no_changes", "message": "No editable fields were provided."})
+    if not _target_in_institute(ctx, target):
+        return json.dumps({"error": "not_found",
+                           "message": "This learner has no enrollment in your institute."})
+    pretty = ", ".join(f"{k.replace('_', ' ')} → “{v}”" for k, v in changes.items())
+    summary = f"Update learner profile ({len(changes)} field{'s' if len(changes) > 1 else ''}): {pretty}"
+    return await _propose_action(
+        ctx, "update_learner_profile", {"target_user_id": target, "changes": changes}, summary
+    )
+
+
+async def _perform_update_learner_profile(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    body = {"user_id": args["target_user_id"], **(args.get("changes") or {})}
+    data = await _admin_core_json(
+        ctx, "PUT", "/admin-core-service/learner/info/v1/edit", body=body
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return {"ok": False, "detail": data}
+    return {"ok": True, "detail": "profile updated"}
+
+
+#: Enrollment operations the assistant may propose. TERMINATE is deliberately
+#: excluded (destructive) — Phase 3b at the earliest.
+_ENROLLMENT_OPERATIONS = {
+    "ADD_EXPIRY": "extend/set access expiry (new_state = date as dd-MM-yyyy)",
+    "UPDATE_BATCH": "move to another batch (new_state = target package_session_id)",
+    "MAKE_INACTIVE": "deactivate the learner in the batch",
+    "MAKE_ACTIVE": "re-activate the learner in the batch",
+    "UPDATE_STATUS": "set enrollment status (new_state = status value)",
+}
+
+_MANAGE_ENROLLMENT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "manage_enrollment",
+        "description": (
+            "PROPOSE an enrollment change for a learner — extend access expiry, move "
+            "batch, activate/deactivate. The user gets a confirmation card; nothing "
+            "changes until they press Confirm. Operations: "
+            + "; ".join(f"{k} = {v}" for k, v in _ENROLLMENT_OPERATIONS.items())
+            + ". IMPORTANT: ADD_EXPIRY dates must be dd-MM-yyyy (e.g. 31-08-2026)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "target_user_id": {"type": "string", "description": "The learner's user_id."},
+                "operation": {"type": "string", "enum": sorted(_ENROLLMENT_OPERATIONS.keys())},
+                "new_state": {
+                    "type": "string",
+                    "description": "Meaning depends on operation (see description).",
+                },
+                "current_package_session_id": {
+                    "type": "string",
+                    "description": "The learner's current batch id (from context or find_learner).",
+                },
+            },
+            "required": ["target_user_id", "operation", "current_package_session_id"],
+        },
+    },
+}
+
+
+async def _execute_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> str:
+    import re
+    target = str((args or {}).get("target_user_id") or "").strip()
+    operation = str(args.get("operation") or "").strip().upper()
+    new_state = str(args.get("new_state") or "").strip()
+    batch = str(args.get("current_package_session_id") or "").strip()
+    if not target or not batch:
+        return json.dumps({"error": "missing_target"})
+    if operation not in _ENROLLMENT_OPERATIONS:
+        return json.dumps({"error": "bad_operation",
+                           "message": f"Allowed: {', '.join(sorted(_ENROLLMENT_OPERATIONS))}."})
+    if operation == "ADD_EXPIRY" and not re.fullmatch(r"\d{2}-\d{2}-\d{4}", new_state):
+        return json.dumps({"error": "bad_date",
+                           "message": "ADD_EXPIRY needs new_state as dd-MM-yyyy (e.g. 31-08-2026)."})
+    if operation in ("ADD_EXPIRY", "UPDATE_BATCH", "UPDATE_STATUS") and not new_state:
+        return json.dumps({"error": "missing_new_state"})
+    if not _target_in_institute(ctx, target):
+        return json.dumps({"error": "not_found",
+                           "message": "This learner has no enrollment in your institute."})
+    nice = {
+        "ADD_EXPIRY": f"Extend access expiry to {new_state}",
+        "UPDATE_BATCH": f"Move to batch {new_state}",
+        "MAKE_INACTIVE": "Mark INACTIVE in the current batch",
+        "MAKE_ACTIVE": "Mark ACTIVE in the current batch",
+        "UPDATE_STATUS": f"Set enrollment status to {new_state}",
+    }[operation]
+    summary = f"Enrollment change: {nice}"
+    return await _propose_action(
+        ctx, "manage_enrollment",
+        {"target_user_id": target, "operation": operation, "new_state": new_state,
+         "current_package_session_id": batch},
+        summary,
+    )
+
+
+async def _perform_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    body = {
+        "operation": args["operation"],
+        "requests": [{
+            "user_id": args["target_user_id"],
+            "new_state": args.get("new_state") or None,
+            "institute_id": ctx.principal.institute_id,  # forced
+            "current_package_session_id": args["current_package_session_id"],
+        }],
+    }
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/institute/institute_learner-operation/v1/update",
+        body=body,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return {"ok": False, "detail": data}
+    return {"ok": True, "detail": "enrollment updated"}
+
+
+#: perform-side dispatch used by the confirm endpoint (NOT reachable by the LLM).
+WRITE_PERFORMERS: Dict[str, Callable[[Dict[str, Any], ToolContext], Awaitable[Dict[str, Any]]]] = {
+    "update_learner_profile": _perform_update_learner_profile,
+    "manage_enrollment": _perform_manage_enrollment,
+}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# The registry.
 # ──────────────────────────────────────────────────────────────────────────
 
 ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
@@ -188,6 +1100,135 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         default_enabled=True,       # on out-of-the-box until an institute configures the setting
         phase=1,
         mode="READ",
+    ),
+    # Phase 2a learner-data tools. One settings key ("learner_data") controls both —
+    # the resolver is useless without the data tool and vice versa. RBAC leg is None
+    # for now: the ASSISTANT_* permission catalog isn't seeded/grantable in the roles
+    # UI yet, so the per-role Settings leg (deny-by-default, ADMIN-only default) is
+    # the founder's grant mechanism; the permission backstop lands with the catalog.
+    "find_learner": ToolSpec(
+        name="find_learner",
+        schema=_FIND_LEARNER_SCHEMA,
+        executor=_execute_find_learner,
+        required_permission=None,
+        setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],    # founder decision 2026-07-02: reads on for ADMIN only
+        phase=2,
+        mode="READ",
+    ),
+    "get_student_360": ToolSpec(
+        name="get_student_360",
+        schema=_GET_STUDENT_360_SCHEMA,
+        executor=_execute_get_student_360,
+        required_permission=None,
+        setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "trigger_full_report": ToolSpec(
+        name="trigger_full_report",
+        schema=_TRIGGER_FULL_REPORT_SCHEMA,
+        executor=_execute_trigger_full_report,
+        required_permission=None,
+        setting_key="learner_data",   # rides the learner-data grant
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    # Payments group — one settings key controls all three.
+    "get_payment_history": ToolSpec(
+        name="get_payment_history",
+        schema=_GET_PAYMENT_HISTORY_SCHEMA,
+        executor=_execute_get_payment_history,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_fee_dues": ToolSpec(
+        name="get_fee_dues",
+        schema=_GET_FEE_DUES_SCHEMA,
+        executor=_execute_get_fee_dues,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_subscription_plans": ToolSpec(
+        name="get_subscription_plans",
+        schema=_GET_SUBSCRIPTION_PLANS_SCHEMA,
+        executor=_execute_get_subscription_plans,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "list_batch_learners": ToolSpec(
+        name="list_batch_learners",
+        schema=_LIST_BATCH_LEARNERS_SCHEMA,
+        executor=_execute_list_batch_learners,
+        required_permission=None,
+        setting_key="batch_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_class_schedule": ToolSpec(
+        name="get_class_schedule",
+        schema=_GET_CLASS_SCHEDULE_SCHEMA,
+        executor=_execute_get_class_schedule,
+        required_permission=None,
+        setting_key="schedule",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_institute_overview": ToolSpec(
+        name="get_institute_overview",
+        schema=_GET_INSTITUTE_OVERVIEW_SCHEMA,
+        executor=_execute_get_institute_overview,
+        required_permission=None,
+        setting_key="institute_overview",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    # Phase-3 WRITE tools — OFF for everyone by default (founder decision:
+    # writes are never default-on); grantable per-role via the "learner_edits"
+    # settings group. Executors only PROPOSE; execution happens exclusively via
+    # the nonce-confirmed /action endpoint.
+    "update_learner_profile": ToolSpec(
+        name="update_learner_profile",
+        schema=_UPDATE_LEARNER_PROFILE_SCHEMA,
+        executor=_execute_update_learner_profile,
+        required_permission=None,
+        setting_key="learner_edits",
+        default_enabled=False,
+        phase=3,
+        mode="WRITE",
+    ),
+    "manage_enrollment": ToolSpec(
+        name="manage_enrollment",
+        schema=_MANAGE_ENROLLMENT_SCHEMA,
+        executor=_execute_manage_enrollment,
+        required_permission=None,
+        setting_key="learner_edits",
+        default_enabled=False,
+        phase=3,
+        mode="WRITE",
     ),
 }
 
@@ -246,13 +1287,21 @@ def _effective_enabled_tools(setting: Optional[Dict[str, Any]], roles: Optional[
     The set of tool keys enabled for the caller, given the institute setting and
     the caller's roles.
 
-    - No setting configured -> the ``default_enabled`` tools.
+    - No setting configured -> tools flagged ``default_enabled`` (all roles) plus
+      tools whose ``default_roles`` include one of the caller's roles (e.g. the
+      learner-data tools default on for ADMIN only — founder decision 2026-07-02).
     - Setting configured     -> the institute-level ``enabled_tools`` UNION the
       ``enabled_tools`` of each of the caller's roles in ``role_overrides``
       (union across multiple roles — the broadest of the caller's roles wins).
     """
     if not setting:
-        return {spec.key() for spec in ASSISTANT_TOOLS.values() if spec.default_enabled}
+        caller_roles = set(roles or [])
+        return {
+            spec.key()
+            for spec in ASSISTANT_TOOLS.values()
+            if spec.default_enabled
+            or (spec.default_roles and caller_roles.intersection(spec.default_roles))
+        }
 
     enabled = set(setting.get("enabled_tools") or [])
     overrides = setting.get("role_overrides") or {}
@@ -329,10 +1378,20 @@ async def execute_tool(
     safe_args["user_id"] = ctx.principal.user_id
     safe_args["institute_id"] = ctx.principal.institute_id
 
+    import time
+    started = time.monotonic()
     try:
-        return await spec.executor(safe_args, ctx)
+        result = await spec.executor(safe_args, ctx)
+        logger.info(
+            "assistant tool '%s' ok in %dms (institute=%s)",
+            tool_name, int((time.monotonic() - started) * 1000), ctx.principal.institute_id,
+        )
+        return result
     except Exception as e:
-        logger.exception("Assistant tool '%s' raised: %s", tool_name, e)
+        logger.exception(
+            "Assistant tool '%s' raised after %dms: %s",
+            tool_name, int((time.monotonic() - started) * 1000), e,
+        )
         return json.dumps({"error": "tool_failed", "tool": tool_name})
 
 

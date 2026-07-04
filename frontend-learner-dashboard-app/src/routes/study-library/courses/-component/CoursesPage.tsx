@@ -8,6 +8,7 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 interface CoursesPageProps {
     courseData: CoursePackageResponse;
@@ -59,6 +60,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     const [filterPanelWidth, setFilterPanelWidth] = useState(0);
     const [filterPanelLeft, setFilterPanelLeft] = useState(0);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    // Institute setting: hide the instructor name block on each course card.
+    const [hideInstructorName, setHideInstructorName] = useState(false);
+    useEffect(() => {
+        getStudentDisplaySettings(false)
+            .then((s) => setHideInstructorName(s?.allCourses?.hideInstructorName ?? false))
+            .catch(() => setHideInstructorName(false));
+    }, []);
 
     const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
@@ -355,6 +363,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                                 course.percentage_completed || 0
                                             }
                                             selectedTab={selectedTab}
+                                            hideInstructorName={hideInstructorName}
                                             readTimeInMinutes={
                                                 course.read_time_in_minutes || 0
                                             }

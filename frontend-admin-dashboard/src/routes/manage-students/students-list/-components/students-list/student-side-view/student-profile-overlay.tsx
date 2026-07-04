@@ -292,7 +292,7 @@ export const StudentProfileOverlay = () => {
                 {/* HERO BAND — handoff identity row + meta strip pattern.
                     No leading accent gradient (the eyebrow + name carry the
                     brand voice on their own per LearnerProfile.jsx). */}
-                <header className="relative shrink-0 border-b border-neutral-200 bg-white">
+                <header className="pt-safe-native relative shrink-0 border-b border-neutral-200 bg-white">
                     <div className="flex flex-col gap-3 px-6 pt-5">
                         <div className="flex items-start gap-4">
                             {/* Avatar — handoff calls for ~52px initials circle

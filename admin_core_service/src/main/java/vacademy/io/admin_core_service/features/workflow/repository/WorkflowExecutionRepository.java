@@ -45,6 +45,23 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
         Optional<WorkflowExecution> findByIdempotencyKeyAndStatusIn(@Param("idempotencyKey") String idempotencyKey,
                         @Param("statuses") List<WorkflowExecutionStatus> statuses);
 
+        /**
+         * Fetch workflow executions for the given triggers, newest first. Executions
+         * are linked to their trigger by {@code workflow_trigger_id} (set at dispatch
+         * in {@code WorkflowTriggerService}), which is reliable regardless of the
+         * trigger's idempotency strategy — unlike the idempotency key, which is a
+         * random UUID under the default strategy and therefore does NOT encode the
+         * event/package-session id. For course-attached enrollment triggers the
+         * trigger carries {@code eventId = packageSessionId}, so matching by trigger
+         * ties an execution to a specific package session. The workflow is fetched
+         * eagerly so callers can read its name outside the persistence context.
+         */
+        @Query("SELECT we FROM WorkflowExecution we JOIN FETCH we.workflow w " +
+                        "WHERE we.workflowTrigger.id IN :triggerIds " +
+                        "ORDER BY we.startedAt DESC")
+        List<WorkflowExecution> findByWorkflowTriggerIdInOrderByStartedAtDesc(
+                        @Param("triggerIds") List<String> triggerIds);
+
         List<WorkflowExecution> findByWorkflowIdOrderByStartedAtDesc(String workflowId);
 
         List<WorkflowExecution> findByWorkflowScheduleIdOrderByStartedAtDesc(String workflowScheduleId);

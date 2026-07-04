@@ -14,7 +14,7 @@ import {
 } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
-import { LeadCallHistory } from '@/components/shared/leads';
+import { LeadCallHistory, LeadCallIntelligenceSummary } from '@/components/shared/leads';
 import { FollowUpsWidget } from './follow-ups-widget';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
@@ -1395,6 +1395,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     <div className="h-3.5 w-1 rounded-full bg-primary-500" />
                     <h4 className="text-sm font-semibold text-neutral-700">Call History</h4>
                 </div>
+                {/* AI rollup across this lead's analyzed calls (self-hides when the
+                    feature is off or the lead has no analyzed calls). */}
+                <LeadCallIntelligenceSummary responseId={effectiveResponseId} />
                 <LeadCallHistory userId={userId} />
             </div>
 

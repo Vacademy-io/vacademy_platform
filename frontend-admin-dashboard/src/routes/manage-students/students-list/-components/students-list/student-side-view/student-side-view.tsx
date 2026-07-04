@@ -13,6 +13,7 @@ import { StudentTestRecord } from './student-test-records/student-test-record';
 import { StudentCommunicationTimeline } from './student-email-notifications/student-communication-timeline';
 import { StudentMembership } from './student-membership/student-membership';
 import { StudentUserTagging } from './student-user-tagging/student-user-tagging';
+import { StudentBadges } from './student-badges/student-badges';
 import { StudentFiles } from './student-files/student-files';
 import { StudentPortalAccess } from './student-portal-access/student-portal-access';
 import { StudentSubOrg } from './student-sub-org/student-sub-org';
@@ -70,6 +71,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'membership',
         'paymentHistory',
         'userTagging',
+        'badges',
         'files',
         'portalAccess',
         'reports',
@@ -586,6 +588,11 @@ export const StudentSidebar = ({
                             tabSettings?.userTaggingTab &&
                             !isEnrollRequestStudentList && (
                                 <StudentUserTagging isSubmissionTab={isSubmissionTab} />
+                            )}
+                        {category === 'badges' &&
+                            tabSettings?.badgesTab &&
+                            !isEnrollRequestStudentList && (
+                                <StudentBadges isSubmissionTab={isSubmissionTab} />
                             )}
                         {category === 'files' &&
                             tabSettings?.fileTab &&

@@ -62,9 +62,36 @@ export const escapeRichTextAttr = (s: string): string =>
 // quiz/tab content when an S3 image (…amazonaws.com?X-Amz-Signature=…) lived
 // inside the rich text: the strip-aws regex ate across the encoded JSON quotes
 // and broke JSON.parse on reload, resetting the block to empty defaults.
+// Strip expired S3 signatures from any amazonaws URL inside a block's data
+// BEFORE base64-encoding it. Inner-block images are uploaded via getPublicUrl,
+// which returns a 1-day SIGNED URL (…amazonaws.com?X-Amz-Signature=…&X-Amz-Expires=…).
+// Because the payload is base64, the document-wide stripAwsQueryParamsFromUrls
+// can't reach it, so without this the image would 404 once the signature
+// expires. The bucket objects are public-read, so the query-less URL is the
+// permanent one. The regex is bounded by whitespace/quote/angle so it can only
+// ever trim a single URL's query — never run into surrounding content.
+const stripAwsSignaturesDeep = (value: unknown): unknown => {
+    if (typeof value === 'string') {
+        return /amazonaws\.com/i.test(value)
+            ? value.replace(
+                  /(https?:\/\/[^\s"'<>]*amazonaws\.com[^\s"'<>?]*)\?[^\s"'<>]*/gi,
+                  '$1'
+              )
+            : value;
+    }
+    if (Array.isArray(value)) return value.map(stripAwsSignaturesDeep);
+    if (value && typeof value === 'object') {
+        const source = value as Record<string, unknown>;
+        const out: Record<string, unknown> = {};
+        for (const key of Object.keys(source)) out[key] = stripAwsSignaturesDeep(source[key]);
+        return out;
+    }
+    return value;
+};
+
 export const encodeBlockData = (obj: unknown): string => {
     try {
-        return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+        return btoa(unescape(encodeURIComponent(JSON.stringify(stripAwsSignaturesDeep(obj)))));
     } catch (e) {
         console.error('[BlockData] encode failed', e);
         return '';
@@ -127,7 +154,12 @@ export function ensureRichTextStyles() {
     const css = `
         .rich-text-field:empty:before { content: attr(data-placeholder); color: ${C.muted}; pointer-events: none; }
         .rich-text-box:focus-within { border-color: ${C.accent} !important; box-shadow: 0 0 0 1px ${C.accent}; }
-        .rich-text-field img, .rich-text-html img { max-width: 100%; height: auto; border-radius: 4px; }
+        .rich-text-field img, .rich-text-html img { max-width: 100%; height: auto; border-radius: 4px; display: block; margin-left: auto; margin-right: auto; }
+        /* Cap image height while EDITING so a tall image doesn't blow the field
+           up to full size (which makes the page awkward to scroll). The stored /
+           preview / learner output is unaffected — it uses the img's own inline
+           max-width and renders at natural height. */
+        .rich-text-field img { max-height: 360px; object-fit: contain; }
         .rich-text-field p, .rich-text-field div, .rich-text-html p, .rich-text-html div { margin: 0; }
         .rich-text-field ul, .rich-text-html ul { list-style: disc outside !important; margin: 4px 0; padding-left: 26px; }
         .rich-text-field ol, .rich-text-html ol { list-style: decimal outside !important; margin: 4px 0; padding-left: 26px; }
@@ -172,18 +204,20 @@ export function RichTextField({
     }, []);
 
     // Sync DOM only on an EXTERNAL value change (never our own keystrokes) so the
-    // caret never jumps; and never let a stale/empty value wipe what's being typed.
+    // caret never jumps.
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
         if (el.innerHTML === (value || '')) return;
-        if (
-            document.activeElement === el &&
-            isRichTextEmpty(value || '') &&
-            !isRichTextEmpty(el.innerHTML)
-        ) {
-            return;
-        }
+        // While this field is focused, the contentEditable DOM is the source of
+        // truth — NEVER overwrite it from `value`. `value` is derived from the DOM
+        // via onInput, and the browser's innerHTML serialization of nodes like
+        // <img> (attribute order/quotes, `&` → `&amp;` in the S3 URL) rarely
+        // matches the stored string byte-for-byte, so re-assigning innerHTML on
+        // each commit round-trip would re-create the <img> and re-download it —
+        // a visible flicker. External changes (deserialize / programmatic) only
+        // arrive while the field isn't focused, so syncing then is enough.
+        if (document.activeElement === el) return;
         el.innerHTML = value || '';
     }, [value]);
 
@@ -245,7 +279,10 @@ export function RichTextField({
             document.execCommand(
                 'insertHTML',
                 false,
-                `<img src="${url.replace(/"/g, '&quot;')}" alt="" style="max-width:100%;" />`
+                // Centralised image styling: block-level, CENTERED, width-bounded.
+                // Inline so it travels with the HTML to the learner and applies in
+                // EVERY block (flashcard, tabs, columns, accordion, quiz) the same way.
+                `<img src="${url.replace(/"/g, '&quot;')}" alt="" style="display:block; margin:10px auto; max-width:100%; height:auto;" />`
             );
             // A trailing image leaves no caret position after it — add an empty
             // line and move the caret into it so you can type below the image.

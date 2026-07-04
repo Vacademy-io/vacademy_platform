@@ -85,6 +85,7 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { extractTextFromHTML } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
+import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
 
 type SlideType = {
     id: string;
@@ -2081,6 +2082,14 @@ export const CourseDetailsPage = () => {
                                 )}
                             </div>
                         </div>
+                        {/* Enrollment workflow run(s) for the selected batch —
+                            renders nothing when no workflow is attached. */}
+                        {packageSessionIds && (
+                            <EnrollmentWorkflowStatus
+                                instituteId={instituteDetails?.id || ''}
+                                packageSessionIds={[packageSessionIds]}
+                            />
+                        )}
                         {dripConditionsEnabled && (
                             <div className="sticky top-4 rounded-md border bg-white p-3 shadow-sm lg:p-4">
                                 <PackageDripConditionsCard

@@ -1101,6 +1101,8 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
   const [cashfreeSessionData, setCashfreeSessionData] = useState<{
     paymentSessionId: string;
     orderId: string;
+    /** "sandbox" | "production" from the backend — must match the session. */
+    environment: string | null;
   } | null>(null);
   const [cashfreeInitLoading, setCashfreeInitLoading] = useState(false);
   const initAttemptedRef = useRef(false);
@@ -1204,6 +1206,10 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         setCashfreeSessionData({
           paymentSessionId,
           orderId: ordId,
+          environment:
+            typeof responseData?.environment === "string"
+              ? responseData.environment
+              : null,
         });
 
         // Store username and password from enrollment response for post-payment login
@@ -1265,6 +1271,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
         paymentSessionId={cashfreeSessionData.paymentSessionId}
         returnUrl={getCashfreeReturnUrl()}
         orderId={cashfreeSessionData.orderId}
+        environment={cashfreeSessionData.environment}
         instituteId={instituteId}
         onPayClick={() => { }}
         onPayError={() => onError("Payment initialization failed.")}

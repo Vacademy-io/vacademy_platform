@@ -44,9 +44,12 @@
         "cap:sync:vacademy-admin": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync",
         "cap:sync:vacademy-admin:fast": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync",
         "cap:run:vacademy-admin:ios": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync ios && cross-env VITE_CAP_FLAVOR=vacademy-admin cap run ios",
-        "cap:run:vacademy-admin:android": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync android && cross-env VITE_CAP_FLAVOR=vacademy-admin cap run android",
+        "cap:run:vacademy-admin:android": "pnpm run build:vacademy-admin && cross-env VITE_CAP_FLAVOR=vacademy-admin cap sync android && cross-env VITE_CAP_FLAVOR=vacademy-admin cap run android --flavor=vacademyAdmin",
         "cap:open:vacademy-admin:ios": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap open ios",
         "cap:open:vacademy-admin:android": "cross-env VITE_CAP_FLAVOR=vacademy-admin cap open android",
+        "android:assemble:vacademy-admin:debug": "cd android && ./gradlew assembleVacademyAdminDebug",
+        "android:assemble:vacademy-admin:release": "cd android && ./gradlew assembleVacademyAdminRelease",
+        "android:bundle:vacademy-admin:release": "cd android && ./gradlew bundleVacademyAdminRelease",
         "ota:publish:vacademy-admin": "cross-env VITE_CAP_FLAVOR=vacademy-admin bash scripts/publish-ota.sh"
     },
     "dependencies": {
@@ -408,7 +411,8 @@
             "rollup": "4.21.2"
         },
         "patchedDependencies": {
-            "@radix-ui/react-select@2.2.5": "patches/@radix-ui__react-select@2.2.5.patch"
+            "@radix-ui/react-select@2.2.5": "patches/@radix-ui__react-select@2.2.5.patch",
+            "slate-react@0.102.0": "patches/slate-react@0.102.0.patch"
         }
     },
     "eslintConfig": {

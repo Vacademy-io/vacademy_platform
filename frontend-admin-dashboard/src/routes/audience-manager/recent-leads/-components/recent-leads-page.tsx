@@ -39,6 +39,11 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
+import {
+    fetchLeadJourneyBatch,
+    formatJourneyForExport,
+    type JourneyEvent,
+} from '@/components/shared/leads/lead-journey-export';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
@@ -46,6 +51,10 @@ import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-f
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
+import { MyButton } from '@/components/design-system/button';
+import { UserPlus } from '@phosphor-icons/react';
 import {
     LeadEmptyState,
     LeadTable,
@@ -63,8 +72,10 @@ import {
     ALL_TIERS_VALUE,
     ALL_ACTIVE_VALUE,
     ALL_STATUSES_VALUE,
+    ALL_CONVERTED_VALUE,
     ALL_SLA_VALUE,
     ALL_COUNSELLORS_VALUE,
+    UNASSIGNED_COUNSELLOR_VALUE,
     ALL_DATE_VALUE,
     CUSTOM_DATE_VALUE,
     DEFAULT_RANGE_DAYS,
@@ -215,11 +226,12 @@ const RecentLeadsContent = () => {
 
     const [tierFilter, setTierFilter] = useState<string>(urlSearch.tier ?? ALL_TIERS_VALUE);
     // Unified Lead Status filter — combines pipeline status + conversion state:
-    //   ALL_ACTIVE_VALUE   → all leads except Converted (default)
-    //   ALL_STATUSES_VALUE → every lead regardless of status
-    //   <statusKey>        → only leads currently in that custom status
+    //   ALL_STATUSES_VALUE  → every lead regardless of status (default — enrolled leads stay visible)
+    //   ALL_ACTIVE_VALUE    → all leads except those enrolled/Converted
+    //   ALL_CONVERTED_VALUE → only leads enrolled into a course
+    //   <statusKey>         → only leads currently in that custom status
     const [leadStatusFilter, setLeadStatusFilter] = useState<string>(
-        urlSearch.status ?? ALL_ACTIVE_VALUE
+        urlSearch.status ?? ALL_STATUSES_VALUE
     );
     // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
     // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
@@ -269,7 +281,7 @@ const RecentLeadsContent = () => {
     useEffect(() => {
         void navigate({
             search: {
-                status: leadStatusFilter === ALL_ACTIVE_VALUE ? undefined : leadStatusFilter,
+                status: leadStatusFilter === ALL_STATUSES_VALUE ? undefined : leadStatusFilter,
                 tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
                 sla: slaFilter === ALL_SLA_VALUE ? undefined : slaFilter,
                 counsellor:
@@ -361,11 +373,17 @@ const RecentLeadsContent = () => {
 
     // Translate the unified status filter into the two backend params.
     const leadStatusId =
-        leadStatusFilter === ALL_ACTIVE_VALUE || leadStatusFilter === ALL_STATUSES_VALUE
+        leadStatusFilter === ALL_ACTIVE_VALUE ||
+        leadStatusFilter === ALL_STATUSES_VALUE ||
+        leadStatusFilter === ALL_CONVERTED_VALUE
             ? undefined
             : leadStatusFilter;
-    const conversionFilter: 'EXCLUDE_CONVERTED' | 'ALL' =
-        leadStatusFilter === ALL_ACTIVE_VALUE ? 'EXCLUDE_CONVERTED' : 'ALL';
+    const conversionFilter: 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED' =
+        leadStatusFilter === ALL_ACTIVE_VALUE
+            ? 'EXCLUDE_CONVERTED'
+            : leadStatusFilter === ALL_CONVERTED_VALUE
+              ? 'ONLY_CONVERTED'
+              : 'ALL';
 
     const { data, isLoading, error } = useQuery({
         queryKey: [
@@ -399,7 +417,12 @@ const RecentLeadsContent = () => {
                 conversion_status_filter: conversionFilter,
                 sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                 assigned_counselor_id:
-                    counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                        ? undefined
+                        : counsellorFilter,
+                is_unassigned:
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
                 source_type: sourceFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
@@ -483,6 +506,90 @@ const RecentLeadsContent = () => {
         queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
     };
 
+    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
+    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+        new Map()
+    );
+    const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+
+    // Selection is only meaningful on the Unassigned view; drop it when the
+    // counsellor filter changes so stale ids can't leak into an assign.
+    useEffect(() => {
+        setSelectedLeads(new Map());
+    }, [counsellorFilter]);
+
+    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.set(userId, { userId, name: vm.name });
+            return next;
+        });
+
+    const toggleAllLeads = (checked: boolean, selectableVms: LeadCardVM[]) =>
+        setSelectedLeads((prev) => {
+            const next = new Map(prev);
+            selectableVms.forEach((v) => {
+                if (!v.userId) return;
+                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
+                else next.delete(v.userId);
+            });
+            return next;
+        });
+
+    const handleBulkAssignSuccess = () => {
+        setSelectedLeads(new Map());
+        handleStatusUpdated();
+    };
+
+    // Select every lead matching the current filter (across all pages) — fetches
+    // all matching ids in one call, mirroring the paginated query's params.
+    const [selectAllLoading, setSelectAllLoading] = useState(false);
+    const selectAllAcrossPages = async () => {
+        if (!totalElements) return;
+        try {
+            setSelectAllLoading(true);
+            const res = await fetchRecentLeads({
+                institute_id: instituteId ?? '',
+                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                submitted_from_local: startOfDayIso(appliedRange.from),
+                submitted_to_local: endOfDayIso(appliedRange.to),
+                search_query: appliedSearch || undefined,
+                lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                lead_status_id: leadStatusId,
+                conversion_status_filter: conversionFilter,
+                sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                assigned_counselor_id:
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                        ? undefined
+                        : counsellorFilter,
+                is_unassigned: counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                source_type: sourceFilter || undefined,
+                custom_field_filters: customFieldFiltersPayload.length
+                    ? customFieldFiltersPayload
+                    : undefined,
+                page: 0,
+                size: totalElements,
+            });
+            const map = new Map<string, { userId: string; name: string }>();
+            (res.content ?? []).forEach((lead) => {
+                const uid = lead.user?.id || lead.user_id;
+                if (!uid) return;
+                map.set(uid, {
+                    userId: uid,
+                    name: lead.user?.full_name || lead.parent_name || uid,
+                });
+            });
+            setSelectedLeads(map);
+        } catch {
+            toast.error('Failed to select all leads');
+        } finally {
+            setSelectAllLoading(false);
+        }
+    };
+
     const toggleColumn = (id: string) =>
         setHiddenColumns((prev) => {
             const next = new Set(prev);
@@ -497,7 +604,7 @@ const RecentLeadsContent = () => {
         setSearchInput('');
         setAppliedSearch('');
         setTierFilter(ALL_TIERS_VALUE);
-        setLeadStatusFilter(ALL_ACTIVE_VALUE);
+        setLeadStatusFilter(ALL_STATUSES_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setSourceFilter('');
@@ -547,7 +654,7 @@ const RecentLeadsContent = () => {
         audienceId !== ALL_AUDIENCES_VALUE ||
         !!appliedSearch ||
         tierFilter !== ALL_TIERS_VALUE ||
-        leadStatusFilter !== ALL_ACTIVE_VALUE ||
+        leadStatusFilter !== ALL_STATUSES_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
         counsellorFilter !== ALL_COUNSELLORS_VALUE ||
         !!sourceFilter ||
@@ -563,12 +670,21 @@ const RecentLeadsContent = () => {
         const ids = Array.from(
             new Set(leads.map((l) => l.user?.id || l.user_id || '').filter(Boolean))
         ) as string[];
-        const [prof, nts] = await Promise.all([
+        const [prof, nts, jny] = await Promise.all([
             showOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
             showOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
+            showOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);
         const baseHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile', 'Audience'];
-        const tail = showOps ? ['Status', 'Counsellor', 'Activity & Notes', 'Notes Count'] : [];
+        const tail = showOps
+            ? [
+                  'Status',
+                  'Counsellor',
+                  'Activity & Notes',
+                  'Notes Count',
+                  'Lead journey (disposition & notes)',
+              ]
+            : [];
         const rows = leads.map((lead) => {
             const u = lead.user ?? {};
             const userId = u.id || lead.user_id || '';
@@ -621,7 +737,14 @@ const RecentLeadsContent = () => {
                     csvSafe(lead.lead_status ?? ''),
                     csvSafe(cName),
                     csvSafe(block),
-                    csvSafe(summary?.count ?? 0)
+                    csvSafe(summary?.count ?? 0),
+                    csvSafe(
+                        formatJourneyForExport(
+                            userId
+                                ? (jny as Record<string, JourneyEvent[]>)[userId]
+                                : undefined
+                        )
+                    )
                 );
             }
             return row.join(',');
@@ -658,7 +781,12 @@ const RecentLeadsContent = () => {
                     conversion_status_filter: conversionFilter,
                     sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                     assigned_counselor_id:
-                        counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
+                        counsellorFilter === ALL_COUNSELLORS_VALUE ||
+                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                            ? undefined
+                            : counsellorFilter,
+                    is_unassigned:
+                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
                     source_type: sourceFilter || undefined,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
@@ -701,7 +829,9 @@ const RecentLeadsContent = () => {
         });
     if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
         const cName =
-            counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected';
+            counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+                ? 'Unassigned'
+                : (counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected');
         chips.push({
             label: `Counsellor: ${cName}`,
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
@@ -768,11 +898,12 @@ const RecentLeadsContent = () => {
                     <Select value={leadStatusFilter} onValueChange={setLeadStatus}>
                         <SelectTrigger className="h-10 w-44">
                             <CheckCircle className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="Active leads" />
+                            <SelectValue placeholder="All leads" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value={ALL_ACTIVE_VALUE}>Active leads</SelectItem>
-                            <SelectItem value={ALL_STATUSES_VALUE}>All statuses</SelectItem>
+                            <SelectItem value={ALL_STATUSES_VALUE}>All leads</SelectItem>
+                            <SelectItem value={ALL_ACTIVE_VALUE}>Active (not enrolled)</SelectItem>
+                            <SelectItem value={ALL_CONVERTED_VALUE}>Enrolled / Converted</SelectItem>
                             {leadStatusCatalog.map((s) => (
                                 <SelectItem key={s.id} value={s.status_key}>
                                     {s.label}
@@ -800,6 +931,7 @@ const RecentLeadsContent = () => {
                             value={counsellorFilter}
                             onChange={setCounsellor}
                             allValue={ALL_COUNSELLORS_VALUE}
+                            unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
                             options={counsellorOptions}
                             isLoading={counsellorOptionsLoading}
                         />
@@ -999,6 +1131,43 @@ const RecentLeadsContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
+                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
+                    {isUnassignedView && selectedLeads.size > 0 && (
+                        <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+                            <span className="text-body font-medium text-primary-700">
+                                {selectedLeads.size} selected
+                            </span>
+                            <div className="flex gap-2">
+                                {selectedLeads.size < totalElements && (
+                                    <MyButton
+                                        buttonType="text"
+                                        scale="small"
+                                        disable={selectAllLoading}
+                                        onClick={selectAllAcrossPages}
+                                    >
+                                        {selectAllLoading
+                                            ? 'Selecting…'
+                                            : `Select all ${totalElements}`}
+                                    </MyButton>
+                                )}
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => setSelectedLeads(new Map())}
+                                >
+                                    Clear
+                                </MyButton>
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="small"
+                                    onClick={() => setBulkAssignOpen(true)}
+                                >
+                                    <UserPlus className="size-3.5" />
+                                    Assign counsellor
+                                </MyButton>
+                            </div>
+                        </div>
+                    )}
                     {error ? (
                         <LeadEmptyState
                             title="Couldn't load leads"
@@ -1016,6 +1185,10 @@ const RecentLeadsContent = () => {
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
+                            selectable={isUnassignedView}
+                            selectedIds={new Set(selectedLeads.keys())}
+                            onToggleRow={toggleLeadRow}
+                            onToggleAll={toggleAllLeads}
                             emptyState={
                                 <LeadEmptyState
                                     onClear={isFilterActive ? handleClearFilter : undefined}
@@ -1029,6 +1202,15 @@ const RecentLeadsContent = () => {
                     examType="EXAM"
                     isStudentList={false}
                     defaultLeadProfile
+                />
+
+                <BulkAssignCounsellorDialog
+                    open={bulkAssignOpen}
+                    onOpenChange={setBulkAssignOpen}
+                    instituteId={instituteId ?? ''}
+                    leads={Array.from(selectedLeads.values())}
+                    counsellorOptions={counsellorOptions}
+                    onSuccess={handleBulkAssignSuccess}
                 />
 
                 {noteTarget && (

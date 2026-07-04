@@ -26,6 +26,7 @@ import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallSpec;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +61,41 @@ public class AiCallService {
     private final UserLeadProfileRepository userLeadProfileRepository;
     private final AiCallResultRepository aiCallResultRepo;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Window in which a second AI dial for the same lead is treated as a duplicate of
+     * the first and skipped. Must stay below the smallest legitimate retry gap
+     * (retryGapMinutes, min 1 min = 60s) so real retries are never suppressed; the
+     * duplicate we're collapsing is placed milliseconds apart.
+     */
+    @org.springframework.beans.factory.annotation.Value("${aavtaar.dispatch.dedup-window-sec:30}")
+    private long dedupWindowSec;
+
+    /**
+     * Server-wide fallback daily AI-call cap per institute+provider, used when the
+     * institute hasn't set its own {@code maxCallsPerDay}. A finite default means a
+     * runaway campaign is bounded out of the box; 0 disables the fleet-wide cap.
+     */
+    @org.springframework.beans.factory.annotation.Value("${telephony.ai.max-calls-per-day-default:500}")
+    private int globalMaxCallsPerDay;
+
+    /**
+     * Striped per-lead locks so the dedup check + INITIATED insert are atomic for a
+     * given lead WITHIN this replica (the duplicate dispatch originates on one replica
+     * — same workflow run / scheduler tick / bulk pool). Bounded (no per-lead growth);
+     * the time-window check is the cross-replica backstop.
+     */
+    private final Object[] dispatchLocks = newLockStripes(64);
+
+    private static Object[] newLockStripes(int n) {
+        Object[] a = new Object[n];
+        for (int i = 0; i < n; i++) a[i] = new Object();
+        return a;
+    }
+
+    private Object lockFor(String key) {
+        return dispatchLocks[Math.floorMod(key.hashCode(), dispatchLocks.length)];
+    }
 
     /**
      * @Lazy field (not constructor) for the MOCK path only: AiCallService synthesizes a
@@ -134,24 +170,68 @@ public class AiCallService {
                     .build();
         }
 
-        String callLogId = UUID.randomUUID().toString();
-        TelephonyCallLog row = TelephonyCallLog.builder()
-                .id(callLogId)
-                .instituteId(req.getInstituteId())
-                .providerType(provider)
-                .responseId(req.getResponseId())
-                .subjectType(subjectType)
-                .subjectId(subjectId)
-                .userId(userId)
-                .counsellorUserId(counsellorUserId)
-                .direction(CallDirection.OUTBOUND.name())
-                .toNumber(phone)
-                .status(CallStatus.INITIATED.name())
-                .recordingFetchAttempts(0)
-                .recordingLogged(false)
-                .build();
-        row.markNew();
-        callLogRepo.save(row);
+        // Daily spend guardrail: bound the WHOLE institute's AI dials on this provider
+        // in a rolling 24h window. Every dial path (CALL_AI node, bulk campaign, manual
+        // click) funnels through here, so this one check covers all three. Real calls
+        // only — MOCK never leaves the box. Per-institute setting wins; else the
+        // server-wide default. Returns a distinct skip status the campaign loop can log.
+        if (!mock) {
+            int cap = settings.getMaxCallsPerDay() > 0 ? settings.getMaxCallsPerDay() : globalMaxCallsPerDay;
+            if (cap > 0) {
+                java.sql.Timestamp since = java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(24)));
+                long placed = callLogRepo.countOutboundSince(req.getInstituteId(), provider, since);
+                if (placed >= cap) {
+                    log.warn("AI call skipped: institute {} hit the daily cap of {} {} calls ({} in the last 24h)",
+                            req.getInstituteId(), cap, provider, placed);
+                    return AiCallResponseDTO.builder()
+                            .status("SKIPPED_DAILY_CAP")
+                            .dispatched(false)
+                            .providerMessage("Daily AI-call limit reached for this institute.")
+                            .build();
+                }
+            }
+        }
+
+        // De-duplicate a near-simultaneous double dispatch for the SAME lead. Aavtaar
+        // doesn't echo our correlation id, so two dials placed within milliseconds (the
+        // CALL_AI node entered twice / a bulk run + the node) become two real calls — one
+        // connects, the other gets BUSY — and two call-log rows. The per-lead lock makes
+        // the check+insert atomic in this replica; the time window keeps it from ever
+        // suppressing a legitimate retry (those are >= retryGapMinutes apart).
+        String dedupKey = req.getInstituteId() + ":" + userId + ":" + provider;
+        TelephonyCallLog row;
+        synchronized (lockFor(dedupKey)) {
+            java.sql.Timestamp since = java.sql.Timestamp.from(
+                    Instant.now().minusSeconds(Math.max(1, dedupWindowSec)));
+            if (callLogRepo.existsRecentByInstituteUserProvider(req.getInstituteId(), userId, provider, since)) {
+                log.info("AI call de-duped: a {} call for lead {} was just placed (within {}s) — skipping duplicate dispatch",
+                        provider, userId, dedupWindowSec);
+                return AiCallResponseDTO.builder()
+                        .status("SKIPPED_DUPLICATE")
+                        .dispatched(false)
+                        .providerMessage("A call for this lead was just placed — duplicate dispatch skipped.")
+                        .build();
+            }
+            String callLogId = UUID.randomUUID().toString();
+            row = TelephonyCallLog.builder()
+                    .id(callLogId)
+                    .instituteId(req.getInstituteId())
+                    .providerType(provider)
+                    .responseId(req.getResponseId())
+                    .subjectType(subjectType)
+                    .subjectId(subjectId)
+                    .userId(userId)
+                    .counsellorUserId(counsellorUserId)
+                    .direction(CallDirection.OUTBOUND.name())
+                    .toNumber(phone)
+                    .status(CallStatus.INITIATED.name())
+                    .recordingFetchAttempts(0)
+                    .recordingLogged(false)
+                    .build();
+            row.markNew();
+            callLogRepo.save(row); // auto-commits → visible to a concurrent duplicate's check
+        }
+        String callLogId = row.getId();
 
         // MOCK provider: don't dial. Fabricate a completed result (canned extracted Q&A) and
         // run it through the SAME outcome pipeline a real webhook would, so the full

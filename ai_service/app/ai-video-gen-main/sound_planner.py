@@ -29,11 +29,16 @@ from sound_catalog import SoundCatalog, load_catalog
 # every transition, the same chime on every reveal, etc.
 PALETTE_ROLES = [
     "transition_whoosh",
+    # Required by Rule D's riser-into-climax (marketing/bold) — without this
+    # entry the palette never carries the role and the riser silently drops.
+    "transition_riser",
     "impact",
     "ui_chime",
     "ui_click",
     "data_reveal",
     "ui_positive",
+    # Mapped by _ACTION_TO_ROLE (error/fail events) but was missing here.
+    "ui_negative",
 ]
 
 # Synonym map: bridges natural-language words in the script to
@@ -150,6 +155,7 @@ def plan_sounds(
     video_id: str = "",
     catalog: Optional[SoundCatalog] = None,
     script_text: str = "",
+    visual_style_mode: Optional[str] = None,
 ) -> None:
     """Mutate `entries` in place, adding `sound_cues` to each.
 
@@ -316,6 +322,22 @@ def plan_sounds(
 
         total_cues += len(cues)
 
+    # ── Rule D (2026-07): mode-gated transition stingers ──────────────
+    # The 2026-05 demolition removed ALL transition sound — the right call
+    # for lecture content, where a whoosh on every cut read as spam. But
+    # for marketing/bold videos the CUT IS the event: a tasteful stinger
+    # on the few hardest cuts (+ one riser into the climax) is what makes
+    # the edit feel produced. Strictly capped (≤3 whooshes + 1 riser per
+    # video), only on high-energy transition types, only in marketing/bold
+    # modes — educational stays exactly as silent as today.
+    if (visual_style_mode or "").strip().lower() in ("marketing", "bold"):
+        remaining_budget = max(0, max_per_video - total_cues)
+        if remaining_budget > 0:
+            n_stingers = _plan_marketing_transition_stingers(
+                ordered, shots_by_index, palette, budget=remaining_budget,
+            )
+            total_cues += n_stingers
+
     # Final pass: sort each entry's cues by t. Transition pre-rolls were
     # appended after their host entry's local cues were sorted, so the list
     # is no longer monotonic until we sort here.
@@ -363,6 +385,89 @@ def plan_sounds(
 
     # Log palette summary
     _log_palette(palette, total_cues, len(ordered))
+
+
+# Transition types energetic enough to earn a stinger in marketing mode.
+_STINGER_TRANSITIONS = frozenset({
+    "smash_cut", "whip_pan", "zoom_in", "zoom_out",
+    "slide_left", "slide_up", "circle_iris", "dip_to_black",
+})
+_MAX_STINGER_WHOOSHES = 3
+
+
+def _plan_marketing_transition_stingers(
+    ordered: List[Dict[str, Any]],
+    shots_by_index: Dict[int, Dict[str, Any]],
+    palette: Dict[str, Any],
+    *,
+    budget: int,
+) -> int:
+    """Rule D — emit a few high-value transition stingers for marketing/bold.
+
+    - ≤ `_MAX_STINGER_WHOOSHES` `transition_whoosh` cues, only at cuts whose
+      Director-declared `transition_in` is a high-energy type.
+    - ONE `transition_riser` pre-rolled at the end of the shot BEFORE the
+      video's climax (first `pacing_role=="hold"` or `intent_role=="moment"`).
+    Appends `_public_cue`-shaped cues directly onto the entries (mirrors the
+    main loop) and returns how many were added. Respects `budget`.
+    """
+    added = 0
+
+    # One riser into the climax.
+    if budget > 0:
+        climax_pos: Optional[int] = None
+        for pos, entry in enumerate(ordered):
+            shot = shots_by_index.get(int(entry.get("index", 0)), {})
+            if (str(shot.get("pacing_role") or "").lower() == "hold"
+                    or str(shot.get("intent_role") or "").lower() == "moment"):
+                climax_pos = pos
+                break
+        if climax_pos is not None and climax_pos > 0:
+            prev = ordered[climax_pos - 1]
+            prev_dur = max(
+                0.01, float(prev.get("end", 0.0)) - float(prev.get("start", 0.0))
+            )
+            if prev_dur >= 1.2:  # too short a shot can't host a riser tail
+                lead = min(1.6, prev_dur * 0.6)
+                cue = _cue_from_palette(
+                    palette, "transition_riser",
+                    int(prev.get("index", 0)), "stinger:riser_into_climax",
+                    t=max(0.0, prev_dur - lead), volume_mul=0.8,
+                    no_natural_offset=True,
+                )
+                if cue:
+                    prev["sound_cues"].append(_public_cue(cue))
+                    added += 1
+
+    # Whooshes on the hardest cuts (never the hook — start from entry 1).
+    whooshes = 0
+    for entry in ordered[1:]:
+        if whooshes >= _MAX_STINGER_WHOOSHES or added >= budget:
+            break
+        shot = shots_by_index.get(int(entry.get("index", 0)), {})
+        trans = str(shot.get("transition_in") or "").strip().lower()
+        if trans not in _STINGER_TRANSITIONS:
+            continue
+        cue = _cue_from_palette(
+            palette, "transition_whoosh",
+            int(entry.get("index", 0)), f"stinger:{trans}",
+            t=0.0, volume_mul=0.75, no_natural_offset=True,
+        )
+        if cue:
+            entry["sound_cues"].append(_public_cue(cue))
+            whooshes += 1
+            added += 1
+
+    if added:
+        try:
+            import logging as _lg
+            _lg.getLogger(__name__).info(
+                "[sound] marketing stingers: %d added (%d whoosh, %d riser)",
+                added, whooshes, added - whooshes,
+            )
+        except Exception:
+            pass
+    return added
 
 
 def _attach_cue_context(

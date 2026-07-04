@@ -203,3 +203,45 @@ export interface ExecutionSummary {
 }
 
 export type ExecutionLogStatus = 'RUNNING' | 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'SKIPPED';
+
+export type WorkflowExecutionStatus =
+    | 'PENDING'
+    | 'PROCESSING'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'PAUSED';
+
+/** One node/step within an enrollment workflow run (tick/cross checklist item). */
+export interface EnrollmentWorkflowStep {
+    /** Absent for not-yet-run (pending) steps sourced from the workflow definition. */
+    log_id?: string | null;
+    node_template_id: string;
+    node_name: string;
+    node_type: string;
+    /** null => the step has not run yet (pending), e.g. for a workflow that will fire on enrollment. */
+    status: ExecutionLogStatus | null;
+    error_message: string | null;
+    error_type: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    execution_time_ms: number | null;
+}
+
+/**
+ * An enrollment workflow execution (e.g. a LEARNER_BATCH_ENROLLMENT run) attached
+ * to a learner enrollment / a course's package sessions, with its ordered steps.
+ * Backed by GET /admin-core-service/workflow/enrollment-runs.
+ */
+export interface EnrollmentWorkflowRun {
+    /** Absent for a PENDING run (configured to fire on enrollment but not yet executed). */
+    execution_id?: string | null;
+    workflow_id: string | null;
+    workflow_name: string | null;
+    event_name: string | null;
+    event_id: string | null;
+    status: WorkflowExecutionStatus;
+    error_message: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    steps: EnrollmentWorkflowStep[];
+}

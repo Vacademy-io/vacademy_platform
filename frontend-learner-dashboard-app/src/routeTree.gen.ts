@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserProfileIndexRouteImport } from './routes/user-profile/index'
 import { Route as TermsAndConditionsIndexRouteImport } from './routes/terms-and-conditions/index'
+import { Route as SubOrgRegistrationIndexRouteImport } from './routes/sub-org-registration/index'
 import { Route as SubOrgLearnersIndexRouteImport } from './routes/sub-org-learners/index'
 import { Route as StudyLibraryIndexRouteImport } from './routes/study-library/index'
 import { Route as SignupIndexRouteImport } from './routes/signup/index'
@@ -27,6 +28,7 @@ import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as LiveClassGuestIndexRouteImport } from './routes/live-class-guest/index'
 import { Route as LearnerInvitationResponseIndexRouteImport } from './routes/learner-invitation-response/index'
+import { Route as KycCompleteIndexRouteImport } from './routes/kyc-complete/index'
 import { Route as InstituteSelectionIndexRouteImport } from './routes/institute-selection/index'
 import { Route as EnquiryResponseIndexRouteImport } from './routes/enquiry-response/index'
 import { Route as DeleteUserIndexRouteImport } from './routes/delete-user/index'
@@ -63,6 +65,7 @@ import { Route as LoginForgotPasswordIndexRouteImport } from './routes/login/for
 import { Route as LiveClassGuestWaitingRoomIndexRouteImport } from './routes/live-class-guest/waiting-room/index'
 import { Route as LiveClassGuestEmbedIndexRouteImport } from './routes/live-class-guest/embed/index'
 import { Route as LearningCentreAttendanceIndexRouteImport } from './routes/learning-centre/attendance/index'
+import { Route as LeaderboardPackageSessionIdIndexRouteImport } from './routes/leaderboard/$packageSessionId/index'
 import { Route as HomeworkReportsIndexRouteImport } from './routes/homework/reports/index'
 import { Route as HomeworkListIndexRouteImport } from './routes/homework/list/index'
 import { Route as DashboardNotificationsIndexRouteImport } from './routes/dashboard/notifications/index'
@@ -80,6 +83,7 @@ import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
+import { Route as LeaderboardInstituteInstituteIdIndexRouteImport } from './routes/leaderboard/institute/$instituteId/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
 import { Route as AssessmentReportsComparisonIndexRouteImport } from './routes/assessment/reports/comparison/index'
 import { Route as AssessmentReportsAiReportIndexRouteImport } from './routes/assessment/reports/ai-report/index'
@@ -101,6 +105,11 @@ const UserProfileIndexRoute = UserProfileIndexRouteImport.update({
 const TermsAndConditionsIndexRoute = TermsAndConditionsIndexRouteImport.update({
   id: '/terms-and-conditions/',
   path: '/terms-and-conditions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SubOrgRegistrationIndexRoute = SubOrgRegistrationIndexRouteImport.update({
+  id: '/sub-org-registration/',
+  path: '/sub-org-registration/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SubOrgLearnersIndexRoute = SubOrgLearnersIndexRouteImport.update({
@@ -184,6 +193,11 @@ const LearnerInvitationResponseIndexRoute =
     path: '/learner-invitation-response/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const KycCompleteIndexRoute = KycCompleteIndexRouteImport.update({
+  id: '/kyc-complete/',
+  path: '/kyc-complete/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InstituteSelectionIndexRoute = InstituteSelectionIndexRouteImport.update({
   id: '/institute-selection/',
   path: '/institute-selection/',
@@ -373,6 +387,12 @@ const LearningCentreAttendanceIndexRoute =
     path: '/learning-centre/attendance/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LeaderboardPackageSessionIdIndexRoute =
+  LeaderboardPackageSessionIdIndexRouteImport.update({
+    id: '/leaderboard/$packageSessionId/',
+    path: '/leaderboard/$packageSessionId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const HomeworkReportsIndexRoute = HomeworkReportsIndexRouteImport.update({
   id: '/homework/reports/',
   path: '/homework/reports/',
@@ -468,6 +488,12 @@ const MMediaIdPhoneNumberIndexRoute =
     path: '/m/$mediaId/$phoneNumber/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const LeaderboardInstituteInstituteIdIndexRoute =
+  LeaderboardInstituteInstituteIdIndexRouteImport.update({
+    id: '/leaderboard/institute/$instituteId/',
+    path: '/leaderboard/institute/$instituteId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssessmentReportsStudentReportIndexRoute =
   AssessmentReportsStudentReportIndexRouteImport.update({
     id: '/assessment/reports/student-report/',
@@ -561,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/delete-user': typeof DeleteUserIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
+  '/kyc-complete': typeof KycCompleteIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
@@ -577,6 +604,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -589,6 +617,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -616,6 +645,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -645,6 +675,7 @@ export interface FileRoutesByTo {
   '/delete-user': typeof DeleteUserIndexRoute
   '/enquiry-response': typeof EnquiryResponseIndexRoute
   '/institute-selection': typeof InstituteSelectionIndexRoute
+  '/kyc-complete': typeof KycCompleteIndexRoute
   '/learner-invitation-response': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest': typeof LiveClassGuestIndexRoute
   '/login': typeof LoginIndexRoute
@@ -661,6 +692,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupIndexRoute
   '/study-library': typeof StudyLibraryIndexRoute
   '/sub-org-learners': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions': typeof TermsAndConditionsIndexRoute
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -673,6 +705,7 @@ export interface FileRoutesByTo {
   '/dashboard/notifications': typeof DashboardNotificationsIndexRoute
   '/homework/list': typeof HomeworkListIndexRoute
   '/homework/reports': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -700,6 +733,7 @@ export interface FileRoutesByTo {
   '/assessment/reports/ai-report': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -731,6 +765,7 @@ export interface FileRoutesById {
   '/delete-user/': typeof DeleteUserIndexRoute
   '/enquiry-response/': typeof EnquiryResponseIndexRoute
   '/institute-selection/': typeof InstituteSelectionIndexRoute
+  '/kyc-complete/': typeof KycCompleteIndexRoute
   '/learner-invitation-response/': typeof LearnerInvitationResponseIndexRoute
   '/live-class-guest/': typeof LiveClassGuestIndexRoute
   '/login/': typeof LoginIndexRoute
@@ -747,6 +782,7 @@ export interface FileRoutesById {
   '/signup/': typeof SignupIndexRoute
   '/study-library/': typeof StudyLibraryIndexRoute
   '/sub-org-learners/': typeof SubOrgLearnersIndexRoute
+  '/sub-org-registration/': typeof SubOrgRegistrationIndexRoute
   '/terms-and-conditions/': typeof TermsAndConditionsIndexRoute
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
@@ -759,6 +795,7 @@ export interface FileRoutesById {
   '/dashboard/notifications/': typeof DashboardNotificationsIndexRoute
   '/homework/list/': typeof HomeworkListIndexRoute
   '/homework/reports/': typeof HomeworkReportsIndexRoute
+  '/leaderboard/$packageSessionId/': typeof LeaderboardPackageSessionIdIndexRoute
   '/learning-centre/attendance/': typeof LearningCentreAttendanceIndexRoute
   '/live-class-guest/embed/': typeof LiveClassGuestEmbedIndexRoute
   '/live-class-guest/waiting-room/': typeof LiveClassGuestWaitingRoomIndexRoute
@@ -786,6 +823,7 @@ export interface FileRoutesById {
   '/assessment/reports/ai-report/': typeof AssessmentReportsAiReportIndexRoute
   '/assessment/reports/comparison/': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
+  '/leaderboard/institute/$instituteId/': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
   '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -818,6 +856,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/enquiry-response'
     | '/institute-selection'
+    | '/kyc-complete'
     | '/learner-invitation-response'
     | '/live-class-guest'
     | '/login'
@@ -834,6 +873,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
+    | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -846,6 +886,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/leaderboard/$packageSessionId'
     | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
@@ -873,6 +914,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report'
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
+    | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -902,6 +944,7 @@ export interface FileRouteTypes {
     | '/delete-user'
     | '/enquiry-response'
     | '/institute-selection'
+    | '/kyc-complete'
     | '/learner-invitation-response'
     | '/live-class-guest'
     | '/login'
@@ -918,6 +961,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/study-library'
     | '/sub-org-learners'
+    | '/sub-org-registration'
     | '/terms-and-conditions'
     | '/user-profile'
     | '/login/oauth/learner'
@@ -930,6 +974,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications'
     | '/homework/list'
     | '/homework/reports'
+    | '/leaderboard/$packageSessionId'
     | '/learning-centre/attendance'
     | '/live-class-guest/embed'
     | '/live-class-guest/waiting-room'
@@ -957,6 +1002,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report'
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
+    | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
@@ -987,6 +1033,7 @@ export interface FileRouteTypes {
     | '/delete-user/'
     | '/enquiry-response/'
     | '/institute-selection/'
+    | '/kyc-complete/'
     | '/learner-invitation-response/'
     | '/live-class-guest/'
     | '/login/'
@@ -1003,6 +1050,7 @@ export interface FileRouteTypes {
     | '/signup/'
     | '/study-library/'
     | '/sub-org-learners/'
+    | '/sub-org-registration/'
     | '/terms-and-conditions/'
     | '/user-profile/'
     | '/login/oauth/learner'
@@ -1015,6 +1063,7 @@ export interface FileRouteTypes {
     | '/dashboard/notifications/'
     | '/homework/list/'
     | '/homework/reports/'
+    | '/leaderboard/$packageSessionId/'
     | '/learning-centre/attendance/'
     | '/live-class-guest/embed/'
     | '/live-class-guest/waiting-room/'
@@ -1042,6 +1091,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/ai-report/'
     | '/assessment/reports/comparison/'
     | '/assessment/reports/student-report/'
+    | '/leaderboard/institute/$instituteId/'
     | '/m/$mediaId/$phoneNumber/'
     | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
@@ -1073,6 +1123,7 @@ export interface RootRouteChildren {
   DeleteUserIndexRoute: typeof DeleteUserIndexRoute
   EnquiryResponseIndexRoute: typeof EnquiryResponseIndexRoute
   InstituteSelectionIndexRoute: typeof InstituteSelectionIndexRoute
+  KycCompleteIndexRoute: typeof KycCompleteIndexRoute
   LearnerInvitationResponseIndexRoute: typeof LearnerInvitationResponseIndexRoute
   LiveClassGuestIndexRoute: typeof LiveClassGuestIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
@@ -1089,6 +1140,7 @@ export interface RootRouteChildren {
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   SubOrgLearnersIndexRoute: typeof SubOrgLearnersIndexRoute
+  SubOrgRegistrationIndexRoute: typeof SubOrgRegistrationIndexRoute
   TermsAndConditionsIndexRoute: typeof TermsAndConditionsIndexRoute
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
@@ -1101,6 +1153,7 @@ export interface RootRouteChildren {
   DashboardNotificationsIndexRoute: typeof DashboardNotificationsIndexRoute
   HomeworkListIndexRoute: typeof HomeworkListIndexRoute
   HomeworkReportsIndexRoute: typeof HomeworkReportsIndexRoute
+  LeaderboardPackageSessionIdIndexRoute: typeof LeaderboardPackageSessionIdIndexRoute
   LearningCentreAttendanceIndexRoute: typeof LearningCentreAttendanceIndexRoute
   LiveClassGuestEmbedIndexRoute: typeof LiveClassGuestEmbedIndexRoute
   LiveClassGuestWaitingRoomIndexRoute: typeof LiveClassGuestWaitingRoomIndexRoute
@@ -1127,6 +1180,7 @@ export interface RootRouteChildren {
   AssessmentReportsAiReportIndexRoute: typeof AssessmentReportsAiReportIndexRoute
   AssessmentReportsComparisonIndexRoute: typeof AssessmentReportsComparisonIndexRoute
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
+  LeaderboardInstituteInstituteIdIndexRoute: typeof LeaderboardInstituteInstituteIdIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
   PayInvoiceInvoiceIdIndexRoute: typeof PayInvoiceInvoiceIdIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
@@ -1156,6 +1210,13 @@ declare module '@tanstack/react-router' {
       path: '/terms-and-conditions'
       fullPath: '/terms-and-conditions'
       preLoaderRoute: typeof TermsAndConditionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sub-org-registration/': {
+      id: '/sub-org-registration/'
+      path: '/sub-org-registration'
+      fullPath: '/sub-org-registration'
+      preLoaderRoute: typeof SubOrgRegistrationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sub-org-learners/': {
@@ -1268,6 +1329,13 @@ declare module '@tanstack/react-router' {
       path: '/learner-invitation-response'
       fullPath: '/learner-invitation-response'
       preLoaderRoute: typeof LearnerInvitationResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kyc-complete/': {
+      id: '/kyc-complete/'
+      path: '/kyc-complete'
+      fullPath: '/kyc-complete'
+      preLoaderRoute: typeof KycCompleteIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/institute-selection/': {
@@ -1522,6 +1590,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearningCentreAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/leaderboard/$packageSessionId/': {
+      id: '/leaderboard/$packageSessionId/'
+      path: '/leaderboard/$packageSessionId'
+      fullPath: '/leaderboard/$packageSessionId'
+      preLoaderRoute: typeof LeaderboardPackageSessionIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/homework/reports/': {
       id: '/homework/reports/'
       path: '/homework/reports'
@@ -1641,6 +1716,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MMediaIdPhoneNumberIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/leaderboard/institute/$instituteId/': {
+      id: '/leaderboard/institute/$instituteId/'
+      path: '/leaderboard/institute/$instituteId'
+      fullPath: '/leaderboard/institute/$instituteId'
+      preLoaderRoute: typeof LeaderboardInstituteInstituteIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/assessment/reports/student-report/': {
       id: '/assessment/reports/student-report/'
       path: '/assessment/reports/student-report'
@@ -1756,6 +1838,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeleteUserIndexRoute: DeleteUserIndexRoute,
   EnquiryResponseIndexRoute: EnquiryResponseIndexRoute,
   InstituteSelectionIndexRoute: InstituteSelectionIndexRoute,
+  KycCompleteIndexRoute: KycCompleteIndexRoute,
   LearnerInvitationResponseIndexRoute: LearnerInvitationResponseIndexRoute,
   LiveClassGuestIndexRoute: LiveClassGuestIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
@@ -1772,6 +1855,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   SubOrgLearnersIndexRoute: SubOrgLearnersIndexRoute,
+  SubOrgRegistrationIndexRoute: SubOrgRegistrationIndexRoute,
   TermsAndConditionsIndexRoute: TermsAndConditionsIndexRoute,
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
@@ -1784,6 +1868,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardNotificationsIndexRoute: DashboardNotificationsIndexRoute,
   HomeworkListIndexRoute: HomeworkListIndexRoute,
   HomeworkReportsIndexRoute: HomeworkReportsIndexRoute,
+  LeaderboardPackageSessionIdIndexRoute: LeaderboardPackageSessionIdIndexRoute,
   LearningCentreAttendanceIndexRoute: LearningCentreAttendanceIndexRoute,
   LiveClassGuestEmbedIndexRoute: LiveClassGuestEmbedIndexRoute,
   LiveClassGuestWaitingRoomIndexRoute: LiveClassGuestWaitingRoomIndexRoute,
@@ -1814,6 +1899,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentReportsComparisonIndexRoute: AssessmentReportsComparisonIndexRoute,
   AssessmentReportsStudentReportIndexRoute:
     AssessmentReportsStudentReportIndexRoute,
+  LeaderboardInstituteInstituteIdIndexRoute:
+    LeaderboardInstituteInstituteIdIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,
   PayInvoiceInvoiceIdIndexRoute: PayInvoiceInvoiceIdIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:

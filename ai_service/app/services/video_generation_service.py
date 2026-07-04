@@ -276,7 +276,560 @@ class VideoGenerationService:
             nltk.download('cmudict', quiet=True)
         except Exception as e:
             logger.warning(f"[VideoGenService] Failed to pre-download NLTK data: {e}. Will download on first use.")
-    
+
+    # ── Assist mode (conversational decision gates) ──────────────────
+    # Phase 0 handles the SCRIPT-boundary gates (shot_plan, narration,
+    # creative_concept) entirely at this orchestration layer, reusing the
+    # existing "stop at SCRIPT" mechanism that review mode already uses. No
+    # surgery into automation_pipeline.py is required: the gate reads the
+    # shot_plan.json / script.txt the pipeline already wrote to S3, and the
+    # /decision endpoint overwrites those same artifacts (the script.txt-
+    # overwrite trick, generalised) so the resume leg picks up the user's edits.
+    # The mid-HTML visual_casting / shot_look gates are a later phase and are
+    # ignored here when present in enabled_gates.
+
+    def _decision_gates(self):
+        """Lazy-import the pure decision-gate framework from ai-video-gen-main.
+
+        Same sys.path trick the pipeline import uses — the module lives next to
+        automation_pipeline.py so the pipeline can import it directly too.
+        """
+        import sys as _sys
+        root = str(self.video_gen_root)
+        if root not in _sys.path:
+            _sys.path.insert(0, root)
+        import decision_gates as _dg  # type: ignore
+        return _dg
+
+    def _load_assist_state(self, video_record, assist_mode, assist_gates, assist_granularity):
+        """Read the persisted assist block, or build a fresh one on the first leg."""
+        dg = self._decision_gates()
+        existing = None
+        if video_record is not None:
+            meta = getattr(video_record, "extra_metadata", None) or {}
+            if isinstance(meta, dict):
+                existing = meta.get("assist")
+        if isinstance(existing, dict) and "enabled" in existing:
+            return dict(existing)
+        return dg.make_assist_state(bool(assist_mode), assist_gates, assist_granularity or "per_decision")
+
+    def _next_script_boundary_gate(self, assist, start_stage_idx):
+        """First enabled+unanswered SCRIPT-boundary gate, and whether SCRIPT must run.
+
+        Returns ``(gate_type | None, need_script_run)``. ``need_script_run`` is
+        True on a fresh run (the SCRIPT stage hasn't produced its artifacts yet);
+        on a resume leg where SCRIPT is already complete the artifacts exist in S3
+        and the gate is presented without running any stage.
+        """
+        dg = self._decision_gates()
+        if not assist or not assist.get("enabled"):
+            return None, False
+        script_idx = self.STAGES.index("SCRIPT")
+        for gate in dg.SCRIPT_BOUNDARY_GATES:
+            if not dg.is_gate_enabled(assist, gate):
+                continue
+            if dg.find_recorded_answer(assist, gate, None) is not None:
+                continue
+            return gate, (start_stage_idx <= script_idx)
+        return None, False
+
+    def _skip_empty_asset_gate(self, video_id, assist, gate_type):
+        """ASSET_REQUEST presents only when the planner actually asked for
+        something. With an empty ask list, auto-answer the gate and advance to
+        the next unanswered script-boundary gate (or None). Any other gate
+        passes through untouched."""
+        dg = self._decision_gates()
+        if gate_type != dg.GateType.ASSET_REQUEST.value:
+            return gate_type
+        plan = self._download_artifact_json(
+            video_id,
+            f"ai-videos/{video_id}/script/shot_plan.json",
+            f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        ) or {}
+        if plan.get("asset_requests"):
+            return gate_type
+        dg.record_answer(
+            assist,
+            decision_id=f"auto_{dg.GateType.ASSET_REQUEST.value}_{video_id}",
+            gate_type=dg.GateType.ASSET_REQUEST.value,
+            mode="auto", answer={},
+        )
+        try:
+            self.repository.update_assist_state(video_id, assist)
+        except Exception:
+            pass
+        nxt, _ = self._next_script_boundary_gate(assist, self.STAGES.index("SCRIPT") + 1)
+        return nxt
+
+    def _download_artifact_text(self, video_id, *candidate_keys):
+        """Download the first existing S3 artifact among the keys; return text or None."""
+        from ..config import get_settings as _gs
+        import tempfile as _tmp
+        _s = _gs()
+        bucket = _s.aws_bucket_name or _s.aws_s3_public_bucket
+        for key in candidate_keys:
+            url = f"https://{bucket}.s3.amazonaws.com/{key}"
+            tmp = Path(_tmp.gettempdir()) / f"assist_{video_id}_{Path(key).name}"
+            try:
+                if self.s3_service.download_file(url, tmp, expected_missing=True):
+                    text = tmp.read_text(encoding="utf-8")
+                    try:
+                        tmp.unlink()
+                    except Exception:
+                        pass
+                    return text
+            except Exception:
+                continue
+        return None
+
+    def _download_artifact_json(self, video_id, *candidate_keys):
+        text = self._download_artifact_text(video_id, *candidate_keys)
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except Exception:
+            return None
+
+    async def _present_script_boundary_gate(
+        self, video_id, institute_id, assist, gate_type, revision_note=None,
+    ):
+        """Build + persist + emit a SCRIPT-boundary decision; pause the leg.
+
+        Reads the shot plan / script the pipeline already wrote to S3, builds the
+        gate's ``decision_required`` payload, flips the video to AWAITING_INPUT,
+        and yields the event. The leg then ends — the user answers via /decision.
+        ``revision_note`` marks a re-presentation after freeform steering was
+        applied — the card tells the user this is the revised draft.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        dg = self._decision_gates()
+        shot_plan = self._download_artifact_json(
+            video_id,
+            f"ai-videos/{video_id}/script/shot_plan.json",
+            f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        ) or {}
+        shots = shot_plan.get("shots") if isinstance(shot_plan, dict) else None
+        shots = shots or []
+
+        if gate_type == dg.GateType.SHOT_PLAN.value:
+            decision = dg.build_shot_plan_decision(video_id, shots)
+        elif gate_type == dg.GateType.NARRATION.value:
+            per_shot = [
+                {
+                    "shot_index": (s.get("shot_index") if isinstance(s, dict) else None) or i,
+                    "narration_text": (s.get("narration_text") if isinstance(s, dict) else "") or "",
+                }
+                for i, s in enumerate(shots)
+            ]
+            full_script = self._download_artifact_text(
+                video_id, f"ai-videos/{video_id}/script/script.txt"
+            ) or dg.narration_full_script_from_shots(shots)
+            decision = dg.build_narration_decision(video_id, per_shot, full_script)
+            # Hook variants — 3 openings to choose from (the draft + 2 labeled
+            # alternates). Skipped on a steering re-present to keep focus on
+            # the revised draft. Best-effort; absent on any failure.
+            if not revision_note:
+                _hooks = self._generate_hook_variants(video_id, shots)
+                if _hooks:
+                    decision["payload"]["hook_variants"] = _hooks
+        elif gate_type == dg.GateType.ASSET_REQUEST.value:
+            _reqs = shot_plan.get("asset_requests") if isinstance(shot_plan, dict) else []
+            decision = dg.build_asset_request_decision(video_id, _reqs or [])
+        else:  # creative_concept
+            concept = shot_plan.get("creative_concept") if isinstance(shot_plan, dict) else {}
+            decision = dg.build_creative_concept_decision(video_id, concept or {})
+            # Direction alternatives — the single biggest "choose, don't just
+            # approve" upgrade: 2 genuinely different directions beside the
+            # draft. Picking one flows through the existing concept-edit path.
+            if not revision_note:
+                _alts = self._generate_concept_alternatives(video_id, concept or {})
+                if _alts:
+                    decision["payload"]["alternatives"] = _alts
+
+        if revision_note:
+            decision["revision_note"] = str(revision_note)[:300]
+            decision["prompt"] = "Revised per your note — review the update. " + str(
+                decision.get("prompt") or ""
+            )
+
+        dg.set_pending(assist, decision)
+        try:
+            self.repository.update_assist_state(
+                video_id, assist, status="AWAITING_INPUT", current_stage="SCRIPT"
+            )
+        except Exception as exc:
+            logger.error(f"[Assist] failed to persist pending decision for {video_id}: {exc}")
+        logger.info(
+            f"[Assist] paused {video_id} at gate={gate_type} "
+            f"decision_id={decision.get('decision_id')}"
+        )
+        yield {"type": "decision_required", **decision}
+
+    async def _apply_freeform_steering(self, video_id, gate_type, note):
+        """Revise the SCRIPT-stage artifacts per a freeform steering note.
+
+        This is what makes the assist chat's free-text box REAL: 'make it
+        punchier' re-runs the stage's LLM against the existing draft with the
+        note, overwrites shot_plan.json (+ derived script.txt), and the caller
+        re-presents the same gate with the revised draft. Best-effort — on any
+        failure the gate is re-presented unchanged with an honest message.
+        Yields progress events for the SSE stream.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        dg = self._decision_gates()  # also puts ai-video-gen-main on sys.path
+        yield {
+            "type": "sub_stage", "sub_stage": "assist_revision",
+            "message": "Revising the draft per your note…", "video_id": video_id,
+        }
+        try:
+            plan = self._download_artifact_json(
+                video_id,
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ) or {}
+            if not (isinstance(plan.get("shots"), list) and plan["shots"]):
+                raise RuntimeError("shot_plan.json missing or has no shots")
+
+            from ..config import get_settings as _gs
+            _settings = _gs()
+            _api_key = _settings.openrouter_api_key or ""
+            if not _api_key:
+                raise RuntimeError("no OpenRouter API key configured")
+            from automation_pipeline import OpenRouterClient  # sys.path set above
+            client = OpenRouterClient(
+                api_key=_api_key, default_model="google/gemini-3-flash-preview"
+            )
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = getattr(rec, "prompt", None)
+
+            if gate_type == dg.GateType.NARRATION.value:
+                from narration_writer import write_narration
+                write_narration(
+                    shot_plan=plan,
+                    llm_chat=client.chat,
+                    regen_note=(
+                        "URGENT REVISION — the user reviewed this narration and asked:\n"
+                        f"\"{note}\"\n"
+                        "Revise the narration to satisfy the note. Keep everything that "
+                        "already works — change what the note names plus whatever each "
+                        "fix forces."
+                    ),
+                    source_request=source_request,
+                )
+            elif gate_type == dg.GateType.SHOT_PLAN.value:
+                plan = self._revise_shot_plan_with_note(client, plan, note)
+            else:  # creative_concept
+                revised = self._revise_concept_with_note(
+                    client, plan.get("creative_concept") or {}, note, source_request
+                )
+                if revised:
+                    plan["creative_concept"] = revised
+
+            body = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+            for _k in (
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ):
+                self.s3_service.upload_file_content(
+                    content=body, filename="shot_plan.json", s3_key=_k,
+                    content_type="application/json",
+                )
+            # Keep the derived script.txt in lockstep (narration gate reads it
+            # as the full_script fallback; downstream stages may too).
+            if gate_type in (dg.GateType.NARRATION.value, dg.GateType.SHOT_PLAN.value):
+                try:
+                    _script_text = dg.narration_full_script_from_shots(plan["shots"])
+                    if _script_text.strip():
+                        self.s3_service.upload_file_content(
+                            content=_script_text.encode("utf-8"),
+                            filename="script.txt",
+                            s3_key=f"ai-videos/{video_id}/script/script.txt",
+                            content_type="text/plain",
+                        )
+                except Exception:
+                    pass
+            logger.info(
+                f"[Assist] steering applied for {video_id} gate={gate_type}: {note[:80]!r}"
+            )
+            yield {
+                "type": "sub_stage", "sub_stage": "assist_revision_done",
+                "message": "Draft revised — review the update.", "video_id": video_id,
+            }
+        except Exception as exc:
+            logger.error(
+                f"[Assist] steering revision failed for {video_id} gate={gate_type}: {exc}",
+                exc_info=True,
+            )
+            yield {
+                "type": "sub_stage", "sub_stage": "assist_revision_failed",
+                "message": (
+                    "Couldn't apply your note automatically — showing the current "
+                    "draft. You can edit it directly instead."
+                ),
+                "video_id": video_id,
+            }
+
+    def _revise_shot_plan_with_note(self, client, plan, note):
+        """One LLM call: revise the existing shot plan per the user's note.
+
+        A revision, not a from-scratch replan — the model receives the current
+        plan and must preserve schema + everything the note doesn't touch.
+        """
+        payload = {
+            k: plan.get(k)
+            for k in ("creative_concept", "shots")
+            if plan.get(k) is not None
+        }
+        system = (
+            "You are the ShotPlanner revising an EXISTING shot plan per a user's note. "
+            "Output the FULL revised JSON object with the same keys and schema you "
+            "received (`creative_concept` and `shots` — keep every per-shot field: "
+            "shot_index, shot_type, intent_role, duration_estimate_s, narration_brief, "
+            "narration_text, transition_in, background_treatment, pacing_role, "
+            "audio_policy, image_prompt / video_query where present). Change ONLY what "
+            "the note requires plus whatever each change forces — if you merge, add, "
+            "or reorder shots, renumber shot_index 0..N-1 sequentially and keep "
+            "narration_text coherent across the cut. Keep total duration within ±5% "
+            "of the original. Output raw JSON only — no markdown fences."
+        )
+        user = (
+            "EXISTING PLAN:\n" + json.dumps(payload, ensure_ascii=False)
+            + "\n\nUSER NOTE:\n" + str(note)
+            + "\n\nOutput the full revised JSON now."
+        )
+        text, _usage = client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.4, max_tokens=16000, response_format={"type": "json_object"},
+        )
+        s, e = text.find("{"), text.rfind("}")
+        if s < 0 or e <= s:
+            raise RuntimeError("shot-plan revision returned no JSON")
+        revised = json.loads(text[s:e + 1])
+        if not (isinstance(revised, dict) and isinstance(revised.get("shots"), list) and revised["shots"]):
+            raise RuntimeError("shot-plan revision returned no shots")
+        plan["shots"] = revised["shots"]
+        if isinstance(revised.get("creative_concept"), dict) and revised["creative_concept"]:
+            plan["creative_concept"] = revised["creative_concept"]
+        return plan
+
+    def _revise_concept_with_note(self, client, concept, note, source_request):
+        """One LLM call: revise the creative concept fields per the user's note."""
+        system = (
+            "You revise a video's creative concept per a user's note. Output ONLY a "
+            "JSON object with these keys: controlling_idea, tonal_register, "
+            "emotional_arc, visual_metaphor, signature_device. One concise line per "
+            "value. Keep whatever the note doesn't ask to change. No markdown fences."
+        )
+        user = (
+            "CURRENT CONCEPT:\n" + json.dumps(concept or {}, ensure_ascii=False)
+            + "\n\nSOURCE REQUEST:\n" + str(source_request or "")[:800]
+            + "\n\nUSER NOTE:\n" + str(note)
+        )
+        text, _usage = client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.5, max_tokens=1000, response_format={"type": "json_object"},
+        )
+        s, e = text.find("{"), text.rfind("}")
+        if s < 0 or e <= s:
+            raise RuntimeError("concept revision returned no JSON")
+        revised = json.loads(text[s:e + 1])
+        if not isinstance(revised, dict):
+            raise RuntimeError("concept revision returned non-object")
+        merged = dict(concept or {})
+        for k in (
+            "controlling_idea", "tonal_register", "emotional_arc",
+            "visual_metaphor", "signature_device",
+        ):
+            v = revised.get(k)
+            if v not in (None, ""):
+                merged[k] = str(v)
+        return merged
+
+    def _assist_llm_client(self):
+        """Cheap-model OpenRouter client for assist-side enrichment/revision
+        calls (concept alternatives, hook variants, steering). Returns None
+        when no API key is configured — callers degrade gracefully."""
+        from ..config import get_settings as _gs
+        _settings = _gs()
+        _api_key = _settings.openrouter_api_key or ""
+        if not _api_key:
+            return None
+        self._decision_gates()  # ensures ai-video-gen-main on sys.path
+        from automation_pipeline import OpenRouterClient
+        return OpenRouterClient(
+            api_key=_api_key, default_model="google/gemini-3-flash-preview"
+        )
+
+    def _generate_concept_alternatives(self, video_id, concept):
+        """2 contrasting creative directions beside the draft (one LLM call).
+
+        Returns [{controlling_idea, tonal_register, emotional_arc,
+        visual_metaphor, signature_device, why_this_works}, ...] or [] on any
+        failure. The FE shows them as selectable direction cards; picking one
+        submits through the existing concept-edit write-back.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        try:
+            client = self._assist_llm_client()
+            if client is None:
+                return []
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = str(getattr(rec, "prompt", None) or "")[:800]
+            system = (
+                "You are a creative director proposing ALTERNATIVE directions for a video. "
+                "Given the current concept and the source request, output ONLY a JSON object "
+                '{"alternatives": [<2 items>]} where each item has: controlling_idea, '
+                "tonal_register (one of: ad, hype, explainer, tutorial, documentary, story, news), "
+                "emotional_arc, visual_metaphor, signature_device, why_this_works (one line selling "
+                "the direction). The two alternatives must be GENUINELY DIFFERENT from the current "
+                "concept and from each other — different register, different metaphor, different "
+                "angle of attack (e.g. one risk/fear-driven, one aspiration-driven). Concise — one "
+                "line per field. No markdown fences."
+            )
+            user = (
+                "SOURCE REQUEST:\n" + source_request
+                + "\n\nCURRENT CONCEPT (direction A — do not repeat it):\n"
+                + json.dumps(concept or {}, ensure_ascii=False)
+            )
+            text, _u = client.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.9, max_tokens=1200, response_format={"type": "json_object"},
+            )
+            s, e = text.find("{"), text.rfind("}")
+            data = json.loads(text[s:e + 1]) if (s >= 0 and e > s) else {}
+            alts = data.get("alternatives")
+            out = []
+            for a in (alts or [])[:2]:
+                if isinstance(a, dict) and a.get("controlling_idea"):
+                    out.append({k: str(v)[:300] for k, v in a.items() if v not in (None, "")})
+            return out
+        except Exception as exc:
+            logger.warning(f"[Assist] concept alternatives failed for {video_id}: {exc}")
+            return []
+
+    def _generate_hook_variants(self, video_id, shots):
+        """2 alternative hook lines for shot 0, labeled by technique (one LLM call).
+
+        Returns [{technique, text}, ...] or [] on failure. The FE shows them as
+        chips over the shot-0 editor; picking one replaces the text and submits
+        through the existing narration-edit path.
+        """
+        import logging as _log
+        logger = _log.getLogger(__name__)
+        try:
+            narrated = [
+                s for s in (shots or [])
+                if isinstance(s, dict) and str(s.get("narration_text") or "").strip()
+            ]
+            if not narrated:
+                return []
+            hook = str(narrated[0].get("narration_text") or "")
+            close = str(narrated[-1].get("narration_text") or "")
+            words = len(hook.split())
+            client = self._assist_llm_client()
+            if client is None:
+                return []
+            rec = self.repository.get_by_video_id(video_id)
+            source_request = str(getattr(rec, "prompt", None) or "")[:600]
+            system = (
+                "You write video hooks. Given the current hook, the closing line, and the source "
+                'request, output ONLY a JSON object {"variants": [<2 items>]} — each item: '
+                "technique (one of: quantified_claim, curiosity_gap, direct_callout, reversal, "
+                "cold_open) and text. Each variant must use a DIFFERENT technique than the current "
+                f"hook, stay within ±20% of {words} words (it must fit the same shot duration), "
+                "ground any number/name in the source request (never invent), and still open a "
+                "loop the existing closing line can answer. No markdown fences."
+            )
+            user = (
+                "SOURCE REQUEST:\n" + source_request
+                + "\n\nCURRENT HOOK:\n" + hook
+                + "\n\nCLOSING LINE:\n" + close
+            )
+            text, _u = client.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.9, max_tokens=600, response_format={"type": "json_object"},
+            )
+            s, e = text.find("{"), text.rfind("}")
+            data = json.loads(text[s:e + 1]) if (s >= 0 and e > s) else {}
+            out = []
+            for v in (data.get("variants") or [])[:2]:
+                if isinstance(v, dict) and str(v.get("text") or "").strip():
+                    out.append({
+                        "technique": str(v.get("technique") or "alternative")[:40],
+                        "text": str(v.get("text")).strip()[:400],
+                    })
+            return out
+        except Exception as exc:
+            logger.warning(f"[Assist] hook variants failed for {video_id}: {exc}")
+            return []
+
+    def _persist_resume_artifacts(self, video_id, run_dir) -> None:
+        """Upload the artifacts a resumed HTML leg needs, so an assist pause
+        mid-HTML doesn't lose them when the temp dir is torn down.
+
+        The visual_casting gate pauses inside the HTML stage — AFTER per-shot TTS
+        produced narration.mp3 but BEFORE the service's normal end-of-stage S3
+        upload. Without this, resume can't recover the audio / shot cache. Best-
+        effort; mirrors the S3 layout the resume checkpoint-download reads.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            s3_updates: Dict[str, str] = {}
+            _audio = run_dir / "narration.mp3"
+            if _audio.exists():
+                _u = self.s3_service.upload_video_file(_audio, video_id, "audio")
+                if _u:
+                    s3_updates["audio"] = _u
+            _words = run_dir / "narration.words.json"
+            if _words.exists():
+                _u = self.s3_service.upload_video_file(_words, video_id, "words")
+                if _u:
+                    s3_updates["words"] = _u
+            # narration.words.csv — the HTML-resume REQUIRES this (separate from
+            # the .json); without it the resume dies "missing narration.words.csv".
+            _words_csv = run_dir / "narration.words.csv"
+            if _words_csv.exists():
+                self.s3_service.upload_video_file(_words_csv, video_id, "words")
+            _raw = run_dir / "narration_raw.json"
+            if _raw.exists():
+                self.s3_service.upload_video_file(_raw, video_id, "audio")
+            # per-shot TTS dir (v3) — the html-stage audio assembly may read it on
+            # resume. Best-effort per-file upload under per_shot_tts/.
+            _pst = run_dir / "per_shot_tts"
+            if _pst.exists() and _pst.is_dir():
+                for _f in _pst.glob("*"):
+                    if _f.is_file():
+                        try:
+                            self.s3_service.upload_file(
+                                _f, s3_key=f"ai-videos/{video_id}/per_shot_tts/{_f.name}"
+                            )
+                        except Exception:
+                            pass
+            for _name in ("shot_plan.json", "style_guide.json", "director_plan.json"):
+                _f = run_dir / _name
+                if _f.exists():
+                    self.s3_service.upload_file(
+                        _f, s3_key=f"ai-videos/{video_id}/checkpoints/{_name}"
+                    )
+            _sc = run_dir / "shot_cache"
+            if _sc.exists() and _sc.is_dir():
+                for _f in _sc.glob("*.json"):
+                    self.s3_service.upload_file(
+                        _f, s3_key=f"ai-videos/{video_id}/checkpoints/shot_cache/{_f.name}"
+                    )
+            if s3_updates:
+                self.repository.update_files(video_id, s3_urls=s3_updates)
+            logger.info(f"[Assist] persisted resume artifacts for {video_id}: {list(s3_updates)}")
+        except Exception:
+            logger.error(
+                f"[Assist] failed to persist resume artifacts for {video_id}", exc_info=True
+            )
+
     async def generate_till_stage(
         self,
         video_id: str,
@@ -310,6 +863,9 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
+        dialogue_mode: str = "storybook",
+        cast_id: Optional[str] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -323,6 +879,14 @@ class VideoGenerationService:
         # Per-stage model overrides (V200 — DB-backed routing). Untyped here
         # (Any) to avoid a schemas → service circular import.
         model_overrides: Optional[Any] = None,
+        # Assist mode (conversational, human-in-the-loop). When enabled, the run
+        # pauses at SCRIPT-boundary decision gates (shot_plan / narration) — it
+        # emits a `decision_required` event and stops the leg cleanly until the
+        # user answers via /decision. Authoritative only on the first leg; resume
+        # legs read the persisted extra_metadata.assist block instead.
+        assist_mode: bool = False,
+        assist_gates: Optional[List[str]] = None,
+        assist_granularity: str = "per_decision",
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -504,6 +1068,12 @@ class VideoGenerationService:
                 gen_metadata["background_music_volume"] = float(background_music_volume)
             if sub_shots_enabled:
                 gen_metadata["sub_shots_enabled"] = True
+            if dialogue_scenes_enabled:
+                gen_metadata["dialogue_scenes_enabled"] = True
+            if dialogue_scenes_enabled and dialogue_mode:
+                gen_metadata["dialogue_mode"] = str(dialogue_mode)
+            if cast_id:
+                gen_metadata["cast_id"] = str(cast_id)
             # Persist the TTS voice knobs so per-sentence re-narration in the
             # editor can reproduce the same voice without the user having to
             # re-supply them. Defaults are skipped to keep the row small.
@@ -581,7 +1151,86 @@ class VideoGenerationService:
             start_stage_idx = 1  # Start from SCRIPT
         
         target_stage_idx = self.STAGES.index(target_stage)
-        
+
+        # ── Assist mode: SCRIPT-boundary decision gates ─────────────────
+        # Gated entirely behind assist_mode so the Auto path is unchanged.
+        _assist = self._load_assist_state(video_record, assist_mode, assist_gates, assist_granularity)
+        # Resolve the DecisionRequired sentinel class for the HTML-stage gate
+        # catch below. Always importable (pure module); fall back to a private
+        # placeholder so the `except` clause is always valid.
+        try:
+            _DecisionRequired = self._decision_gates().DecisionRequired
+        except Exception:
+            class _DecisionRequired(BaseException):  # noqa: N801 — placeholder, never raised
+                pass
+        _pending_gate = None
+        if _assist.get("enabled"):
+            # Persist the assist block (first leg seeds it; resume legs no-op-merge)
+            # so the /decision endpoint can read the gate set + answer ledger.
+            try:
+                self.repository.update_assist_state(video_id, _assist)
+            except Exception as _ae:
+                logger.warning(f"[Assist] could not persist assist state for {video_id}: {_ae}")
+            _pending_gate, _need_script_run = self._next_script_boundary_gate(_assist, start_stage_idx)
+            if _pending_gate and not _need_script_run:
+                # The asset gate only presents when the planner asked for
+                # something; empty → auto-answer + advance (possibly to None,
+                # in which case the leg proceeds normally below).
+                _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
+            if _pending_gate and not _need_script_run:
+                # Script artifacts already exist (resume leg). If the user left
+                # a freeform steering note for this gate, REVISE the artifacts
+                # per the note first, then re-present the gate with the updated
+                # draft — this is what makes "make it punchier" actually work.
+                _steer = _assist.get("steering") if isinstance(_assist.get("steering"), dict) else None
+                _revision_note = None
+                if (
+                    _steer
+                    and _steer.get("gate_type") == _pending_gate
+                    and str(_steer.get("text") or "").strip()
+                ):
+                    _revision_note = str(_steer.get("text")).strip()
+                    async for _ev in self._apply_freeform_steering(
+                        video_id, _pending_gate, _revision_note
+                    ):
+                        yield _ev
+                    _assist["steering"] = None
+                    try:
+                        self.repository.update_assist_state(video_id, _assist)
+                    except Exception as _se:
+                        logger.warning(
+                            f"[Assist] could not clear steering for {video_id}: {_se}"
+                        )
+                async for _ev in self._present_script_boundary_gate(
+                    video_id, institute_id, _assist, _pending_gate,
+                    revision_note=_revision_note,
+                ):
+                    yield _ev
+                return
+            if _pending_gate and _need_script_run:
+                # Clamp this leg to SCRIPT; we present the gate after it runs.
+                target_stage = "SCRIPT"
+                target_stage_idx = self.STAGES.index("SCRIPT")
+
+        # Saved cast (storybook/drama series): load once per leg so the plan
+        # keeps these characters verbatim and the pipeline reuses their stored
+        # portrait sheets + voice mapping. Best-effort — a missing/foreign cast
+        # just means a fresh cast this run.
+        _saved_cast_list = None
+        if cast_id and dialogue_scenes_enabled and institute_id:
+            try:
+                from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+                with _fresh_db_session() as _cast_db:
+                    _cast_row = AiVideoCastRepository(_cast_db).get(str(cast_id), institute_id)
+                if _cast_row and _cast_row.get("characters"):
+                    _saved_cast_list = _cast_row["characters"]
+                    logger.info(
+                        f"[Cast] video {video_id} reuses cast '{_cast_row['name']}' "
+                        f"({len(_saved_cast_list)} characters)"
+                    )
+            except Exception as _cast_err:
+                logger.warning(f"[Cast] could not load cast {cast_id}: {_cast_err}")
+
         # Create temporary working directory
         with tempfile.TemporaryDirectory() as temp_dir:
             work_dir = Path(temp_dir) / video_id
@@ -621,6 +1270,9 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    dialogue_scenes_enabled=dialogue_scenes_enabled,
+                    dialogue_mode=dialogue_mode,
+                    saved_cast=_saved_cast_list,
                     routing_overrides=routing_overrides,
                     host=host,
                     brand_kit_id=brand_kit_id,
@@ -630,6 +1282,9 @@ class VideoGenerationService:
                     ai_video_enabled=ai_video_enabled,
                     ai_video_audio_enabled=ai_video_audio_enabled,
                     model_overrides=model_overrides,
+                    # Assist mode: the pipeline pauses at the HTML-stage
+                    # visual_casting gate when enabled. None ⇒ no HTML gate.
+                    assist_state=(_assist if _assist.get("enabled") else None),
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -653,7 +1308,20 @@ class VideoGenerationService:
                         yield event
                         return
                     yield event
-                
+
+                # ── Assist mode: pause at the SCRIPT-boundary gate ──────
+                # The SCRIPT stage just produced shot_plan.json / script.txt;
+                # present the pending gate and end the leg cleanly (no completed
+                # event — the FE flips to the conversation card on this event).
+                if _assist.get("enabled") and _pending_gate:
+                    _pending_gate = self._skip_empty_asset_gate(video_id, _assist, _pending_gate)
+                if _assist.get("enabled") and _pending_gate:
+                    async for _ev in self._present_script_boundary_gate(
+                        video_id, institute_id, _assist, _pending_gate
+                    ):
+                        yield _ev
+                    return
+
                 # Final completion event
                 video_record = self.repository.get_by_video_id(video_id)
                 if video_record and video_record.status != "FAILED":
@@ -666,7 +1334,40 @@ class VideoGenerationService:
                         "file_ids": video_record.file_ids,
                         "percentage": 100
                     }
-            
+
+            except _DecisionRequired as _dr:
+                # Assist mode: a gate inside the HTML stage (visual_casting) asked
+                # for the user. The decision_required event was already emitted to
+                # the SSE stream; persist the pending decision + flip to
+                # AWAITING_INPUT and end the leg cleanly (NOT a failure — no
+                # refund). The /decision endpoint resumes from here.
+                try:
+                    # Persist the in-flight artifacts (narration.mp3, words, shot
+                    # cache) to S3 BEFORE the temp dir is torn down, so the resume
+                    # leg can recover them (the normal end-of-stage upload never
+                    # ran — we paused mid-HTML).
+                    self._persist_resume_artifacts(video_id, work_dir)
+                    _decision = dict(getattr(_dr, "decision", {}) or {})
+                    _decision["video_id"] = video_id
+                    _dg = self._decision_gates()
+                    _dg.set_pending(_assist, _decision)
+                    # current_stage stays at the stage BEFORE html ("WORDS") so the
+                    # resume leg RE-ENTERS the html stage (which skips cached shots,
+                    # forces the picked clips, then renders). HTML would skip it.
+                    self.repository.update_assist_state(
+                        video_id, _assist, status="AWAITING_INPUT", current_stage="WORDS"
+                    )
+                    logger.info(
+                        f"[Assist] HTML-stage gate paused {video_id} "
+                        f"decision_id={_decision.get('decision_id')}"
+                    )
+                except Exception:
+                    logger.error(
+                        f"[Assist] failed to persist HTML-stage pending decision for {video_id}",
+                        exc_info=True,
+                    )
+                return
+
             except Exception as e:
                 import traceback
                 error_traceback = traceback.format_exc()
@@ -731,6 +1432,9 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
+        dialogue_mode: str = "storybook",
+        saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
@@ -748,6 +1452,9 @@ class VideoGenerationService:
         # schemas → service circular import; the field shape is the pydantic
         # `ModelOverrides` from app.schemas.video_generation.
         model_overrides: Optional[Any] = None,
+        # Assist mode: the extra_metadata.assist block, forwarded to pipeline.run
+        # so the HTML-stage visual_casting gate can fire. None ⇒ no HTML gate.
+        assist_state: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -1156,6 +1863,14 @@ class VideoGenerationService:
                         logger.info(f"[VideoGenService] Downloading narration.words.json from S3...")
                         if self.s3_service.download_file(words_url, words_path):
                             logger.info(f"[VideoGenService] Successfully downloaded narration.words.json")
+                    # narration.words.csv — the html-resume REQUIRES this alongside
+                    # the .json (assist gate persists it to the same words/ prefix).
+                    # Derive its URL from the .json URL.
+                    words_csv_path = run_dir / "narration.words.csv"
+                    if not words_csv_path.exists():
+                        _csv_url = words_url.replace("narration.words.json", "narration.words.csv")
+                        if self.s3_service.download_file(_csv_url, words_csv_path, expected_missing=True):
+                            logger.info(f"[VideoGenService] Successfully downloaded narration.words.csv")
 
                 # Download shot checkpoints for intra-HTML-stage resume (director plan + per-shot cache)
                 try:
@@ -1169,6 +1884,13 @@ class VideoGenerationService:
                     _sg_local = run_dir / "style_guide.json"
                     if not _sg_local.exists():
                         self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local, expected_missing=True)
+
+                    # asset_selections.json (assist mode) — the user's forced
+                    # stock-media picks. The pipeline reads run_dir/asset_selections.json
+                    # at run() entry and the resolver forces these clips. Always
+                    # re-download (the user may have just answered the gate).
+                    _as_local = run_dir / "asset_selections.json"
+                    self.s3_service.download_file(f"{_ckpt_base_url}/asset_selections.json", _as_local, expected_missing=True)
 
                     # director_plan.json
                     _dp_local = run_dir / "director_plan.json"
@@ -1511,6 +2233,9 @@ class VideoGenerationService:
                     "background_music_enabled": background_music_enabled,
                     "background_music_volume": background_music_volume,
                     "sub_shots_enabled": sub_shots_enabled,
+                    "dialogue_scenes_enabled": dialogue_scenes_enabled,
+                    "dialogue_mode": dialogue_mode,
+                    "saved_cast": saved_cast,
                     "mute_tts_on_source_clips_kwarg": mute_tts_on_source_clips,
                     "input_video_ids": input_video_ids,
                     "input_video_audio": input_video_audio,
@@ -2011,6 +2736,9 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    dialogue_scenes_enabled=dialogue_scenes_enabled,
+                    dialogue_mode=dialogue_mode,
+                    saved_cast=saved_cast,
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,
@@ -2029,6 +2757,9 @@ class VideoGenerationService:
                     institute_id=institute_id,
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
+                    # Assist mode: gate config + answer ledger. The HTML-stage
+                    # visual_casting gate reads this; None ⇒ fully autonomous.
+                    assist_state=assist_state,
                 )
 
                 # Release the request-scoped DB connection before the long
@@ -3282,6 +4013,14 @@ class VideoGenerationService:
             if db_status:
                 live["status"] = db_status
             result["live"] = live
+
+        # Assist mode: surface the pending decision as a convenience top-level
+        # field so polling clients can rehydrate the conversation card without
+        # digging into metadata.assist. Set only while paused (AWAITING_INPUT).
+        _meta = result.get("metadata") or {}
+        _assist = _meta.get("assist") if isinstance(_meta, dict) else None
+        if isinstance(_assist, dict) and _assist.get("pending_decision"):
+            result["pending_decision"] = _assist.get("pending_decision")
 
         return result
 

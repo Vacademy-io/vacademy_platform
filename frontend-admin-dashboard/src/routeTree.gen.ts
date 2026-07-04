@@ -109,6 +109,7 @@ import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/au
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AudienceManagerFollowUpsIndexRouteImport } from "./routes/audience-manager/follow-ups/index"
 import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audience-manager/call-log/index"
+import { Route as AudienceManagerAiIntelligenceIndexRouteImport } from "./routes/audience-manager/ai-intelligence/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
 import { Route as AssessmentEvaluationAiIndexRouteImport } from "./routes/assessment/evaluation-ai/index"
 import { Route as AssessmentAssessmentListIndexRouteImport } from "./routes/assessment/assessment-list/index"
@@ -955,6 +956,16 @@ const AudienceManagerCallLogIndexRoute =
       (d) => d.Route,
     ),
   )
+const AudienceManagerAiIntelligenceIndexRoute =
+  AudienceManagerAiIntelligenceIndexRouteImport.update({
+    id: "/audience-manager/ai-intelligence/",
+    path: "/audience-manager/ai-intelligence/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/ai-intelligence/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AssessmentQuestionPapersIndexRoute =
   AssessmentQuestionPapersIndexRouteImport.update({
     id: "/assessment/question-papers/",
@@ -1683,6 +1694,7 @@ export interface FileRoutesByFullPath {
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
@@ -1866,6 +1878,7 @@ export interface FileRoutesByTo {
   "/assessment/assessment-list": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/ai-intelligence": typeof AudienceManagerAiIntelligenceIndexRoute
   "/audience-manager/call-log": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
@@ -2051,6 +2064,7 @@ export interface FileRoutesById {
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/ai-intelligence/": typeof AudienceManagerAiIntelligenceIndexRoute
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
@@ -2237,6 +2251,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
+    | "/audience-manager/ai-intelligence/"
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
@@ -2420,6 +2435,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list"
     | "/assessment/evaluation-ai"
     | "/assessment/question-papers"
+    | "/audience-manager/ai-intelligence"
     | "/audience-manager/call-log"
     | "/audience-manager/follow-ups"
     | "/audience-manager/list"
@@ -2604,6 +2620,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
+    | "/audience-manager/ai-intelligence/"
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
@@ -2788,6 +2805,7 @@ export interface RootRouteChildren {
   AssessmentAssessmentListIndexRoute: typeof AssessmentAssessmentListIndexRoute
   AssessmentEvaluationAiIndexRoute: typeof AssessmentEvaluationAiIndexRoute
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
+  AudienceManagerAiIntelligenceIndexRoute: typeof AudienceManagerAiIntelligenceIndexRoute
   AudienceManagerCallLogIndexRoute: typeof AudienceManagerCallLogIndexRoute
   AudienceManagerFollowUpsIndexRoute: typeof AudienceManagerFollowUpsIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
@@ -3613,6 +3631,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AudienceManagerCallLogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/ai-intelligence/": {
+      id: "/audience-manager/ai-intelligence/"
+      path: "/audience-manager/ai-intelligence"
+      fullPath: "/audience-manager/ai-intelligence/"
+      preLoaderRoute: typeof AudienceManagerAiIntelligenceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/assessment/question-papers/": {
       id: "/assessment/question-papers/"
       path: "/assessment/question-papers"
@@ -4266,6 +4291,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentAssessmentListIndexRoute: AssessmentAssessmentListIndexRoute,
   AssessmentEvaluationAiIndexRoute: AssessmentEvaluationAiIndexRoute,
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
+  AudienceManagerAiIntelligenceIndexRoute:
+    AudienceManagerAiIntelligenceIndexRoute,
   AudienceManagerCallLogIndexRoute: AudienceManagerCallLogIndexRoute,
   AudienceManagerFollowUpsIndexRoute: AudienceManagerFollowUpsIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,

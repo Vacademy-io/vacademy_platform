@@ -79,9 +79,10 @@ export function FollowupsTab({
     toDate,
     teamId,
     counsellorUserId,
+    audienceId,
 }: ReportTabProps) {
     const navigate = useNavigate();
-    const params = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+    const params = { instituteId, fromDate, toDate, teamId, counsellorUserId, audienceId };
 
     const query = useQuery({
         queryKey: followupAgingQueryKey(params),

@@ -118,6 +118,19 @@ public class TelephonyCallLog implements Persistable<String> {
     @Builder.Default
     private Boolean recordingLogged = false;
 
+    // V351: true ⇒ the recording lives in the PRIVATE encrypted bucket (Vacademy
+    // Voice / Plivo), so playback must presign via the private getter, not the
+    // public one. Null/false ⇒ legacy public-bucket recording (Exotel/Airtel/Aavtaar).
+    @Column(name = "recording_private")
+    @Builder.Default
+    private Boolean recordingPrivate = false;
+
+    // V354: mid-call human-handoff target the AI bot registered before closing its
+    // stream; /telephony/plivo/ai-next reads it to serve the <Dial>. JSON:
+    // {"number":"+91..."} or {"userId":"<uuid>"}. Null = no handoff requested.
+    @Column(name = "ai_handoff_target", columnDefinition = "TEXT")
+    private String aiHandoffTarget;
+
     @Column(name = "raw_payload_json", columnDefinition = "TEXT")
     private String rawPayloadJson;
 

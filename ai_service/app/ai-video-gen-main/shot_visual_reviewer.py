@@ -205,13 +205,22 @@ OUTPUT — return ONLY a JSON object, no markdown fences, no commentary:
       "suggestion": "<one sentence telling the regen LLM exactly how to fix it>"
     }}
   ],
-  "severity_max": <0..3 — max severity across issues, 0 if issues=[]>
+  "severity_max": <0..3 — max severity across issues, 0 if issues=[]>,
+  "designer_score": <1..10 — separate from pass/fail: how close is this frame to something a
+                     professional motion designer would ship? 9-10 = portfolio-grade craft;
+                     7-8 = solid, polished; 5-6 = competent but flat/unremarkable; 3-4 = bare
+                     text panel / clip-art feel / no visual interest; 1-2 = broken-looking.
+                     Judge composition, depth, imagery, typography confidence, and whether the
+                     frame has a focal point. This score NEVER blocks the shot — it is telemetry.>
 }}
 
 Rules of engagement:
 - ≤4 issues per shot. Pick the most-important.
 - Severity 3 is reserved for genuine breakage. Don't issue a 3 for taste.
-- If everything looks fine, return {{"passes": true, "issues": [], "severity_max": 0}}.
+- `designer_score` is where taste DOES go — be honest there, harsh even; just never convert
+  taste into a blocking issue.
+- If everything looks fine, return {{"passes": true, "issues": [], "severity_max": 0,
+  "designer_score": <still grade it>}}.
 """
 
 
@@ -368,7 +377,21 @@ def _normalize_review(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 "suggestion": str(item.get("suggestion") or "").strip()[:500],
             })
     passes = bool(parsed.get("passes")) and not issues
-    return {"passes": passes, "issues": issues, "severity_max": sev_max}
+    # Non-blocking aesthetic grade (1-10). None when the model omitted it —
+    # downstream treats None as "not graded", never as a low score.
+    designer_score: Optional[int] = None
+    try:
+        _ds = parsed.get("designer_score")
+        if _ds is not None:
+            designer_score = max(1, min(10, int(_ds)))
+    except (TypeError, ValueError):
+        designer_score = None
+    return {
+        "passes": passes,
+        "issues": issues,
+        "severity_max": sev_max,
+        "designer_score": designer_score,
+    }
 
 
 def _png_to_data_url(png: bytes) -> str:

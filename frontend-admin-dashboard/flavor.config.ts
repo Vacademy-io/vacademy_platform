@@ -19,15 +19,14 @@
  * installed `appId`.
  */
 
-export type AdminFlavorKey = 'vacademy-admin' | 'vimotion';
-
 export type OtaMode =
     | 'self-hosted' // Our own admin-core OTA backend (learner-app style, autoUpdate off)
     | 'capgo' // Capgo cloud OTA (autoUpdate on)
     | 'none'; // Web / no OTA
 
 export interface AdminFlavor {
-    key: AdminFlavorKey;
+    /** Flavor key — the kebab-case slug; also the GoogleServiceConfigs/<key>/ folder + mobile-flavors.json key. */
+    key: string;
     /** Native bundle identifier (must match Android applicationId / iOS PRODUCT_BUNDLE_IDENTIFIER). */
     appId: string;
     /** Native display name (home-screen label). */
@@ -54,7 +53,7 @@ export interface AdminFlavor {
     ota: OtaMode;
 }
 
-export const ADMIN_FLAVORS: Record<AdminFlavorKey, AdminFlavor> = {
+export const ADMIN_FLAVORS = {
     'vacademy-admin': {
         key: 'vacademy-admin',
         appId: 'io.vacademy.admin.app',
@@ -74,17 +73,32 @@ export const ADMIN_FLAVORS: Record<AdminFlavorKey, AdminFlavor> = {
         forceVimShell: true,
         ota: 'capgo',
     },
-};
+    // Add a white-label admin app for another institute by appending an entry
+    // here (key = kebab-case slug). The type below + isAdminFlavorKey pick it up
+    // automatically — no other edits. Mirror the key in android/app/mobile-flavors.json
+    // and add GoogleServiceConfigs/<key>/ on both platforms. See
+    // ADDING_A_WHITE_LABEL_ADMIN_APP.md.
+} satisfies Record<string, AdminFlavor>;
+
+/** All registered admin flavor keys — auto-derived from `ADMIN_FLAVORS`. */
+export type AdminFlavorKey = keyof typeof ADMIN_FLAVORS;
 
 /**
- * Default flavor when `VITE_CAP_FLAVOR` is unset. Kept as `vimotion` so that
- * any existing `cap sync` / build pipeline that does not set the env var keeps
- * producing exactly the app it produced before this multi-flavor change.
+ * Default flavor when `VITE_CAP_FLAVOR` is unset.
+ *
+ * This repo's native iOS/Android projects ARE the Vacademy Admin app (the iOS
+ * target bundle id is hardcoded to io.vacademy.admin.app), so the default must
+ * resolve to `vacademy-admin`. A flavorless `cap sync` / `build` was otherwise
+ * regenerating the native config as Vimotion (autoUpdate:true + Capgo URLs and
+ * launchAutoHide:false), which white-screens / hangs the admin app on the splash.
+ *
+ * Vimotion builds must set `VITE_CAP_FLAVOR=vimotion` explicitly (the
+ * `build:vimotion` / `cap:*:vimotion` scripts do this).
  */
-export const DEFAULT_FLAVOR_KEY: AdminFlavorKey = 'vimotion';
+export const DEFAULT_FLAVOR_KEY: AdminFlavorKey = 'vacademy-admin';
 
 export function isAdminFlavorKey(value: string | undefined | null): value is AdminFlavorKey {
-    return value === 'vacademy-admin' || value === 'vimotion';
+    return value != null && Object.prototype.hasOwnProperty.call(ADMIN_FLAVORS, value);
 }
 
 /** Resolve a flavor by key, falling back to the default. */

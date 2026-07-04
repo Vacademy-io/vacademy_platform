@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getPaymentCompletionStatus } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
+import { getPhonePePaymentStatus } from "@/services/phonepe-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
+import { getAccessToken } from "@/lib/auth/sessionUtility";
 import { CheckCircle, XCircle, SpinnerGap } from "@phosphor-icons/react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
@@ -16,6 +18,7 @@ const paymentResultSearchSchema = z.object({
   institute_id: z.string().optional(), // snake_case fallback
   status: z.enum(["success", "failed", "cancelled"]).optional(),
   source: z.string().optional(), // "invoice" skips gateway-specific status polling
+  vendor: z.string().optional(), // "PHONEPE" routes to the PhonePe status endpoint
 });
 
 export const Route = createFileRoute("/payment-result/")({
@@ -36,14 +39,36 @@ function PaymentResultPage() {
     institute_id: instituteIdSnake,
     status: queryStatus,
     source,
+    vendor: vendorParam,
   } = search;
+
+  const isPhonePeFlow = (vendorParam ?? "").toUpperCase() === "PHONEPE";
+
+  // PhonePe redirects can land here without the query params (some return modes
+  // drop them). Recover the order id + institute id we stashed before handing off
+  // to PhonePe's hosted page.
+  const phonePePending = useMemo(() => {
+    if (!isPhonePeFlow || typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("phonepe_pending_order");
+      return raw
+        ? (JSON.parse(raw) as { orderId?: string; instituteId?: string })
+        : null;
+    } catch {
+      return null;
+    }
+  }, [isPhonePeFlow]);
+
   // Prefer orderId (payment log ID) from our return URL; order_id may be Cashfree's ID
-  const orderId = orderIdParam ?? orderIdSnake ?? "";
-  const instituteId = instituteIdParam ?? instituteIdSnake;
+  const orderId =
+    orderIdParam ?? orderIdSnake ?? phonePePending?.orderId ?? "";
+  const instituteId =
+    instituteIdParam ?? instituteIdSnake ?? phonePePending?.instituteId;
   const validInstituteId = isValidInstituteId(instituteId) ? instituteId : undefined;
   // Invoice payments must not use the Cashfree user-plan status endpoint
   const isInvoicePayment = source === "invoice";
-  const isCashfreeFlow = !!orderId && !!validInstituteId && !isInvoicePayment;
+  const isCashfreeFlow =
+    !isPhonePeFlow && !!orderId && !!validInstituteId && !isInvoicePayment;
   const hasRedirectedRef = useRef(false);
 
   // Extract status from various backend response shapes (payment_status, status, paymentStatus, nested)
@@ -66,19 +91,24 @@ function PaymentResultPage() {
   };
 
   const { data: paymentStatus, isLoading } = useQuery({
-    queryKey: isCashfreeFlow
-      ? ["CASHFREE_PAYMENT_STATUS", orderId, validInstituteId]
-      : ["GET_PAYMENT_COMPLETION_STATUS", orderId],
+    queryKey: isPhonePeFlow
+      ? ["PHONEPE_PAYMENT_STATUS", orderId, validInstituteId]
+      : isCashfreeFlow
+        ? ["CASHFREE_PAYMENT_STATUS", orderId, validInstituteId]
+        : ["GET_PAYMENT_COMPLETION_STATUS", orderId],
     queryFn: () =>
-      isCashfreeFlow && orderId && validInstituteId
-        ? getCashfreePaymentStatus(orderId, validInstituteId)
-        : getPaymentCompletionStatus({ paymentLogId: orderId || "" }),
+      isPhonePeFlow && orderId && validInstituteId
+        ? getPhonePePaymentStatus(orderId, validInstituteId)
+        : isCashfreeFlow && orderId && validInstituteId
+          ? getCashfreePaymentStatus(orderId, validInstituteId)
+          : getPaymentCompletionStatus({ paymentLogId: orderId || "" }),
     enabled: !!orderId,
     refetchInterval: (query) => {
       const ps = getStatusFromResponse(query.state.data);
       if (
         ps === "PAID" ||
         ps === "SUCCESS" ||
+        ps === "COMPLETED" ||
         ps === "FLAGGED" ||
         ps === "FAILED"
       )
@@ -92,6 +122,7 @@ function PaymentResultPage() {
   const isPaid =
     paymentStatusValue === "PAID" ||
     paymentStatusValue === "SUCCESS" ||
+    paymentStatusValue === "COMPLETED" ||
     paymentStatusValue === "FLAGGED";
   const isFailed =
     paymentStatusValue === "FAILED" ||
@@ -104,6 +135,16 @@ function PaymentResultPage() {
   // When payment is successful: auto-login via tokens from status API, or fallback to stored creds + login API
   useEffect(() => {
     if (!isPaid || hasRedirectedRef.current) return;
+
+    // PhonePe order is settled — drop the pending marker so a later visit doesn't
+    // resurrect a stale order id.
+    if (isPhonePeFlow && typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("phonepe_pending_order");
+      } catch {
+        /* ignore */
+      }
+    }
 
     const doRedirect = (path = "/study-library/courses") => {
       if (hasRedirectedRef.current) return;
@@ -196,6 +237,16 @@ function PaymentResultPage() {
           doRedirect("/study-library/courses");
           return;
         }
+
+        // 3. Already-authenticated learner (e.g. an in-course purchase from the
+        //    course-details flow, where no signup creds are ever stashed): their
+        //    session is already live, so skip login and go straight to courses
+        //    instead of bouncing them to /login.
+        const existingToken = await getAccessToken();
+        if (existingToken) {
+          doRedirect("/study-library/courses");
+          return;
+        }
       } catch {
         /* login failed, fallback to login page */
       }
@@ -203,7 +254,7 @@ function PaymentResultPage() {
     };
 
     runLoginAndRedirect();
-  }, [isPaid, paymentStatus, orderId, validInstituteId]);
+  }, [isPaid, paymentStatus, orderId, validInstituteId, isPhonePeFlow]);
 
   const useFullScreenLayout = isPending || isPaid;
 

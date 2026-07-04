@@ -167,6 +167,9 @@ function mergeWithDefaults(
       ratingsAndReviewsVisible:
         incoming?.courseDetails?.ratingsAndReviewsVisible ??
         d.courseDetails.ratingsAndReviewsVisible,
+      hideAuthorName:
+        incoming?.courseDetails?.hideAuthorName ??
+        d.courseDetails.hideAuthorName,
       // New flags with defaults
       showCourseConfiguration:
         incoming?.courseDetails?.showCourseConfiguration ??
@@ -211,6 +214,9 @@ function mergeWithDefaults(
         })
       ),
       defaultTab: incoming?.allCourses?.defaultTab ?? d.allCourses.defaultTab,
+      hideInstructorName:
+        incoming?.allCourses?.hideInstructorName ??
+        d.allCourses.hideInstructorName,
     },
     notifications: {
       allowSystemAlerts:

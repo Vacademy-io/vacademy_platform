@@ -72,11 +72,11 @@ public class BbbHealthCheckService {
     // -----------------------------------------------------------------------
 
     /**
-     * Scheduled start — Mon-Sat at 10:45 am IST.
+     * Scheduled start — Mon-Sat at 3:00 pm IST.
      * Reads servers_to_start from admin_core_service, then dispatches the
      * GitHub Actions workflow with server_count parameter.
      */
-    @Scheduled(cron = "0 45 10 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 0 15 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledStart() {
         log.info("[BBB Pool] Scheduled START triggered");
 
@@ -87,10 +87,10 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled health check — Mon-Sat at 10 55 am
-     * Checks all running servers from the pool.
+     * Scheduled health check — Mon-Sat at 3:20 pm IST.
+     * Checks all running servers from the pool and sends the WhatsApp health message.
      */
-    @Scheduled(cron = "0 55 10 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 20 15 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledHealthCheck() {
         log.info("[BBB Pool HealthCheck] Scheduled check triggered");
         runPoolHealthCheck(true);

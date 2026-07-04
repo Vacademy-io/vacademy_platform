@@ -45,6 +45,8 @@ interface CourseCardProps {
     previewImageUrl: string;
     selectedTab: string;
     readTimeInMinutes: number;
+    /** When true, hide the instructor/teacher name block on the card. */
+    hideInstructorName?: boolean;
 }
 
 const fallbackInstructorImage =
@@ -63,6 +65,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
     previewImageUrl,
     selectedTab,
     readTimeInMinutes,
+    hideInstructorName = false,
 }) => {
     const [courseImageUrl, setCourseImageUrl] = useState<string | null>(null);
     const [loadingImage, setLoadingImage] = useState(true);
@@ -310,7 +313,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 </p>
 
                 {/* Instructor */}
-                {instructors.length > 0 && (
+                {!hideInstructorName && instructors.length > 0 && (
                     <div className={cn(
                         "flex items-center gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors duration-200 -mx-2",
                         // Vibrant — primary-50 wash on hover (the one tint family)

@@ -44,6 +44,7 @@ import {
 import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useNavigate, useRouter } from '@tanstack/react-router';
+import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
@@ -59,13 +60,7 @@ import {
     type PreviewSessionRow,
     type PreviewRecurrenceBanner,
 } from './LiveSessionPreviewDialog';
-import {
-    LockKey,
-    UsersThree,
-    Article,
-    LinkSimple,
-    BellRinging,
-} from '@phosphor-icons/react';
+import { LockKey, UsersThree, Article, LinkSimple, BellRinging } from '@phosphor-icons/react';
 
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 
@@ -109,6 +104,7 @@ export default function ScheduleStep2() {
     const { sessionId, step1Data } = useLiveSessionStore();
     const isEditState = useLiveSessionStore((state) => state.isEdit);
     const { sessionDetails } = useSessionDetailsStore();
+    const { settings: liveSessionSettings } = useLiveSessionSettings();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const navigate = useNavigate();
@@ -193,10 +189,10 @@ export default function ScheduleStep2() {
                         };
                     })
                     .filter(Boolean) as {
-                        courseId: string;
-                        sessionId: string;
-                        levelId: string;
-                    }[];
+                    courseId: string;
+                    sessionId: string;
+                    levelId: string;
+                }[];
 
                 if (selectedLevelsFromPackages.length) {
                     form.setValue('selectedLevels', selectedLevelsFromPackages);
@@ -262,18 +258,20 @@ export default function ScheduleStep2() {
             selectedLearners: [],
             joinLink: '',
             notifyBy: {
-                mail: false,
-                whatsapp: false,
-                push_notification: false,
-                system_notification: false,
+                mail: liveSessionSettings.defaultNotifyByEmail ?? false,
+                whatsapp: liveSessionSettings.defaultNotifyByWhatsapp ?? false,
+                push_notification: liveSessionSettings.defaultNotifyByPush ?? false,
+                system_notification: liveSessionSettings.defaultNotifyBySystem ?? false,
             },
             notifySettings: {
-                onCreate: false,
+                onCreate: liveSessionSettings.defaultNotifyOnCreate ?? false,
                 onEdit: false,
-                beforeLive: false,
-                beforeLiveTime: [],
-                onLive: true,
-                onAttendance: false,
+                beforeLive: !!liveSessionSettings.defaultNotifyBeforeReminder,
+                beforeLiveTime: liveSessionSettings.defaultNotifyBeforeReminder
+                    ? [{ time: liveSessionSettings.defaultNotifyBeforeReminder }]
+                    : [],
+                onLive: liveSessionSettings.defaultNotifyOnLive ?? true,
+                onAttendance: liveSessionSettings.defaultNotifyOnAttendance ?? false,
             },
             fields: [],
         },
@@ -331,7 +329,8 @@ export default function ScheduleStep2() {
             mail = mail || notifyBy.mail;
             whatsapp = whatsapp || notifyBy.whatsapp;
             push_notification = push_notification || (notifyBy as any).push_notification || false;
-            system_notification = system_notification || (notifyBy as any).system_notification || false;
+            system_notification =
+                system_notification || (notifyBy as any).system_notification || false;
         });
 
         form.setValue('notifySettings', defaultNotifySettings);
@@ -455,7 +454,9 @@ export default function ScheduleStep2() {
     const accessType = watch('accessType');
     const rawPortalUrl = instituteDetails?.learner_portal_base_url;
     const learnerBaseUrl = rawPortalUrl
-        ? (rawPortalUrl.startsWith('http') ? rawPortalUrl : `https://${rawPortalUrl}`)
+        ? rawPortalUrl.startsWith('http')
+            ? rawPortalUrl
+            : `https://${rawPortalUrl}`
         : BASE_URL_LEARNER_DASHBOARD;
     useEffect(() => {
         if (isEditState) {
@@ -503,7 +504,9 @@ export default function ScheduleStep2() {
                         // file upload, checkboxes, etc. Options are parsed for
                         // both dropdown and radio.
                         const rawType = (cf.fieldType || 'text').toLowerCase();
-                        const resolvedType = (rawType === 'textfield' ? 'text' : rawType) as InputType;
+                        const resolvedType = (
+                            rawType === 'textfield' ? 'text' : rawType
+                        ) as InputType;
                         const hasOptions =
                             resolvedType === InputType.DROPDOWN || resolvedType === InputType.RADIO;
                         return {
@@ -511,22 +514,43 @@ export default function ScheduleStep2() {
                             required: cf.isMandatory || SEEDED.includes(nameLC),
                             isDefault: SEEDED.includes(nameLC),
                             type: resolvedType,
-                            ...(hasOptions && cf.config ? (() => {
-                                try {
-                                    const parsed = JSON.parse(cf.config);
-                                    if (Array.isArray(parsed)) {
-                                        return { options: parsed.map((o: any) => ({ label: o.value || o.label, name: o.value || o.name })) };
-                                    }
-                                    // New object-format config: { options: [...], defaultValue, ... }
-                                    if (Array.isArray(parsed?.options)) {
-                                        return { options: parsed.options.map((o: any) => ({ label: o.value || o.label, name: o.value || o.name })) };
-                                    }
-                                    if (parsed.coommaSepartedOptions) {
-                                        return { options: parsed.coommaSepartedOptions.split(',').map((v: string) => ({ label: v.trim(), name: v.trim() })) };
-                                    }
-                                } catch { /* ignore */ }
-                                return {};
-                            })() : {}),
+                            ...(hasOptions && cf.config
+                                ? (() => {
+                                      try {
+                                          const parsed = JSON.parse(cf.config);
+                                          if (Array.isArray(parsed)) {
+                                              return {
+                                                  options: parsed.map((o: any) => ({
+                                                      label: o.value || o.label,
+                                                      name: o.value || o.name,
+                                                  })),
+                                              };
+                                          }
+                                          // New object-format config: { options: [...], defaultValue, ... }
+                                          if (Array.isArray(parsed?.options)) {
+                                              return {
+                                                  options: parsed.options.map((o: any) => ({
+                                                      label: o.value || o.label,
+                                                      name: o.value || o.name,
+                                                  })),
+                                              };
+                                          }
+                                          if (parsed.coommaSepartedOptions) {
+                                              return {
+                                                  options: parsed.coommaSepartedOptions
+                                                      .split(',')
+                                                      .map((v: string) => ({
+                                                          label: v.trim(),
+                                                          name: v.trim(),
+                                                      })),
+                                              };
+                                          }
+                                      } catch {
+                                          /* ignore */
+                                      }
+                                      return {};
+                                  })()
+                                : {}),
                         };
                     });
                     form.setValue('fields', allFields);
@@ -542,10 +566,70 @@ export default function ScheduleStep2() {
         fields: beforeLiveFields,
         append: beforeLiveAppend,
         remove: beforeLiveRemove,
+        replace: beforeLiveReplace,
     } = useFieldArray({
         control,
         name: 'notifySettings.beforeLiveTime',
     });
+
+    // For NEW sessions only: once the institute notification defaults load,
+    // snap the channels/triggers (and the pre-seeded reminder) to them, while
+    // the admin hasn't manually changed each field. Edit mode is populated from
+    // the saved notification actions instead, so we skip it entirely.
+    useEffect(() => {
+        if (isEditState || sessionDetails) return;
+        const snapBool = (
+            name:
+                | 'notifyBy.mail'
+                | 'notifyBy.whatsapp'
+                | 'notifyBy.push_notification'
+                | 'notifyBy.system_notification'
+                | 'notifySettings.onCreate'
+                | 'notifySettings.onLive'
+                | 'notifySettings.onAttendance',
+            next: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== next) {
+                form.setValue(name, next);
+            }
+        };
+        snapBool('notifyBy.mail', liveSessionSettings.defaultNotifyByEmail ?? false);
+        snapBool('notifyBy.whatsapp', liveSessionSettings.defaultNotifyByWhatsapp ?? false);
+        snapBool('notifyBy.push_notification', liveSessionSettings.defaultNotifyByPush ?? false);
+        snapBool(
+            'notifyBy.system_notification',
+            liveSessionSettings.defaultNotifyBySystem ?? false
+        );
+        snapBool('notifySettings.onCreate', liveSessionSettings.defaultNotifyOnCreate ?? false);
+        snapBool('notifySettings.onLive', liveSessionSettings.defaultNotifyOnLive ?? true);
+        snapBool(
+            'notifySettings.onAttendance',
+            liveSessionSettings.defaultNotifyOnAttendance ?? false
+        );
+        // Pre-seed the reminder only while the list is still empty and untouched.
+        const reminder = liveSessionSettings.defaultNotifyBeforeReminder;
+        if (
+            reminder &&
+            !form.getFieldState('notifySettings.beforeLiveTime').isDirty &&
+            (form.getValues('notifySettings.beforeLiveTime')?.length ?? 0) === 0
+        ) {
+            beforeLiveReplace([{ time: reminder }]);
+            form.setValue('notifySettings.beforeLive', true);
+        }
+    }, [
+        liveSessionSettings.defaultNotifyByEmail,
+        liveSessionSettings.defaultNotifyByWhatsapp,
+        liveSessionSettings.defaultNotifyByPush,
+        liveSessionSettings.defaultNotifyBySystem,
+        liveSessionSettings.defaultNotifyOnCreate,
+        liveSessionSettings.defaultNotifyOnLive,
+        liveSessionSettings.defaultNotifyOnAttendance,
+        liveSessionSettings.defaultNotifyBeforeReminder,
+        isEditState,
+        sessionDetails,
+        beforeLiveReplace,
+        form,
+    ]);
 
     const handleSessionChange = (value: DropdownValueType) => {
         if (value && typeof value === 'object' && 'id' in value && 'name' in value) {
@@ -616,32 +700,54 @@ export default function ScheduleStep2() {
             // Skipped in bulk flow because per-row platforms/timings vary and
             // the Zoho meeting creation is keyed off step1Data which is only
             // representative in bulk mode.
-            if (!isBulkFlow && step1Data?.sessionPlatform === StreamingPlatform.ZOHO && instituteDetails?.id) {
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.ZOHO &&
+                instituteDetails?.id
+            ) {
                 try {
                     const sessionDetailsPayload = await getSessionBySessionId(sessionId);
                     const schedules = sessionDetailsPayload?.schedule?.added_schedules || [];
 
                     for (const schedule of schedules) {
                         try {
-                            const durationMinutes = Number(schedule.duration) ||
-                                (Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes));
+                            const durationMinutes =
+                                Number(schedule.duration) ||
+                                Number(step1Data.durationHours) * 60 +
+                                    Number(step1Data.durationMinutes);
 
-                            const sessionStartDate = schedule.meetingDate || schedule.meeting_date || (step1Data as any)?.startDate || new Date().toISOString().split('T')[0];
-                            const formattedStartTime = formatZohoStartTime(sessionStartDate, schedule.startTime || schedule.start_time);
+                            const sessionStartDate =
+                                schedule.meetingDate ||
+                                schedule.meeting_date ||
+                                (step1Data as any)?.startDate ||
+                                new Date().toISOString().split('T')[0];
+                            const formattedStartTime = formatZohoStartTime(
+                                sessionStartDate,
+                                schedule.startTime || schedule.start_time
+                            );
 
                             await createProviderMeeting({
                                 instituteId: instituteDetails.id,
                                 sessionId: sessionId,
                                 scheduleId: schedule.id,
-                                topic: step1Data.title || sessionDetailsPayload?.schedule?.title || 'Live Class',
+                                topic:
+                                    step1Data.title ||
+                                    sessionDetailsPayload?.schedule?.title ||
+                                    'Live Class',
                                 agenda: step1Data.description || 'Live Subject Class',
                                 startTime: formattedStartTime,
                                 durationMinutes: durationMinutes > 0 ? durationMinutes : 30,
-                                timezone: step1Data.timeZone || sessionDetailsPayload?.schedule?.timezone || 'Asia/Kolkata',
-                                provider: 'ZOHO_MEETING'
+                                timezone:
+                                    step1Data.timeZone ||
+                                    sessionDetailsPayload?.schedule?.timezone ||
+                                    'Asia/Kolkata',
+                                provider: 'ZOHO_MEETING',
                             });
                         } catch (err) {
-                            console.error(`Error creating Zoho meeting for schedule ${schedule.id}:`, err);
+                            console.error(
+                                `Error creating Zoho meeting for schedule ${schedule.id}:`,
+                                err
+                            );
                         }
                     }
                 } catch (err) {
@@ -732,6 +838,52 @@ export default function ScheduleStep2() {
                 }
             }
 
+            // Handle Google Meet meeting creation — only when a connected account was selected in
+            // step 1 (integration on). Without an account the admin pasted a defaultLink instead.
+            // Mirrors the Zoom block; skipped in bulk for the same reason.
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.MEET &&
+                (step1Data as any)?.googleMeetAccountId &&
+                instituteDetails?.id
+            ) {
+                try {
+                    const s = step1Data as any;
+                    // Advisory double-booking check: warn (don't block) on overlap.
+                    try {
+                        const availability = await checkProviderAvailabilityForSession(
+                            sessionId,
+                            s.googleMeetAccountId
+                        );
+                        if (availability?.available === false) {
+                            const count = availability.conflicts?.length ?? 0;
+                            toast.warning(
+                                `Heads up: this Google account already has ${count} overlapping meeting${
+                                    count === 1 ? '' : 's'
+                                } at the selected time. Creating anyway.`
+                            );
+                        }
+                    } catch {
+                        // advisory only — never block meeting creation
+                    }
+
+                    const fallbackDuration =
+                        Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
+                    await createProviderMeetingsForSession({
+                        instituteId: instituteDetails.id,
+                        sessionId: sessionId,
+                        topic: step1Data.title || 'Live Class',
+                        agenda: step1Data.description || 'Live Subject Class',
+                        durationMinutes: fallbackDuration > 0 ? fallbackDuration : 30,
+                        timezone: step1Data.timeZone || 'Asia/Kolkata',
+                        provider: 'GOOGLE_MEET',
+                        providerAccountId: s.googleMeetAccountId,
+                    });
+                } catch (err) {
+                    console.error('Error creating Google Meet meetings for session:', err);
+                }
+            }
+
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['upcomingSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['pastSessions'] });
@@ -783,9 +935,9 @@ export default function ScheduleStep2() {
             options:
                 data.fieldType === 'dropdown'
                     ? data.options.map((option) => ({
-                        name: option.optionField,
-                        label: option.optionField,
-                    }))
+                          name: option.optionField,
+                          label: option.optionField,
+                      }))
                     : [],
         });
         setAddCustomFieldDialog(false);
@@ -914,10 +1066,7 @@ export default function ScheduleStep2() {
     return (
         <>
             <FormProvider {...form}>
-                <form
-                    onSubmit={handleOpenPreview}
-                    className="flex flex-col gap-5"
-                >
+                <form onSubmit={handleOpenPreview} className="flex flex-col gap-5">
                     <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
                         <div className="flex items-center gap-3">
                             <MyButton
@@ -956,9 +1105,7 @@ export default function ScheduleStep2() {
 
                     {isBulkFlow && (
                         <div className="flex items-start gap-2 rounded-md border border-primary-200 bg-primary-50/60 px-3 py-2 text-sm text-neutral-700">
-                            <span className="font-medium">
-                                Bulk mode:
-                            </span>
+                            <span className="font-medium">Bulk mode:</span>
                             <span>
                                 These access & notification settings will be applied to all{' '}
                                 {bulkSessionIds.length} sessions you just created.
@@ -977,9 +1124,9 @@ export default function ScheduleStep2() {
                                     <div className="font-bold">{accessType} : </div>
                                     {accessType === AccessType.PRIVATE ? (
                                         <div>
-                                            Restrict the class to specific participants by
-                                            assigning it to institute batches or selecting
-                                            individual learners.
+                                            Restrict the class to specific participants by assigning
+                                            it to institute batches or selecting individual
+                                            learners.
                                         </div>
                                     ) : (
                                         <div>
@@ -1306,90 +1453,94 @@ export default function ScheduleStep2() {
                                     Channels
                                 </div>
                                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                            <FormField
-                                control={control}
-                                name={`notifyBy.mail`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!m-0 text-sm font-normal">
-                                            Notify Via Email
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={control}
-                                name={`notifyBy.whatsapp`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!m-0 text-sm font-normal">
-                                            Notify Via WhatsApp
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={control}
-                                name={`notifyBy.push_notification`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!m-0 text-sm font-normal">
-                                            Notify Via Push Notification
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-                            <FormField
-                                control={control}
-                                name={`notifyBy.system_notification`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!m-0 text-sm font-normal">
-                                            Notify Via System Notification
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
+                                    <FormField
+                                        control={control}
+                                        name={`notifyBy.mail`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-4 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!m-0 text-sm font-normal">
+                                                    Notify Via Email
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name={`notifyBy.whatsapp`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-4 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!m-0 text-sm font-normal">
+                                                    Notify Via WhatsApp
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name={`notifyBy.push_notification`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-4 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!m-0 text-sm font-normal">
+                                                    Notify Via Push Notification
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name={`notifyBy.system_notification`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-4 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!m-0 text-sm font-normal">
+                                                    Notify Via System Notification
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
                                 </div>
                             </div>
 
@@ -1403,133 +1554,137 @@ export default function ScheduleStep2() {
                                     Pick when notifications should fire on the channels above.
                                 </p>
                                 <div className="mt-3 flex flex-col gap-2">
-                            <FormField
-                                control={control}
-                                name={`notifySettings.onCreate`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                    : '' // Default styles when unchecked
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
-                                            When Live Class is created
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-
-                            {isEditState && (
-                                <FormField
-                                    control={control}
-                                    name={`notifySettings.onEdit`}
-                                    render={({ field }) => (
-                                        <FormItem className="flex items-end gap-2">
-                                            <FormControl>
-                                                <Checkbox
-                                                    checked={field.value ?? false}
-                                                    onCheckedChange={field.onChange}
-                                                    className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                        ? 'border-none bg-primary-500 text-white'
-                                                        : ''
+                                    <FormField
+                                        control={control}
+                                        name={`notifySettings.onCreate`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-end gap-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-5 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
+                                                                : '' // Default styles when unchecked
                                                         }`}
-                                                />
-                                            </FormControl>
-                                            <FormLabel className="!mb-[3px] font-thin">
-                                                Send Reschedule/Edit Email
-                                            </FormLabel>
-                                        </FormItem>
-                                    )}
-                                />
-                            )}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!mb-[3px] font-thin">
+                                                    When Live Class is created
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
 
-                            <div>
-                                <div className="text-sm font-medium">Notify Before</div>
-
-                                {beforeLiveFields.map((field, index) => (
-                                    <div key={field.id} className="flex items-center">
-                                        <SelectField
-                                            label=""
-                                            name={`notifySettings.beforeLiveTime.${index}.time`}
-                                            labelStyle="font-thin"
-                                            options={TimeOptions.map((option, index) => ({
-                                                value: option.value,
-                                                label: option.label,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            className="mt-[8px] w-56 font-thin"
+                                    {isEditState && (
+                                        <FormField
+                                            control={control}
+                                            name={`notifySettings.onEdit`}
+                                            render={({ field }) => (
+                                                <FormItem className="flex items-end gap-2">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={field.value ?? false}
+                                                            onCheckedChange={field.onChange}
+                                                            className={`size-5 rounded-sm border-2 shadow-none ${
+                                                                field.value
+                                                                    ? 'border-none bg-primary-500 text-white'
+                                                                    : ''
+                                                            }`}
+                                                        />
+                                                    </FormControl>
+                                                    <FormLabel className="!mb-[3px] font-thin">
+                                                        Send Reschedule/Edit Email
+                                                    </FormLabel>
+                                                </FormItem>
+                                            )}
                                         />
+                                    )}
+
+                                    <div>
+                                        <div className="text-sm font-medium">Notify Before</div>
+
+                                        {beforeLiveFields.map((field, index) => (
+                                            <div key={field.id} className="flex items-center">
+                                                <SelectField
+                                                    label=""
+                                                    name={`notifySettings.beforeLiveTime.${index}.time`}
+                                                    labelStyle="font-thin"
+                                                    options={TimeOptions.map((option, index) => ({
+                                                        value: option.value,
+                                                        label: option.label,
+                                                        _id: index,
+                                                    }))}
+                                                    control={form.control}
+                                                    className="mt-[8px] w-56 font-thin"
+                                                />
+                                                <MyButton
+                                                    type="button"
+                                                    buttonType="text"
+                                                    onClick={() => beforeLiveRemove(index)}
+                                                    className="text-red-500"
+                                                >
+                                                    Remove
+                                                </MyButton>
+                                            </div>
+                                        ))}
+
                                         <MyButton
                                             type="button"
                                             buttonType="text"
-                                            onClick={() => beforeLiveRemove(index)}
-                                            className="text-red-500"
+                                            onClick={() => beforeLiveAppend({ time: '' })}
+                                            className="m-0 flex justify-start gap-2 p-0 text-primary-500"
                                         >
-                                            Remove
+                                            <Plus size={16} /> Add
                                         </MyButton>
                                     </div>
-                                ))}
 
-                                <MyButton
-                                    type="button"
-                                    buttonType="text"
-                                    onClick={() => beforeLiveAppend({ time: '' })}
-                                    className="m-0 flex justify-start gap-2 p-0 text-primary-500"
-                                >
-                                    <Plus size={16} /> Add
-                                </MyButton>
-                            </div>
+                                    <FormField
+                                        control={control}
+                                        name={`notifySettings.onLive`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-end gap-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-5 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!mb-[3px] font-thin">
+                                                    When class goes live
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
 
-                            <FormField
-                                control={control}
-                                name={`notifySettings.onLive`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
-                                            When class goes live
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
-
-                            <FormField
-                                control={control}
-                                name={`notifySettings.onAttendance`}
-                                render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white'
-                                                    : ''
-                                                    }`}
-                                            />
-                                        </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
-                                            When attendance is marked (present/absent)
-                                        </FormLabel>
-                                    </FormItem>
-                                )}
-                            />
+                                    <FormField
+                                        control={control}
+                                        name={`notifySettings.onAttendance`}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-end gap-2">
+                                                <FormControl>
+                                                    <Checkbox
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                        className={`size-5 rounded-sm border-2 shadow-none ${
+                                                            field.value
+                                                                ? 'border-none bg-primary-500 text-white'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="!mb-[3px] font-thin">
+                                                    When attendance is marked (present/absent)
+                                                </FormLabel>
+                                            </FormItem>
+                                        )}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -1548,9 +1703,7 @@ export default function ScheduleStep2() {
                                     <h1 className="text-sm">
                                         {testInputFields.label}
                                         {testInputFields.required && (
-                                            <span className="text-subtitle text-danger-600">
-                                                *
-                                            </span>
+                                            <span className="text-subtitle text-danger-600">*</span>
                                         )}
                                     </h1>
                                     <CustomFieldRenderer

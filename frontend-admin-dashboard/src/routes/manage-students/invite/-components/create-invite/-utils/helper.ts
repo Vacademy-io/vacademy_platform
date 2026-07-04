@@ -389,10 +389,39 @@ export function convertInviteData(
                 ? data.accessDurationDays
                 : null,
         web_page_meta_data_json: JSON.stringify(jsonMetaData),
-        setting_json: JSON.stringify({
-            ...(existingInviteDetails?.setting_json ? JSON.parse(existingInviteDetails.setting_json) : {}),
-            postformfillConfiguration: data.postformfillConfiguration || { showLoginButton: true },
-        }),
+        setting_json: (() => {
+            const existing = existingInviteDetails?.setting_json
+                ? JSON.parse(existingInviteDetails.setting_json)
+                : {};
+            const next = {
+                ...existing,
+                postformfillConfiguration: data.postformfillConfiguration || {
+                    showLoginButton: true,
+                },
+            };
+            // Sub-org settings → setting.SUB_ORG_SETTING (matches EnrollInviteSettingDTO).
+            // Only written when enabled; otherwise the block is removed so toggling it
+            // off clears a previously-saved sub-org config.
+            const subOrg = data.subOrgSettings;
+            if (subOrg?.enabled) {
+                next.setting = {
+                    ...(existing.setting || {}),
+                    SUB_ORG_SETTING: {
+                        ...((existing.setting || {}).SUB_ORG_SETTING || {}),
+                        AUTH_ROLES: subOrg.authRoles ?? [],
+                        ALLOWED_TEAM_ROLES: subOrg.allowedTeamRoles ?? [],
+                        ADMIN_PERMISSIONS: subOrg.adminPermissions ?? [],
+                        ...(subOrg.memberCount != null
+                            ? { MEMBER_COUNT: subOrg.memberCount }
+                            : {}),
+                    },
+                };
+            } else if (next.setting?.SUB_ORG_SETTING) {
+                const { SUB_ORG_SETTING: _removed, ...restSetting } = next.setting;
+                next.setting = restSetting;
+            }
+            return JSON.stringify(next);
+        })(),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
         institute_custom_fields: transformCustomFields(data.custom_fields, instituteId || ''),

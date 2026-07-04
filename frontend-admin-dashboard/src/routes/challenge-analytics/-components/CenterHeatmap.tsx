@@ -25,6 +25,7 @@ import {
     ArrowDown,
 } from '@phosphor-icons/react';
 import type { CenterHeatmapResponse, CenterHeatmapItem } from '@/types/challenge-analytics';
+import { InfoHint } from './InfoHint';
 
 interface CenterHeatmapProps {
     data: CenterHeatmapResponse | undefined;
@@ -32,9 +33,9 @@ interface CenterHeatmapProps {
 }
 
 const COLORS = [
-    '#10B981', '#3B82F6', '#8B5CF6', '#F59E0B',
-    '#EF4444', '#EC4899', '#06B6D4', '#84CC16',
-    '#F97316', '#6366F1', '#14B8A6', '#A855F7',
+    '#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', // design-lint-ignore: chart palette
+    '#EF4444', '#EC4899', '#06B6D4', '#84CC16', // design-lint-ignore: chart palette
+    '#F97316', '#6366F1', '#14B8A6', '#A855F7', // design-lint-ignore: chart palette
 ];
 
 const EXCLUDED_TYPES = new Set([
@@ -58,7 +59,7 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                     <div className="h-6 w-48 animate-pulse rounded bg-gray-200" />
                 </CardHeader>
                 <CardContent>
-                    <div className="h-[300px] animate-pulse rounded bg-gray-100" />
+                    <div className="h-72 animate-pulse rounded bg-gray-100" />
                 </CardContent>
             </Card>
         );
@@ -72,7 +73,7 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                     <CardTitle className="text-base font-semibold">Center Performance Report</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex h-[300px] items-center justify-center text-gray-500">
+                    <div className="flex h-72 items-center justify-center text-gray-500">
                         No center data available for the selected period
                     </div>
                 </CardContent>
@@ -252,7 +253,11 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                     <div className="flex items-center justify-between">
                         <div>
                             <CardTitle className="text-base font-semibold">Center Performance Details</CardTitle>
-                            <p className="text-xs text-gray-500">Enrollment, interactions & opt-outs per center</p>
+                            <p className="text-xs text-gray-500">
+                                Enrollment, interactions & opt-outs per center.{' '}
+                                <span className="font-medium text-gray-600">Share</span> = each
+                                center&apos;s % of total enrolled.
+                            </p>
                         </div>
                         <Button variant="outline" size="sm" onClick={exportToCSV} className="gap-2">
                             <Download className="size-4" />
@@ -269,7 +274,12 @@ export function CenterHeatmap({ data, isLoading }: CenterHeatmapProps) {
                                     <th className="px-4 py-3 text-right font-medium text-gray-700">
                                         <span className="flex items-center justify-end gap-1"><Users className="size-3.5" />Enrolled</span>
                                     </th>
-                                    <th className="hidden px-4 py-3 text-left font-medium text-gray-700 md:table-cell">Share</th>
+                                    <th className="hidden px-4 py-3 text-left font-medium text-gray-700 md:table-cell">
+                                        <span className="flex items-center gap-1">
+                                            Share of enrolled
+                                            <InfoHint text="Each center's share of all enrolled leads = this center's enrolled ÷ total enrolled." />
+                                        </span>
+                                    </th>
                                     <th className="px-4 py-3 text-right font-medium text-gray-700">
                                         <span className="flex items-center justify-end gap-1"><ChatCircle className="size-3.5" />Interactions</span>
                                     </th>

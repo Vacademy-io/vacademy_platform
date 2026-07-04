@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChatCircleDots, Prohibit, WarningCircle } from '@phosphor-icons/react';
+import { useQuery } from '@tanstack/react-query';
+import { ChatCircleDots, Prohibit, WarningCircle, Trophy } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { MyButton } from '@/components/design-system/button';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { getBadgesEnabled } from '@/routes/settings/-services/badges-settings';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { LeaderboardShareDialog } from './LeaderboardShareDialog';
 import {
     getMessages,
     sendMessage as apiSendMessage,
@@ -46,6 +52,23 @@ const mergeById = (existing: ThreadMessage[], incoming: ThreadMessage[]): Thread
  */
 export function BatchChatPanel({ packageSessionId, className }: BatchChatPanelProps) {
     const { userId } = useMemo(() => getChatUser(), []);
+    const { instituteDetails } = useInstituteDetailsStore();
+    const { data: badgesEnabled } = useQuery({
+        queryKey: ['badges-enabled'],
+        queryFn: getBadgesEnabled,
+        staleTime: 5 * 60 * 1000,
+    });
+    const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+    // Public, white-labelled leaderboard URL — points at the institute's LEARNER portal.
+    const leaderboardUrl = (() => {
+        if (!packageSessionId) return '';
+        const rawBase = instituteDetails?.learner_portal_base_url || BASE_URL_LEARNER_DASHBOARD;
+        const base =
+            rawBase.startsWith('http://') || rawBase.startsWith('https://')
+                ? rawBase
+                : `https://${rawBase}`;
+        return `${base.replace(/\/+$/, '')}/leaderboard/${packageSessionId}`;
+    })();
 
     const [conversation, setConversation] = useState<ChatConversationResponse | null>(null);
     const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -398,7 +421,26 @@ export function BatchChatPanel({ packageSessionId, className }: BatchChatPanelPr
                     </div>
                     <div className="text-xs text-neutral-400">Group messages</div>
                 </div>
+                {badgesEnabled === true && (
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setLeaderboardOpen(true)}
+                        className="ml-auto gap-1.5"
+                    >
+                        <Trophy size={16} weight="fill" />
+                        Leaderboard
+                    </MyButton>
+                )}
             </header>
+
+            <LeaderboardShareDialog
+                open={leaderboardOpen}
+                onOpenChange={setLeaderboardOpen}
+                packageSessionId={packageSessionId}
+                batchName={conversation.title?.trim() || 'Discussion'}
+                shareUrl={leaderboardUrl}
+            />
 
             <ChatThread
                 conversation={conversation}

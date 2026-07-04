@@ -30,6 +30,11 @@ export const ASSISTANT_SESSION_STREAM = (sessionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/stream`;
 export const ASSISTANT_SESSION_CLOSE = (sessionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/close`;
+export const ASSISTANT_ACTION_CONFIRM = (sessionId: string, actionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/confirm`;
+export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
+    `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
+export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
 
 // PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
 // {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.
@@ -148,6 +153,9 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
 /** Intelligence for a single call, keyed by the universal call_log id. */
 export const CALL_INTELLIGENCE_BY_CALL = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}`;
+/** Trigger on-demand (re)analysis for a single call. */
+export const CALL_INTELLIGENCE_ANALYZE = (callLogId: string) =>
+    `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}/analyze`;
 /** All analyzed calls for a lead (by responseId). */
 export const CALL_INTELLIGENCE_BY_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/lead/${encodeURIComponent(responseId)}`;
@@ -164,6 +172,19 @@ export const CALL_INTELLIGENCE_COUNSELLOR_ANALYTICS = (
     const qs = p.toString();
     return `${BASE_URL}/admin-core-service/call-intelligence/analytics/counsellor${qs ? `?${qs}` : ''}`;
 };
+/** Per-counsellor coaching insights (quality gaps, recurring tips, common objections). */
+export const CALL_INTELLIGENCE_COUNSELLOR_COACHING = (
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams();
+    if (counsellorUserId) p.set('counsellorUserId', counsellorUserId);
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    const qs = p.toString();
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/counsellor/coaching${qs ? `?${qs}` : ''}`;
+};
 /** Acting user's whole-team roll-up (sales-head view). */
 export const CALL_INTELLIGENCE_TEAM_ANALYTICS = (
     instituteId: string,
@@ -174,6 +195,17 @@ export const CALL_INTELLIGENCE_TEAM_ANALYTICS = (
     if (from != null) p.set('from', String(from));
     if (to != null) p.set('to', String(to));
     return `${BASE_URL}/admin-core-service/call-intelligence/analytics/team?${p.toString()}`;
+};
+/** Whole-team coaching (aggregated call-quality coaching across the caller's team). */
+export const CALL_INTELLIGENCE_TEAM_COACHING = (
+    instituteId: string,
+    from?: number,
+    to?: number
+) => {
+    const p = new URLSearchParams({ instituteId });
+    if (from != null) p.set('from', String(from));
+    if (to != null) p.set('to', String(to));
+    return `${BASE_URL}/admin-core-service/call-intelligence/analytics/team/coaching?${p.toString()}`;
 };
 /** Manual call-recording upload (multipart/form-data). */
 export const CALL_INTELLIGENCE_MANUAL_UPLOAD = `${BASE_URL}/admin-core-service/call-intelligence/manual-call/upload`;
@@ -206,6 +238,15 @@ export const TELEPHONY_EXOTEL_EXOPHONES = (instituteId: string) =>
 // just to check credits.
 export const TELEPHONY_EXOTEL_BALANCE = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/exotel/balance?instituteId=${encodeURIComponent(instituteId)}`;
+// Vacademy Voice IVR menus — CRUD for the multi-level inbound call tree builder.
+export const TELEPHONY_IVR_MENUS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus?instituteId=${encodeURIComponent(instituteId)}`;
+export const TELEPHONY_IVR_MENUS_BASE = `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus`;
+export const TELEPHONY_IVR_MENU_BY_ID = (menuId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ivr/menus/${encodeURIComponent(menuId)}`;
+// Vacademy Voice product config (enable flag, caller-ID, recording, compliance, plan).
+export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/voice-config/${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
@@ -228,6 +269,8 @@ export const ASSIGN_COUNSELOR_TO_LEAD = `${BASE_URL}/admin-core-service/v1/audie
 export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/user-audiences`;
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
+// Full lead journey (status/disposition changes + notes + calls) per lead, for CSV export.
+export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
 export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
@@ -562,6 +605,10 @@ export const ENROLL_REQUESTS = `${BASE_URL}/admin-core-service/learner-invitatio
 export const GET_ATTEMPT_DATA = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/attempt-data`;
 export const UPDATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/update/attempt`;
 export const SUBMIT_MARKS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/submit/marks`;
+// Server-side "save draft": pause manual evaluation and resume it later from any device.
+export const SAVE_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/save/draft`;
+export const GET_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/draft`;
+export const DELETE_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/delete/draft`;
 export const GET_INVITE_DETAILS = `${BASE_URL}/admin-core-service/learner-invitation/learner-invitation-detail-by-id`;
 export const GET_BATCH_REPORT = `${BASE_URL}/admin-core-service/learner-management/batch-report`;
 export const GET_LEARNERS_REPORT = `${BASE_URL}/admin-core-service/learner-management/learner-report`;
@@ -679,6 +726,8 @@ export const PROVIDER_MEETING_AVAILABILITY_FOR_SESSION = `${BASE_URL}/admin-core
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3`;
+// Google Meet: on-demand pull of conferenceRecords.recordings (bypasses the hourly poll).
+export const SYNC_GOOGLE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-recordings/sync`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).
@@ -697,6 +746,16 @@ export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-
 // meeting failed to provision (silent async failure) and re-create it in one click.
 export const ZOOM_PROVISION_STATUS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-status`;
 export const ZOOM_PROVISION_NOW = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/provision-now`;
+
+// ── Google Workspace (Google Meet) integration ──
+// Per-institute connected Google account (per-tenant OAuth, NOT domain-wide delegation).
+// Accounts are created via the "Connect Google Workspace" OAuth flow — no pasted secrets.
+// See docs/googlemeetintegration/google-meet-integration-plan.md.
+export const GOOGLE_ACCOUNTS_BASE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/accounts`;
+// "Connect Google Workspace" — returns the consent URL the browser is sent to.
+export const GOOGLE_OAUTH_INITIATE = `${BASE_URL}/admin-core-service/live-sessions/provider/google/oauth/initiate`;
+// Authenticated learner/host join — resolves the meetingUri + records attendance.
+export const GOOGLE_MEET_JOIN = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/google-meet-join`;
 
 // "Process Recording" / "Transcript Ready" flow — kicks off Whisper
 // transcription for a specific BBB recording and polls for terminal state.
@@ -891,6 +950,17 @@ export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/su
 export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
 export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
+// Sub-org open registration links (reusable templates admins share publicly)
+export const SUB_ORG_REGISTRATION_BASE = `${BASE_URL}/admin-core-service/institute/v1/sub-org-registration`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_CREATE = `${SUB_ORG_REGISTRATION_BASE}/template/create`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_LIST = `${SUB_ORG_REGISTRATION_BASE}/template/list`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_STATUS = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}/status`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_DETAIL = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}/detail`;
+export const SUB_ORG_REGISTRATION_TEMPLATE_UPDATE = (templateId: string) =>
+    `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}`;
+export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
@@ -1156,6 +1226,9 @@ export const COUNSELLOR_WORKBENCH_SET_STATUS = (userId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/status`;
 export const COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/reassign/preview`;
 export const COUNSELLOR_WORKBENCH_REASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/reassign`;
+// Bulk-assign a caller-selected set of leads (multi-select in the leads list).
+export const COUNSELLOR_WORKBENCH_ASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/assign/preview`;
+export const COUNSELLOR_WORKBENCH_ASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/assign`;
 export const COUNSELLOR_WORKBENCH_ACTIVITY = (
     userId: string,
     instituteId: string,
@@ -1176,6 +1249,24 @@ export const COUNSELLOR_WORKBENCH_ACTIVITY = (
  */
 export const COUNSELLOR_WORKBENCH_LEAD_TRANSFERS = (instituteId: string, leadUserId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/leads/${leadUserId}/transfers?instituteId=${instituteId}`;
+
+// =============================================================================
+// Counsellor targets. Admin-set targets (conversions / leads / calls) per
+// counsellor with a WEEK/MONTH/CUSTOM timeline; "completed" is computed live.
+// Stored inside the same LEAD_SETTING workbench JSON — no extra tables.
+// =============================================================================
+export const COUNSELLOR_TARGET_BASE = `${COUNSELLOR_WORKBENCH_BASE}/targets`;
+export const COUNSELLOR_TARGET_PROGRESS = `${COUNSELLOR_TARGET_BASE}/progress`;
+export const COUNSELLOR_TARGET_UPSERT = COUNSELLOR_TARGET_BASE;
+export const COUNSELLOR_TARGET_BULK = `${COUNSELLOR_TARGET_BASE}/bulk`;
+export const COUNSELLOR_TARGET_LIST = (instituteId: string, counsellorUserId: string) =>
+    `${COUNSELLOR_TARGET_BASE}?instituteId=${instituteId}&counsellorUserId=${counsellorUserId}`;
+export const COUNSELLOR_TARGET_DELETE = (
+    targetId: string,
+    instituteId: string,
+    counsellorUserId: string
+) =>
+    `${COUNSELLOR_TARGET_BASE}/${targetId}?instituteId=${instituteId}&counsellorUserId=${counsellorUserId}`;
 
 // =============================================================================
 // Counsellor rating. Strategy config lives at /counsellor-workbench/config;

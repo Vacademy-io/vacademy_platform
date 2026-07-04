@@ -18,7 +18,11 @@ export function MetricInfo({ text }: { text: string }) {
                         <Info className="size-4" />
                     </button>
                 </TooltipTrigger>
-                <TooltipContent className="max-w-xs text-caption leading-relaxed">
+                <TooltipContent
+                    side="top"
+                    sideOffset={6}
+                    className="z-50 max-w-xs rounded-md border border-neutral-200 bg-white px-3 py-2 text-caption font-normal leading-relaxed text-neutral-700 shadow-lg"
+                >
                     {text}
                 </TooltipContent>
             </Tooltip>

@@ -100,6 +100,26 @@ public class MediaService {
         return objectMapper.readValue(body, FileDetailsDTO.class);
     }
 
+    /**
+     * Upload to the PRIVATE bucket with server-side encryption (SSE-S3). For sensitive
+     * media (Vacademy Voice call recordings of parents/minors). Retrieve the playback
+     * URL via {@link #getFileUrlById(String)} (the private presigned getter) — NOT the
+     * public getter.
+     */
+    public FileDetailsDTO uploadPrivateFileV2(MultipartFile multipartFile) throws IOException {
+        if (multipartFile == null) {
+            return null;
+        }
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequestForMultipartFile(
+                clientName,
+                HttpMethod.POST.name(),
+                mediaServerBaseUrl,
+                MediaServiceConstants.GET_FILE_UPLOAD_ENDPOINT_PRIVATE,
+                multipartFile);
+        String body = response.getBody();
+        return objectMapper.readValue(body, FileDetailsDTO.class);
+    }
+
     public FileDetailsDTO uploadFileToKey(MultipartFile multipartFile, String key) throws IOException {
         if (multipartFile == null) {
             return null;

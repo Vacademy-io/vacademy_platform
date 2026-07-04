@@ -10,6 +10,9 @@ interface TimerState {
     resetTimer: () => void;
     incrementTime: () => void;
     currentTime: () => number;
+    // Seed the elapsed time when resuming a saved draft so "Time on evaluation"
+    // continues from where the evaluator left off instead of restarting at 0.
+    setElapsedTime: (seconds: number) => void;
 }
 
 export const useTimerStore = create<TimerState>((set, get) => {
@@ -44,6 +47,9 @@ export const useTimerStore = create<TimerState>((set, get) => {
         },
         currentTime: () => {
             return get().elapsedTime;
+        },
+        setElapsedTime: (seconds: number) => {
+            set({ elapsedTime: Math.max(0, Math.floor(seconds) || 0) });
         },
     };
 });

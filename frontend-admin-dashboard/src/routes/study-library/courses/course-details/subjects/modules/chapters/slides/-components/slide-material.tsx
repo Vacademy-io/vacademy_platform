@@ -327,8 +327,27 @@ export const SlideMaterial = ({
         slideId: null,
         html: '',
     });
-    // Always-current editor HTML for DOC (updated on every change, not persisted to store)
-    const currentDocHtmlRef = useRef<string>('');
+    // Last successfully-serialized DOC editor HTML, TAGGED with the slide it came
+    // from. It's the fallback when html.serialize throws (a degenerate custom-block
+    // Slate state). Without the slideId, that fallback could hand back a DIFFERENT
+    // slide's HTML during a switch — the "data comes from other slides" bug. The
+    // tag lets every reader verify the cache belongs to the slide in the editor.
+    const currentDocHtmlRef = useRef<{ slideId: string | null; html: string }>({
+        slideId: null,
+        html: '',
+    });
+    // The pending captureInitialDocSnapshot() timeout, tracked so a slide switch
+    // can cancel it — otherwise it fires 300ms later against the NOW-current editor
+    // and writes that content into the PREVIOUS slide's baseline ref.
+    const snapshotTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // True when the last getCurrentEditorHTMLContent() had to fall back to
+    // per-block serialization (a block's serializer threw) OR blew up entirely.
+    // In that state the serialized HTML may be MISSING the offending block, so
+    // persisting it — especially via the silent auto-save-on-switch — would
+    // permanently drop that block's content and flip the slide to UNSYNC. The
+    // auto-save reads this to refuse a destructive overwrite. Reset on every
+    // serialize; only the LAST serialize before a save matters.
+    const lastSerializeDegradedRef = useRef(false);
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -425,6 +444,15 @@ export const SlideMaterial = ({
             setShowPlaceholder(initialIsEmpty);
         }, [initialIsEmpty]);
 
+        // Clear the pending unsaved-change debounce when this editor unmounts
+        // (a slide switch, now that we remount per slide) so a stale timer can't
+        // serialize the NEXT slide's editor into the previous slide's refs.
+        useEffect(() => {
+            return () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            };
+        }, []);
+
         // Check emptiness from Yoopta JSON structure (no serialization needed)
         const checkIsEmptyFromEditor = (): boolean => {
             try {
@@ -502,9 +530,10 @@ export const SlideMaterial = ({
                             debounceTimerRef.current = setTimeout(() => {
                                 try {
                                     const currentContent = html.serialize(editor, editor.children);
-                                    currentDocHtmlRef.current = formatHTMLString(
-                                        currentContent || ''
-                                    );
+                                    currentDocHtmlRef.current = {
+                                        slideId: prevDocSlideRef.current?.id ?? null,
+                                        html: formatHTMLString(currentContent || ''),
+                                    };
                                 } catch (error) {
                                     console.error('Error serializing content in onChange:', error);
                                 }
@@ -1006,11 +1035,14 @@ export const SlideMaterial = ({
     const captureInitialDocSnapshot = () => {
         if (activeItem?.source_type === 'DOCUMENT' && activeItem?.document_slide?.type === 'DOC') {
             prevDocSlideRef.current = activeItem;
+            // Cancel any earlier pending snapshot so a stale one can't fire after a
+            // switch and write THIS editor's content into a previous slide's refs.
+            if (snapshotTimeoutRef.current) clearTimeout(snapshotTimeoutRef.current);
             // Use a short delay so Yoopta finishes rendering before we snapshot
-            setTimeout(() => {
+            snapshotTimeoutRef.current = setTimeout(() => {
                 const editorHtml = getCurrentEditorHTMLContent();
                 initialDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
-                currentDocHtmlRef.current = editorHtml;
+                currentDocHtmlRef.current = { slideId: activeItem.id, html: editorHtml };
             }, 300);
         }
     };
@@ -1018,7 +1050,11 @@ export const SlideMaterial = ({
     const setEditorContent = () => {
         const isEmpty = applyDocContentToEditor();
 
-        setContent(<EditorWithPlaceholder initialIsEmpty={isEmpty} />);
+        // key={slide id} forces a clean editor remount per slide instead of reusing
+        // the shared instance's DOM/state — the video preview below does the same.
+        // Without it the reused editor can momentarily show the previous slide's
+        // blocks after setEditorValue.
+        setContent(<EditorWithPlaceholder key={activeItem?.id} initialIsEmpty={isEmpty} />);
         // Delay focus until after React re-renders the DOM with the new editor state.
         // Calling editor.focus() synchronously after setEditorValue causes
         // "Cannot resolve a DOM node from Slate node" because the DOM hasn't updated yet.
@@ -1039,6 +1075,8 @@ export const SlideMaterial = ({
 
     const getCurrentEditorHTMLContent: () => string = () => {
         const data = editor.getEditorValue();
+        // Fresh serialize — assume healthy until a fallback path proves otherwise.
+        lastSerializeDegradedRef.current = false;
         try {
             let htmlString: string;
             try {
@@ -1068,6 +1106,12 @@ export const SlideMaterial = ({
                                 b?.type,
                                 blockErr
                             );
+                            // A block was DROPPED. Mark the result degraded so the
+                            // silent auto-save-on-switch won't persist a copy that
+                            // is missing this block (which would vanish its content
+                            // and flip the slide to UNSYNC). Explicit Save still
+                            // proceeds — but with a warning to the user.
+                            lastSerializeDegradedRef.current = true;
                             return '';
                         }
                     })
@@ -1081,20 +1125,34 @@ export const SlideMaterial = ({
             // mid slide-switch) must not poison the fallback, or the catch
             // block below would itself recover empty content and lose work.
             if (!checkIsHtmlEmpty(formatted)) {
-                currentDocHtmlRef.current = formatted;
+                currentDocHtmlRef.current = {
+                    slideId: prevDocSlideRef.current?.id ?? activeItem?.id ?? null,
+                    html: formatted,
+                };
             }
             return formatted;
         } catch (error) {
             console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
             // Serialize blew up (typically Yoopta/Slate throwing on a
-            // partially-normalized accordion/custom-block state). Fall
-            // back to the most recent successfully-serialized HTML
+            // partially-normalized accordion/custom-block state). The value we
+            // return here is a FALLBACK, not a faithful serialization of the
+            // live editor — mark it degraded so the silent auto-save won't treat
+            // it as an authoritative new version to overwrite stored data with.
+            lastSerializeDegradedRef.current = true;
+            // Fall back to the most recent successfully-serialized HTML
             // (captured on every onChange), then to the slide's stored
             // data. Returning '' used to land in SaveDraft's empty-guard
             // and surface "Could not read editor content" — we'd rather
             // preserve prior content than lose work.
-            if (currentDocHtmlRef.current) {
-                return currentDocHtmlRef.current;
+            // Only reuse the cached HTML if it belongs to the slide currently in
+            // the editor — otherwise it's a DIFFERENT slide's content, and handing
+            // it back here is exactly how one slide's data bleeds into another.
+            if (
+                currentDocHtmlRef.current.html &&
+                currentDocHtmlRef.current.slideId ===
+                    (prevDocSlideRef.current?.id ?? activeItem?.id)
+            ) {
+                return currentDocHtmlRef.current.html;
             }
             if (activeItem?.document_slide?.data) {
                 return activeItem.document_slide.data;
@@ -1199,6 +1257,13 @@ export const SlideMaterial = ({
     useEffect(() => {
         // Cleanup runs before switching away from this slide; capture exact editor HTML
         return () => {
+            // Cancel the previous slide's pending 300ms baseline snapshot — if it
+            // fired after the switch it would read the NEW editor and mislabel it
+            // as this (old) slide's content.
+            if (snapshotTimeoutRef.current) {
+                clearTimeout(snapshotTimeoutRef.current);
+                snapshotTimeoutRef.current = null;
+            }
             const previous = prevDocSlideRef.current;
             if (!previous) return;
             const snapshot = getCurrentEditorHTMLContent();
@@ -1348,6 +1413,54 @@ export const SlideMaterial = ({
             if (checkIsHtmlEmpty(htmlString)) {
                 console.warn(
                     '⚠️ Skipping DOC auto-save — editor content is empty; refusing to overwrite existing slide data.'
+                );
+                return;
+            }
+
+            // Never let a DEGRADED serialization silently overwrite good content.
+            // If the last serialize had to drop a block (its serializer threw) or
+            // blew up entirely, htmlString is missing content. Auto-saving it on
+            // slide switch would permanently vanish that block AND flip a
+            // PUBLISHED slide to UNSYNC — the exact "data lost on switch" report.
+            // Skip the silent save; the stored draft/published copy stays intact.
+            // The user can still Save explicitly (which surfaces a warning).
+            if (lastSerializeDegradedRef.current) {
+                console.warn(
+                    '⚠️ Skipping DOC auto-save — editor serialization was degraded (a block failed to serialize). ' +
+                        'Refusing to overwrite stored content to avoid silently dropping that block.'
+                );
+                toast.warning(
+                    'Some content on the previous slide could not be saved automatically. Open it and click Save to retry.'
+                );
+                return;
+            }
+
+            // Never let a catastrophically SHRUNKEN serialization overwrite good
+            // content. A truncation (e.g. the S3-URL sanitizer eating a data-*
+            // block, or a paste glitch) produces VALID but truncated HTML that
+            // the empty/degraded guards above don't catch — a 15KB lesson can
+            // collapse to a 200-byte fragment. If the new content is a small
+            // fraction of what's already stored, refuse the silent auto-save so
+            // the stored copy stays intact. Normal editing rarely removes >70%
+            // of a slide in one go; genuine large deletions can still be saved
+            // explicitly (that path surfaces a confirmation).
+            const storedDocHtml = (
+                slide.document_slide?.published_data ||
+                slide.document_slide?.data ||
+                ''
+            ).trim();
+            if (
+                storedDocHtml.length > 1500 &&
+                htmlString.trim().length < storedDocHtml.length * 0.3
+            ) {
+                console.warn(
+                    `⚠️ Skipping DOC auto-save — new content (${htmlString.trim().length}B) is <30% of ` +
+                        `stored (${storedDocHtml.length}B); refusing to overwrite (likely a truncation). ` +
+                        'Reopen the slide and Save explicitly if this shrink was intentional.'
+                );
+                toast.warning(
+                    'The previous slide became much shorter than what was saved, so it was NOT overwritten. ' +
+                        'Please reopen it to check your content is intact.'
                 );
                 return;
             }
@@ -2091,10 +2204,13 @@ export const SlideMaterial = ({
                 // to the latest (now-saved) HTML so a later slide switch doesn't
                 // auto-save identical content again.
                 if (isSameSlideRerun) {
-                    if (currentDocHtmlRef.current) {
+                    if (
+                        currentDocHtmlRef.current.html &&
+                        currentDocHtmlRef.current.slideId === activeItem.id
+                    ) {
                         initialDocHtmlRef.current = {
                             slideId: activeItem.id,
-                            html: currentDocHtmlRef.current,
+                            html: currentDocHtmlRef.current.html,
                         };
                     }
                     return;
@@ -2643,6 +2759,16 @@ export const SlideMaterial = ({
 
             // Handle regular documents
             const currentHtml = getCurrentEditorHTMLContent();
+
+            // Explicit Save proceeds on user intent, but if a block's serializer
+            // threw it was dropped from currentHtml — tell the user so the loss
+            // isn't silent (the silent auto-save-on-switch already refuses this).
+            if (lastSerializeDegradedRef.current) {
+                toast.warning(
+                    'A block on this slide could not be saved and was left out. ' +
+                        'Please check the slide — you may need to re-create that block.'
+                );
+            }
 
             // Process images in HTML content before saving
             let processedHtmlString = currentHtml;
@@ -3302,7 +3428,8 @@ export const SlideMaterial = ({
                                   ? 'h-[calc(100vh-200px)]'
                                   : 'h-full'
                           } ${
-                              activeItem?.document_slide?.type === 'DOC'
+                              activeItem?.document_slide?.type === 'DOC' ||
+                              activeItem?.source_type === 'ASSIGNMENT'
                                   ? 'overflow-visible'
                                   : 'overflow-hidden'
                           }`

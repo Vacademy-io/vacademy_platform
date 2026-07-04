@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..core.security import get_pinned_principal
@@ -69,7 +70,9 @@ async def send_message(
     service: AssistantAgentService = Depends(get_assistant_service),
 ) -> AssistantMessageResponse:
     try:
-        message_id = await service.send_message(session_id, principal, request.message)
+        message_id = await service.send_message(
+            session_id, principal, request.message, context_meta=request.context_meta
+        )
         return AssistantMessageResponse(message_id=message_id)
     except PermissionError:
         raise HTTPException(status_code=403, detail="You do not have access to this session.")
@@ -88,10 +91,17 @@ async def stream_session(
     session_id: str,
     principal: PinnedPrincipal = Depends(get_pinned_principal),
     service: AssistantAgentService = Depends(get_assistant_service),
+    authorization: Optional[str] = Header(None),
 ):
+    # The caller's own JWT is replayed on data tools that hit normal admin
+    # endpoints (find_learner), so the real user identity reaches Java.
+    bearer_token = (
+        authorization[len("Bearer "):] if authorization and authorization.startswith("Bearer ") else None
+    )
+
     async def event_generator():
         try:
-            async for event in service.stream(session_id, principal):
+            async for event in service.stream(session_id, principal, bearer_token=bearer_token):
                 event_type = event.get("event", "message")
                 data_str = json.dumps(event.get("data", {}))
                 yield f"event: {event_type}\ndata: {data_str}\n\n"
@@ -111,6 +121,68 @@ async def stream_session(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get(
+    "/capabilities",
+    summary="The tool groups the caller can use (for role-accurate suggestions)",
+)
+async def capabilities(
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+):
+    try:
+        return await service.get_capabilities(principal)
+    except Exception as e:
+        logger.error("Error fetching assistant capabilities: %s", e)
+        # Fail soft — the FE falls back to the generic help suggestions.
+        return {"groups": []}
+
+
+@router.post(
+    "/session/{session_id}/action/{action_id}/confirm",
+    summary="Confirm a pending assistant write action",
+)
+async def confirm_action(
+    session_id: str,
+    action_id: str,
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+    authorization: Optional[str] = Header(None),
+):
+    bearer_token = (
+        authorization[len("Bearer "):] if authorization and authorization.startswith("Bearer ") else None
+    )
+    try:
+        return await service.confirm_action(session_id, principal, action_id, bearer_token)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="You do not have access to this session.")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Error confirming assistant action: %s", e)
+        raise HTTPException(status_code=500, detail="Could not confirm the action.")
+
+
+@router.post(
+    "/session/{session_id}/action/{action_id}/cancel",
+    summary="Cancel a pending assistant write action",
+)
+async def cancel_action(
+    session_id: str,
+    action_id: str,
+    principal: PinnedPrincipal = Depends(get_pinned_principal),
+    service: AssistantAgentService = Depends(get_assistant_service),
+):
+    try:
+        return await service.cancel_action(session_id, principal, action_id)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="You do not have access to this session.")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Error cancelling assistant action: %s", e)
+        raise HTTPException(status_code=500, detail="Could not cancel the action.")
 
 
 @router.post(

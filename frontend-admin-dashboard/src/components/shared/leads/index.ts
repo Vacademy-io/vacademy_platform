@@ -5,6 +5,7 @@ export * from './lead-view-model';
 export * from './lead-actions';
 export { LeadAvatar } from './lead-avatar';
 export { LeadStageChip, resolveStage, type StageAccent } from './lead-stage-chip';
+export { LeadConversionBadge } from './lead-conversion-badge';
 export { LeadScoreBar } from './lead-score-bar';
 export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';
@@ -56,9 +57,13 @@ export {
 } from './services/call-history';
 export { CallIntelligencePanel } from './call-intelligence-panel';
 export { CallIntelligenceSummary } from './call-intelligence-summary';
+export { LeadCallIntelligenceSummary } from './lead-call-intelligence-summary';
+export { TeamCoachingSection } from './team-coaching-section';
+export { useCallIntelligenceEnabled } from './use-call-intelligence-enabled';
 export { ManualCallUploadDialog } from './manual-call-upload-dialog';
 export {
     fetchCallIntelligence,
+    triggerCallIntelligence,
     fetchLeadCallIntelligence,
     fetchCounsellorCallIntelligence,
     fetchTeamCallIntelligence,

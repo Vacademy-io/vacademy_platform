@@ -144,6 +144,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     defaultTab: "OUTLINE",
     outlineMode: "expanded",
     ratingsAndReviewsVisible: true,
+    hideAuthorName: false,
     // New defaults
     showCourseConfiguration: true,
     showCourseContentPrefixes: true,
@@ -171,6 +172,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
       { id: "AllCourses", order: 3, visible: true },
     ],
     defaultTab: "InProgress",
+    hideInstructorName: false,
   },
   notifications: {
     allowSystemAlerts: true,

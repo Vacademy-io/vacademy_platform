@@ -10,4 +10,9 @@ public interface AssessmentInstituteMappingRepository extends CrudRepository<Ass
     Optional<AssessmentInstituteMapping> findTopByAssessmentUrl(String assessmentUrl);
 
     Optional<AssessmentInstituteMapping> findByAssessmentIdAndInstituteId(String assessmentId, String instituteId);
+
+    // Resolve the owning institute for an assessment without knowing it up front
+    // (used by the internal batch-registration endpoint). "AssessmentId" resolves
+    // to the nested assessment.id, same as findByAssessmentIdAndInstituteId above.
+    Optional<AssessmentInstituteMapping> findTopByAssessmentId(String assessmentId);
 }

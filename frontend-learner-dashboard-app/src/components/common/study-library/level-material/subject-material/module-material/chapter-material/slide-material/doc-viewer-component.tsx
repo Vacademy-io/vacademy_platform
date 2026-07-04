@@ -6,12 +6,31 @@ import { DocumentWithMermaid } from "./DocumentWithMermaid";
 
 // Helper to strip expired query params from public AWS S3 URLs
 // Example: https://...amazonaws.com/.../image.jpg?X-Amz-Algorithm=... -> https://...amazonaws.com/.../image.jpg
+//
+// Handles two inputs: a bare doc/PDF URL, and a full HTML body. The previous
+// version ran a blunt `…amazonaws\.com[^"'()<>\s]*\?…` scan over the WHOLE HTML;
+// when a signed S3 URL sat inside a data-* block (quiz/tabs, where the JSON
+// quotes are entity-encoded), it over-matched and deleted everything from the
+// "?" — truncating the rendered slide. We now bound the HTML case to real
+// src/href/poster attribute values (the quote stops the match), so it can never
+// run into surrounding content, while still stripping a bare URL fully.
 const stripAwsQueryParamsFromUrls = (input: string): string => {
-  const awsSignedUrlRegex = /https?:\/\/[^"'()<>\s]*amazonaws\.com[^"'()<>\s]*\?[^"'()<>\s]*/gi;
-  return input.replace(awsSignedUrlRegex, (matched: string): string => {
-    const qIndex = matched.indexOf("?");
-    return qIndex === -1 ? matched : matched.slice(0, qIndex);
-  });
+  if (!input) return input;
+  const dropQuery = (url: string): string => {
+    if (!/amazonaws\.com/i.test(url)) return url;
+    const q = url.indexOf("?");
+    return q === -1 ? url : url.slice(0, q);
+  };
+  // Bare single URL (doc/PDF viewer) — strip its whole query string.
+  if (!/[<>]/.test(input) && /^\s*https?:\/\//i.test(input)) {
+    return dropQuery(input.trim());
+  }
+  // HTML — only touch real URL attributes, bounded by their own quote.
+  return input.replace(
+    /(\b(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi,
+    (_m: string, prefix: string, quote: string, url: string): string =>
+      `${prefix}${quote}${dropQuery(url)}${quote}`
+  );
 };
 
 export interface DocViewerComponentRef {

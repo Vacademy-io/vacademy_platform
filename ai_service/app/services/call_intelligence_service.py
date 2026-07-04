@@ -10,9 +10,10 @@ ai_service shares admin_core's DB, so we read/write `call_intelligence` and read
 `telephony_call_log` / `institutes` directly (same pattern as chat_sessions and
 the credit tables). No HTTP callback into admin_core is needed.
 
-Credit policy: a FLAT charge per analyzed call (request_type='call_intelligence',
-default 5 via credit_pricing; per-institute override via the setting). Charged
-only on successful completion, idempotent on call_log_id so a retry never
+Credit policy: a PER-MINUTE charge on the recording length
+(request_type='call_intelligence'; rate = credit_pricing.token_rate credits per
+minute, DB-configurable; per-institute per-minute override via the setting).
+Charged only on successful completion, idempotent on call_log_id so a retry never
 double-charges. Insufficient balance → SKIPPED/INSUFFICIENT_CREDITS, no transcribe.
 """
 from __future__ import annotations
@@ -20,7 +21,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from decimal import Decimal
+import math
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -32,7 +34,7 @@ from ..schemas.credits import CreditCheckRequest, CreditDeductRequest
 from . import llm_json
 from .call_intelligence_prompt import PROMPT_VERSION, SCHEMA_VERSION, build_prompt
 from .credit_service import CreditService
-from .media_file_client import get_file_url
+from .media_file_client import get_public_file_url
 from .transcription_service import TranscriptionService
 
 logger = logging.getLogger(__name__)
@@ -49,18 +51,19 @@ TRANSCRIBE_MAX_WAIT_S = 25 * 60  # cap one transcription so a stuck job can't pi
 # ---------------------------------------------------------------------------
 
 def _read_call_settings(institute_id: str) -> Dict[str, Any]:
-    """Return {rating_scale, objective_hint, qualities, weights, credit_override}.
+    """Return {rating_scale, objective_hint, qualities, weights}.
 
     Eligibility (enabled/source/min-duration) was already enforced by admin_core at
-    enqueue time; here we only need the rubric + the optional credit override. Any
-    parse problem falls back to sane defaults so a row is never stuck on config.
+    enqueue time; here we only need the rubric. Credit pricing is NOT read here —
+    it lives entirely in the credit_pricing DB row (per-minute), with no
+    per-institute settings override. Any parse problem falls back to sane defaults
+    so a row is never stuck on config.
     """
     out: Dict[str, Any] = {
         "rating_scale": 10,
         "objective_hint": None,
         "qualities": None,
         "weights": None,
-        "credit_override": None,
     }
     try:
         with db_session() as db:
@@ -76,13 +79,25 @@ def _read_call_settings(institute_id: str) -> Dict[str, Any]:
         calls = data.get("calls") or {}
         if isinstance(calls.get("ratingScale"), (int, float)) and calls["ratingScale"] > 0:
             out["rating_scale"] = int(calls["ratingScale"])
-        if calls.get("creditCostOverride") is not None:
-            out["credit_override"] = Decimal(str(calls["creditCostOverride"]))
         rubric = calls.get("rubric") or {}
         if rubric.get("objectiveHint"):
             out["objective_hint"] = str(rubric["objectiveHint"])
         if isinstance(rubric.get("qualities"), list) and rubric["qualities"]:
-            out["qualities"] = [str(q) for q in rubric["qualities"]]
+            # Each metric may be a bare string (legacy) or {"key","description"}
+            # (current — an institute-authored definition of a custom metric).
+            # Normalize to {key, description} and pass through to the prompt so the
+            # AI grades custom metrics exactly as defined.
+            parsed = []
+            for q in rubric["qualities"]:
+                if isinstance(q, dict):
+                    key = str(q.get("key") or q.get("term") or "").strip()
+                    desc = str(q.get("description") or "").strip()
+                    if key:
+                        parsed.append({"key": key, "description": desc})
+                elif str(q).strip():
+                    parsed.append({"key": str(q).strip(), "description": ""})
+            if parsed:
+                out["qualities"] = parsed
         if isinstance(rubric.get("weights"), dict):
             out["weights"] = {str(k): float(v) for k, v in rubric["weights"].items()}
     except Exception:
@@ -95,13 +110,40 @@ def _read_call_settings(institute_id: str) -> Dict[str, Any]:
 # Credit helpers (sync — run via asyncio.to_thread)
 # ---------------------------------------------------------------------------
 
-def _check_credits(institute_id: str, override: Optional[Decimal]) -> Dict[str, Any]:
-    """Return {sufficient, cost, balance}. cost = override or the global price."""
+def _billable_minutes(duration_seconds: Optional[int]) -> int:
+    """Whole minutes to bill, rounded up (min 1). Unknown/zero duration bills 1."""
+    try:
+        sec = int(duration_seconds or 0)
+    except (TypeError, ValueError):
+        sec = 0
+    if sec <= 0:
+        return 1
+    return math.ceil(sec / 60)
+
+
+def _compute_cost(pricing: Dict[str, Any], duration_seconds: Optional[int]) -> Decimal:
+    """Per-minute charge: base + ceil(minutes) * rate, floored at minimum_charge.
+
+    `token_rate` in the credit_pricing row is the credits-per-minute rate — the
+    single source of truth (DB-only, no per-institute settings override).
+    """
+    per_min = Decimal(str(pricing["token_rate"]))
+    base = Decimal(str(pricing["base_cost"]))
+    min_charge = Decimal(str(pricing["min_charge"]))
+    minutes = _billable_minutes(duration_seconds)
+    cost = base + Decimal(minutes) * per_min
+    return max(min_charge, cost).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+def _check_credits(institute_id: str, duration_seconds: Optional[int]) -> Dict[str, Any]:
+    """Return {sufficient, cost, balance}. cost is per-minute of the recording."""
     with db_session() as db:
-        resp = CreditService(db).check_credits(CreditCheckRequest(
+        svc = CreditService(db)
+        resp = svc.check_credits(CreditCheckRequest(
             institute_id=institute_id, request_type=REQUEST_TYPE, model=MODEL_ATTR,
         ))
-    cost = override if override is not None else resp.estimated_cost
+        pricing = svc.get_pricing(REQUEST_TYPE)
+    cost = _compute_cost(pricing, duration_seconds)
     balance = resp.current_balance
     sufficient = balance >= cost
     return {"sufficient": sufficient, "cost": cost, "balance": balance}
@@ -110,7 +152,7 @@ def _check_credits(institute_id: str, override: Optional[Decimal]) -> Dict[str, 
 def _deduct_and_write(row_id: str, call_log_id: str, institute_id: str,
                       counsellor_user_id: Optional[str], cost: Decimal,
                       columns: Dict[str, Any], analysis_json: Dict[str, Any]) -> None:
-    """Deduct the flat charge and write the COMPLETED row in ONE transaction.
+    """Deduct the per-minute charge and write the COMPLETED row in ONE transaction.
 
     Idempotent on call_log_id: a retry after a partial failure re-uses the same
     idempotency_key, so the deduction is a no-op the second time.
@@ -280,13 +322,18 @@ async def process_one(claimed: Dict[str, Any]) -> None:
         if not storage_key:
             _mark(row_id, "SKIPPED", skip_reason="NO_RECORDING")
             return
-        source_url = await get_file_url(storage_key)
+        # Recordings are stored in the PUBLIC media bucket (same as lead-profile
+        # playback). The private resolver 404s for them → transcription fails.
+        source_url = await get_public_file_url(storage_key)
 
         # 2. Settings (rubric + credit override).
         cfg = await asyncio.to_thread(_read_call_settings, institute_id)
 
-        # 3. Credit pre-flight (don't transcribe what we can't bill).
-        credit = await asyncio.to_thread(_check_credits, institute_id, cfg["credit_override"])
+        # 3. Credit pre-flight (don't transcribe what we can't bill). Priced per
+        #    minute of the recording, so the duration drives the cost.
+        credit = await asyncio.to_thread(
+            _check_credits, institute_id, claimed.get("duration_seconds"),
+        )
         if not credit["sufficient"]:
             _mark(row_id, "SKIPPED", skip_reason="INSUFFICIENT_CREDITS")
             logger.info("call-intel: SKIPPED %s — insufficient credits (need %s, have %s)",

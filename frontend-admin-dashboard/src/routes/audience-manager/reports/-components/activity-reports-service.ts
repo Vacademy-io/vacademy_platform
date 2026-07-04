@@ -34,6 +34,9 @@ export interface ActivityReportParams {
     toDate?: string;
     teamId?: string;
     counsellorUserId?: string;
+    /** Campaign (audience) id — scopes the status-change / follow-up activity rows
+     *  to a single campaign. Note/call rows are actor-centric and stay unfiltered. */
+    audienceId?: string;
 }
 
 // ── GET /v1/reports/activity-timeline ──────────────────────────────────
@@ -70,6 +73,7 @@ export const activityTimelineQueryKey = (p: ActivityReportParams) =>
         p.toDate,
         p.teamId,
         p.counsellorUserId,
+        p.audienceId,
     ] as const;
 
 export async function fetchActivityTimeline(
@@ -82,6 +86,7 @@ export async function fetchActivityTimeline(
             toDate: p.toDate,
             teamId: p.teamId,
             counsellorUserId: p.counsellorUserId,
+            audienceId: p.audienceId,
         },
     });
     return {

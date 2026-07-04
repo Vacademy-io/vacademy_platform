@@ -62,6 +62,8 @@ const PUBLIC_ROUTES = [
   "/learner-invitation-response",
   "/payment-result",
   "/audience-response",
+  "/sub-org-registration", // Public sub-org self-registration wizard
+  "/kyc-complete", // DigiLocker redirect landing (sub-org registration KYC)
   "/institute-selection",
   "/delete-user",
   "/change-password",
@@ -73,6 +75,7 @@ const PUBLIC_ROUTES = [
   "/m", // Public media hosting page
   "/admission/payment", // Public admission payment links shared by institutes
   "/pay/invoice", // Shareable invoice payment links
+  "/leaderboard", // Public shareable course leaderboard
 ];
 
 // Marketplace / external-payment route prefixes that are hidden when the app
@@ -131,6 +134,14 @@ const isPublicRoute = (pathname: string): boolean => {
   // Explicitly exclude /my-files routes - they always require authentication
   if (pathname.startsWith("/my-files")) {
     return false;
+  }
+
+  // Public shareable leaderboard — course (/leaderboard/{id}) AND institute
+  // (/leaderboard/institute/{id}). Explicit so 3-segment institute links don't
+  // fall through to the auth redirect (the 2-segment "course details" fallback
+  // only covered the course link).
+  if (pathname === "/leaderboard" || pathname.startsWith("/leaderboard/")) {
+    return true;
   }
 
   // Check for exact matches and startsWith matches

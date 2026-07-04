@@ -947,12 +947,16 @@ def render_video_from_json(
         # (matching client-side CaptionDisplay.tsx approach) — see the per-frame
         # caption HTML emission below for the actual position/box logic.
         # Caption font_size in caption_settings is "px at the 1920px canvas".
-        # Scale to the actual render width (1920 landscape, 1080 portrait).
+        # Scale by the LONG side (max of width/height), not width alone:
+        # width-only scaling halves portrait captions relative to frame height
+        # (64px → 36px on a 1920-TALL frame ≈ 1.9% of height, half the
+        # TikTok/CapCut norm). max(w,h)/1920 is identical for landscape and
+        # restores portrait captions to the same proportion of the long side.
         # Single source of truth — the render-worker passes user-selected px
         # through unchanged so this stays the only canvas-relative scale; if
-        # we ever scale here AND in the worker the result compounds to
-        # (width/1920)² and silently shrinks portrait captions to ~1% of frame.
-        caption_font_scale = width / 1920.0
+        # we ever scale here AND in the worker the result compounds and
+        # silently shrinks captions.
+        caption_font_scale = max(width, height) / 1920.0
         base_font_size = caption_settings.get("font_size", 20)
         caption_settings["font_size"] = max(12, int(base_font_size * caption_font_scale))
 
@@ -1856,11 +1860,12 @@ def render_video_from_json(
                                 "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",
                             )
                         )
-                    # Caption font_size is already pre-scaled by canvas width
-                    # earlier in this function (see ~line 850-858). The same
-                    # scale applies to text stroke so the outline stays
-                    # visually proportional on portrait.
-                    _font_scale = width / 1920.0
+                    # Caption font_size is already pre-scaled by the canvas
+                    # LONG side earlier in this function. The same scale
+                    # applies to text stroke so the outline stays visually
+                    # proportional on portrait (width-only would thin the
+                    # stroke to half the font's proportion on 9:16).
+                    _font_scale = max(width, height) / 1920.0
                     text_stroke_width = max(
                         0, int(int(style.get("text_stroke_width", 0)) * _font_scale)
                     )

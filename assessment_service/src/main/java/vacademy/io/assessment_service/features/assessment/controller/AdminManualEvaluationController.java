@@ -3,6 +3,8 @@ package vacademy.io.assessment_service.features.assessment.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.EvaluationDraftDto;
+import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.EvaluationDraftRequest;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptFilter;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponse;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualSubmitMarksRequest;
@@ -46,6 +48,29 @@ public class AdminManualEvaluationController {
     public ResponseEntity<String> getAttemptData(@RequestAttribute("user") CustomUserDetails userDetails,
                                                  @RequestParam("attemptId") String attemptId) {
         return adminManualEvaluationManager.getAttemptData(userDetails, attemptId);
+    }
+
+    // --- Draft (save-for-later) endpoints: pause & resume manual evaluation ---
+
+    @PostMapping("/save/draft")
+    public ResponseEntity<String> saveEvaluationDraft(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                      @RequestParam("assessmentId") String assessmentId,
+                                                      @RequestParam("instituteId") String instituteId,
+                                                      @RequestParam("attemptId") String attemptId,
+                                                      @RequestBody EvaluationDraftRequest request) {
+        return adminManualEvaluationManager.saveEvaluationDraft(userDetails, assessmentId, instituteId, attemptId, request.getDraftJson());
+    }
+
+    @GetMapping("/get/draft")
+    public ResponseEntity<EvaluationDraftDto> getEvaluationDraft(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                 @RequestParam("attemptId") String attemptId) {
+        return adminManualEvaluationManager.getEvaluationDraft(userDetails, attemptId);
+    }
+
+    @DeleteMapping("/delete/draft")
+    public ResponseEntity<String> deleteEvaluationDraft(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                        @RequestParam("attemptId") String attemptId) {
+        return adminManualEvaluationManager.deleteEvaluationDraft(userDetails, attemptId);
     }
 
     @PostMapping("all/attempts")

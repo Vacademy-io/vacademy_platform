@@ -1,0 +1,79 @@
+{{- if .Values.services.voice_bot_service.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-bot-service
+  namespace: default
+  labels:
+    app: voice-bot-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # Real-time audio: a rollout must not kill live calls faster than needed, but
+  # single-replica surge would double Silero/torch memory on the node — mirror
+  # ai-service's kill-old-first trade-off.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: voice-bot-service
+  template:
+    metadata:
+      labels:
+        app: voice-bot-service
+    spec:
+      containers:
+        - name: voice-bot-service
+          image: "{{ .Values.services.voice_bot_service.image.repository }}:{{ .Values.services.voice_bot_service.image.tag }}"
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: myconfigmapv1.0
+            - secretRef:
+                name: vacademy-secrets
+          resources:
+            {{- if .Values.services.voice_bot_service.resources }}
+            {{- toYaml .Values.services.voice_bot_service.resources | nindent 12 }}
+            {{- else }}
+            requests:
+              cpu: "250m"
+              memory: "768Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /voice-bot-service/health
+              port: {{ .Values.services.voice_bot_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 40
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /voice-bot-service/health
+              port: {{ .Values.services.voice_bot_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /voice-bot-service/health
+              port: {{ .Values.services.voice_bot_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+            successThreshold: 1
+          ports:
+            - containerPort: {{ .Values.services.voice_bot_service.port }}
+{{- end }}

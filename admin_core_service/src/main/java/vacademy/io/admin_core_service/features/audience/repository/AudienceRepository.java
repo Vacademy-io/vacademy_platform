@@ -67,6 +67,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
     @Query("""
                 SELECT a FROM Audience a
                 WHERE a.instituteId = :instituteId
+                  AND (a.status IS NULL OR a.status <> 'DELETED')
                   AND (:status IS NULL OR a.status = :status)
                   AND (COALESCE(:campaignType, '') = '' OR
                        LOWER(a.campaignType) LIKE LOWER(CONCAT('%', :campaignType, '%')))

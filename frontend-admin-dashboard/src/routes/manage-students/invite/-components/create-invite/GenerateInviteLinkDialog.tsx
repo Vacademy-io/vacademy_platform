@@ -34,6 +34,7 @@ import CustomInviteFormCard from './-components/CustomInviteFormCard';
 import LearnerAccessDurationCard from './-components/LearnerAccessDurationCard';
 import CustomHTMLCard from './-components/CustomHTMLCard';
 import PostFormFillConfigurationCard from './-components/PostFormFillConfigurationCard';
+import SubOrgSettingsCard from './-components/SubOrgSettingsCard';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleEnrollInvite, handleGetEnrollSingleInviteDetails } from './-services/enroll-invite';
@@ -844,6 +845,17 @@ const GenerateInviteLinkDialog = ({
                     content: '',
                     collectBillingContactDetails: false,
                 },
+                subOrgSettings: (() => {
+                    const subOrg = safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
+                        ?.SUB_ORG_SETTING;
+                    return {
+                        enabled: !!subOrg,
+                        authRoles: subOrg?.AUTH_ROLES ?? [],
+                        allowedTeamRoles: subOrg?.ALLOWED_TEAM_ROLES ?? [],
+                        adminPermissions: subOrg?.ADMIN_PERMISSIONS ?? ['FULL'],
+                        memberCount: subOrg?.MEMBER_COUNT ?? null,
+                    };
+                })(),
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -960,6 +972,9 @@ const GenerateInviteLinkDialog = ({
 
                             {/* Post Form Fill Configuration Card */}
                             <PostFormFillConfigurationCard form={form} />
+
+                            {/* Sub-organization Settings Card */}
+                            <SubOrgSettingsCard form={form} />
                         </form>
                     </Form>
                 </div>

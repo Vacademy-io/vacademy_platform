@@ -30,7 +30,13 @@ import { SubOrgSelection } from './SubOrgSelection';
 import { getInstituteSelectionResult, setSelectedInstitute } from '@/lib/auth/instituteUtils';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { handleLoginFlow } from '@/lib/auth/loginFlowHandler';
-import { getCachedInstituteBranding } from '@/services/domain-routing';
+import {
+    getCachedInstituteBranding,
+    resolveInstituteForCurrentHost,
+    resolveInstituteForDomain,
+    type DomainResolveResponse,
+} from '@/services/domain-routing';
+import { getFlavor, isNative } from '@/native';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 import {
     getDisplaySettings,
@@ -40,6 +46,23 @@ import {
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 type FormValues = z.infer<typeof loginSchema>;
+
+/**
+ * Computes which auth providers to show from resolved domain-routing branding,
+ * mirroring the learner login semantics: OAuth / email-OTP / username-password
+ * are shown unless the institute explicitly disabled them (`=== false`), while
+ * phone login is opt-in (shown only when explicitly enabled). A missing object
+ * (no institute configured) falls back to the generic Vacademy providers.
+ */
+function resolveAuthProviderFlags(branding: Partial<DomainResolveResponse> | null | undefined) {
+    return {
+        allowGoogleAuth: branding?.allowGoogleAuth !== false,
+        allowGithubAuth: branding?.allowGithubAuth !== false,
+        allowEmailOtpAuth: branding?.allowEmailOtpAuth !== false,
+        allowUsernamePasswordAuth: branding?.allowUsernamePasswordAuth !== false,
+        allowPhoneAuth: branding?.allowPhoneAuth === true,
+    };
+}
 
 export function LoginForm() {
     const queryClient = useQueryClient();
@@ -51,13 +74,12 @@ export function LoginForm() {
     const portalRoleLabel = cachedBranding?.role === 'TEACHER' ? 'Teacher' : 'Admin';
     const portalInstitute = instituteName || 'Vacademy';
     const [authMethod, setAuthMethod] = useState<'EMAIL' | 'USERNAME' | 'PHONE'>('USERNAME');
-    const [providerFlags, setProviderFlags] = useState({
-        allowGoogleAuth: true,
-        allowGithubAuth: true,
-        allowEmailOtpAuth: true,
-        allowUsernamePasswordAuth: true,
-        allowPhoneAuth: true,
-    });
+    // Seed from cached branding so the first paint already reflects the institute's
+    // configured providers (no flash of all buttons); the live re-resolve below
+    // then corrects any stale/missing cache.
+    const [providerFlags, setProviderFlags] = useState(() =>
+        resolveAuthProviderFlags(getCachedInstituteBranding())
+    );
     const [allowSignup, setAllowSignup] = useState(false);
     const [showInstituteSelection, setShowInstituteSelection] = useState(false);
     const [showSubOrgSelection, setShowSubOrgSelection] = useState(false);
@@ -84,13 +106,7 @@ export function LoginForm() {
         try {
             const cached = getCachedInstituteBranding();
             if (cached) {
-                setProviderFlags({
-                    allowGoogleAuth: cached.allowGoogleAuth !== false,
-                    allowGithubAuth: cached.allowGithubAuth !== false,
-                    allowEmailOtpAuth: cached.allowEmailOtpAuth !== false,
-                    allowUsernamePasswordAuth: cached.allowUsernamePasswordAuth !== false,
-                    allowPhoneAuth: cached.allowPhoneAuth !== false,
-                });
+                setProviderFlags(resolveAuthProviderFlags(cached));
                 setAllowSignup(cached.allowSignup !== false);
 
                 // Prefer email login if username/password is disabled
@@ -102,7 +118,7 @@ export function LoginForm() {
                 } else if (
                     cached.allowUsernamePasswordAuth === false &&
                     cached.allowEmailOtpAuth === false &&
-                    cached.allowPhoneAuth !== false
+                    cached.allowPhoneAuth === true
                 ) {
                     setAuthMethod('PHONE');
                 }
@@ -268,6 +284,50 @@ export function LoginForm() {
             }
         }
     }, [navigate, queryClient]);
+
+    // Re-resolve the LIVE domain-routing flags on the login page. The cached
+    // branding read above can be stale or predate the auth flags (e.g. written by
+    // an older build), which would otherwise leave OAuth buttons visible even after
+    // the institute disabled them. Resolving fresh guarantees an explicit `false`
+    // always wins — matching the learner login, which gates providers on the
+    // freshly-resolved institute settings.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                // Only native flavors resolve by a FIXED domain/subdomain; the
+                // web build must resolve by the request host. The default flavor
+                // ('vacademy-admin') carries a fixed brandingDomain, so without
+                // the isNative() guard web hosts would wrongly resolve
+                // vacademy.io/admin-app → Vacademy CRM. Mirrors index.tsx.
+                const flavor = getFlavor();
+                const live =
+                    isNative() && flavor.brandingDomain && flavor.brandingSubdomain
+                        ? await resolveInstituteForDomain(
+                              flavor.brandingDomain!,
+                              flavor.brandingSubdomain!
+                          )
+                        : await resolveInstituteForCurrentHost();
+                if (cancelled || !live) return;
+                setProviderFlags(resolveAuthProviderFlags(live));
+                setAllowSignup(live.allowSignup !== false);
+                if (live.allowUsernamePasswordAuth === false && live.allowEmailOtpAuth !== false) {
+                    setAuthMethod('EMAIL');
+                } else if (
+                    live.allowUsernamePasswordAuth === false &&
+                    live.allowEmailOtpAuth === false &&
+                    live.allowPhoneAuth === true
+                ) {
+                    setAuthMethod('PHONE');
+                }
+            } catch {
+                // ignore — keep the cached/default flags
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const handlePostLoginRedirect = async (accessToken: string, refreshToken: string) => {
         try {

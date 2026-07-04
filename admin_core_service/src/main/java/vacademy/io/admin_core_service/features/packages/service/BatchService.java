@@ -69,6 +69,26 @@ public class BatchService {
         return packageDTOWithBatchDetails;
     }
 
+    /**
+     * Toggle the "sub-org associated" flag on package sessions. When true,
+     * enrolling a learner into the session provisions a sub-org for them
+     * (see {@code LearnerEnrollRequestService}, which keys off
+     * {@code PackageSession.isOrgAssociated}). Surfaced on the Course Details
+     * settings as the "is sub-org associated" toggle.
+     */
+    @Transactional
+    public Boolean setOrgAssociated(List<String> packageSessionIds, boolean isOrgAssociated) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return false;
+        }
+        List<PackageSession> sessions = packageSessionRepository.findAllById(packageSessionIds);
+        for (PackageSession session : sessions) {
+            session.setIsOrgAssociated(isOrgAssociated);
+        }
+        packageSessionRepository.saveAll(sessions);
+        return true;
+    }
+
     public String deletePackageSession(String[] packageSessionIds, CustomUserDetails userDetails){
         packageSessionRepository.updateStatusByPackageSessionIds(PackageSessionStatusEnum.DELETED.name(),packageSessionIds);
         learnerInvitationService.deleteLearnerInvitationBySourceAndSourceId(LearnerInvitationSourceTypeEnum.PACKAGE_SESSION.name(), Arrays.stream(packageSessionIds).toList());

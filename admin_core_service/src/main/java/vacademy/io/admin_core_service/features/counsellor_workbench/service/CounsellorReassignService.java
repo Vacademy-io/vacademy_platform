@@ -13,6 +13,8 @@ import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileS
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolMemberRepository;
+import vacademy.io.admin_core_service.features.counsellor_workbench.dto.AssignLeadsRequest;
+import vacademy.io.admin_core_service.features.counsellor_workbench.dto.AssignLeadsResultDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.ReassignRequest;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.ReassignResultDTO;
 import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
@@ -62,6 +64,185 @@ public class CounsellorReassignService {
     @Transactional(readOnly = true)
     public ReassignResultDTO preview(ReassignRequest req, CustomUserDetails actor) {
         return planAndApply(req, actor, true);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Bulk assign of a caller-selected lead set (no source counsellor).
+    // Powers the multi-select "Assign counsellor" action on the leads /
+    // campaign-users list (typically the UNASSIGNED filter). Keyed on lead
+    // user_id — unassigned leads may have no user_lead_profile yet, and
+    // assignCounselor(userId,...) creates the row when missing.
+    // ────────────────────────────────────────────────────────────────
+
+    @Transactional
+    public AssignLeadsResultDTO assign(AssignLeadsRequest req, CustomUserDetails actor) {
+        return planAndApplyAssign(req, actor, false);
+    }
+
+    @Transactional(readOnly = true)
+    public AssignLeadsResultDTO assignPreview(AssignLeadsRequest req, CustomUserDetails actor) {
+        return planAndApplyAssign(req, actor, true);
+    }
+
+    private AssignLeadsResultDTO planAndApplyAssign(AssignLeadsRequest req, CustomUserDetails actor, boolean dryRun) {
+        require(req.getInstituteId(), "institute_id is required");
+        require(req.getMode(), "mode is required");
+        if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+            throw new VacademyException("user_ids is required (select at least one lead)");
+        }
+
+        // Distinct lead user ids, preserving selection order.
+        List<String> userIds = req.getUserIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        // Counsellors the caller may assign to = active users in the leads team
+        // subtree (same scope the reassign round-robin uses). Every target is
+        // validated against this set so a lead can't be handed outside it.
+        Set<String> allowed = new LinkedHashSet<>(
+                scopeService.usersInTeams(scopeService.allTeamIdsUnderLeadsRoot(req.getInstituteId())));
+
+        // Build the lead-user-id → target-counsellor plan for the chosen mode.
+        Map<String, String> targetByUserId = new LinkedHashMap<>();
+        switch (req.getMode().toUpperCase(Locale.ROOT)) {
+            case "SINGLE" -> {
+                require(req.getTargetUserId(), "target_user_id is required for SINGLE mode");
+                assertAllowed(req.getTargetUserId(), allowed);
+                for (String uid : userIds) {
+                    targetByUserId.put(uid, req.getTargetUserId());
+                }
+            }
+            case "ROUND_ROBIN" -> {
+                List<String> candidates = resolveRoundRobinCandidates(req, allowed);
+                int idx = 0;
+                for (String uid : userIds) {
+                    targetByUserId.put(uid, candidates.get(idx % candidates.size()));
+                    idx++;
+                }
+            }
+            case "MANUAL" -> {
+                if (req.getAssignments() == null || req.getAssignments().isEmpty()) {
+                    throw new VacademyException("assignments list is required for MANUAL mode");
+                }
+                for (AssignLeadsRequest.Assignment a : req.getAssignments()) {
+                    if (a.getUserId() == null || a.getToUserId() == null) {
+                        throw new VacademyException("Each assignment must have user_id and to_user_id");
+                    }
+                    assertAllowed(a.getToUserId(), allowed);
+                    targetByUserId.put(a.getUserId(), a.getToUserId());
+                }
+            }
+            default -> throw new VacademyException("Unknown assign mode: " + req.getMode());
+        }
+
+        Map<String, String> nameById = resolveNames(new LinkedHashSet<>(targetByUserId.values()));
+
+        List<AssignLeadsResultDTO.AssignmentResult> results = new ArrayList<>(targetByUserId.size());
+        for (Map.Entry<String, String> e : targetByUserId.entrySet()) {
+            String userId = e.getKey();
+            String toUserId = e.getValue();
+            String toName = nameById.get(toUserId);
+            results.add(AssignLeadsResultDTO.AssignmentResult.builder()
+                    .userId(userId)
+                    .toUserId(toUserId)
+                    .toUserName(toName)
+                    .build());
+
+            if (!dryRun) {
+                profileService.assignCounselor(userId, req.getInstituteId(), toUserId, toName);
+                String actorId = actor != null ? actor.getUserId() : null;
+                String actorName = actor != null ? actor.getUsername() : null;
+                try {
+                    timelineEventService.logJourneyEvent(
+                            "USER_LEAD_PROFILE", userId,
+                            LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                            "ADMIN", actorId, actorName,
+                            "Counselor assigned",
+                            "Bulk-assigned from leads list (mode=" + req.getMode() + ")",
+                            Map.of(
+                                    "counselor_id", toUserId,
+                                    "counselor_name", toName != null ? toName : "",
+                                    "trigger", "BULK_ASSIGN",
+                                    "mode", req.getMode(),
+                                    "assigned_by", actorName != null ? actorName : ""),
+                            userId);
+                } catch (Exception ex) {
+                    log.warn("Timeline log failed for bulk-assign lead={} ({}): {}",
+                            userId, req.getMode(), ex.getMessage());
+                }
+            }
+        }
+
+        // One batched bell per target counsellor, after commit (mirrors reassign).
+        if (!dryRun && !results.isEmpty()) {
+            Map<String, Long> countByTarget = results.stream()
+                    .collect(Collectors.groupingBy(
+                            AssignLeadsResultDTO.AssignmentResult::getToUserId, Collectors.counting()));
+            String instituteId = req.getInstituteId();
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        notifyReassignTargets(instituteId, countByTarget);
+                    }
+                });
+            } else {
+                notifyReassignTargets(instituteId, countByTarget);
+            }
+        }
+
+        return AssignLeadsResultDTO.builder()
+                .dryRun(dryRun)
+                .totalLeads(results.size())
+                .assignments(results)
+                .build();
+    }
+
+    /**
+     * ROUND_ROBIN candidates: the admin-selected {@code candidate_user_ids} when
+     * provided (each validated against the leads-team scope), else every active
+     * counsellor in the scope. Sorted for a deterministic cycle so preview and
+     * commit produce the same distribution.
+     */
+    private List<String> resolveRoundRobinCandidates(AssignLeadsRequest req, Set<String> allowed) {
+        List<String> candidates;
+        if (req.getCandidateUserIds() != null && !req.getCandidateUserIds().isEmpty()) {
+            candidates = req.getCandidateUserIds().stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .peek(uid -> assertAllowed(uid, allowed))
+                    .sorted()
+                    .collect(Collectors.toList());
+        } else {
+            candidates = allowed.stream().sorted().collect(Collectors.toList());
+        }
+        // Round-robin distributes only across ACTIVE counsellors (an ACTIVE pool
+        // membership) — drop anyone offline, whether they came from the explicit
+        // candidate list or the whole-scope fallback, so bulk-assign never lands
+        // a lead on an inactive counsellor.
+        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
+        if (candidates.isEmpty()) {
+            throw new VacademyException("No active counsellors available for round-robin assignment");
+        }
+        return candidates;
+    }
+
+    /**
+     * Keep only counsellors with at least one ACTIVE pool membership — the same
+     * definition the workbench roster uses for "active". Preserves input order.
+     */
+    private List<String> retainActiveCounsellors(String instituteId, List<String> candidates) {
+        if (candidates.isEmpty()) return candidates;
+        Set<String> active = new HashSet<>(
+                counselorPoolMemberRepository.findCounselorsWithAnyActiveMembership(instituteId, candidates));
+        return candidates.stream().filter(active::contains).collect(Collectors.toList());
+    }
+
+    private void assertAllowed(String userId, Set<String> allowed) {
+        if (!allowed.contains(userId)) {
+            throw new VacademyException("Target user " + userId + " is outside the leads team subtree");
+        }
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -244,6 +425,10 @@ public class CounsellorReassignService {
                 .filter(uid -> !uid.equals(req.getFromUserId()))
                 .sorted()
                 .collect(Collectors.toList());
+        // Round-robin must skip counsellors who are OFFLINE (no ACTIVE pool
+        // membership) — same "active" rule the workbench roster shows. Without
+        // this, reassignment could hand leads to an inactive counsellor.
+        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
         if (candidates.isEmpty()) {
             throw new VacademyException("No active counsellors available for round-robin reassignment");
         }

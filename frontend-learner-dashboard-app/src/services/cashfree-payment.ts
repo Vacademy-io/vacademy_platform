@@ -22,6 +22,8 @@ export interface CashfreePaymentResponseData {
   status?: string;
   payment_status?: string;
   paymentStatus?: string;
+  /** "sandbox" | "production" — which Cashfree env minted the session. */
+  environment?: string;
 }
 
 export interface CashfreePaymentResponse {

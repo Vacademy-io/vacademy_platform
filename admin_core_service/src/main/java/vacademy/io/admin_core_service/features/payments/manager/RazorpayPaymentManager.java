@@ -12,14 +12,13 @@ import vacademy.io.admin_core_service.features.payments.dto.RazorpayCustomerDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.logging.SentryLogger;
+import vacademy.io.common.payment.currency.CurrencyRegistry;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.dto.RazorpayRequestDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.payment.enums.PaymentType;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +34,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             validateRequest(request);
             RazorpayClient razorpayClient = createRazorpayClient(paymentGatewaySpecificData);
 
-            long amountInPaise = convertAmountToPaise(request.getAmount());
+            long amountInPaise = CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency());
 
             Order razorpayOrder = createRazorpayOrder(razorpayClient, request, amountInPaise);
 
@@ -235,7 +234,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
         try {
             validateRequest(request);
             RazorpayClient razorpayClient = createRazorpayClient(paymentGatewaySpecificData);
-            long amountInPaise = convertAmountToPaise(request.getAmount());
+            long amountInPaise = CurrencyRegistry.toMinorUnits(request.getAmount(), request.getCurrency());
 
             JSONObject plReq = new JSONObject();
             plReq.put("amount", amountInPaise);
@@ -401,13 +400,6 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             response.put("customerData", dto);
             return response;
         }
-    }
-
-    private long convertAmountToPaise(double amount) {
-        return BigDecimal.valueOf(amount)
-                .multiply(BigDecimal.valueOf(100))
-                .setScale(0, RoundingMode.HALF_UP)
-                .longValue();
     }
 
     private void validateRequest(PaymentInitiationRequestDTO request) {

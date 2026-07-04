@@ -107,6 +107,9 @@ public class UserPlanService {
     private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository subOrgRegistrationRepository;
+
+    @Autowired
     @Lazy
     private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
 
@@ -455,6 +458,23 @@ public class UserPlanService {
                     paymentPlan = paymentPlanRepository.findById(userPlan.getPaymentPlanId()).orElse(null);
                 }
                 subOrgSubscriptionService.createScopedFreeInvites(enrollInvite, userPlan, paymentPlan);
+
+                // Open self-registration (paid template): flip the registration row to COMPLETED
+                // now that payment confirmed. Best-effort — must never break payment processing.
+                try {
+                    subOrgRegistrationRepository
+                            .findFirstBySpawnedSubOrgIdAndStatus(enrollInvite.getSubOrgId(),
+                                    vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus.PENDING_PAYMENT.name())
+                            .ifPresent(reg -> {
+                                reg.setStatus(vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus.COMPLETED.name());
+                                subOrgRegistrationRepository.save(reg);
+                                logger.info("Sub-org registration {} marked COMPLETED after payment",
+                                        reg.getId());
+                            });
+                } catch (Exception e) {
+                    logger.warn("Could not update sub-org registration status after payment: {}",
+                            e.getMessage());
+                }
             }
 
             // Send enrollment notifications after successful PAID enrollment

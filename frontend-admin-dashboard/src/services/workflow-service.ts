@@ -15,6 +15,7 @@ import {
     ValidationError,
     WorkflowExecutionLogDTO,
     ExecutionSummary,
+    EnrollmentWorkflowRun,
 } from '@/types/workflow/workflow-types';
 import { queryOptions } from '@tanstack/react-query';
 
@@ -352,6 +353,35 @@ export function getExecutionSummaryQuery(workflowId: string, startDate?: string,
         queryFn: () => fetchExecutionSummary(workflowId, startDate, endDate),
         staleTime: 60_000,
         enabled: !!workflowId,
+    });
+}
+
+// Enrollment workflow runs (per-learner / per-course tick-cross checklist)
+/**
+ * Fetch the enrollment workflow runs (and their per-node steps) attached to a
+ * learner's enrollment(s) or to a course's package sessions. Backed by
+ * GET /admin-core-service/workflow/enrollment-runs.
+ */
+export async function fetchEnrollmentWorkflowRuns(
+    instituteId: string,
+    packageSessionIds: string[]
+): Promise<EnrollmentWorkflowRun[]> {
+    const ids = (packageSessionIds ?? []).filter(Boolean);
+    if (!instituteId || ids.length === 0) return [];
+    const response = await authenticatedAxiosInstance.get(
+        `${BASE_URL}/admin-core-service/workflow/enrollment-runs`,
+        { params: { instituteId, packageSessionIds: ids.join(',') } }
+    );
+    return response.data ?? [];
+}
+
+export function getEnrollmentWorkflowRunsQuery(instituteId: string, packageSessionIds: string[]) {
+    const ids = (packageSessionIds ?? []).filter(Boolean);
+    return queryOptions({
+        queryKey: ['ENROLLMENT_WORKFLOW_RUNS', instituteId, [...ids].sort().join(',')],
+        queryFn: () => fetchEnrollmentWorkflowRuns(instituteId, ids),
+        staleTime: 30_000,
+        enabled: !!instituteId && ids.length > 0,
     });
 }
 

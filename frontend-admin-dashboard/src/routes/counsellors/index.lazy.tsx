@@ -19,10 +19,14 @@ import {
     Phone,
     SquaresFour,
     List as ListIcon,
+    Sparkle,
+    Target,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
 import { CounsellorCallsTab } from './-components/CounsellorCallsTab';
+import { CounsellorInsightsTab } from './-components/CounsellorInsightsTab';
+import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -40,12 +44,21 @@ import {
     type WorkbenchCounsellor,
     type WorkbenchLead,
 } from './-services/counsellor-workbench-services';
+import {
+    TargetPeriodSelector,
+    type TargetPeriodValue,
+} from './-components/targets/target-period-selector';
+import { useTargetProgress } from './-components/targets/use-target-progress';
+import { TargetProgress } from './-components/targets/target-progress';
+import { TargetsSettingsDialog } from './-components/targets/targets-settings-dialog';
+import { CounsellorTargetsTab } from './-components/targets/counsellor-targets-tab';
+import type { TargetProgressItem } from './-services/counsellor-target-services';
 
 export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
 });
 
-type DetailTab = 'leads' | 'activity' | 'calls' | 'performance';
+type DetailTab = 'leads' | 'activity' | 'calls' | 'coaching' | 'performance' | 'targets';
 type StatusFilter = 'all' | 'active' | 'inactive';
 type ViewMode = 'cards' | 'list';
 
@@ -120,6 +133,10 @@ export function WorkbenchPage() {
         setViewMode(next);
         localStorage.setItem(VIEW_MODE_KEY, next);
     }
+    // Targets: the timeline the roster progress is evaluated against, and the
+    // bulk/per-person "Set targets" dialog.
+    const [targetPeriod, setTargetPeriod] = useState<TargetPeriodValue>({ periodType: 'MONTH' });
+    const [targetsDialogOpen, setTargetsDialogOpen] = useState(false);
     // Debounce so we don't fire a server request on every keystroke.
     useEffect(() => {
         const t = setTimeout(() => setSearch(searchInput), 300);
@@ -206,6 +223,14 @@ export function WorkbenchPage() {
         counsellors.map((c) => c.user_id)
     );
 
+    // Target-vs-completed for the visible page, in one request. Keyed to the
+    // selected timeline so switching week/month/custom refetches.
+    const targetProgress = useTargetProgress(
+        instituteId,
+        counsellors.map((c) => c.user_id),
+        targetPeriod
+    );
+
     // URL → drawer sync. When the URL carries a userId, find that counsellor
     // in the full candidate list (settings-side size=500 fetch) and pin the
     // drawer to them. Falls back to the current page if the candidate set
@@ -246,8 +271,7 @@ export function WorkbenchPage() {
     // ACTIVE direction: legacy direct flip — no leads to move, no dialog
     // needed. (For INACTIVE we go through the reassign-first flow below.)
     const setActiveMutation = useMutation({
-        mutationFn: (userId: string) =>
-            setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
+        mutationFn: (userId: string) => setCounsellorStatus(userId, instituteId!, 'ACTIVE'),
         onSuccess: () => {
             // BOTH lists need to refetch:
             //   * `workbench-counsellors`           — the paginated display list
@@ -399,11 +423,7 @@ export function WorkbenchPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <StatChip
-                        icon={UsersThree}
-                        label="Counsellors"
-                        value={totalCounsellors}
-                    />
+                    <StatChip icon={UsersThree} label="Counsellors" value={totalCounsellors} />
                     <StatChip icon={Crown} label="Active" value={activeCount} tone="success" />
                     <StatChip
                         icon={ChatCircleText}
@@ -445,6 +465,14 @@ export function WorkbenchPage() {
                         </button>
                     ))}
                 </div>
+                <TargetPeriodSelector value={targetPeriod} onChange={setTargetPeriod} />
+                <button
+                    type="button"
+                    onClick={() => setTargetsDialogOpen(true)}
+                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-700 hover:bg-primary-100"
+                >
+                    <Target size={14} /> Set targets
+                </button>
                 <div
                     className="ml-auto flex overflow-hidden rounded-md border border-neutral-300"
                     role="group"
@@ -496,11 +524,11 @@ export function WorkbenchPage() {
                 <CounsellorTable
                     counsellors={counsellors}
                     instituteId={instituteId}
+                    progressByUser={targetProgress.byUser}
+                    progressLoading={targetProgress.isFetching}
                     statusPendingId={
                         pendingMarkInactiveId ??
-                        (setActiveMutation.isPending
-                            ? setActiveMutation.variables ?? null
-                            : null)
+                        (setActiveMutation.isPending ? setActiveMutation.variables ?? null : null)
                     }
                     onOpen={(uid) => {
                         const c = counsellors.find((x) => x.user_id === uid);
@@ -519,6 +547,8 @@ export function WorkbenchPage() {
                             key={c.user_id}
                             counsellor={c}
                             instituteId={instituteId}
+                            progress={targetProgress.byUser[c.user_id]}
+                            progressLoading={targetProgress.isFetching}
                             onOpen={() => openDrawer(c)}
                             onToggleStatus={() =>
                                 handleStatusToggle(c.user_id, c.full_name ?? c.user_id, c.is_active)
@@ -573,6 +603,25 @@ export function WorkbenchPage() {
                 onComplete={handleReassignComplete}
                 onMarkInactiveWithoutReassign={handleMarkInactiveWithoutReassign}
             />
+
+            <TargetsSettingsDialog
+                open={targetsDialogOpen}
+                onOpenChange={setTargetsDialogOpen}
+                instituteId={instituteId}
+                // Set targets across the whole team (size=500 candidates), not
+                // just the current page — falls back to the page while loading.
+                // Only ACTIVE counsellors: an inactive (offline) counsellor
+                // shouldn't be handed a target.
+                counsellors={(candidates.length > 0 ? candidates : counsellors)
+                    .filter((c) => c.is_active)
+                    .map((c) => ({
+                        user_id: c.user_id,
+                        full_name: c.full_name,
+                    }))}
+                onSaved={() =>
+                    queryClient.invalidateQueries({ queryKey: ['counsellor-target-progress'] })
+                }
+            />
         </LayoutContainer>
     );
 }
@@ -594,8 +643,8 @@ function StatChip({
         tone === 'primary'
             ? 'bg-primary-50 text-primary-700'
             : tone === 'success'
-            ? 'bg-success-50 text-success-700'
-            : 'bg-neutral-100 text-neutral-700';
+              ? 'bg-success-50 text-success-700'
+              : 'bg-neutral-100 text-neutral-700';
     return (
         <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 ${toneClass}`}>
             <Icon size={16} />
@@ -612,12 +661,16 @@ function StatChip({
 function CounsellorCard({
     counsellor,
     instituteId,
+    progress,
+    progressLoading,
     onOpen,
     onToggleStatus,
     statusLoading,
 }: {
     counsellor: WorkbenchCounsellor;
     instituteId: string;
+    progress: TargetProgressItem[] | undefined;
+    progressLoading: boolean;
     onOpen: () => void;
     onToggleStatus: () => void;
     statusLoading: boolean;
@@ -633,17 +686,12 @@ function CounsellorCard({
             )}
         >
             <div
-                className={cn(
-                    'h-1',
-                    counsellor.is_active ? 'bg-primary-500' : 'bg-neutral-300'
-                )}
+                className={cn('h-1', counsellor.is_active ? 'bg-primary-500' : 'bg-neutral-300')}
             />
             <div className="flex items-start gap-3 px-4 py-3">
                 <Avatar name={name} large />
                 <div className="min-w-0 flex-1 leading-tight">
-                    <div className="truncate text-body font-semibold text-neutral-900">
-                        {name}
-                    </div>
+                    <div className="truncate text-body font-semibold text-neutral-900">{name}</div>
                     {counsellor.role_label ? (
                         <div className="truncate text-caption italic text-neutral-700">
                             {counsellor.role_label}
@@ -656,7 +704,11 @@ function CounsellorCard({
                         )
                     )}
                 </div>
-                <CounsellorRatingBadge instituteId={instituteId} userId={counsellor.user_id} size="md" />
+                <CounsellorRatingBadge
+                    instituteId={instituteId}
+                    userId={counsellor.user_id}
+                    size="md"
+                />
             </div>
 
             <div className="grid grid-cols-2 gap-3 border-t border-neutral-100 bg-neutral-50 px-4 py-2.5 text-caption">
@@ -672,6 +724,11 @@ function CounsellorCard({
                         {counsellor.team_name ?? '—'}
                     </div>
                 </div>
+            </div>
+
+            <div className="border-t border-neutral-100 px-4 py-2.5">
+                <div className="mb-1.5 text-caption text-neutral-500">Targets</div>
+                <TargetProgress items={progress} compact loading={progressLoading} />
             </div>
 
             <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-2.5">
@@ -710,11 +767,7 @@ function CounsellorCard({
                             : 'text-success-700 hover:bg-success-50'
                     )}
                 >
-                    {statusLoading
-                        ? '…'
-                        : counsellor.is_active
-                        ? 'Mark inactive'
-                        : 'Mark active'}
+                    {statusLoading ? '…' : counsellor.is_active ? 'Mark inactive' : 'Mark active'}
                 </button>
             </div>
         </button>
@@ -726,12 +779,16 @@ function CounsellorCard({
 function CounsellorTable({
     counsellors,
     instituteId,
+    progressByUser,
+    progressLoading,
     statusPendingId,
     onOpen,
     onToggleStatus,
 }: {
     counsellors: WorkbenchCounsellor[];
     instituteId: string;
+    progressByUser: Record<string, TargetProgressItem[]>;
+    progressLoading: boolean;
     statusPendingId: string | null;
     onOpen: (userId: string) => void;
     onToggleStatus: (userId: string, isActive: boolean) => void;
@@ -745,6 +802,7 @@ function CounsellorTable({
                         <th className="px-3 py-2.5 text-left">Team</th>
                         <th className="px-3 py-2.5 text-right">Rating</th>
                         <th className="px-3 py-2.5 text-right">Assigned leads</th>
+                        <th className="px-3 py-2.5 text-left">Targets</th>
                         <th className="px-3 py-2.5 text-left">Status</th>
                         <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
@@ -790,6 +848,13 @@ function CounsellorTable({
                                 <td className="px-3 py-2.5 text-right text-body font-semibold text-neutral-900">
                                     {c.open_leads_count}
                                 </td>
+                                <td className="min-w-44 px-3 py-2.5">
+                                    <TargetProgress
+                                        items={progressByUser[c.user_id]}
+                                        compact
+                                        loading={progressLoading}
+                                    />
+                                </td>
                                 <td className="px-3 py-2.5">
                                     <span
                                         className={cn(
@@ -834,8 +899,8 @@ function CounsellorTable({
                                         {pending
                                             ? '…'
                                             : c.is_active
-                                            ? 'Mark inactive'
-                                            : 'Mark active'}
+                                              ? 'Mark inactive'
+                                              : 'Mark active'}
                                     </button>
                                 </td>
                             </tr>
@@ -866,6 +931,9 @@ function DetailDrawer({
     instituteId: string;
     onReassign: (lead: WorkbenchLead) => void;
 }) {
+    // Coaching tab only exists when the institute has Call Intelligence on.
+    // (Hook must run before the early return below — Rules of Hooks.)
+    const callIntelligenceEnabled = useCallIntelligenceEnabled();
     // Sheet handles focus trap, Escape, overlay click — we just supply the
     // content. `counsellor` can be null briefly during the close animation
     // (state cleared as the sheet starts to fade out); the early-return
@@ -874,16 +942,11 @@ function DetailDrawer({
     const name = counsellor.full_name || 'Unnamed';
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent
-                side="right"
-                className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl"
-            >
+            <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-3xl">
                 <div className="flex items-center gap-3 border-b border-neutral-200 px-5 py-4">
                     <Avatar name={name} large />
                     <div className="min-w-0 flex-1 leading-tight">
-                        <div className="truncate text-h3 font-medium text-neutral-900">
-                            {name}
-                        </div>
+                        <div className="truncate text-h3 font-medium text-neutral-900">{name}</div>
                         <div className="truncate text-caption text-neutral-500">
                             {counsellor.email ?? counsellor.role_label ?? '—'}
                         </div>
@@ -912,8 +975,16 @@ function DetailDrawer({
                         <TabsTrigger value="calls">
                             <Phone size={14} className="mr-1.5" /> Calls
                         </TabsTrigger>
+                        {callIntelligenceEnabled && (
+                            <TabsTrigger value="coaching">
+                                <Sparkle size={14} className="mr-1.5" /> Coaching
+                            </TabsTrigger>
+                        )}
                         <TabsTrigger value="performance">
                             <ChartLineUp size={14} className="mr-1.5" /> Performance
+                        </TabsTrigger>
+                        <TabsTrigger value="targets">
+                            <Target size={14} className="mr-1.5" /> Targets
                         </TabsTrigger>
                     </TabsList>
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
@@ -936,6 +1007,12 @@ function DetailDrawer({
                                 counsellorUserId={counsellor.user_id}
                             />
                         )}
+                        {tab === 'coaching' && callIntelligenceEnabled && (
+                            <CounsellorInsightsTab
+                                instituteId={instituteId}
+                                counsellorUserId={counsellor.user_id}
+                            />
+                        )}
                         {tab === 'performance' && (
                             <div className="space-y-4">
                                 <ConversionBySourceWidget
@@ -947,6 +1024,12 @@ function DetailDrawer({
                                     counsellorUserId={counsellor.user_id}
                                 />
                             </div>
+                        )}
+                        {tab === 'targets' && (
+                            <CounsellorTargetsTab
+                                instituteId={instituteId}
+                                counsellorUserId={counsellor.user_id}
+                            />
                         )}
                     </div>
                 </Tabs>
@@ -963,7 +1046,7 @@ function Avatar({ name, large = false }: { name: string; large?: boolean }) {
         <div
             className={cn(
                 'flex shrink-0 items-center justify-center rounded-full bg-primary-100 font-semibold text-primary-700',
-                large ? 'size-11 text-h3' : 'size-9 text-h4'
+                large ? 'size-11 text-h3' : 'text-h4 size-9'
             )}
             aria-hidden="true"
         >

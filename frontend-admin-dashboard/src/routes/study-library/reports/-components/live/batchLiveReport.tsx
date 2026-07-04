@@ -26,6 +26,41 @@ import { MetricCard, SectionCard } from './liveUiBits';
 
 const LB_PAGE_SIZE = 10;
 
+interface EngMeta {
+    talkTimeMin: number;
+    chats: number;
+    polls: number;
+    raiseHand: number;
+    emojis: number;
+}
+
+/**
+ * Engagement score (0–100) with the raw interactions that produced it shown
+ * inline underneath — talk time, chats, spoken turns, polls, raise-hands.
+ * Only non-zero signals are listed so the cell stays compact.
+ */
+function EngagementCell({ score, meta }: { score: number; meta: EngMeta }) {
+    const parts: string[] = [];
+    if (meta.talkTimeMin > 0) parts.push(`${meta.talkTimeMin}m talk`);
+    if (meta.chats > 0) parts.push(`${meta.chats} chat`);
+    if (meta.polls > 0) parts.push(`${meta.polls} poll`);
+    if (meta.raiseHand > 0) parts.push(`${meta.raiseHand} hand`);
+    if (meta.emojis > 0) parts.push(`${meta.emojis} emoji`);
+
+    return (
+        <div className="flex flex-col gap-0.5">
+            <span className="text-body font-semibold text-neutral-700">{score}</span>
+            {parts.length > 0 ? (
+                <span className="text-caption leading-snug text-neutral-400">
+                    {parts.join(' · ')}
+                </span>
+            ) : (
+                <span className="text-caption text-neutral-300">no interaction</span>
+            )}
+        </div>
+    );
+}
+
 interface PerClassRow {
     date: string;
     title: string;
@@ -53,6 +88,7 @@ interface LeaderRow {
     classes: string;
     duration: string;
     engagement: number;
+    engMeta: EngMeta;
 }
 
 const leaderColumns: ColumnDef<LeaderRow>[] = [
@@ -61,7 +97,13 @@ const leaderColumns: ColumnDef<LeaderRow>[] = [
     { accessorKey: 'attendance', header: 'Attendance' },
     { accessorKey: 'classes', header: 'Classes Attended' },
     { accessorKey: 'duration', header: 'Avg Duration' },
-    { accessorKey: 'engagement', header: 'Engagement' },
+    {
+        accessorKey: 'engagement',
+        header: 'Engagement',
+        cell: ({ row }) => (
+            <EngagementCell score={row.original.engagement} meta={row.original.engMeta} />
+        ),
+    },
 ];
 
 export default function BatchLiveReport() {
@@ -112,6 +154,13 @@ export default function BatchLiveReport() {
                     classes: `${r.attended}/${r.total}`,
                     duration: formatDuration(r.avgDurationMinutes),
                     engagement: r.engagementIndex,
+                    engMeta: {
+                        talkTimeMin: Math.round(r.engagement.talkTimeSeconds / 60),
+                        chats: r.engagement.chats,
+                        polls: r.engagement.pollVotes,
+                        raiseHand: r.engagement.raiseHand,
+                        emojis: r.engagement.emojis,
+                    },
                 })) ?? [],
         total_pages: lbTotalPages,
         page_no: lbPage,
@@ -234,9 +283,9 @@ export default function BatchLiveReport() {
                         <MetricCard
                             label="Avg Engagement"
                             value={`${summary.avgEngagementIndex}`}
-                            sub="interactions / learner"
+                            sub="participation points"
                             icon={<ChatsCircle className="size-5" />}
-                            info="A weighted activity index of in-class interactions (talk time, chats, polls, raise-hands). Higher means more participation — it's a count, not a percentage. Only available for provider-synced (Zoom/BBB) classes."
+                            info="Engagement points — a weighted total of in-class participation (talk time counts most, then polls, chats and raise-hands), summed across all classes in the period. Higher = more engaged; there is no upper limit. Only available for provider-synced (Zoom/BBB) classes."
                         />
                     </div>
 
@@ -268,7 +317,7 @@ export default function BatchLiveReport() {
                     {/* Leaderboard */}
                     <SectionCard
                         title="Leaderboard"
-                        subtitle="Learners ranked by attendance, then engagement"
+                        subtitle="Ranked by attendance, then engagement. Interaction totals are summed across all classes in the selected period."
                     >
                         <MyTable
                             data={leaderTable}

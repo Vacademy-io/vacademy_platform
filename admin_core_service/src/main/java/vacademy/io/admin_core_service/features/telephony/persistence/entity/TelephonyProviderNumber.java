@@ -53,6 +53,11 @@ public class TelephonyProviderNumber {
     @Builder.Default
     private Boolean enabled = true;
 
+    /** Inbound IVR menu this number plays when dialled (soft ref to ivr_menu.id).
+     *  Null = fall back to the institute's DID-specific/default menu, then routing. */
+    @Column(name = "inbound_ivr_menu_id", length = 36)
+    private String inboundIvrMenuId;
+
     /**
      * Outcome of the most recent Exotel-flow attach attempt:
      *   ATTACHED | PENDING | FAILED | DETACHED.

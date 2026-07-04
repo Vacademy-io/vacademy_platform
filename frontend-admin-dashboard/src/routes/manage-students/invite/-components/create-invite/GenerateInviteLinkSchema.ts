@@ -345,6 +345,28 @@ export const inviteLinkSchema = z.object({
             role:  { label: 'Role', required: false, options: '' },
         },
     }),
+    // Sub-org settings for this invite link. When `enabled`, enrolling via this
+    // invite into a sub-org-associated batch provisions a sub-org and these
+    // values drive the new sub-org admin's roles/permissions/seat cap. Mirrors
+    // the Create Sub-Org modal; serialized to setting_json.setting.SUB_ORG_SETTING.
+    subOrgSettings: z
+        .object({
+            enabled: z.boolean().default(false),
+            authRoles: z.array(z.string()).default([]),
+            allowedTeamRoles: z.array(z.string()).default([]),
+            adminPermissions: z.array(z.string()).default(['FULL']),
+            memberCount: z
+                .number()
+                .nullable()
+                .default(null),
+        })
+        .default({
+            enabled: false,
+            authRoles: [],
+            allowedTeamRoles: [],
+            adminPermissions: ['FULL'],
+            memberCount: null,
+        }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

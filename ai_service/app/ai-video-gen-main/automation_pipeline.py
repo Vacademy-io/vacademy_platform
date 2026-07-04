@@ -2468,6 +2468,15 @@ class VideoGenerationPipeline:
         stay off by default unless a client explicitly forces True (in which
         case we still honor it — the tier only controls the DEFAULT).
         """
+        # Drama mode: the video is ALL intrinsic dialogue clips. The music bed
+        # is baked into narration.mp3 BEFORE the intrinsic mute pass zeroes
+        # those windows — i.e. baked music would be silenced anyway (and any
+        # residue would fight the clips' own ambience). Force off.
+        if (
+            getattr(self, "_dialogue_scenes_enabled", False)
+            and getattr(self, "_dialogue_mode", "storybook") == "drama"
+        ):
+            return False
         override = getattr(self, "_background_music_enabled_override", None)
         if override is not None:
             return bool(override)
@@ -2493,6 +2502,102 @@ class VideoGenerationPipeline:
             return None
         # entry is (model_id, source) tuple
         return entry[0] if isinstance(entry, tuple) else entry
+
+    def _resolve_visual_style_mode(self) -> str:
+        """Resolve the visual aesthetic mode for this run (cached once known).
+
+        Precedence: explicit user override (`self._visual_style_override`) >
+        auto-detect from video_type / subject_domain. Marketing/product/ad
+        content gets the premium-modern look; everything else stays on the
+        clean educational (whiteboard) aesthetic — the safe default that keeps
+        lecture-style videos identical to today.
+        """
+        cached = getattr(self, "_visual_style_mode", None)
+        if cached:
+            return cached
+        # User override travels on visual_preferences.visual_style_mode (it is
+        # already threaded into the pipeline and persisted across resume legs).
+        override = getattr(self, "_visual_style_override", None)
+        if not override:
+            _vp = getattr(self, "_visual_preferences", None) or {}
+            try:
+                override = _vp.get("visual_style_mode")
+            except AttributeError:
+                override = None
+        try:
+            from director_prompts import resolve_visual_style_mode
+            mode = resolve_visual_style_mode(
+                override=override,
+                video_type=getattr(self, "_video_type", None),
+                subject_domain=getattr(self, "_current_subject_domain", None),
+            )
+        except Exception:
+            mode = "educational"
+        # Only cache once subject_domain is known (it is set during the run); a
+        # pre-plan call resolving "educational" must not stick if the domain
+        # later turns out to be marketing.
+        if getattr(self, "_current_subject_domain", None) or override:
+            self._visual_style_mode = mode
+        return mode
+
+    def _append_aesthetic_directive(self, system_prompt: str) -> str:
+        """Append the content-aware aesthetic override to a per-shot HTML system
+        prompt. No-op (returns the prompt unchanged) for educational mode, so
+        the base flat/whiteboard aesthetic is preserved for lecture content.
+        """
+        try:
+            from director_prompts import build_aesthetic_directive
+            mode = self._resolve_visual_style_mode()
+            block = build_aesthetic_directive(mode)
+            if block:
+                if not getattr(self, "_logged_visual_mode", False):
+                    print(f"🎨 Visual aesthetic mode: {mode}")
+                    self._logged_visual_mode = True
+                return system_prompt + block
+        except Exception as _aerr:
+            print(f"aesthetic directive skipped: {_aerr}")
+        return system_prompt
+
+    def _effective_music_volume(self) -> float:
+        """Music bed level for this run. Explicit user override always wins;
+        otherwise the tier default (0.10, a barely-perceptible underscore —
+        right for lectures) is raised for the creative marketing/bold modes,
+        where inaudible wallpaper music reads as unfinished. Sidechain ducking
+        still pulls the bed down under every narrated word, so a louder bed
+        never fights the VO.
+        """
+        if self._background_music_volume_override is not None:
+            return float(self._background_music_volume_override)
+        base = float(self._tier_config.get("background_music_default_volume", 0.10))
+        try:
+            mode = self._resolve_visual_style_mode()
+        except Exception:
+            mode = "educational"
+        if mode == "bold":
+            return max(base, 0.28)
+        if mode == "marketing":
+            return max(base, 0.22)
+        return base
+
+    def _shot_templates_active(self) -> bool:
+        """Whether deterministic full-shot templates may be used this run.
+
+        Templates render fixed Python HTML and BYPASS the per-shot LLM, so they
+        ignore the premium aesthetic / icon / keywords-only / creativity
+        directives entirely — that is exactly why marketing videos still come
+        out looking templated and repetitive. They are fine for educational
+        consistency (and cheaper), but for the creative marketing/bold modes we
+        want the LLM to compose EVERY shot. So: the tier flag must be on AND the
+        resolved visual mode must not be a creative marketing mode.
+
+        At shot-planning time `subject_domain` may not be known yet, so the mode
+        can resolve to "educational" there — but the authoritative gate is the
+        per-shot bypass in `_shot_task` (which runs after the plan, when the mode
+        is fully resolved), so a marketing run never actually renders a template.
+        """
+        if not self._tier_config.get("shot_templates_enabled"):
+            return False
+        return self._resolve_visual_style_mode() not in ("marketing", "bold")
 
     def _snap_cues_to_beat(
         self,
@@ -2729,11 +2834,24 @@ class VideoGenerationPipeline:
         except Exception:
             _mix_mood = "default"
 
+        # Honor the track's declared fade envelope (set at generation time);
+        # without threading these the bed enters/exits with a hard cut.
+        _fade_in = 2.0
+        _fade_out = 3.0
+        if isinstance(bgm_track, dict):
+            try:
+                _fade_in = float(bgm_track.get("fadeIn", 2.0) or 0.0)
+                _fade_out = float(bgm_track.get("fadeOut", 3.0) or 0.0)
+            except (TypeError, ValueError):
+                pass
+
         spec = MixSpec(
             vo_path=_PathL(narration_path),
             video_duration_s=max(0.5, float(audio_duration)),
             music_path=music_local,
             music_volume=music_vol,
+            music_fade_in_s=_fade_in,
+            music_fade_out_s=_fade_out,
             sfx_cues=[],       # ← SFX deliberately omitted, see comment above
             stinger_cues=[],   # ← same
             enable_ducking=True,  # music ducks under VO
@@ -2878,6 +2996,9 @@ class VideoGenerationPipeline:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        dialogue_scenes_enabled: bool = False,
+        dialogue_mode: str = "storybook",
+        saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
@@ -2895,12 +3016,25 @@ class VideoGenerationPipeline:
         institute_id: Optional[str] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
+        # Assist mode (conversational, human-in-the-loop). When enabled and the
+        # `visual_casting` gate is on, the HTML stage pauses to let the user pick
+        # stock media. Dict shape mirrors extra_metadata.assist:
+        # {enabled, enabled_gates, answered_decisions, auto_all_gates}. None ⇒
+        # fully autonomous (every assist branch below is a no-op).
+        assist_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         # Stash the cooperative stop signal on the instance so deeply-nested
         # methods (per-shot HTML, sound planner, etc.) can check it via
         # `self._check_stop()` without threading the parameter through every
         # call site. None disables checking entirely (legacy / tests).
         self._stop_event = stop_event
+
+        # Assist mode: gate config + the per-query forced media selections the
+        # user made on a previous leg (loaded from asset_selections.json once
+        # run_dir is resolved). Both default to "off" so non-assist runs are
+        # byte-for-byte unchanged.
+        self._assist_state = assist_state or None
+        self._forced_casting: Dict[str, Any] = {}
 
         # Pillar 1 — reset per-run cost-event log so successive run() calls on
         # the same pipeline instance don't cross-contaminate. The new tracker
@@ -2995,6 +3129,54 @@ class VideoGenerationPipeline:
         self._background_music_enabled_override: Optional[bool] = background_music_enabled
         self._background_music_volume_override: Optional[float] = background_music_volume
         # Experimental: split dense shots into 2 focused sub-shots before HTML gen.
+        # DIALOGUE_SCENE (storybook/drama) mode — characters speak on camera in
+        # Seedance-generated clips, lip-synced to OUR per-character TTS lines
+        # (the voice-lock strategy). Opt-in per run.
+        self._dialogue_scenes_enabled: bool = bool(dialogue_scenes_enabled)
+        # "storybook" = narrator + dialogue windows; "drama" = ALL dialogue
+        # scenes, no narrator (music forced off — see _is_background_music_enabled).
+        self._dialogue_mode: str = (
+            str(dialogue_mode or "storybook").strip().lower()
+            if str(dialogue_mode or "").strip().lower() in ("storybook", "drama")
+            else "storybook"
+        )
+        self._dialogue_characters: List[Dict[str, Any]] = []
+        self._fal_seedance_client = None
+        self._dialogue_cost_tracker = None
+        # Institute credit ledger for dialogue clips — REAL billing, not just
+        # the in-process cap. Lazily built in _seedance_ready (reuses the
+        # AI-video ledger when that feature is also on). institute_id stashed
+        # here because the AI-video block keeps it only as a ctor local.
+        self._dialogue_ledger: Any = None
+        self._dialogue_institute_id = institute_id
+        # _seedance_ready can be hit from parallel _shot_task threads via the
+        # entry-generator fallback — one lock keeps tracker/ledger singletons.
+        import threading as _thr_dlg
+        self._dialogue_init_lock = _thr_dlg.Lock()
+        self._dialogue_cast_sheet_url: Optional[str] = None
+        # P2: per-character reference portraits ({name_lower: url}) — cached
+        # once per run; None = not yet attempted.
+        self._character_sheet_urls: Optional[Dict[str, str]] = None
+        # P3: saved cast (series reuse) — locks characters, portrait sheets,
+        # and voice genders to a previously saved cast so a sequel video has
+        # the SAME faces and voices.
+        self._saved_cast: List[Dict[str, Any]] = [
+            c for c in (saved_cast or [])
+            if isinstance(c, dict) and c.get("name")
+        ][:4]
+        if self._saved_cast:
+            self._dialogue_characters = list(self._saved_cast)
+            _sheets = {
+                str(c["name"]).strip().lower(): str(c["sheet_url"])
+                for c in self._saved_cast if c.get("sheet_url")
+            }
+            if _sheets:
+                self._character_sheet_urls = _sheets
+            print(
+                f"🎭 Saved cast loaded: {[c.get('name') for c in self._saved_cast]} "
+                f"({len(_sheets)} portrait sheet(s) reused)"
+            )
+
         self._sub_shots_enabled: bool = bool(sub_shots_enabled)
         if self._sub_shots_enabled:
             print("✂️  Sub-shot decomposition ENABLED (experimental)")
@@ -3418,6 +3600,87 @@ class VideoGenerationPipeline:
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Assist mode: load the user's forced media picks from a prior leg so the
+        # HTML-stage casting gate doesn't re-prompt and the resolver forces the
+        # chosen URL per query. No-op when the file is absent (first leg / auto).
+        if self._assist_state:
+            try:
+                _sel_path = run_dir / "asset_selections.json"
+                if _sel_path.exists():
+                    _sel = json.loads(_sel_path.read_text())
+                    if isinstance(_sel, dict) and isinstance(_sel.get("forced"), dict):
+                        self._forced_casting = _sel["forced"]
+            except Exception as _csv_err:
+                print(f"⚠️ assist: could not load asset_selections.json: {_csv_err}")
+
+        # Will the visual_casting gate fire on THIS leg? (assist on, gate enabled,
+        # unanswered). When True we suppress the pipelined early-image resolution
+        # so the data-img-prompt tags survive for the gate to gather + the user
+        # to pick — otherwise an AI image would be generated before they choose.
+        self._assist_casting_pending = False
+        if self._assist_state:
+            try:
+                _dgm = self._load_decision_gates_module()
+                _oc, _ = _dgm.resolve_gate_outcome(
+                    self._assist_state, _dgm.GateType.VISUAL_CASTING.value, None
+                )
+                self._assist_casting_pending = (_oc == _dgm.GateOutcome.EMIT_AND_STOP)
+            except Exception:
+                self._assist_casting_pending = False
+
+        # Asset-request gate uploads without a shot binding (global photos/
+        # logos) ride shot_plan.json as `user_assets`; merge them into the
+        # reference context so the brand-embed enforcement + casting pins
+        # treat them exactly like upfront media-kit uploads.
+        if self._assist_state:
+            try:
+                _ua_path = run_dir / "shot_plan.json"
+                _uas: List[Dict[str, Any]] = []
+                if _ua_path.exists():
+                    _plan_ua = json.loads(_ua_path.read_text())
+                    if isinstance(_plan_ua, dict):
+                        _uas = [u for u in (_plan_ua.get("user_assets") or []) if isinstance(u, dict) and u.get("url")]
+                if _uas:
+                    if not isinstance(getattr(self, "_reference_context", None), dict):
+                        self._reference_context = {}
+                    _emb = self._reference_context.setdefault("embeddable_images", [])
+                    _known = {(e.get("s3_url") or e.get("url")) for e in _emb if isinstance(e, dict)}
+                    for _u in _uas:
+                        if _u["url"] not in _known:
+                            _emb.append({
+                                "name": (_u.get("ask") or "user asset")[:80],
+                                "description": (_u.get("ask") or "")[:200],
+                                "s3_url": _u["url"],
+                            })
+                    print(f"📎 assist: merged {len(_uas)} user asset(s) into reference context")
+            except Exception as _ua_err:
+                print(f"⚠️ assist: user_assets merge failed: {_ua_err}")
+
+        # Contact-sheet regen notes (assist): when the user sent shots back
+        # from the contact sheet, the /decision router deleted those shots'
+        # cache files (forcing regen) and the notes ride in the answered
+        # decision. Loaded here so _shot_task injects each note into its
+        # shot's system prompt on the regen pass.
+        self._shot_regen_notes: Dict[int, str] = {}
+        if self._assist_state:
+            try:
+                _dgm = self._load_decision_gates_module()
+                _cs_rec = _dgm.find_recorded_answer(
+                    self._assist_state, _dgm.GateType.CONTACT_SHEET.value, None
+                )
+                if _cs_rec and _cs_rec.get("mode") == "edit":
+                    self._shot_regen_notes = _dgm.contact_sheet_regen_notes(
+                        _cs_rec.get("answer")
+                    )
+                    if self._shot_regen_notes:
+                        print(
+                            "👤 assist: contact-sheet regen notes for shots "
+                            f"{sorted(self._shot_regen_notes)}"
+                        )
+            except Exception:
+                self._shot_regen_notes = {}
+
         # Cache the run identifier so downstream stages (host avatar batch,
         # post-processing) can namespace their S3 uploads. Without this every
         # run wrote to `host-assets/run/host_audio_NNN.mp3` and silently
@@ -4505,6 +4768,8 @@ class VideoGenerationPipeline:
                 # invoke `orchestrate_ai_video_shot` for stock-miss recovery.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
+                # Assist: contact-sheet gate (twin of the v3 call site below).
+                self._maybe_contact_sheet_gate(html_segments)
             else:
                 # STANDARD VIDEO FLOW
                 # Extract subject domain from AI-classified script plan
@@ -4708,11 +4973,17 @@ class VideoGenerationPipeline:
                                 "reference_url": _reference_url_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
-                            with _early_image_lock:
-                                _early_image_segments.append(entry)
-                            fut = _img_executor.submit(
-                                self._process_image_task_simple, task_e, _images_dir_early)
-                            _early_futures.append(fut)
+                            # Assist mode: when the visual_casting gate will pause
+                            # this leg, DON'T resolve images early — keep the
+                            # data-img-prompt tags intact so the gate can gather
+                            # candidates and the user can pick. _process_generated_images
+                            # resolves them (forced) on the resume leg.
+                            if not getattr(self, "_assist_casting_pending", False):
+                                with _early_image_lock:
+                                    _early_image_segments.append(entry)
+                                fut = _img_executor.submit(
+                                    self._process_image_task_simple, task_e, _images_dir_early)
+                                _early_futures.append(fut)
 
                 # ── Director Stage (premium/ultra) ─────────────────────────
                 # If enabled, run a Director LLM call to plan shots, then
@@ -5223,6 +5494,20 @@ class VideoGenerationPipeline:
                             print(f"   ⚠️ emphasis_map late build failed (non-fatal): {_em_err}")
                             self._emphasis_map = getattr(self, "_emphasis_map", "") or ""
 
+                    # Storybook/drama (P2): generate dialogue clips SEQUENTIALLY
+                    # first — scene chaining needs strict shot order, and the
+                    # shot loop below is a thread pool. The loop's DIALOGUE_SCENE
+                    # branch then just consumes the pre-generated clip URLs.
+                    if getattr(self, "_dialogue_scenes_enabled", False):
+                        try:
+                            self._emit_progress({
+                                "type": "sub_stage", "sub_stage": "dialogue_clips",
+                                "message": "Filming dialogue scenes…",
+                            })
+                            self._pregenerate_dialogue_clips(_director_plan["shots"], run_dir)
+                        except Exception as _pg_err:
+                            print(f"   ⚠️ dialogue clip pre-generation failed: {_pg_err}")
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -5389,6 +5674,13 @@ class VideoGenerationPipeline:
                 # Fall back to full _process_generated_images for any segments whose
                 # images weren't submitted early (e.g. segments that finished after
                 # the executor was already done, or images with no early result).
+                # Assist mode: pause HERE — BEFORE image gen + stock video — so
+                # the data-img-prompt / data-video-query tags are still intact for
+                # the gate to gather candidates and the user to pick. Raises
+                # DecisionRequired (caught by the service) on the first leg; on the
+                # resume leg the resolvers below force the user's picks. No-op when
+                # assist / visual_casting is off.
+                self._maybe_visual_casting_gate(html_segments)
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
@@ -5398,6 +5690,10 @@ class VideoGenerationPipeline:
                 # Bug 1: see twin call site for run_dir rationale.
                 html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
+                # Assist: contact-sheet gate — all shot HTML + media resolved;
+                # let the user review real frames before the video finalizes.
+                # Raises DecisionRequired on first pass; no-op when off/answered.
+                self._maybe_contact_sheet_gate(html_segments)
 
             # ── Background music (Lyria) ──
             # Runs before _write_timeline so the generated track can land in
@@ -5429,11 +5725,7 @@ class VideoGenerationPipeline:
                         progress_callback=self._progress_callback,
                     )
                     if _music_result and _music_result.get("url"):
-                        _music_vol = (
-                            self._background_music_volume_override
-                            if self._background_music_volume_override is not None
-                            else float(self._tier_config.get("background_music_default_volume", 0.10))
-                        )
+                        _music_vol = self._effective_music_volume()
                         # Best-effort BPM extraction from the music_plan
                         # prompts so the SFX-snap pass can beat-align cues
                         # (Phase B2). Cheap regex parse — no extra deps.
@@ -5475,11 +5767,7 @@ class VideoGenerationPipeline:
                         from music_fallback_library import pick_fallback_bed
                         _fb_bed = pick_fallback_bed(_music_plan_to_use)
                         if _fb_bed and _fb_bed.get("url"):
-                            _music_vol = (
-                                self._background_music_volume_override
-                                if self._background_music_volume_override is not None
-                                else float(self._tier_config.get("background_music_default_volume", 0.10))
-                            )
+                            _music_vol = self._effective_music_volume()
                             self._background_music_track = {
                                 "id": "background-music",
                                 "label": f"Background Music ({_fb_bed.get('mood', 'ambient')} bed)",
@@ -7147,6 +7435,790 @@ class VideoGenerationPipeline:
             outputs.append(result)
         return outputs
 
+    # ------------------------------------------------------------------
+    # DIALOGUE_SCENE (storybook/drama mode) helpers
+    # ------------------------------------------------------------------
+
+    def _dialogue_voice_map(self) -> Dict[str, str]:
+        """Stable character→voice_gender map for the whole run. Uses the cast's
+        voice_hint when it names a gender; otherwise alternates so a two-hander
+        always gets two distinct voices. Deterministic across shots and legs."""
+        vm: Dict[str, str] = {}
+        genders = ("female", "male")
+        for i, c in enumerate(self._dialogue_characters or []):
+            name = str(c.get("name") or "").strip().lower()
+            if not name:
+                continue
+            _stored = str(c.get("voice_gender") or "").strip().lower()
+            if _stored in ("male", "female"):
+                vm[name] = _stored  # saved cast — exact voice reuse
+                continue
+            hint = str(c.get("voice_hint") or "").lower()
+            if "female" in hint or "woman" in hint or "girl" in hint:
+                g = "female"
+            elif "male" in hint or "man " in hint or hint.endswith("man") or "boy" in hint:
+                g = "male"
+            else:
+                g = genders[i % 2]
+            vm[name] = g
+        return vm
+
+    def _prepare_dialogue_scenes(
+        self,
+        shots: List[Dict[str, Any]],
+        run_dir: Path,
+        *,
+        language: str,
+        voice_gender: str,
+        tts_provider: str,
+        voice_id: Optional[str],
+    ) -> None:
+        """Voice-lock pre-pass for DIALOGUE_SCENE shots (runs before per-shot TTS).
+
+        For each dialogue shot: synthesize every line in its character's voice,
+        concat → one MP3, upload to S3, stash `_dialogue_audio_url` on the shot
+        (fed to Seedance as @Audio1 for lip-sync), and resize the shot's planned
+        duration to fit the audio so the master-narration silence gap matches
+        the clip we request. Failures demote the shot to a plain IMAGE_HERO so
+        the video still ships.
+        """
+        if not self._dialogue_scenes_enabled:
+            return
+        dialogue_shots = [
+            s for s in shots
+            if isinstance(s, dict)
+            and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+        ]
+        if not dialogue_shots:
+            return
+
+        import subprocess as _sp
+
+        def _demote(s: Dict[str, Any], why: str) -> None:
+            print(f"   ⚠️ DIALOGUE_SCENE shot {s.get('shot_index')}: {why} — demoting to IMAGE_HERO")
+            s["shot_type"] = "IMAGE_HERO"
+            s["audio_policy"] = "narration_only"
+            if not s.get("image_prompt"):
+                s["image_prompt"] = str(s.get("scene_description") or "cinematic scene")[:300]
+            for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s", "_dialogue_clip_s"):
+                s.pop(k, None)
+
+        uploaders = self._build_ai_video_uploaders()
+        svc = getattr(self, "_ai_video_s3_service", None)
+        if uploaders is None or not svc:
+            for s in dialogue_shots:
+                _demote(s, "S3 unavailable for dialogue audio upload")
+            return
+
+        vmap = self._dialogue_voice_map()
+        run_name = getattr(self, "_run_name", None) or "run"
+        out_dir = run_dir / "dialogue_tts"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        changed_timing = False
+
+        for s in dialogue_shots:
+            if s.get("_dialogue_audio_url"):
+                continue  # already prepared (resume)
+            shot_idx = int(s.get("shot_index") or 0)
+            lines = [
+                l for l in (s.get("dialogue") or [])
+                if isinstance(l, dict) and str(l.get("line") or "").strip()
+            ][:3]
+            if not lines:
+                _demote(s, "no dialogue lines")
+                continue
+            try:
+                seg_paths: List[Path] = []
+                for li, l in enumerate(lines):
+                    char = str(l.get("character") or "").strip().lower()
+                    # md5, not hash(): PYTHONHASHSEED randomizes hash() per
+                    # process — a resume leg could flip an uncast character's
+                    # voice gender mid-video.
+                    import hashlib as _vh
+                    g = vmap.get(char) or ("female", "male")[
+                        int(_vh.md5(char.encode("utf-8")).hexdigest(), 16) % 2
+                    ]
+                    res = self._synthesize_voice_for_shot(
+                        shot_idx=9000 + shot_idx * 10 + li,
+                        narration_text=str(l.get("line")).strip(),
+                        run_dir=run_dir,
+                        language=language,
+                        voice_gender=g,
+                        tts_provider=tts_provider,
+                        # Per-character stock voice by gender — NOT the
+                        # narrator's custom voice_id (that's the narrator).
+                        voice_id=None,
+                    )
+                    mp3 = res.get("mp3_path")
+                    if res.get("skipped") or not mp3 or not Path(mp3).exists():
+                        raise RuntimeError(f"line {li} TTS failed: {res.get('reason')}")
+                    seg_paths.append(Path(mp3))
+
+                out_mp3 = out_dir / f"shot_{shot_idx:03d}.mp3"
+                if len(seg_paths) == 1:
+                    import shutil as _sh
+                    _sh.copyfile(seg_paths[0], out_mp3)
+                else:
+                    inputs: List[str] = []
+                    for p in seg_paths:
+                        inputs += ["-i", str(p)]
+                    n = len(seg_paths)
+                    fc = "".join(f"[{i}:a]" for i in range(n)) + f"concat=n={n}:v=0:a=1[a]"
+                    _sp.run(
+                        ["ffmpeg", "-y", *inputs, "-filter_complex", fc,
+                         "-map", "[a]", "-c:a", "libmp3lame", "-q:a", "4", str(out_mp3)],
+                        check=True, capture_output=True, timeout=120,
+                    )
+                probe = _sp.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(out_mp3)],
+                    check=True, capture_output=True, text=True, timeout=30,
+                )
+                dur = float(probe.stdout.strip() or 0.0)
+                if dur <= 0.2:
+                    raise RuntimeError("dialogue audio empty after concat")
+                if dur > 14.5:
+                    raise RuntimeError(f"dialogue audio too long ({dur:.1f}s > 14.5s Seedance cap)")
+
+                s3_key = f"ai-videos/dialogue/{run_name}/shot_{shot_idx:03d}.mp3"
+                url = svc.upload_file(out_mp3, s3_key=s3_key, content_type="audio/mpeg")
+                if not url:
+                    raise RuntimeError("S3 upload of dialogue audio failed")
+
+                import math as _math
+                clip_s = max(5, min(15, int(_math.ceil(dur + 1.0))))
+                s["_dialogue_audio_url"] = url
+                s["_dialogue_audio_s"] = round(dur, 2)
+                s["_dialogue_clip_s"] = clip_s
+                if abs(float(s.get("duration_estimate_s") or 0.0) - clip_s) > 0.01:
+                    s["duration_estimate_s"] = float(clip_s)
+                    changed_timing = True
+                print(
+                    f"   🎭 Dialogue shot {shot_idx}: {len(lines)} line(s), "
+                    f"{dur:.1f}s audio → {clip_s}s clip requested"
+                )
+            except Exception as prep_err:
+                _demote(s, f"dialogue prep failed ({prep_err})")
+
+        if changed_timing:
+            # Re-derive start/end so the master-narration silence gap for each
+            # dialogue window matches the clip length we will request.
+            try:
+                from shot_planner import _derive_shot_timings
+                _derive_shot_timings([s for s in shots if isinstance(s, dict)])
+            except Exception as _t_err:
+                print(f"   ⚠️ dialogue timing re-derive failed: {_t_err}")
+
+        # Persist prep results (audio URLs, resized timings) so a later pause
+        # (cast gate / casting / contact sheet) doesn't redo dialogue TTS.
+        self._persist_dialogue_plan(run_dir, shots=[s for s in shots if isinstance(s, dict)])
+
+    def _ensure_dialogue_cast_sheet(self, run_dir: Path) -> Optional[str]:
+        """One reference image for the whole cast, generated once per run.
+
+        Seedance REQUIRES ≥1 image reference when audio input is provided; the
+        same image in every clip is also what keeps the characters visually
+        consistent. Prefers user-uploaded media-kit images; falls back to a
+        Seedream group portrait from the cast's verbatim visual descriptions.
+        """
+        if self._dialogue_cast_sheet_url:
+            return self._dialogue_cast_sheet_url
+        # Media-kit images win — the user's real characters/products.
+        try:
+            _ref_ctx = getattr(self, "_reference_context", None) or {}
+            for _img in (_ref_ctx.get("embeddable_images") or []):
+                _u = (_img.get("s3_url") or _img.get("url") or "").strip() if isinstance(_img, dict) else ""
+                if _u:
+                    self._dialogue_cast_sheet_url = _u
+                    return _u
+        except Exception:
+            pass
+        cast = self._dialogue_characters or []
+        if not cast:
+            return None
+        try:
+            desc = "; ".join(
+                f"{c.get('name')}: {c.get('visual_description')}"
+                for c in cast if c.get("visual_description")
+            )[:900]
+            prompt = (
+                "Cinematic character lineup reference sheet, all characters standing "
+                f"side by side, neutral background, full body, photorealistic. {desc}"
+            )
+            img_bytes, _u = self._call_image_generation_llm(
+                prompt,
+                width=self.video_width,
+                height=self.video_height,
+                model_override="bytedance-seed/seedream-4.5",
+            )
+            if not img_bytes:
+                return None
+            local = run_dir / "dialogue_tts" / "cast_sheet.png"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_bytes(img_bytes)
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            url = svc.upload_file(
+                local, s3_key=f"ai-videos/dialogue/{run_name}/cast_sheet.png",
+                content_type="image/png",
+            )
+            if url:
+                print(f"   🎭 Cast sheet generated: {url}")
+                self._dialogue_cast_sheet_url = url
+            return url
+        except Exception as cs_err:
+            print(f"   ⚠️ cast sheet generation failed: {cs_err}")
+            return None
+
+    def _ensure_character_sheets(self, run_dir: Path) -> Dict[str, str]:
+        """P2 — one Seedream reference portrait PER character, cached per run.
+
+        {name_lower: url}. Per-character portraits beat the group sheet for
+        identity consistency: each clip receives exactly the characters that
+        appear in it, bound as @Image1..N. Failures leave a character out of
+        the map (the group-sheet fallback still covers the scene).
+        """
+        if self._character_sheet_urls is not None:
+            return self._character_sheet_urls
+        sheets: Dict[str, str] = {}
+        cast = self._dialogue_characters or []
+        # Character dicts may already carry sheet_url (saved cast, or a cast-gate
+        # upload/regen persisted into the plan) — those win over fresh generation.
+        for c in cast[:4]:
+            _n = str(c.get("name") or "").strip().lower()
+            _u = str(c.get("sheet_url") or "").strip()
+            if _n and _u:
+                sheets[_n] = _u
+        try:
+            if not getattr(self, "_ai_video_s3_service", None):
+                self._build_ai_video_uploaders()
+            svc = getattr(self, "_ai_video_s3_service", None)
+            run_name = getattr(self, "_run_name", None) or "run"
+            if svc:
+                for i, c in enumerate(cast[:4]):
+                    name = str(c.get("name") or "").strip()
+                    desc = str(c.get("visual_description") or "").strip()
+                    if not name or not desc or name.lower() in sheets:
+                        continue
+                    try:
+                        prompt = (
+                            f"Character reference portrait of {name}: {desc}. "
+                            "Full body, standing, facing camera, neutral studio "
+                            "background, photorealistic, cinematic lighting, "
+                            "no text, single person only."
+                        )
+                        img_bytes, _u = self._call_image_generation_llm(
+                            prompt,
+                            width=self.video_width,
+                            height=self.video_height,
+                            model_override="bytedance-seed/seedream-4.5",
+                        )
+                        if not img_bytes:
+                            continue
+                        local = run_dir / "dialogue_tts" / f"char_{i:02d}.png"
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        local.write_bytes(img_bytes)
+                        url = svc.upload_file(
+                            local,
+                            s3_key=f"ai-videos/dialogue/{run_name}/char_{i:02d}.png",
+                            content_type="image/png",
+                        )
+                        if url:
+                            sheets[name.lower()] = url
+                            c["sheet_url"] = url
+                            print(f"   🎭 Character sheet ready: {name}")
+                    except Exception as cs_err:
+                        print(f"   ⚠️ character sheet failed for {name}: {cs_err}")
+        except Exception as outer_err:
+            print(f"   ⚠️ character sheets unavailable: {outer_err}")
+        self._character_sheet_urls = sheets
+        return sheets
+
+    def _persist_dialogue_plan(self, run_dir: Path, shots: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Write the CURRENT dialogue state (shots' _dialogue_* fields, cast
+        sheet_urls) into run_dir/shot_plan.json. The DecisionRequired catch
+        uploads that file to checkpoints/, and the resume leg downloads it back
+        — so pauses (cast gate, casting, contact sheet) never lose prep work.
+        Best-effort; failure just means the resume leg redoes some prep."""
+        try:
+            plan_path = run_dir / "shot_plan.json"
+            plan: Dict[str, Any] = {}
+            if plan_path.exists():
+                try:
+                    plan = json.loads(plan_path.read_text())
+                except Exception:
+                    plan = {}
+            if not isinstance(plan, dict):
+                plan = {}
+            if shots is not None:
+                plan["shots"] = shots
+            if self._dialogue_characters:
+                plan["characters"] = self._dialogue_characters
+            plan_path.write_text(json.dumps(plan, ensure_ascii=False, default=str))
+        except Exception as _pp_err:
+            print(f"   ⚠️ dialogue plan persist failed: {_pp_err}")
+
+    def _regen_character_sheet(
+        self, run_dir: Path, index: int, character: Dict[str, Any], note: str,
+    ) -> Optional[str]:
+        """Regenerate one portrait per the user's cast-gate note. Returns the
+        new URL or None. Key is note-hashed so re-applying the same answer on
+        a later leg reuses the same image instead of regenerating."""
+        try:
+            name = str(character.get("name") or "").strip()
+            desc = str(character.get("visual_description") or "").strip()
+            prompt = (
+                f"Character reference portrait of {name}: {desc}. "
+                f"USER REVISION (must satisfy): {note}. "
+                "Full body, standing, facing camera, neutral studio background, "
+                "photorealistic, cinematic lighting, no text, single person only."
+            )
+            img_bytes, _u = self._call_image_generation_llm(
+                prompt,
+                width=self.video_width,
+                height=self.video_height,
+                model_override="bytedance-seed/seedream-4.5",
+            )
+            if not img_bytes:
+                return None
+            import hashlib as _hl
+            _suffix = _hl.md5(note.encode("utf-8")).hexdigest()[:6]
+            local = run_dir / "dialogue_tts" / f"char_{index:02d}_{_suffix}.png"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_bytes(img_bytes)
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            url = svc.upload_file(
+                local,
+                s3_key=f"ai-videos/dialogue/{run_name}/char_{index:02d}_{_suffix}.png",
+                content_type="image/png",
+            )
+            if url:
+                print(f"   🎭 Portrait regenerated for {name} ({note[:50]!r})")
+            return url
+        except Exception as _rg_err:
+            print(f"   ⚠️ portrait regen failed for character {index}: {_rg_err}")
+            return None
+
+    def _maybe_cast_gate(self, run_dir: Path) -> None:
+        """Assist: approve the cast's portraits BEFORE any clip is filmed.
+
+        Mirrors the casting/contact-sheet gates: first pass emits
+        ``decision_required`` + raises DecisionRequired (clip money not yet
+        spent); the resume leg applies the recorded answer — uploaded
+        replacement portraits and/or note-driven regenerations — then filming
+        proceeds with the approved faces.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        chars = self._dialogue_characters or []
+        if not chars:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.CAST.value, None)
+        if outcome == _dg.GateOutcome.AUTO_DECIDE:
+            return
+        if outcome == _dg.GateOutcome.USE_ANSWER:
+            directives = _dg.cast_gate_directives((_rec or {}).get("answer"))
+            if not directives:
+                return
+            changed = False
+            for i, c in enumerate(chars[:4]):
+                d = directives.get(str(c.get("name") or "").strip().lower())
+                if not d:
+                    continue
+                if d.get("url"):
+                    if c.get("sheet_url") != d["url"]:
+                        c["sheet_url"] = d["url"]
+                        changed = True
+                elif d.get("note") and c.get("_cast_regen_applied") != d["note"]:
+                    new_url = self._regen_character_sheet(run_dir, i, c, d["note"])
+                    c["_cast_regen_applied"] = d["note"]
+                    if new_url:
+                        c["sheet_url"] = new_url
+                    changed = True
+            if changed:
+                # Rebuild the sheet map from the updated dicts + persist.
+                self._character_sheet_urls = None
+                self._ensure_character_sheets(run_dir)
+                self._persist_dialogue_plan(run_dir)
+            return
+        # EMIT_AND_STOP — persist current prep so the pause loses nothing.
+        self._persist_dialogue_plan(run_dir)
+        payload_chars = [
+            {
+                "name": str(c.get("name") or ""),
+                "visual_description": str(c.get("visual_description") or "")[:400],
+                "voice_hint": str(c.get("voice_hint") or "")[:120],
+                "sheet_url": c.get("sheet_url"),
+            }
+            for c in chars[:4]
+        ]
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_cast_decision(video_id, payload_chars)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
+
+    def _seedance_ready(self) -> bool:
+        """Lazy Seedance client + per-run dialogue budget. True when callable."""
+        try:
+            try:
+                from app.services.fal_seedance_client import FalSeedanceClient
+                from app.services.fal_veo_client import get_fal_api_key_from_env as _gk
+            except ImportError:
+                from fal_seedance_client import FalSeedanceClient  # type: ignore[no-redef]
+                from fal_veo_client import get_fal_api_key_from_env as _gk  # type: ignore[no-redef]
+            with self._dialogue_init_lock:
+                if self._fal_seedance_client is None:
+                    _fal_key = _gk()
+                    if not _fal_key:
+                        print("   ⚠️ DIALOGUE_SCENE: FAL_API_KEY not set")
+                        return False
+                    self._fal_seedance_client = FalSeedanceClient(_fal_key)
+                if self._dialogue_cost_tracker is None:
+                    from ai_video_orchestrator import AiVideoCostTracker
+                    # Drama = the whole video is clips → a bigger default budget.
+                    _default_cap = 20.0 if self._dialogue_mode == "drama" else 6.0
+                    _cap = float(
+                        self._tier_config.get("dialogue_scene_cost_cap_usd") or _default_cap
+                    )
+                    self._dialogue_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+                if self._dialogue_ledger is None:
+                    # Reuse the AI-video ledger when present; else build our own so
+                    # dialogue-only runs STILL bill the institute for fal spend.
+                    _existing = getattr(self, "_ai_video_ledger", None)
+                    if _existing is not None and getattr(_existing, "enabled", False):
+                        self._dialogue_ledger = _existing
+                    else:
+                        try:
+                            from app.services.ai_video_ledger import AiVideoLedger
+                            self._dialogue_ledger = AiVideoLedger(
+                                institute_id=self._dialogue_institute_id,
+                                video_id=getattr(self, "_run_name", None) or "run",
+                            )
+                            if not self._dialogue_ledger.enabled:
+                                print("⚠️  dialogue credit ledger disabled (missing institute/video id)")
+                        except Exception as _dl_err:
+                            print(f"⚠️  dialogue credit ledger unavailable: {_dl_err}")
+                            self._dialogue_ledger = False  # tried and failed; no retry
+            return True
+        except Exception as init_err:
+            print(f"   ⚠️ Seedance init failed: {init_err}")
+            return False
+
+    def _call_seedance_dialogue_clip(
+        self,
+        shot: Dict[str, Any],
+        image_urls: List[str],
+        ref_names: List[str],
+    ) -> Optional[Any]:
+        """One budgeted Seedance call for a dialogue shot. None on failure."""
+        shot_idx = int(shot.get("shot_index") or 0)
+        expected = 0.0
+        from decimal import Decimal as _Dec
+        charged_credits = _Dec("0")
+        try:
+            try:
+                from app.services.fal_seedance_client import seedance_price_per_call_usd
+            except ImportError:
+                from fal_seedance_client import seedance_price_per_call_usd  # type: ignore[no-redef]
+            if not self._seedance_ready():
+                return None
+            clip_s = int(shot.get("_dialogue_clip_s") or 8)
+            expected = seedance_price_per_call_usd(resolution="720p", duration_s=clip_s)
+            try:
+                self._dialogue_cost_tracker.try_charge(expected)
+            except Exception as cap_err:
+                print(f"   🛑 DIALOGUE_SCENE shot {shot_idx}: dialogue budget exhausted ({cap_err})")
+                return None
+            # Institute billing — mirror the AI_VIDEO_HERO discipline: deduct
+            # BEFORE the fal call; insufficient balance rolls back the tracker
+            # reservation and demotes the shot instead of shipping unbilled spend.
+            _ledger = self._dialogue_ledger if self._dialogue_ledger not in (None, False) else None
+            if _ledger is not None and getattr(_ledger, "enabled", False):
+                try:
+                    charged_credits = _ledger.charge(
+                        cost_usd=expected, shot_idx=shot_idx,
+                        duration_s=clip_s, audio_on=True,
+                    )
+                except Exception as _led_err:
+                    try:
+                        self._dialogue_cost_tracker.refund(expected)
+                    except Exception:
+                        pass
+                    print(
+                        f"   🛑 DIALOGUE_SCENE shot {shot_idx}: credit deduction failed "
+                        f"({type(_led_err).__name__}: {_led_err}) — demoting"
+                    )
+                    return None
+            aspect = "9:16" if self.video_height > self.video_width else "16:9"
+            prompt = self._build_dialogue_scene_prompt(shot, ref_names)
+            print(f"   🎭 Shot {shot_idx}: Seedance dialogue clip ({clip_s}s, ~${expected:.2f})…")
+            result = self._fal_seedance_client.generate_reference_to_video(
+                prompt=prompt,
+                image_urls=image_urls,
+                audio_urls=[shot["_dialogue_audio_url"]],
+                duration_s=clip_s,
+                aspect_ratio=aspect,
+                resolution="720p",
+                generate_audio=True,
+            )
+            print(
+                f"   🎭 Shot {shot_idx}: dialogue clip ready "
+                f"(${result.cost_usd:.2f}, {result.elapsed_s:.0f}s)"
+            )
+            return result
+        except Exception as ds_err:
+            print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx} failed: {type(ds_err).__name__}: {ds_err}")
+            try:
+                if self._dialogue_cost_tracker is not None and expected > 0:
+                    self._dialogue_cost_tracker.refund(expected)
+            except Exception:
+                pass
+            # Refund the institute deduction too — the clip never shipped.
+            try:
+                _lg = self._dialogue_ledger if self._dialogue_ledger not in (None, False) else None
+                if _lg is not None and charged_credits > 0:
+                    _lg.refund(
+                        credits=charged_credits, shot_idx=shot_idx,
+                        reason=f"seedance_failure:{type(ds_err).__name__}",
+                    )
+            except Exception:
+                pass
+            return None
+
+    def _build_dialogue_scene_prompt(
+        self, shot: Dict[str, Any], ref_names: Optional[List[str]] = None,
+    ) -> str:
+        """Seedance prompt: scene staging + per-reference @ImageN bindings +
+        verbatim character portraits + the lines to lip-sync to @Audio1.
+
+        ``ref_names[i]`` names what image_urls[i] shows — a character name,
+        "the full cast" (group-sheet fallback), or the sentinel
+        "__PREV_FRAME__" (last frame of the previous scene, for chaining).
+        """
+        cast_by_name = {
+            str(c.get("name") or "").strip().lower(): c
+            for c in (self._dialogue_characters or [])
+        }
+        bindings: List[str] = []
+        for i, rn in enumerate(ref_names or []):
+            tag = f"@Image{i + 1}"
+            if rn == "__PREV_FRAME__":
+                bindings.append(
+                    f"{tag} is the final frame of the PREVIOUS scene — continue "
+                    "seamlessly from it: same location, same lighting, same "
+                    "character positions evolving naturally."
+                )
+            elif rn == "the full cast":
+                bindings.append(f"{tag} shows the full cast — match every character exactly.")
+            else:
+                c = cast_by_name.get(str(rn).strip().lower())
+                desc = (c or {}).get("visual_description") or ""
+                bindings.append(
+                    f"{tag} is {rn}" + (f" — match exactly: {desc}" if desc else " — match exactly.")
+                )
+        lines_txt = " ".join(
+            f"{str(l.get('character') or '').strip()}: \"{str(l.get('line') or '').strip()}\""
+            for l in (shot.get("dialogue") or [])
+            if isinstance(l, dict) and str(l.get("line") or "").strip()
+        )
+        scene = str(shot.get("scene_description") or "").strip()
+        parts = [
+            f"Cinematic scene: {scene}" if scene else "Cinematic dialogue scene.",
+            "\n".join(bindings) if bindings else "",
+            f"The characters speak these lines, lip-synced verbatim to @Audio1: {lines_txt}",
+            "Natural performance, realistic lighting, subtle camera movement. "
+            "No text overlays, no captions, no subtitles.",
+        ]
+        return "\n".join(p for p in parts if p)
+
+    def _pregenerate_dialogue_clips(
+        self, shots: List[Dict[str, Any]], run_dir: Path,
+    ) -> None:
+        """P2 — generate all dialogue clips SEQUENTIALLY, in shot order, BEFORE
+        the parallel HTML loop, chaining each scene's last frame into the next
+        ADJACENT dialogue shot (a narrated shot between = scene break, no chain).
+
+        The parallel _shot_task then consumes `_dialogue_clip_url` without any
+        fal call, so chaining order is guaranteed. Best-effort per shot — a
+        failed clip just breaks the chain and the shot demotes downstream.
+        """
+        if not self._dialogue_scenes_enabled:
+            return
+        dlg = sorted(
+            (
+                s for s in shots
+                if isinstance(s, dict)
+                and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+                and s.get("_dialogue_audio_url")
+            ),
+            key=lambda s: int(s.get("shot_index") or 0),
+        )
+        if not dlg:
+            return
+        sheets = self._ensure_character_sheets(run_dir)
+        # Cast gate (assist): approve portraits BEFORE spending on clips.
+        # Raises DecisionRequired on first pass; applies the answer on resume
+        # (uploads / note-driven regens) and refreshes the sheet map.
+        self._maybe_cast_gate(run_dir)
+        sheets = self._character_sheet_urls or sheets
+        try:
+            from ai_video_orchestrator import _ffmpeg_extract_last_frame, _download_url_to_path
+        except Exception:
+            _ffmpeg_extract_last_frame = None  # type: ignore[assignment]
+            _download_url_to_path = None  # type: ignore[assignment]
+        svc = getattr(self, "_ai_video_s3_service", None)
+        run_name = getattr(self, "_run_name", None) or "run"
+        prev_frame_url: Optional[str] = None
+        prev_shot_idx: Optional[int] = None
+
+        for s in dlg:
+            shot_idx = int(s.get("shot_index") or 0)
+            if s.get("_dialogue_clip_url"):
+                prev_shot_idx = shot_idx  # cached from a prior leg — keep order sense
+                prev_frame_url = None     # no frame stashed across legs; chain breaks
+                continue
+            # Per-character refs for THIS scene, in cast order.
+            image_urls: List[str] = []
+            ref_names: List[str] = []
+            for n in (s.get("character_names") or []):
+                u = sheets.get(str(n).strip().lower())
+                if u and u not in image_urls:
+                    image_urls.append(u)
+                    ref_names.append(str(n).strip())
+            if not image_urls:
+                grp = self._ensure_dialogue_cast_sheet(run_dir)
+                if grp:
+                    image_urls, ref_names = [grp], ["the full cast"]
+            if not image_urls:
+                print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no reference image — will demote")
+                prev_frame_url, prev_shot_idx = None, None
+                continue
+            # Scene chaining: adjacent dialogue shots share a scene.
+            if prev_frame_url and prev_shot_idx is not None and shot_idx == prev_shot_idx + 1:
+                image_urls = image_urls[:8] + [prev_frame_url]
+                ref_names = ref_names[:8] + ["__PREV_FRAME__"]
+
+            result = self._call_seedance_dialogue_clip(s, image_urls, ref_names)
+            if result is None:
+                prev_frame_url, prev_shot_idx = None, None
+                continue
+            s["_dialogue_clip_url"] = result.video_url
+            s["_dialogue_clip_cost_usd"] = float(result.cost_usd or 0.0)
+            s["_dialogue_clip_elapsed_s"] = float(result.elapsed_s or 0.0)
+            # Persist immediately — a later pause (casting/contact gate) uploads
+            # run_dir/shot_plan.json; without this the resume leg's skip check
+            # misses and RE-PURCHASES every clip (double-charging the ledger).
+            self._persist_dialogue_plan(run_dir, shots=shots)
+
+            # Extract + upload the last frame for the next adjacent scene.
+            prev_frame_url, prev_shot_idx = None, shot_idx
+            if _ffmpeg_extract_last_frame and _download_url_to_path and svc:
+                try:
+                    mp4_local = run_dir / "dialogue_tts" / f"clip_{shot_idx:03d}.mp4"
+                    png_local = run_dir / "dialogue_tts" / f"clip_{shot_idx:03d}_last.png"
+                    if _download_url_to_path(result.video_url, mp4_local) and \
+                            _ffmpeg_extract_last_frame(mp4_local, png_local):
+                        _u = svc.upload_file(
+                            png_local,
+                            s3_key=f"ai-videos/dialogue/{run_name}/clip_{shot_idx:03d}_last.png",
+                            content_type="image/png",
+                        )
+                        if _u:
+                            prev_frame_url = _u
+                except Exception as fr_err:
+                    print(f"   ⚠️ last-frame extract failed (shot {shot_idx}): {fr_err}")
+
+    def _generate_dialogue_scene_entry(
+        self,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        run_dir: Path,
+        start_time: float,
+        end_time: float,
+        entry_id: str,
+        w: int,
+        h: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Build the timeline entry for a DIALOGUE_SCENE (full-bleed video,
+        intrinsic audio). Consumes the pre-generated clip when the sequential
+        pre-pass ran; falls back to a direct (unchained) Seedance call
+        otherwise. Returns None on failure — caller demotes. Never raises."""
+        try:
+            video_url = shot.get("_dialogue_clip_url")
+            cost_usd = float(shot.get("_dialogue_clip_cost_usd") or 0.0)
+            elapsed_s = float(shot.get("_dialogue_clip_elapsed_s") or 0.0)
+            if not video_url:
+                if not shot.get("_dialogue_audio_url"):
+                    print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no prepared dialogue audio")
+                    return None
+                sheets = self._ensure_character_sheets(run_dir)
+                image_urls: List[str] = []
+                ref_names: List[str] = []
+                for n in (shot.get("character_names") or []):
+                    u = sheets.get(str(n).strip().lower())
+                    if u and u not in image_urls:
+                        image_urls.append(u)
+                        ref_names.append(str(n).strip())
+                if not image_urls:
+                    grp = self._ensure_dialogue_cast_sheet(run_dir)
+                    if grp:
+                        image_urls, ref_names = [grp], ["the full cast"]
+                if not image_urls:
+                    print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no reference image available")
+                    return None
+                result = self._call_seedance_dialogue_clip(shot, image_urls, ref_names)
+                if result is None:
+                    return None
+                video_url = result.video_url
+                cost_usd = float(result.cost_usd or 0.0)
+                elapsed_s = float(result.elapsed_s or 0.0)
+
+            from ai_video_orchestrator import build_ai_video_html
+            html = self._ensure_fonts(
+                build_ai_video_html(
+                    shot_idx=shot_idx,
+                    video_url=video_url,
+                    audio_policy="intrinsic_only",
+                )
+            )
+            return {
+                "start": start_time,
+                "end": end_time,
+                "htmlStartX": 0, "htmlStartY": 0,
+                "htmlEndX": w, "htmlEndY": h,
+                "html": html,
+                "id": entry_id,
+                "index": shot_idx,
+                "z": shot.get("z", 10),
+                "_shot_type": "DIALOGUE_SCENE",
+                "_narration_excerpt": "",
+                "_visual_description": str(shot.get("scene_description") or "")[:200],
+                "_skill_audio_events": [],
+                "_ai_video_url": video_url,
+                "_ai_video_cost_usd": cost_usd,
+                "_ai_video_elapsed_s": elapsed_s,
+                "_ai_video_audio_on": True,
+            }
+        except Exception as ds_err:
+            print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx} entry failed: {type(ds_err).__name__}: {ds_err}")
+            return None
+
     def _concat_master_narration(
         self,
         per_shot_outputs: List[Dict[str, Any]],
@@ -7375,6 +8447,18 @@ class VideoGenerationPipeline:
         """
         if not shots:
             raise RuntimeError("_run_per_shot_tts_v2 called with empty shot plan")
+
+        # DIALOGUE_SCENE pre-pass (storybook mode): synthesize per-character
+        # line audio + resize dialogue shots BEFORE the silence-gap math below,
+        # so each intrinsic window matches the Seedance clip we'll request.
+        try:
+            self._prepare_dialogue_scenes(
+                shots, run_dir,
+                language=language, voice_gender=voice_gender,
+                tts_provider=tts_provider, voice_id=voice_id,
+            )
+        except Exception as _dlg_err:
+            print(f"   ⚠️ dialogue-scene pre-pass failed: {_dlg_err}")
 
         # Build per-shot input list. Each shot gets a `_v2_narration_text`
         # field set from `narration_excerpt` UNLESS audio_policy is
@@ -9490,7 +10574,52 @@ class VideoGenerationPipeline:
                 )
                 break  # one issue is enough; regen the shot
 
+        # ── Visual richness (marketing/bold modes only) ──
+        # The single most common "boring AI video" failure: a shot that is
+        # nothing but a headline + text rows. The premium prompt mandates a
+        # visual per shot; this is the deterministic enforcement.
+        _richness = self._check_visual_richness(html, shot.get("shot_type"))
+        if _richness:
+            issues.append(_richness)
+
         return issues
+
+    # Shot types whose whole body IS the visual — exempt from the richness scan.
+    _RICHNESS_EXEMPT_SHOT_TYPES = frozenset({
+        "KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "ARTICLE_FOCUS",
+    })
+
+    # Any one of these marks the shot as carrying a non-text visual.
+    _RICHNESS_SIGNALS = (
+        "<img", "<iconify-icon", "<svg", "<video", "<canvas",
+        "mermaid", "background-image", "map-svg", "$$",
+    )
+
+    def _check_visual_richness(self, html: str, shot_type: Optional[str]) -> Optional[str]:
+        """Deterministic no-bare-text-cards gate for marketing/bold runs.
+
+        Returns an issue string when a marketing-mode shot contains NO
+        image / icon / SVG / video / canvas / diagram element — i.e. it is a
+        pure text panel, the exact failure that reads as 'boring AI slideshow'.
+        Returns None for educational mode (whiteboard text shots are legit
+        there) and for shot types that are inherently visual/typographic.
+        """
+        try:
+            if self._resolve_visual_style_mode() not in ("marketing", "bold"):
+                return None
+        except Exception:
+            return None
+        if (shot_type or "").upper() in self._RICHNESS_EXEMPT_SHOT_TYPES:
+            return None
+        low = html.lower()
+        if any(sig in low for sig in self._RICHNESS_SIGNALS):
+            return None
+        return (
+            "visual richness: shot contains NO image/icon/SVG/video element — it is a bare "
+            "text panel. Every marketing shot needs at least one non-text visual: an "
+            "<iconify-icon> in a brand-tinted chip beside each label, a full-bleed or split "
+            "image, an animated SVG shape, or a device frame"
+        )
 
     # ------------------------------------------------------------------
     # Vision reviewer — sees the rendered frame, flags blocking defects
@@ -9866,6 +10995,8 @@ class VideoGenerationPipeline:
         _sev = int(review.get("severity_max") or 0)
         _issues = review.get("issues") or []
         _err = review.get("error")
+        _dscore = review.get("designer_score")
+        _dscore_str = f" design={_dscore}/10" if _dscore is not None else ""
         if _err:
             print(
                 f"   🔍 Shot {shot_idx + 1}: review ERRORED ({_err[:120]}) "
@@ -9873,19 +11004,22 @@ class VideoGenerationPipeline:
             )
         elif review.get("passes") and not _issues:
             print(
-                f"   🔍 Shot {shot_idx + 1}: review PASSED "
+                f"   🔍 Shot {shot_idx + 1}: review PASSED{_dscore_str} "
                 f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
             )
         else:
             _codes = ",".join(str(it.get("code")) for it in _issues[:4])
             print(
                 f"   🔍 Shot {shot_idx + 1}: review FOUND {len(_issues)} issue(s) "
-                f"sev_max={_sev} [{_codes}] "
+                f"sev_max={_sev} [{_codes}]{_dscore_str} "
                 f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
             )
 
         record: Dict[str, Any] = {
             "passed_first": bool(review.get("passes")),
+            # Non-blocking aesthetic grade (1-10, None = not graded). Feeds the
+            # post-render triage / weakest-shots surfaces.
+            "designer_score": review.get("designer_score"),
             "issues_pre": list(review.get("issues") or []),
             "severity_max_pre": int(review.get("severity_max") or 0),
             "review_ms_pre": int(review.get("review_ms") or 0),
@@ -10973,6 +12107,7 @@ class VideoGenerationPipeline:
                 brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
                 wpm_override=target_wpm,
                 regen_note=regen_note,
+                source_request=getattr(self, "_base_prompt", None),
             )
         except NarrationWriteError as _nw_err:
             print(f"   ⚠️ v3 overrun NarrationWriter regen unparseable: {_nw_err}")
@@ -11201,16 +12336,19 @@ class VideoGenerationPipeline:
         # is also used post-LLM to scrub any survivors.
         _tmpl_catalog_md = ""
         _tmpl_valid_ids: Optional[List[str]] = None
-        try:
-            from shot_template_registry import (
-                build_catalog_for_director,
-                get_registry as _tmpl_get_registry,
-            )
-            _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
-            _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
-            _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
-        except Exception as _cat_err:
-            print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
+        # Skip advertising templates to the planner for creative marketing/bold
+        # modes — we want every shot LLM-composed, not bypassed by a fixed layout.
+        if self._shot_templates_active():
+            try:
+                from shot_template_registry import (
+                    build_catalog_for_director,
+                    get_registry as _tmpl_get_registry,
+                )
+                _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
+                _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
+                _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
+            except Exception as _cat_err:
+                print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
 
         sp_result = plan_shots(
             prompt=base_prompt,
@@ -11230,6 +12368,13 @@ class VideoGenerationPipeline:
             ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
             ai_video_cost_cap_usd=ai_video_cost_cap,
             source_clip_available=self._v3_source_clip_available(),
+            dialogue_scenes_enabled=getattr(self, "_dialogue_scenes_enabled", False),
+            dialogue_mode=getattr(self, "_dialogue_mode", "storybook"),
+            saved_cast=(getattr(self, "_saved_cast", None) or None),
+            asset_asks_enabled=bool(
+                getattr(self, "_assist_state", None)
+                and (self._assist_state or {}).get("enabled")
+            ),
             article_screenshots=self._v3_article_screenshots(),
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
@@ -11259,8 +12404,23 @@ class VideoGenerationPipeline:
             # back to `_build_default_music_plan` exactly like v2 did.
             "music_plan": sp_result.get("music_plan"),
             "audio_mood": sp_result.get("audio_mood", ""),
+            # DIALOGUE_SCENE cast — persists in shot_plan.json so resume legs
+            # and the dialogue prompt builder see the same verbatim portraits.
+            "characters": sp_result.get("characters") or [],
+            # Agent-initiated asks (assist) — presented as the asset_request
+            # gate at the script boundary; persists for resume legs.
+            "asset_requests": sp_result.get("asset_requests") or [],
         }
         sp_usage = sp_result.get("usage") or {}
+        # Stash the cast for the dialogue TTS pre-pass + prompt builder.
+        # A saved cast (series reuse) WINS over whatever the planner emitted —
+        # names/portraits/voices are locked; we also overwrite the plan copy so
+        # shot_plan.json persists the locked cast for resume legs.
+        if getattr(self, "_saved_cast", None):
+            shot_plan_dict["characters"] = list(self._saved_cast)
+            self._dialogue_characters = list(self._saved_cast)
+        else:
+            self._dialogue_characters = shot_plan_dict.get("characters") or []
 
         # ── Edit-Choreographer (LLM authors the cut) + picker (validates) ──
         # The ShotPlanner already set transition_in per shot. A focused pass
@@ -11386,6 +12546,9 @@ class VideoGenerationPipeline:
             ),
             brand_system_prompt=getattr(self, "_current_brand_system_prompt", None),
             wpm_override=getattr(self, "_effective_wpm", None),
+            # Ground-truth for names/numbers/claims (writer rule 15) — without
+            # it the writer only ever sees 1-2 sentence briefs.
+            source_request=base_prompt,
         )
         nw_usage = nw_result.get("usage") or {}
         # Record NarrationWriter tokens. (ShotPlanner already recorded above
@@ -11925,7 +13088,7 @@ class VideoGenerationPipeline:
         # Surfaces the available `template_id` values + their required
         # `template_params` schemas so the Director can opt into deterministic
         # compositions when content cleanly fits one.
-        if self._tier_config.get("shot_templates_enabled"):
+        if self._shot_templates_active():
             try:
                 from shot_template_registry import build_catalog_for_director  # type: ignore
                 _canvas = "portrait" if _h > _w else "landscape"
@@ -15213,7 +16376,10 @@ class VideoGenerationPipeline:
         # Shot templates (premium / ultra / super_ultra) — deterministic full-shot
         # compositions invoked by the Director via `template_id` on a shot. When a
         # template renders successfully, the per-shot LLM call is SKIPPED entirely.
-        _template_enabled = bool(self._tier_config.get("shot_templates_enabled"))
+        # Disabled for the creative marketing/bold modes so EVERY shot is composed
+        # by the LLM with the premium aesthetic + icon directives (templates would
+        # otherwise bypass all of that and render flat, repeating layouts).
+        _template_enabled = self._shot_templates_active()
         _template_compose_fn = None
         if _template_enabled:
             try:
@@ -15455,6 +16621,62 @@ class VideoGenerationPipeline:
                 )
                 shot_type = _swap_to
 
+            # User revision directives (assist) — computed BEFORE the bypass
+            # branches below (template / DIALOGUE_SCENE / AI_VIDEO_HERO), all
+            # of which return early and would otherwise silently ignore a
+            # contact-sheet note or a provided real asset.
+            _shot_user_note = (getattr(self, "_shot_regen_notes", None) or {}).get(int(shot_idx))
+            _has_user_directive = bool(
+                _shot_user_note or shot.get("user_asset_url") or shot.get("real_data")
+            )
+
+            # ── DIALOGUE_SCENE bypass (storybook/drama mode, opt-in) ──
+            # Characters speak on camera in a Seedance clip lip-synced to our
+            # per-character TTS (prepared in the TTS stage). On any failure we
+            # demote to IMAGE_HERO and fall through to the normal HTML path.
+            if shot_type == "DIALOGUE_SCENE":
+                # A contact-sheet note on a dialogue shot means: re-film it.
+                # Drop the cached clip URL and weave the note into the scene
+                # so the fresh Seedance call actually reflects the revision.
+                if _shot_user_note:
+                    shot.pop("_dialogue_clip_url", None)
+                    _sd = str(shot.get("scene_description") or "").strip()
+                    if _shot_user_note[:60].lower() not in _sd.lower():
+                        shot["scene_description"] = (
+                            f"{_sd} USER REVISION (must satisfy): {_shot_user_note}"
+                        ).strip()
+                _ds_entry = None
+                if getattr(self, "_dialogue_scenes_enabled", False):
+                    _ds_entry = self._generate_dialogue_scene_entry(
+                        shot, shot_idx, run_dir, start_time, end_time,
+                        _entry_id, _w, _h,
+                    )
+                if _ds_entry is not None:
+                    if on_segment_done:
+                        try:
+                            on_segment_done([_ds_entry])
+                        except Exception:
+                            pass
+                    try:
+                        _cache_path.write_text(
+                            json.dumps({"entries": [_ds_entry], "usage": {}}, default=str)
+                        )
+                    except Exception:
+                        pass
+                    return [_ds_entry], {}
+                # Demote: plain visual beat over the (already silent) window.
+                print(
+                    f"   ⚠️  {_log_label} DIALOGUE_SCENE unavailable — demoting to IMAGE_HERO"
+                )
+                shot_type = "IMAGE_HERO"
+                shot["shot_type"] = "IMAGE_HERO"
+                if not shot.get("image_prompt"):
+                    shot["image_prompt"] = str(
+                        shot.get("scene_description") or "cinematic scene"
+                    )[:300]
+                for _k in ("dialogue", "_dialogue_audio_url", "_dialogue_clip_s"):
+                    shot.pop(_k, None)
+
             # ── AI_VIDEO_HERO bypass (Phase 3b, ultra+ only, opt-in) ──
             # When the Director sets shot_type=AI_VIDEO_HERO AND the run has
             # AI video enabled, route through fal.ai Veo instead of the
@@ -15520,6 +16742,21 @@ class VideoGenerationPipeline:
                     # Dispatch single-shot vs chain. Chain when EITHER:
                     #   - `ai_video_segments` carries >1 entry (Director explicit), OR
                     #   - `ai_video_duration_s` > 8 (auto-split into 8s chunks)
+                    # Contact-sheet revision note (assist): thread it into the
+                    # Veo prompt(s) — otherwise the regen pays for a fresh clip
+                    # that ignores the user's requested change.
+                    if _shot_user_note:
+                        _avp = (shot.get("ai_video_prompt") or "").strip()
+                        if _avp and _shot_user_note[:60].lower() not in _avp.lower():
+                            shot["ai_video_prompt"] = (
+                                f"{_avp}. USER REVISION (must satisfy): {_shot_user_note}"
+                            )
+                        for _seg in (shot.get("ai_video_segments") or []):
+                            if isinstance(_seg, dict) and (_seg.get("prompt") or "").strip():
+                                _seg["prompt"] = (
+                                    f"{_seg['prompt']}. USER REVISION (must satisfy): {_shot_user_note}"
+                                )
+
                     _av_segs_field = shot.get("ai_video_segments") or []
                     _av_has_multi_segments = (
                         isinstance(_av_segs_field, list) and len(_av_segs_field) > 1
@@ -15651,7 +16888,14 @@ class VideoGenerationPipeline:
             # renders successfully, we skip the LLM call entirely and use the
             # deterministic template HTML. Falls through to the LLM path on any
             # template error or when no template_id is set.
-            if _template_enabled and _template_compose_fn is not None and shot.get("template_id"):
+            if (
+                _template_enabled and _template_compose_fn is not None
+                and shot.get("template_id")
+                # A user revision note / real asset needs the LLM path — the
+                # deterministic template would re-render the identical frame
+                # and silently discard the user's input.
+                and not _has_user_directive
+            ):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
                 # Pull captured-page artifacts off the reference context so the
@@ -15758,6 +17002,67 @@ class VideoGenerationPipeline:
                     system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
                 except Exception:
                     pass
+
+            # Content-aware visual aesthetic. Appended LAST so for marketing/bold
+            # it authoritatively overrides the base flat/whiteboard rules; for
+            # educational it returns "" and the base aesthetic is untouched.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
+
+            # User-provided REAL asset for THIS shot (assist asset_request gate).
+            # A real screenshot/photo outranks anything generated — the shot is
+            # built AROUND it, never replaced by an invention.
+            _user_asset = str(shot.get("user_asset_url") or "").strip()
+            # Defense-in-depth (ingestion already sanitizes): never let a URL
+            # that could break out of an HTML attribute or steer the prompt
+            # reach the injection below.
+            if _user_asset and (
+                any(c in _user_asset for c in ('"', "'", "<", ">", "`"))
+                or any(ord(c) < 33 for c in _user_asset)
+                or not _user_asset.lower().startswith(("http://", "https://"))
+            ):
+                print(f"   ⚠️ Shot {shot_idx}: rejected unsafe user_asset_url")
+                _user_asset = ""
+            if _user_asset:
+                if (shot.get("shot_type") or shot_type or "").upper() == "DEVICE_MOCKUP":
+                    system_prompt += (
+                        "\n\n## 📎 USER PROVIDED THE REAL APP SCREENSHOT (must use)\n"
+                        f"The user uploaded the ACTUAL interface for this shot: {_user_asset}\n"
+                        "Embed it verbatim as the device's screen content — "
+                        f"`<img src=\"{_user_asset}\" style=\"width:100%;height:100%;object-fit:cover;object-position:top\" />` "
+                        "inside the device frame — and build the device chrome (bezel, "
+                        "notch/browser bar, shadow) AROUND it. Do NOT fabricate any interface "
+                        "elements over it; animate the DEVICE (entrance, tilt, parallax, "
+                        "spotlight) rather than the screen's contents.\n"
+                    )
+                else:
+                    system_prompt += (
+                        "\n\n## 📎 USER PROVIDED A REAL IMAGE FOR THIS SHOT (must use)\n"
+                        f"Use this exact image as the shot's hero visual: {_user_asset}\n"
+                        f"`<img src=\"{_user_asset}\" ... />` — full-bleed or dominant placement, "
+                        "with a Ken Burns move or tasteful reveal. Do NOT substitute a stock or "
+                        "generated image for it.\n"
+                    )
+                print(f"   📎 Shot {shot_idx}: using user-provided asset")
+            # User-confirmed REAL data (statistic) for this shot.
+            _real_data = str(shot.get("real_data") or "").strip()
+            if _real_data:
+                system_prompt += (
+                    "\n\n## 📊 USER-CONFIRMED REAL FIGURE (must appear verbatim)\n"
+                    f"{_real_data}\n"
+                    "This is the user's actual number/fact — display it EXACTLY as given; "
+                    "never round, embellish, or replace it.\n"
+                )
+
+            # Contact-sheet revision note for THIS shot (assist) — the user saw
+            # the previous frame and sent it back; their note outranks style.
+            _regen_note = (getattr(self, "_shot_regen_notes", None) or {}).get(int(shot_idx))
+            if _regen_note:
+                system_prompt += (
+                    "\n\n## 🔁 USER REVISION NOTE FOR THIS SHOT (highest priority — must satisfy)\n"
+                    f"The user reviewed the previous version of this shot and asked: \"{_regen_note}\"\n"
+                    "Regenerate the shot to satisfy this note; keep everything else that worked.\n"
+                )
+                print(f"   🔁 Shot {shot_idx}: applying user revision note ({_regen_note[:60]!r})")
 
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
@@ -17336,6 +18641,12 @@ class VideoGenerationPipeline:
                 _anim_regen_on = bool(
                     self._tier_config.get("anim_validator_regen_enabled", True)
                 )
+                # Visual-richness failures ALWAYS regen, even where the anim
+                # knob is off — a bare-text marketing shot is a shipped defect,
+                # and this fires only on the rare zero-visual shot.
+                _has_richness_issue = any(i.startswith("visual richness") for i in issues)
+                if _has_richness_issue:
+                    _anim_regen_on = True
                 if issues and not _anim_regen_on:
                     print(
                         f"   ⚠️ Shot {shot_idx + 1} failed validator (regen disabled by tier): "
@@ -17375,6 +18686,16 @@ class VideoGenerationPipeline:
                             "`transform: rotate(...)` greater than ±15° on any element "
                             "containing text. Stage labels, badges, headlines, callouts — "
                             "all horizontal."
+                        )
+                    if _has_richness_issue:
+                        corrective_parts.append(
+                            "VISUALS: this shot MUST contain at least one non-text visual "
+                            "element. Add a meaningful <iconify-icon> (e.g. "
+                            "<iconify-icon icon='mdi:chart-line' width='44'></iconify-icon>) "
+                            "in a brand-tinted chip beside each label/feature, or a "
+                            "full-bleed/split image (data-img-prompt / data-video-query), "
+                            "or an animated SVG shape. A headline + text rows alone is "
+                            "REJECTED — pick icons that mean something for this content."
                         )
                     # Tailored fix for the back-half-motion check — concrete
                     # GSAP idioms beat abstract "add more motion" guidance.
@@ -17968,6 +19289,9 @@ class VideoGenerationPipeline:
                     tier_config=_tc_for_planner,
                     video_id=video_id,
                     script_text=_script_text,
+                    # Marketing/bold get capped transition stingers (Rule D);
+                    # educational stays event-driven-only.
+                    visual_style_mode=self._resolve_visual_style_mode(),
                 )
                 total_cues = sum(len(e.get("sound_cues") or []) for e in all_entries)
                 shots_with_cues = sum(1 for e in all_entries if e.get("sound_cues"))
@@ -18209,6 +19533,10 @@ class VideoGenerationPipeline:
                     system_prompt = system_prompt + build_brand_direction_block(_brand_dir)
                 except Exception:
                     pass
+
+            # Content-aware visual aesthetic (premium override for marketing/bold;
+            # no-op for educational). Same injection as the Director path.
+            system_prompt = self._append_aesthetic_directive(system_prompt)
 
             # Build topic-aware guidance based on subject domain
             subject_domain = getattr(self, '_current_subject_domain', 'general')
@@ -20891,6 +22219,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
+        # Assist mode: the user already picked a stock image for this query on a
+        # prior leg — force it (skip search + AI gen entirely). Keyed by the RAW
+        # data-img-prompt (matches the gather pass). No-op when unforced.
+        _forced = (getattr(self, "_forced_casting", None) or {}).get(prompt)
+        if _forced and _forced.get("url"):
+            print(f"    👤 assist: forced user-picked image for '{prompt[:40]}'")
+            return {
+                "entry":       entry,
+                "full_tag":    full_tag,
+                "stock_url":   _forced["url"],
+                "image_bytes": None,
+                "filename":    None,
+                "usage":       {},
+            }
+
         # Lazy-init cultural context for the run if it wasn't computed during
         # Director / ShotPlanner (e.g. cached resume from `html` stage). All
         # downstream routing helpers depend on it being set.
@@ -21801,6 +23144,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         run_id = run_dir.name or "run"
         vid = video_id or run_id
 
+        # Contact-sheet thumbs (assist): when the contact_sheet gate will fire
+        # on this leg, upload ONE mid-run frame per shot so the gate can show a
+        # real preview. Uses the screenshots the vision reviewer already
+        # captured — no extra rendering. Off for non-assist runs (zero cost).
+        _cs_thumbs: Dict[int, str] = {}
+        _cs_active = False
+        try:
+            _assist_for_cs = getattr(self, "_assist_state", None)
+            if _assist_for_cs and s3 is not None:
+                _dgm_cs = self._load_decision_gates_module()
+                _oc_cs, _ = _dgm_cs.resolve_gate_outcome(
+                    _assist_for_cs, _dgm_cs.GateType.CONTACT_SHEET.value, None
+                )
+                _cs_active = (_oc_cs == _dgm_cs.GateOutcome.EMIT_AND_STOP)
+        except Exception:
+            _cs_active = False
+
         def _upload_png(idx: int, kind: str, ts_idx: int, png: bytes) -> Optional[str]:
             if s3 is None or bucket is None:
                 return None
@@ -21836,6 +23196,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 continue
 
             shot_idx = int(entry.get("index", 0))
+
+            # Contact-sheet thumb — must run BEFORE the clean-shot byte drop
+            # below, or clean shots would have no preview on the sheet.
+            if _cs_active:
+                _pre_all = rec.get("_screenshots_pre_bytes") or []
+                if _pre_all:
+                    _ckey = f"CONTACT_SHEET/{vid}/shot{shot_idx:03d}.png"
+                    try:
+                        s3.put_object(
+                            Bucket=bucket, Key=_ckey,
+                            Body=_pre_all[len(_pre_all) // 2],
+                            ContentType="image/png",
+                        )
+                        _cs_thumbs[shot_idx] = f"https://{bucket}.s3.amazonaws.com/{_ckey}"
+                    except Exception as _cs_exc:
+                        print(f"   ⚠️ contact-sheet thumb upload failed (shot {shot_idx}): {_cs_exc}")
+
             shipped = rec.get("shipped") or "first_try"
             issues_pre = rec.get("issues_pre") or []
             issues_post = rec.get("issues_post") or []
@@ -21983,6 +23360,51 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if reviewed > 0:
                 print(f"   👁️  Top issues: {top_str}")
             print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f} (cap ${self._tier_config.get('vision_review_run_cost_cap_usd', 0.0):.2f})")
+
+        # Contact-sheet thumbs — consumed by _maybe_contact_sheet_gate right
+        # after media resolution; {} when the gate isn't firing this leg.
+        if _cs_thumbs:
+            self._contact_thumbs = _cs_thumbs
+            print(f"   📇 Contact-sheet thumbs uploaded for {len(_cs_thumbs)} shot(s)")
+
+    def _maybe_contact_sheet_gate(self, html_segments: List[Dict[str, Any]]) -> None:
+        """Assist: pause AFTER all shot HTML + media are resolved so the user
+        reviews a per-shot contact sheet BEFORE the video finalizes.
+
+        Mirrors _maybe_visual_casting_gate: emits ``decision_required`` + raises
+        ``DecisionRequired`` on the first pass; on the resume leg the recorded
+        answer (approve, or edit-with-regens whose notes/cache-deletions were
+        already applied) resolves to USE_ANSWER and the pipeline proceeds.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.CONTACT_SHEET.value, None)
+        if outcome != _dg.GateOutcome.EMIT_AND_STOP:
+            return
+        thumbs = getattr(self, "_contact_thumbs", None) or {}
+        shots_payload: List[Dict[str, Any]] = []
+        for entry in html_segments:
+            try:
+                idx = int(entry.get("index", 0))
+            except (TypeError, ValueError):
+                continue
+            shots_payload.append({
+                "shot_index": idx,
+                "shot_type": str(entry.get("_shot_type") or ""),
+                "narration_excerpt": str(entry.get("_narration_excerpt") or "")[:160],
+                "thumb_url": thumbs.get(idx),
+            })
+        if not shots_payload:
+            return
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_contact_sheet_decision(video_id, shots_payload)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
 
     # Veo-allowed clip durations. Snap-target for the rescue path. Mirrors
     # `_ALLOWED_DURATIONS_S` in `ai_video_orchestrator.py` — duplicated here
@@ -22152,6 +23574,140 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "_veo_cost_usd": result.cost_usd,
         }
 
+    def _load_decision_gates_module(self):
+        """Lazy-import the sibling decision-gate framework (assist mode)."""
+        import sys as _sys, pathlib as _pl
+        _root = str(_pl.Path(__file__).resolve().parent)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        import decision_gates as _dg  # type: ignore
+        return _dg
+
+    def _gather_casting_candidates(self, html_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Assist mode: collect stock candidates for every media query in the HTML.
+
+        Read-only — scans the generated (cached) HTML for ``data-video-query`` and
+        ``data-img-prompt`` tags and fetches candidates per unique query via the
+        same Pexels search the resolver uses. Returns groups keyed by the RAW
+        query string (the resolver's forcing key, applied BEFORE cultural
+        context). Never raises; an empty list means "nothing castable".
+        """
+        groups: List[Dict[str, Any]] = []
+        pexels = self._pexels_service if (self._pexels_service and self._pexels_service.is_available) else None
+        if pexels is None:
+            return groups
+        try:
+            _dg = self._load_decision_gates_module()
+            _to_cand = _dg.to_casting_candidate
+        except Exception:
+            return groups
+        orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+
+        # Media kit — the user's own uploads (logo, product shots, photos)
+        # become PINNED candidates on every image query, listed first and
+        # tagged "yours". Picking one forces the exact URL through the same
+        # path as a fresh upload from the casting card.
+        _user_cands: List[Dict[str, Any]] = []
+        try:
+            _ref_ctx = getattr(self, "_reference_context", None) or {}
+            for _img in (_ref_ctx.get("embeddable_images") or [])[:6]:
+                if not isinstance(_img, dict):
+                    continue
+                _u = (_img.get("s3_url") or _img.get("url") or "").strip()
+                if not _u:
+                    continue
+                _c = _to_cand({
+                    "kind": "image", "id": _u, "url": _u, "thumb": _u,
+                    "provider": "yours",
+                    "alt": (_img.get("description") or _img.get("name") or "Your upload"),
+                }, is_recommended=False)
+                if _c:
+                    _user_cands.append(_c)
+        except Exception:
+            _user_cands = []
+
+        # Both stock VIDEO (data-video-query) and stock IMAGE (data-img-prompt)
+        # queries. Keyed by the RAW query/prompt string — the resolvers' force
+        # check (_process_stock_videos / _process_image_task_simple) uses the
+        # same key, so a user pick overrides the auto search/AI-gen.
+        VID_RE = re.compile(r'<video[^>]+data-video-query=(["\'])(.*?)\1', re.DOTALL)
+        IMG_RE = re.compile(r'<img[^>]+data-img-prompt=(["\'])(.*?)\1', re.DOTALL)
+        seen: set = set()
+        for idx, entry in enumerate(html_segments):
+            html = entry.get("html", "") or ""
+            shot_index = entry.get("_shot_index", idx)
+            for m in VID_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("video", q) in seen:
+                    continue
+                seen.add(("video", q))
+                try:
+                    raw = pexels.search_video_candidates(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "video", "thumb": c.get("image")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                if cands:
+                    groups.append({
+                        "query": q, "kind": "video", "shot_index": shot_index,
+                        "candidates": cands, "recommended_candidate_id": cands[0]["candidate_id"],
+                    })
+            for m in IMG_RE.finditer(html):
+                q = m.group(2)
+                if not q or ("image", q) in seen:
+                    continue
+                seen.add(("image", q))
+                try:
+                    raw = pexels.search_photos_many(q, orientation=orientation, per_page=12) or []
+                except Exception:
+                    raw = []
+                cands = [
+                    _to_cand({**c, "kind": "image", "id": c.get("url")}, is_recommended=(i == 0))
+                    for i, c in enumerate(raw[:6])
+                ]
+                # User uploads pinned first — a group with ONLY user assets is
+                # still presented (stock search may have found nothing).
+                combined = _user_cands + cands
+                if combined:
+                    groups.append({
+                        "query": q, "kind": "image", "shot_index": shot_index,
+                        "candidates": combined,
+                        "recommended_candidate_id": (
+                            cands[0]["candidate_id"] if cands else combined[0]["candidate_id"]
+                        ),
+                    })
+        return groups
+
+    def _maybe_visual_casting_gate(self, html_segments: List[Dict[str, Any]]) -> None:
+        """Assist mode: pause for the user to pick stock media (visual_casting gate).
+
+        No-op unless assist is on and the gate is enabled-and-unanswered. When it
+        fires it emits a ``decision_required`` event (→ SSE → FE) and raises
+        ``DecisionRequired`` (a BaseException) to unwind the leg cleanly; the
+        service catches it and flips the video to AWAITING_INPUT. On the resume
+        leg the gate sees the recorded answer (USE_ANSWER → forced_casting is
+        already loaded, resolver forces the picks) or AUTO_DECIDE and returns.
+        """
+        assist = getattr(self, "_assist_state", None)
+        if not assist:
+            return
+        try:
+            _dg = self._load_decision_gates_module()
+        except Exception:
+            return
+        outcome, _rec = _dg.resolve_gate_outcome(assist, _dg.GateType.VISUAL_CASTING.value, None)
+        if outcome != _dg.GateOutcome.EMIT_AND_STOP:
+            return  # AUTO_DECIDE (off/auto) or USE_ANSWER (forced picks loaded) → proceed
+        groups = self._gather_casting_candidates(html_segments)
+        if not groups:
+            return  # nothing castable — proceed autonomously
+        video_id = getattr(self, "_current_video_id", None) or "video"
+        decision = _dg.build_visual_casting_groups_decision(video_id, groups)
+        self._emit_progress({"type": "decision_required", **decision})
+        raise _dg.DecisionRequired(decision)
+
     def _process_stock_videos(
         self,
         html_segments: List[Dict[str, Any]],
@@ -22217,6 +23773,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             for match in VIDEO_TAG_RE.finditer(html):
                 full_tag = match.group(1)
                 query = match.group(3)
+                _raw_query = query  # assist forcing key (before cultural context)
+
+                # Assist mode: the user already picked this query's clip on a
+                # prior leg — force it and skip the search cascade entirely.
+                # Keyed by the RAW query (matches the gather pass). No-op when
+                # forced_casting is empty (auto runs / unforced queries).
+                _forced = (getattr(self, "_forced_casting", None) or {}).get(_raw_query)
+                if _forced and _forced.get("url"):
+                    poster_url = ""
+                    new_tag = full_tag
+                    if 'src=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' src="{_forced["url"]}">', 1)
+                    if poster_url and 'poster=' not in new_tag:
+                        new_tag = new_tag.replace(">", f' poster="{poster_url}">', 1)
+                    html = html.replace(full_tag, new_tag)
+                    entry["html"] = html
+                    replacements_count += 1
+                    print(f"    👤 assist: forced user-picked clip for '{_raw_query[:40]}'")
+                    continue
 
                 # Apply cultural context — same pipeline as images. The LLM
                 # is taught to prefix queries with the region descriptor
@@ -22607,6 +24182,25 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             Raises _ImageGenRateLimitError on 429 so the executor thread is freed
             immediately — the caller handles sleep + requeue in the main thread.
             """
+            # Assist mode: the user picked a stock image for this query on a prior
+            # leg — force it (skip search + AI gen). Keyed by the RAW data-img-prompt
+            # (matches the gather pass). No-op when unforced. This is the resume-leg
+            # batch resolver; the twin check lives in _process_image_task_simple.
+            _forced_img = (getattr(self, "_forced_casting", None) or {}).get(task.get("prompt", ""))
+            if _forced_img and _forced_img.get("url"):
+                print(f"    👤 assist: forced user-picked image for '{task.get('prompt', '')[:40]}'")
+                return {
+                    "entry":       task.get("entry"),
+                    # The _process_generated_images consumer keys replacements by
+                    # entry_id (= id(entry)); without it this dict KeyErrors.
+                    "entry_id":    id(task.get("entry")),
+                    "full_tag":    task.get("full_tag", ""),
+                    "stock_url":   _forced_img["url"],
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+
             img_source = task.get("img_source", "generate")
 
             # stock_only tier: treat every img_source=="generate" as "stock" — never

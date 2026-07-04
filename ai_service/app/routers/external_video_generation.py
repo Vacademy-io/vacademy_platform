@@ -43,6 +43,7 @@ from ..schemas.video_generation import (
     ThumbnailSet,
     UpdateThumbnailRequest,
     RegenerateThumbnailsResponse,
+    DecisionAnswerRequest,
 )
 from ..services.video_estimation_service import estimate_video_generation
 from pydantic import BaseModel, Field
@@ -423,6 +424,9 @@ async def generate_video_external(
                         background_music_enabled=p.background_music_enabled,
                         background_music_volume=p.background_music_volume,
                         sub_shots_enabled=p.sub_shots_enabled,
+                        dialogue_scenes_enabled=p.dialogue_scenes_enabled,
+                        dialogue_mode=p.dialogue_mode,
+                        cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
@@ -441,6 +445,12 @@ async def generate_video_external(
                         # `model` field collapses to `model_overrides.default` if
                         # `model_overrides` is omitted.
                         model_overrides=getattr(p, "model_overrides", None),
+                        # Assist mode (conversational, human-in-the-loop). The
+                        # service pauses at enabled SCRIPT-boundary gates and
+                        # emits `decision_required`; default off = Auto mode.
+                        assist_mode=bool(getattr(p, "assist_mode", False)),
+                        assist_gates=getattr(p, "assist_gates", None),
+                        assist_granularity=getattr(p, "assist_granularity", "per_decision"),
                     ):
                         await q.put(json.dumps(event))
             except asyncio.CancelledError:
@@ -674,7 +684,9 @@ async def resume_video_external(
     # ~5% of total cost and the HTML stage hasn't started yet.
     # Quality tier is pulled from the video record's metadata, NOT the resume
     # payload (which has no tier field). AI video flag also comes from metadata.
-    _vr_meta = getattr(video_record, "metadata", None) or {}
+    # NB: the model maps the JSONB column to `extra_metadata` — plain
+    # `.metadata` resolves to SQLAlchemy Base.metadata (never a dict).
+    _vr_meta = getattr(video_record, "extra_metadata", None) or {}
     _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
     _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
     _ai_video = bool(_user_sel.get("ai_video_enabled", False))
@@ -761,6 +773,9 @@ async def resume_video_external(
                         background_music_enabled=_meta.get("background_music_enabled"),
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                    dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
+                    dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    cast_id=_meta.get("cast_id"),
                         visual_preferences=_meta.get("visual_preferences"),
                         # Brand kit + per-video overrides: rehydrate so a resumed
                         # run re-applies the SAME brand direction (kit system_prompt,
@@ -831,6 +846,615 @@ async def resume_video_external(
 
 
 # ---------------------------------------------------------------------------
+# Assist mode — answer a pending decision gate and resume
+# ---------------------------------------------------------------------------
+
+def _load_decision_gates():
+    """Lazy-import the pure decision-gate framework (lives in ai-video-gen-main)."""
+    import sys as _sys, pathlib as _pl
+    root = str(_pl.Path(__file__).resolve().parent.parent / "ai-video-gen-main")
+    if root not in _sys.path:
+        _sys.path.insert(0, root)
+    import decision_gates as _dg  # type: ignore
+    return _dg
+
+
+def _read_s3_json(s3_svc, bucket, video_id, *keys):
+    """Download the first existing S3 artifact among keys and parse JSON."""
+    import tempfile as _tmp, pathlib as _pl
+    for key in keys:
+        url = f"https://{bucket}.s3.amazonaws.com/{key}"
+        tmp = _pl.Path(_tmp.gettempdir()) / f"dec_{video_id}_{_pl.Path(key).name}"
+        try:
+            if s3_svc.download_file(url, tmp, expected_missing=True):
+                txt = tmp.read_text(encoding="utf-8")
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
+                return json.loads(txt)
+        except Exception:
+            continue
+    return None
+
+
+@router.post(
+    "/decision/{video_id}",
+    summary="Answer an assist-mode decision gate and resume (External)",
+    response_class=StreamingResponse,
+)
+async def decision_video_external(
+    video_id: str,
+    payload: DecisionAnswerRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    # Resume picks up from a checkpoint — same 30K pre-flight floor as /resume.
+    _credits_check=Depends(require_credits("video", estimated_tokens=30000)),
+    db: Session = Depends(db_dependency),
+) -> StreamingResponse:
+    """Record the user's answer to a pending decision gate and resume generation.
+
+    Mirrors /resume: tenancy guard, tier-aware credit pre-flight, persist the
+    answer (+ write the per-gate S3 sidecar so the resumed leg picks up edits),
+    then stream the next SSE leg. The pipeline pauses again at the next enabled
+    gate or runs to completion.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    dg = _load_decision_gates()
+    video_record = _ensure_video_access(video_id, institute_id, db)
+
+    if video_record.status == "CANCELLED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Video {video_id} was cancelled — start a new generation instead of answering.",
+        )
+
+    _meta = video_record.extra_metadata or {}
+    if not isinstance(_meta, dict):
+        _meta = {}
+    assist = _meta.get("assist") if isinstance(_meta.get("assist"), dict) else None
+    pending = (assist or {}).get("pending_decision")
+    if not assist or not pending:
+        raise HTTPException(status_code=409, detail=f"No pending decision for video {video_id}.")
+    if pending.get("decision_id") != payload.decision_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Decision id mismatch (pending={pending.get('decision_id')}, "
+                f"got={payload.decision_id}) — the card is stale; re-fetch /status."
+            ),
+        )
+
+    mode = (payload.mode or "").strip().lower()
+    if mode not in dg.ANSWER_MODES:
+        raise HTTPException(status_code=422, detail=f"Invalid mode '{mode}'. Allowed: {list(dg.ANSWER_MODES)}.")
+
+    gate_type = pending.get("gate_type") or payload.gate_type
+    shot_index = pending.get("shot_index")
+    answer = payload.answer or {}
+
+    # Tier-aware pre-flight (same rationale as /resume): remaining work is the
+    # full HTML + render budget; partial_run_factor=0.7.
+    _user_sel = _meta.get("user_selections") if isinstance(_meta.get("user_selections"), dict) else {}
+    _user_sel = _user_sel or {}
+    _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
+    _ai_video = bool(_user_sel.get("ai_video_enabled", False))
+    from ..services.credit_service import CreditService
+    _tier_check = CreditService(db).check_video_tier_credits(
+        institute_id=institute_id,
+        quality_tier=_qt,
+        ai_video_enabled=_ai_video,
+        partial_run_factor=0.7,
+    )
+    if not _tier_check.has_sufficient_credits:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=_tier_check.message)
+
+    # ── Apply the answer: write the per-gate S3 sidecar (edits only) ──
+    # shot_plan edit → overwrite shot_plan.json; narration edit → overwrite
+    # script.txt. This is the script.txt-overwrite trick generalised, so the
+    # resume leg's existing checkpoint download picks up the user's edits with
+    # no pipeline change. select / auto / auto_all / freeform write nothing
+    # (the AI's draft is used, or the gate falls through to autonomous logic).
+    s3_svc = S3Service()
+    from ..config import get_settings as _gs
+    _settings = _gs()
+    _bucket = _settings.aws_bucket_name or _settings.aws_s3_public_bucket
+    artifact_key = None
+    try:
+        if mode == "edit" and gate_type == dg.GateType.SHOT_PLAN.value:
+            plan = _read_s3_json(
+                s3_svc, _bucket, video_id,
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ) or {}
+            plan["shots"] = dg.apply_shot_plan_answer(plan.get("shots") or [], answer)
+            body = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+            for _k in (
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ):
+                s3_svc.upload_file_content(
+                    content=body, filename="shot_plan.json", s3_key=_k,
+                    content_type="application/json",
+                )
+            artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+        elif mode == "edit" and gate_type == dg.GateType.NARRATION.value:
+            edited_shots = answer.get("shots") or []
+            # v3 reads each shot's narration_text from shot_plan.json (NOT
+            # script.txt), so the per-shot edit MUST be written back there or it
+            # silently has no effect. Overlay the edited narration onto the plan.
+            if edited_shots:
+                plan = _read_s3_json(
+                    s3_svc, _bucket, video_id,
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ) or {}
+                if plan.get("shots"):
+                    plan["shots"] = dg.apply_narration_answer(plan.get("shots") or [], answer)
+                    _pbody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+                    for _k in (
+                        f"ai-videos/{video_id}/script/shot_plan.json",
+                        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                    ):
+                        s3_svc.upload_file_content(
+                            content=_pbody, filename="shot_plan.json", s3_key=_k,
+                            content_type="application/json",
+                        )
+                    artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+            # v2 + back-compat: also write the monolithic script.txt (the v2
+            # TTS path reads this). Derived from the per-shot edits when present.
+            full_script = (answer.get("full_script") or "").strip()
+            if not full_script and edited_shots:
+                full_script = dg.narration_full_script_from_shots(
+                    [{"narration_text": r.get("narration_text", "")} for r in edited_shots]
+                )
+            if full_script:
+                s3_svc.upload_file_content(
+                    content=full_script.encode("utf-8"), filename="script.txt",
+                    s3_key=f"ai-videos/{video_id}/script/script.txt",
+                    content_type="text/plain; charset=utf-8",
+                )
+                if not artifact_key:
+                    artifact_key = f"ai-videos/{video_id}/script/script.txt"
+        elif mode == "edit" and gate_type == dg.GateType.VISUAL_CASTING.value:
+            # Persist the user's per-query media picks. The HTML stage reads this
+            # on resume and forces the chosen URL for each query (keyed by the
+            # search query string); queries left null fall through to auto-pick.
+            selections = answer.get("selections") or []
+            forced = {
+                str(s.get("query")): {
+                    "url": dg.sanitize_media_url(s.get("url")),
+                    "candidate_id": s.get("candidate_id"),
+                    "shot_index": s.get("shot_index"),
+                }
+                for s in selections
+                if isinstance(s, dict) and s.get("query") and s.get("candidate_id")
+                and dg.sanitize_media_url(s.get("url"))
+            }
+            body = json.dumps({"forced": forced}, ensure_ascii=False).encode("utf-8")
+            s3_svc.upload_file_content(
+                content=body, filename="asset_selections.json",
+                s3_key=f"ai-videos/{video_id}/checkpoints/asset_selections.json",
+                content_type="application/json",
+            )
+            artifact_key = f"ai-videos/{video_id}/checkpoints/asset_selections.json"
+        elif mode == "edit" and gate_type == dg.GateType.CREATIVE_CONCEPT.value:
+            # Overlay the edited creative direction into shot_plan.json. The
+            # per-shot HTML stage reads creative_concept from there, so VISUAL
+            # fields (visual_metaphor / signature_device) take effect; the shot
+            # structure + narration were already authored against the original.
+            concept = answer.get("concept") or {}
+            concept = {k: v for k, v in concept.items() if v not in (None, "")}
+            if concept:
+                plan = _read_s3_json(
+                    s3_svc, _bucket, video_id,
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ) or {}
+                existing = plan.get("creative_concept") or {}
+                if isinstance(existing, dict):
+                    existing.update(concept)
+                    plan["creative_concept"] = existing
+                    _cbody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+                    for _k in (
+                        f"ai-videos/{video_id}/script/shot_plan.json",
+                        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                    ):
+                        s3_svc.upload_file_content(
+                            content=_cbody, filename="shot_plan.json", s3_key=_k,
+                            content_type="application/json",
+                        )
+                    artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+        elif mode == "edit" and gate_type == dg.GateType.ASSET_REQUEST.value:
+            # Route each response into the plan: per-shot real assets/figures
+            # onto the shot dicts (the HTML + narration prompts read them);
+            # unbound photos into `user_assets` (merged into the reference
+            # context on resume); an inspiration pick onto the concept.
+            responses = dg.asset_request_responses(answer)
+            plan = _read_s3_json(
+                s3_svc, _bucket, video_id,
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ) or {}
+            _reqs_by_idx = {
+                int(r.get("index")): r
+                for r in (plan.get("asset_requests") or [])
+                if isinstance(r, dict) and r.get("index") is not None
+            }
+            _shots_by_idx = {
+                int(sh.get("shot_index")): sh
+                for sh in (plan.get("shots") or [])
+                if isinstance(sh, dict) and sh.get("shot_index") is not None
+            }
+            _user_assets = [u for u in (plan.get("user_assets") or []) if isinstance(u, dict)]
+            _applied = 0
+            for resp in responses:
+                req = _reqs_by_idx.get(resp["index"])
+                if not req or resp.get("skipped"):
+                    continue
+                kind = str(req.get("kind") or "")
+                _sidx = req.get("shot_index")
+                shot = _shots_by_idx.get(int(_sidx)) if _sidx is not None else None
+                if kind in ("screenshot", "photo") and resp.get("url"):
+                    if shot is not None:
+                        shot["user_asset_url"] = resp["url"]
+                        shot["user_asset_kind"] = kind
+                    _user_assets.append({
+                        "kind": kind, "url": resp["url"],
+                        "ask": str(req.get("ask") or "")[:200],
+                    })
+                    _applied += 1
+                elif kind == "data" and resp.get("text") and shot is not None:
+                    shot["real_data"] = resp["text"]
+                    _applied += 1
+                elif kind == "inspiration" and resp.get("choice"):
+                    _cc = plan.get("creative_concept")
+                    if isinstance(_cc, dict):
+                        _cc["inspiration_note"] = resp["choice"]
+                        _applied += 1
+            plan["user_assets"] = _user_assets
+            _abody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+            for _k in (
+                f"ai-videos/{video_id}/script/shot_plan.json",
+                f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+            ):
+                s3_svc.upload_file_content(
+                    content=_abody, filename="shot_plan.json", s3_key=_k,
+                    content_type="application/json",
+                )
+            artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+            logger.info(f"[Decision] asset_request: applied {_applied} response(s) for {video_id}")
+        elif mode == "edit" and gate_type == dg.GateType.CONTACT_SHEET.value:
+            # Delete the sent-back shots' cache files so the resume leg
+            # regenerates exactly those shots; the notes ride in the recorded
+            # answer (the pipeline loads them into _shot_regen_notes and
+            # injects each into its shot's system prompt).
+            _regens = dg.contact_sheet_regen_notes(answer)
+            for _sidx in _regens:
+                # Sub-shot decomposition caches as shot_NNN_subK.json (no
+                # plain shot_NNN.json) — delete those variants too, or the
+                # regen note is silently served from intact sub caches.
+                _names = [f"shot_{_sidx:03d}.json"] + [
+                    f"shot_{_sidx:03d}_sub{_k}.json" for _k in range(3)
+                ]
+                for _nm in _names:
+                    _cache_url = (
+                        f"https://{_bucket}.s3.amazonaws.com/"
+                        f"ai-videos/{video_id}/checkpoints/shot_cache/{_nm}"
+                    )
+                    try:
+                        s3_svc.delete_file(_cache_url)
+                    except Exception:
+                        pass
+                logger.info(f"[Decision] contact-sheet: invalidated shot {_sidx} cache(s) for regen")
+    except Exception as _werr:
+        logger.error(f"[Decision] failed to write sidecar for {video_id} gate={gate_type}: {_werr}")
+
+    # ── Freeform steering at a SCRIPT-boundary gate = a REVISION REQUEST ──
+    # not an answer. Persist it as `assist.steering`; the resume leg revises
+    # the stage artifacts per the note and RE-PRESENTS the same gate with the
+    # updated draft. Recording it in answered_decisions (the old behavior)
+    # satisfied the gate and silently discarded the user's note.
+    _steer_note = str((answer or {}).get("text") or "").strip()
+    if mode == "freeform" and gate_type in dg.SCRIPT_BOUNDARY_GATES and _steer_note:
+        from datetime import datetime as _dt, timezone as _tz
+        assist["steering"] = {
+            "gate_type": gate_type,
+            "text": _steer_note[:2000],
+            "decision_id": payload.decision_id,
+            "requested_at": _dt.now(_tz.utc).isoformat(),
+        }
+        _hist = assist.get("steering_history")
+        if not isinstance(_hist, list):
+            _hist = []
+        _hist.append(dict(assist["steering"]))
+        assist["steering_history"] = _hist[-20:]
+        assist["pending_decision"] = None
+        AiVideoRepository().update_assist_state(video_id, assist, status="IN_PROGRESS")
+        logger.info(
+            f"[Decision] steering recorded for {video_id} gate={gate_type}: {_steer_note[:80]!r}"
+        )
+    else:
+        # ── Record the answer in the assist ledger + clear pending ──
+        dg.record_answer(
+            assist, decision_id=payload.decision_id, gate_type=gate_type,
+            mode=mode, answer=answer, shot_index=shot_index, artifact_key=artifact_key,
+        )
+        AiVideoRepository().update_assist_state(video_id, assist, status="IN_PROGRESS")
+        logger.info(f"[Decision] recorded answer for {video_id} gate={gate_type} mode={mode}")
+
+    # ── Resume the next leg (mirrors /resume's background task) ──
+    queue: asyncio.Queue = asyncio.Queue()
+    if video_id in _generation_tasks and not _generation_tasks[video_id].done():
+        existing_queue = _generation_queues.get(video_id)
+        if existing_queue is not None:
+            queue = existing_queue
+            logger.info(f"[Decision] re-connecting to existing task for {video_id}")
+    else:
+        _generation_queues[video_id] = queue
+
+        async def _run_decision_resume(q: asyncio.Queue, vid: str, inst_id: str) -> None:
+            try:
+                with make_bg_db_session() as bg_session:
+                    bg_svc = VideoGenerationService(
+                        repository=AiVideoRepository(), s3_service=S3Service()
+                    )
+                    rec = bg_svc.repository.get_by_video_id(vid)
+                    if not rec or not rec.prompt:
+                        await q.put(json.dumps({"type": "error", "message": "Original prompt not found", "video_id": vid}))
+                        return
+                    m = rec.extra_metadata or {}
+                    us = m.get("user_selections") if isinstance(m.get("user_selections"), dict) else {}
+                    us = us or {}
+                    async for event in bg_svc.generate_till_stage(
+                        video_id=vid, prompt=rec.prompt, target_stage="HTML",
+                        language=rec.language or "English", resume=True,
+                        content_type=rec.content_type or "VIDEO", db_session=bg_session,
+                        institute_id=inst_id,
+                        orientation=m.get("orientation", us.get("orientation", "landscape")),
+                        visual_style=m.get("visual_style", "standard"),
+                        quality_tier=us.get("quality_tier", m.get("quality_tier", "ultra")),
+                        voice_gender=us.get("voice_gender", "female"),
+                        tts_provider=us.get("tts_provider", "standard"),
+                        voice_id=us.get("voice_id"),
+                        captions_enabled=us.get("captions_enabled", True),
+                        html_quality=us.get("html_quality", "advanced"),
+                        target_audience=us.get("target_audience", "General/Adult"),
+                        target_duration=us.get("target_duration", "2-3 minutes"),
+                        model=us.get("model", "") or "",
+                        sound_effects_enabled=us.get("sound_effects_enabled", True),
+                        input_video_ids=m.get("input_video_ids"),
+                        input_video_audio=m.get("input_video_audio"),
+                        mute_tts_on_source_clips=m.get("mute_tts_on_source_clips", False),
+                        background_music_enabled=m.get("background_music_enabled"),
+                        background_music_volume=m.get("background_music_volume"),
+                        sub_shots_enabled=bool(m.get("sub_shots_enabled", False)),
+                        dialogue_scenes_enabled=bool(m.get("dialogue_scenes_enabled", False)),
+                        dialogue_mode=str(m.get("dialogue_mode", "storybook")),
+                        cast_id=m.get("cast_id"),
+                        visual_preferences=m.get("visual_preferences"),
+                        brand_kit_id=m.get("brand_kit_id"),
+                        brand_overrides=m.get("brand_overrides"),
+                        ai_video_enabled=bool(m.get("ai_video_enabled", False)),
+                        ai_video_audio_enabled=bool(m.get("ai_video_audio_enabled", False)),
+                        model_overrides=m.get("model_overrides"),
+                    ):
+                        await q.put(json.dumps(event))
+            except Exception as exc:
+                logger.error(
+                    f"[Decision] resume task error for {vid}: {type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+                try:
+                    with make_db_session() as refund_session:
+                        from ..services.token_usage_service import TokenUsageService
+                        TokenUsageService(refund_session).refund_video_credits(vid, inst_id)
+                except Exception as refund_err:
+                    logger.error(f"[Decision] refund failed for {vid}: {refund_err}")
+                await q.put(json.dumps({"type": "error", "message": str(exc), "video_id": vid}))
+            finally:
+                try:
+                    await q.put(None)
+                except Exception:
+                    pass
+                _generation_tasks.pop(vid, None)
+                _generation_queues.pop(vid, None)
+                cancellation_registry.clear(vid)
+                _institute_active_tasks.get(inst_id, set()).discard(vid)
+                logger.info(f"[Decision] resume task finished for {vid}")
+
+        task = asyncio.create_task(_run_decision_resume(queue, video_id, institute_id))
+        _generation_tasks[video_id] = task
+        _institute_active_tasks[institute_id].add(video_id)
+        logger.info(f"[Decision] started resume task for {video_id}")
+
+    async def sse_stream():
+        try:
+            while True:
+                try:
+                    event_json = await asyncio.wait_for(queue.get(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                if event_json is None:
+                    break
+                yield f"data: {event_json}\n\n"
+        except (GeneratorExit, asyncio.CancelledError):
+            logger.info(f"[Decision] SSE client disconnected for {video_id}; task continues")
+
+    return StreamingResponse(
+        sse_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Video-ID": video_id,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Assist mode — on-demand stock search for the visual-casting card
+# ---------------------------------------------------------------------------
+
+class StockSearchRequest(BaseModel):
+    """Body for POST /external/video/v1/stock/search."""
+    kind: str = Field("image", description="image | video")
+    query: str = Field(..., description="Search terms")
+    orientation: str = Field("landscape", description="landscape | portrait")
+
+
+@router.post("/stock/search", summary="Search stock media for the assist visual-casting card (External)")
+async def stock_search_external(
+    payload: StockSearchRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    """Re-search stock images/videos when the AI's candidates don't fit.
+
+    Stateless — used by the visual-casting card's per-shot "Search" box. Returns
+    candidates in the same shape the gate emits, so the FE renders them inline.
+    """
+    dg = _load_decision_gates()
+    q = (payload.query or "").strip()
+    if not q:
+        return {"candidates": [], "kind": payload.kind}
+    orientation = "portrait" if (payload.orientation or "").lower() == "portrait" else "landscape"
+    results: List[Dict[str, Any]] = []
+    try:
+        from ..services.media_search_service import MediaSearchService
+        svc = MediaSearchService()
+        if (payload.kind or "image").lower() == "video":
+            results, _ = svc.search_videos(q, orientation=orientation, per_page=12)
+        else:
+            results, _ = svc.search_images(q, orientation=orientation, per_page=12)
+    except Exception as exc:
+        logger.error(f"[StockSearch] search failed for '{q[:40]}': {exc}")
+        results = []
+    cands = [
+        dg.to_casting_candidate(r, is_recommended=(i == 0))
+        for i, r in enumerate((results or [])[:12])
+    ]
+    return {"candidates": cands, "kind": payload.kind}
+
+
+# ---------------------------------------------------------------------------
+# Saved casts (storybook/drama) — same characters + voices across a series
+# ---------------------------------------------------------------------------
+
+class SaveCastRequest(BaseModel):
+    """Body for POST /cast/save-from-video/{video_id}."""
+    name: Optional[str] = None
+
+
+def _dialogue_voice_gender(character: Dict[str, Any], index: int) -> str:
+    """Deterministic character→voice_gender — MUST mirror the pipeline's
+    `_dialogue_voice_map` so a saved cast reproduces the run's exact voices."""
+    hint = str(character.get("voice_hint") or "").lower()
+    if "female" in hint or "woman" in hint or "girl" in hint:
+        return "female"
+    if "male" in hint or "man " in hint or hint.endswith("man") or "boy" in hint:
+        return "male"
+    return ("female", "male")[index % 2]
+
+
+@router.get("/cast/list", summary="List saved video casts (External)")
+async def list_casts_external(
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    return {"casts": AiVideoCastRepository(db).list_for_institute(institute_id)}
+
+
+@router.post(
+    "/cast/save-from-video/{video_id}",
+    summary="Save a finished video's cast (characters + portraits + voices) for reuse (External)",
+)
+async def save_cast_from_video_external(
+    video_id: str,
+    payload: SaveCastRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    """Reconstruct the cast from the run's artifacts — characters from
+    shot_plan.json, portrait sheets from their deterministic S3 keys
+    (run_name == video_id), voice genders from the same mapping the pipeline
+    used — and persist it for reuse via `cast_id` on a future generation."""
+    video_record = _ensure_video_access(video_id, institute_id, db)
+
+    s3_svc = S3Service()
+    from ..config import get_settings as _gs
+    _bucket = _gs().aws_bucket_name or _gs().aws_s3_public_bucket
+    # Checkpoints copy FIRST — it carries the post-prep cast (incl. portrait
+    # revisions from the cast gate); the script/ copy predates the HTML stage.
+    plan = _read_s3_json(
+        s3_svc, _bucket, video_id,
+        f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+        f"ai-videos/{video_id}/script/shot_plan.json",
+    ) or {}
+    characters = plan.get("characters") if isinstance(plan.get("characters"), list) else []
+    characters = [c for c in characters if isinstance(c, dict) and c.get("name")]
+    if not characters:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video {video_id} has no dialogue cast to save (no characters in its plan).",
+        )
+
+    # Attach each character's portrait sheet when the run generated one —
+    # keys are deterministic: ai-videos/dialogue/{video_id}/char_NN.png.
+    import asyncio as _aio
+    import httpx as _hx
+    cast_out: List[Dict[str, Any]] = []
+    for i, c in enumerate(characters[:4]):
+        # Prefer the plan-persisted sheet_url — it reflects cast-gate
+        # revisions (uploads / note-regens); the deterministic key is only
+        # ever the ORIGINAL portrait. Probe runs off-loop: a blocking HEAD
+        # here froze every SSE stream on the pod for up to ~24s.
+        sheet_url = str(c.get("sheet_url") or "").strip() or None
+        if not sheet_url:
+            _probe = f"https://{_bucket}.s3.amazonaws.com/ai-videos/dialogue/{video_id}/char_{i:02d}.png"
+            try:
+                _resp = await _aio.to_thread(_hx.head, _probe, timeout=6.0)
+                sheet_url = _probe if _resp.status_code == 200 else None
+            except Exception:
+                sheet_url = None
+        cast_out.append({
+            "name": str(c.get("name"))[:60],
+            "visual_description": str(c.get("visual_description") or "")[:500],
+            "voice_hint": str(c.get("voice_hint") or "")[:120],
+            "voice_gender": _dialogue_voice_gender(c, i),
+            "sheet_url": sheet_url,
+        })
+
+    _default_name = f"Cast of “{(video_record.prompt or 'video')[:40].strip()}”"
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    cast = AiVideoCastRepository(db).create(
+        institute_id=institute_id,
+        name=(payload.name or _default_name),
+        characters=cast_out,
+        source_video_id=video_id,
+    )
+    logger.info(f"[Cast] saved cast {cast['cast_id']} from {video_id} ({len(cast_out)} characters)")
+    return cast
+
+
+@router.delete("/cast/{cast_id}", summary="Delete a saved cast (External)")
+async def delete_cast_external(
+    cast_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> Dict[str, Any]:
+    from ..repositories.ai_video_cast_repository import AiVideoCastRepository
+    try:
+        ok = AiVideoCastRepository(db).delete(cast_id, institute_id)
+    except Exception:
+        ok = False
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Cast {cast_id} not found.")
+    return {"deleted": True, "cast_id": cast_id}
+
+
+# ---------------------------------------------------------------------------
 # Retry a failed generation — resumes from last checkpoint
 # ---------------------------------------------------------------------------
 
@@ -870,7 +1494,9 @@ async def retry_video_external(
     # failed shots regenerate plus the render stage. AI video flag from
     # original metadata (Veo cap still applies if any shot left to ship is
     # AI_VIDEO_HERO; safer to keep the worst-case guard).
-    _vr_meta = getattr(video_record, "metadata", None) or {}
+    # NB: the model maps the JSONB column to `extra_metadata` — plain
+    # `.metadata` resolves to SQLAlchemy Base.metadata (never a dict).
+    _vr_meta = getattr(video_record, "extra_metadata", None) or {}
     _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
     _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
     _ai_video = bool(_user_sel.get("ai_video_enabled", False))
@@ -933,6 +1559,9 @@ async def retry_video_external(
                     background_music_enabled=_meta.get("background_music_enabled"),
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                    dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
+                    dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    cast_id=_meta.get("cast_id"),
                     visual_preferences=_meta.get("visual_preferences"),
                     # Brand kit + per-video overrides — retry rehydrates from saved
                     # meta so regenerated shots keep the original brand direction.

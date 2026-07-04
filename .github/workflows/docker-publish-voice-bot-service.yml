@@ -1,0 +1,144 @@
+name: Deploy Voice Bot Service
+
+# Vacademy AI Agent voice bot (voice_bot_service/) — mirrors the ai_service flow:
+# build → push :latest + immutable :<sha> to ECR public → set env → roll out the
+# :<sha> tag (avoids the ECR ':latest' CDN staleness race).
+#
+# ONE-TIME setup before the first run:
+#   1. Create the ECR public repo: voice-bot-service/voice-bot-service-repo
+#      (aws ecr-public create-repository --repository-name voice-bot-service/voice-bot-service-repo --region us-east-1)
+#   2. Create the k8s Deployment once via helm (vacademy_devops/vacademy-services,
+#      services.voice_bot_service.enabled=true) — this workflow only updates it.
+#   3. GitHub secrets: VOICE_BOT_CLIENT_SECRET (must match the voice_bot_service
+#      row seeded into admin_core's client_secret_key table) — SARVAM_API_KEY and
+#      the AWS/kubeconfig secrets already exist.
+#   4. On admin_core: set VOICE_BOT_BASE_URL=https://backend-stage.vacademy.io/voice-bot-service
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: main
+      image_tag:
+        description: "Image tag to push (use a UNIQUE tag for branch builds so you don't overwrite main's :latest)"
+        required: true
+        default: latest
+  push:
+    branches:
+      - main
+    paths:
+      - "voice_bot_service/**"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        working-directory: ./voice_bot_service
+        env:
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+          REPOSITORY: voice-bot-service/voice-bot-service-repo
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$REPOSITORY:$GIT_SHA .
+          docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$REPOSITORY:$GIT_SHA
+          echo "Pushed $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG and :$GIT_SHA"
+
+      - name: Connect to Hetzner k3s kubernetes cluster
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: Azure/k8s-set-context@v4.0.0
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG }}
+
+      - name: Roll out new image if the deployment exists
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          DEPLOYMENT_NAME: voice-bot-service
+          NAMESPACE: default
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: voice-bot-service/voice-bot-service-repo
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if kubectl get deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
+            # VOICE_BOT_CLIENT_NAME/SECRET must match a row in admin_core's
+            # client_secret_key table (its allowlist of internal callers — the
+            # bot itself has NO database). Two valid setups:
+            #   a) reuse the existing 'admin_core_service' row: set the repo
+            #      variable VOICE_BOT_CLIENT_NAME=admin_core_service and the
+            #      secret VOICE_BOT_CLIENT_SECRET to that row's secret_key;
+            #   b) dedicated identity: INSERT a 'voice_bot_service' row with a
+            #      fresh random secret and store the same value in the secret.
+            kubectl set env deployment/"$DEPLOYMENT_NAME" \
+              --namespace "$NAMESPACE" \
+              PUBLIC_BASE=https://backend-stage.vacademy.io/voice-bot-service \
+              ADMIN_CORE_BASE=https://backend-stage.vacademy.io \
+              VOICE_BOT_CLIENT_NAME=${{ vars.VOICE_BOT_CLIENT_NAME || 'voice_bot_service' }} \
+              VOICE_BOT_CLIENT_SECRET=${{ secrets.VOICE_BOT_CLIENT_SECRET }} \
+              SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
+              LLM_PROVIDER=${{ vars.VOICE_BOT_LLM_PROVIDER || 'sarvam' }} \
+              GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} \
+              OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+
+            # Roll out the EXACT freshly-built image by its immutable :<sha> tag
+            # (same rationale as ai_service: ':latest' can be served stale by the
+            # ECR public CDN; a brand-new tag can't).
+            kubectl set image deployment/"$DEPLOYMENT_NAME" --namespace "$NAMESPACE" \
+              voice-bot-service=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA
+            kubectl rollout status deployment "$DEPLOYMENT_NAME" --namespace "$NAMESPACE" --timeout=300s || true
+          else
+            echo "Deployment $DEPLOYMENT_NAME not found — create it once via helm (services.voice_bot_service.enabled=true). Skipping rollout."
+          fi
+
+      # Mumbai audio anchor (Linode ap-west): a standalone docker-compose box that
+      # anchors the Plivo<->bot<->Sarvam audio path in-country (see
+      # voice_bot_service/deploy/linode-mumbai/README.md). Enabled by setting the
+      # repo variable VOICE_BOT_MUMBAI_HOST (the box's IP/hostname) + the secret
+      # VOICE_BOT_MUMBAI_SSH_KEY (private key for root@host). Rolls the SAME
+      # immutable :<sha> image by rewriting VOICE_BOT_IMAGE in /opt/voice-bot/.env.
+      - name: Deploy to Mumbai anchor (Linode) over SSH
+        if: vars.VOICE_BOT_MUMBAI_HOST != ''
+        env:
+          SSH_KEY: ${{ secrets.VOICE_BOT_MUMBAI_SSH_KEY }}
+          HOST: ${{ vars.VOICE_BOT_MUMBAI_HOST }}
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: voice-bot-service/voice-bot-service-repo
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "VOICE_BOT_MUMBAI_SSH_KEY secret not set — skipping Mumbai roll."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/mumbai && chmod 600 ~/.ssh/mumbai
+          ssh -i ~/.ssh/mumbai -o StrictHostKeyChecking=accept-new "root@$HOST" \
+            "set -e; cd /opt/voice-bot; \
+             sed -i '/^VOICE_BOT_IMAGE=/d' .env; \
+             echo 'VOICE_BOT_IMAGE=$ECR_REGISTRY/$REPOSITORY:$GIT_SHA' >> .env; \
+             docker compose pull -q voice-bot; docker compose up -d; \
+             sleep 5; docker compose ps"

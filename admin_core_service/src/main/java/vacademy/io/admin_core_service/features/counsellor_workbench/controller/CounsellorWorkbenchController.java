@@ -160,6 +160,24 @@ public class CounsellorWorkbenchController {
     }
 
     // ────────────────────────────────────────────────────────────────
+    // Bulk assign (multi-selected leads from the leads / campaign-users list)
+    // ────────────────────────────────────────────────────────────────
+
+    @PostMapping("/assign/preview")
+    public ResponseEntity<AssignLeadsResultDTO> previewAssign(
+            @RequestBody AssignLeadsRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(reassignService.assignPreview(request, user));
+    }
+
+    @PostMapping("/assign")
+    public ResponseEntity<AssignLeadsResultDTO> assign(
+            @RequestBody AssignLeadsRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(reassignService.assign(request, user));
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // Activity feed
     // ────────────────────────────────────────────────────────────────
 

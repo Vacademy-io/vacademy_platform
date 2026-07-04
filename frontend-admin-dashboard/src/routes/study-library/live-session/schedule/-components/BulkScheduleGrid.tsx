@@ -293,45 +293,60 @@ export function BulkScheduleGrid() {
     }, []);
 
     const initialTimeZone = liveSessionSettings.defaultTimeZone || browserTz;
+    // Institute default platform, falling back to 'other' when it isn't set or
+    // has since been disallowed. Used to stamp the first row and every new row.
+    const initialPlatform =
+        liveSessionSettings.defaultPlatform &&
+        liveSessionSettings.allowedPlatforms[liveSessionSettings.defaultPlatform] !== false
+            ? liveSessionSettings.defaultPlatform
+            : 'other';
 
     const form = useForm<BulkSessionForm>({
         resolver: zodResolver(bulkSessionFormSchema),
         mode: 'onChange',
         defaultValues: {
             timeZone: initialTimeZone,
-            rows: [blankRow('other', initialTimeZone)],
+            rows: [blankRow(initialPlatform, initialTimeZone)],
             sharedOptions: {
-                enableWaitingRoom: false,
-                waitingRoomMinutes: '5',
-                waitingRoomType: WaitingRoomType.WAITING_ROOM,
+                enableWaitingRoom: liveSessionSettings.defaultWaitingRoomEnabled ?? false,
+                waitingRoomMinutes: liveSessionSettings.defaultWaitingRoomTime ?? '15',
+                waitingRoomType:
+                    liveSessionSettings.defaultWaitingRoomType ?? WaitingRoomType.WAITING_ROOM,
                 waitingRoomThumbnailFileId: undefined,
                 waitingRoomMusicFileId: undefined,
                 allowRewind: true,
                 allowPause: true,
-                enableFeedback: false,
+                // Feedback defaults to ON, but never when the institute has
+                // hidden the whole feedback feature (feedbackEnabled = false).
+                enableFeedback:
+                    (liveSessionSettings.feedbackEnabled ?? true) &&
+                    (liveSessionSettings.defaultFeedbackEnabled ?? true),
                 feedbackCompulsory: liveSessionSettings.defaultFeedbackCompulsory ?? false,
                 feedbackQuestions: BULK_DEFAULT_FEEDBACK_QUESTIONS,
-                recordSession: false,
-                autoStartRecording: false,
-                muteOnStart: true,
-                webcamsOnlyForModerator: false,
-                guestPolicy: 'ALWAYS_ACCEPT' as const,
-                defaultPlatform: 'other',
+                recordSession: liveSessionSettings.defaultBbbRecordEnabled ?? true,
+                autoStartRecording: liveSessionSettings.defaultBbbAutoStartRecording ?? false,
+                muteOnStart: liveSessionSettings.defaultBbbMuteOnStart ?? true,
+                webcamsOnlyForModerator:
+                    liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false,
+                guestPolicy: liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT',
+                defaultPlatform: initialPlatform,
                 defaultDescription: '',
             },
             accessType: AccessType.PRIVATE,
             notifyBy: {
-                mail: false,
-                whatsapp: false,
-                push_notification: false,
-                system_notification: false,
+                mail: liveSessionSettings.defaultNotifyByEmail ?? false,
+                whatsapp: liveSessionSettings.defaultNotifyByWhatsapp ?? false,
+                push_notification: liveSessionSettings.defaultNotifyByPush ?? false,
+                system_notification: liveSessionSettings.defaultNotifyBySystem ?? false,
             },
             notifySettings: {
-                onCreate: false,
-                beforeLive: false,
-                beforeLiveTime: [],
-                onLive: true,
-                onAttendance: false,
+                onCreate: liveSessionSettings.defaultNotifyOnCreate ?? false,
+                beforeLive: !!liveSessionSettings.defaultNotifyBeforeReminder,
+                beforeLiveTime: liveSessionSettings.defaultNotifyBeforeReminder
+                    ? [{ time: liveSessionSettings.defaultNotifyBeforeReminder }]
+                    : [],
+                onLive: liveSessionSettings.defaultNotifyOnLive ?? true,
+                onAttendance: liveSessionSettings.defaultNotifyOnAttendance ?? false,
             },
         },
     });
@@ -340,10 +355,65 @@ export function BulkScheduleGrid() {
         fields: beforeLiveFields,
         append: beforeLiveAppend,
         remove: beforeLiveRemove,
+        replace: beforeLiveReplace,
     } = useFieldArray({
         control: form.control,
         name: 'notifySettings.beforeLiveTime',
     });
+
+    // Once the institute notification defaults load, snap the shared channels
+    // and triggers (and pre-seed the reminder) to them, while the admin hasn't
+    // manually changed each field.
+    useEffect(() => {
+        const snapBool = (
+            name:
+                | 'notifyBy.mail'
+                | 'notifyBy.whatsapp'
+                | 'notifyBy.push_notification'
+                | 'notifyBy.system_notification'
+                | 'notifySettings.onCreate'
+                | 'notifySettings.onLive'
+                | 'notifySettings.onAttendance',
+            next: boolean
+        ) => {
+            if (!form.getFieldState(name).isDirty && form.getValues(name) !== next) {
+                form.setValue(name, next);
+            }
+        };
+        snapBool('notifyBy.mail', liveSessionSettings.defaultNotifyByEmail ?? false);
+        snapBool('notifyBy.whatsapp', liveSessionSettings.defaultNotifyByWhatsapp ?? false);
+        snapBool('notifyBy.push_notification', liveSessionSettings.defaultNotifyByPush ?? false);
+        snapBool(
+            'notifyBy.system_notification',
+            liveSessionSettings.defaultNotifyBySystem ?? false
+        );
+        snapBool('notifySettings.onCreate', liveSessionSettings.defaultNotifyOnCreate ?? false);
+        snapBool('notifySettings.onLive', liveSessionSettings.defaultNotifyOnLive ?? true);
+        snapBool(
+            'notifySettings.onAttendance',
+            liveSessionSettings.defaultNotifyOnAttendance ?? false
+        );
+        const reminder = liveSessionSettings.defaultNotifyBeforeReminder;
+        if (
+            reminder &&
+            !form.getFieldState('notifySettings.beforeLiveTime').isDirty &&
+            (form.getValues('notifySettings.beforeLiveTime')?.length ?? 0) === 0
+        ) {
+            beforeLiveReplace([{ time: reminder }]);
+            form.setValue('notifySettings.beforeLive', true);
+        }
+    }, [
+        liveSessionSettings.defaultNotifyByEmail,
+        liveSessionSettings.defaultNotifyByWhatsapp,
+        liveSessionSettings.defaultNotifyByPush,
+        liveSessionSettings.defaultNotifyBySystem,
+        liveSessionSettings.defaultNotifyOnCreate,
+        liveSessionSettings.defaultNotifyOnLive,
+        liveSessionSettings.defaultNotifyOnAttendance,
+        liveSessionSettings.defaultNotifyBeforeReminder,
+        beforeLiveReplace,
+        form,
+    ]);
 
     // Course / session list for the batch picker (same source step 2 uses).
     // Trigger the same query single-class step 2 implicitly relies on so the
@@ -548,6 +618,124 @@ export function BulkScheduleGrid() {
             form.setValue('timeZone', adminDefault);
         }
     }, [liveSessionSettings.defaultTimeZone, form]);
+
+    // Once the institute-level live-session defaults load, snap the shared
+    // feedback and waiting-room options to them — but only while the admin
+    // hasn't already changed each field (isDirty guard). Mirrors the
+    // single-class form so both scheduling flows honour the same defaults.
+    useEffect(() => {
+        const feedbackDefault =
+            (liveSessionSettings.feedbackEnabled ?? true) &&
+            (liveSessionSettings.defaultFeedbackEnabled ?? true);
+        if (
+            !form.getFieldState('sharedOptions.enableFeedback').isDirty &&
+            form.getValues('sharedOptions.enableFeedback') !== feedbackDefault
+        ) {
+            form.setValue('sharedOptions.enableFeedback', feedbackDefault);
+        }
+        const compulsoryDefault = liveSessionSettings.defaultFeedbackCompulsory ?? false;
+        if (
+            !form.getFieldState('sharedOptions.feedbackCompulsory').isDirty &&
+            form.getValues('sharedOptions.feedbackCompulsory') !== compulsoryDefault
+        ) {
+            form.setValue('sharedOptions.feedbackCompulsory', compulsoryDefault);
+        }
+        const waitingEnabledDefault = liveSessionSettings.defaultWaitingRoomEnabled ?? false;
+        if (
+            !form.getFieldState('sharedOptions.enableWaitingRoom').isDirty &&
+            form.getValues('sharedOptions.enableWaitingRoom') !== waitingEnabledDefault
+        ) {
+            form.setValue('sharedOptions.enableWaitingRoom', waitingEnabledDefault);
+        }
+        const waitingTypeDefault =
+            liveSessionSettings.defaultWaitingRoomType ?? WaitingRoomType.WAITING_ROOM;
+        if (
+            !form.getFieldState('sharedOptions.waitingRoomType').isDirty &&
+            form.getValues('sharedOptions.waitingRoomType') !== waitingTypeDefault
+        ) {
+            form.setValue('sharedOptions.waitingRoomType', waitingTypeDefault);
+        }
+        const waitingTimeDefault = liveSessionSettings.defaultWaitingRoomTime ?? '15';
+        if (
+            !form.getFieldState('sharedOptions.waitingRoomMinutes').isDirty &&
+            form.getValues('sharedOptions.waitingRoomMinutes') !== waitingTimeDefault
+        ) {
+            form.setValue('sharedOptions.waitingRoomMinutes', waitingTimeDefault);
+        }
+        const platformDefault =
+            liveSessionSettings.defaultPlatform &&
+            liveSessionSettings.allowedPlatforms[liveSessionSettings.defaultPlatform] !== false
+                ? liveSessionSettings.defaultPlatform
+                : 'other';
+        if (
+            !form.getFieldState('sharedOptions.defaultPlatform').isDirty &&
+            form.getValues('sharedOptions.defaultPlatform') !== platformDefault
+        ) {
+            form.setValue('sharedOptions.defaultPlatform', platformDefault);
+        }
+        // Stamp the platform onto the initial row too, but only while it's the
+        // lone untouched starter row — never rewrite rows the admin has begun
+        // editing or added.
+        const rows = form.getValues('rows');
+        if (
+            rows.length === 1 &&
+            !form.getFieldState('rows.0.platform').isDirty &&
+            rows[0]?.platform !== platformDefault
+        ) {
+            form.setValue('rows.0.platform', platformDefault);
+        }
+        // Vacademy Meet (BBB) recording & control defaults.
+        const bbbRecordDefault = liveSessionSettings.defaultBbbRecordEnabled ?? true;
+        if (
+            !form.getFieldState('sharedOptions.recordSession').isDirty &&
+            form.getValues('sharedOptions.recordSession') !== bbbRecordDefault
+        ) {
+            form.setValue('sharedOptions.recordSession', bbbRecordDefault);
+        }
+        const bbbAutoStartDefault = liveSessionSettings.defaultBbbAutoStartRecording ?? false;
+        if (
+            !form.getFieldState('sharedOptions.autoStartRecording').isDirty &&
+            form.getValues('sharedOptions.autoStartRecording') !== bbbAutoStartDefault
+        ) {
+            form.setValue('sharedOptions.autoStartRecording', bbbAutoStartDefault);
+        }
+        const bbbMuteDefault = liveSessionSettings.defaultBbbMuteOnStart ?? true;
+        if (
+            !form.getFieldState('sharedOptions.muteOnStart').isDirty &&
+            form.getValues('sharedOptions.muteOnStart') !== bbbMuteDefault
+        ) {
+            form.setValue('sharedOptions.muteOnStart', bbbMuteDefault);
+        }
+        const bbbWebcamDefault = liveSessionSettings.defaultBbbWebcamsOnlyForModerator ?? false;
+        if (
+            !form.getFieldState('sharedOptions.webcamsOnlyForModerator').isDirty &&
+            form.getValues('sharedOptions.webcamsOnlyForModerator') !== bbbWebcamDefault
+        ) {
+            form.setValue('sharedOptions.webcamsOnlyForModerator', bbbWebcamDefault);
+        }
+        const bbbGuestDefault = liveSessionSettings.defaultBbbGuestPolicy ?? 'ALWAYS_ACCEPT';
+        if (
+            !form.getFieldState('sharedOptions.guestPolicy').isDirty &&
+            form.getValues('sharedOptions.guestPolicy') !== bbbGuestDefault
+        ) {
+            form.setValue('sharedOptions.guestPolicy', bbbGuestDefault);
+        }
+    }, [
+        liveSessionSettings.feedbackEnabled,
+        liveSessionSettings.defaultFeedbackEnabled,
+        liveSessionSettings.defaultFeedbackCompulsory,
+        liveSessionSettings.defaultWaitingRoomEnabled,
+        liveSessionSettings.defaultWaitingRoomType,
+        liveSessionSettings.defaultWaitingRoomTime,
+        liveSessionSettings.defaultPlatform,
+        liveSessionSettings.allowedPlatforms,
+        liveSessionSettings.defaultBbbRecordEnabled,
+        liveSessionSettings.defaultBbbAutoStartRecording,
+        liveSessionSettings.defaultBbbMuteOnStart,
+        liveSessionSettings.defaultBbbWebcamsOnlyForModerator,
+        liveSessionSettings.defaultBbbGuestPolicy,
+        form,
+    ]);
 
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);

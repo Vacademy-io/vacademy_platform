@@ -16,6 +16,14 @@ public interface FileService {
 
     FileDetailsDTO uploadFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException;
 
+    /**
+     * Upload to the PRIVATE bucket with server-side encryption (SSE-S3 / AES-256).
+     * For sensitive media (e.g. Vacademy Voice call recordings of parents/minors)
+     * that must NOT live in the public bucket. Retrieve via the private presigned
+     * getter ({@code getUrlWithExpiryAndId} / the {@code /get-url/id} endpoint).
+     */
+    FileDetailsDTO uploadPrivateFileWithDetails(MultipartFile multipartFile) throws FileUploadException, IOException;
+
     Object downloadFile(String fileName) throws FileDownloadException, IOException;
 
     PreSignedUrlResponse getPreSignedUrl(String fileName, String fileType, String source, String sourceId);

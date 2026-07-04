@@ -166,7 +166,14 @@ export default function ZoomHostSdkPlayer({
             });
             return res.data;
         },
-        staleTime: 60 * 1000,
+        // The signature is a ONE-SHOT join credential (valid ~2h). It must NOT
+        // auto-refetch while the meeting is live: a refetch returns a new object,
+        // which changes the join effect's `data` dependency and fires its cleanup —
+        // ZoomMtg.leaveMeeting() — killing the meeting mid-call (WebSocket close 1006,
+        // "mainTaskType is not exist"). Fetch once; never refetch on focus/reconnect.
+        staleTime: Infinity,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
         retry: 1,
     });
 

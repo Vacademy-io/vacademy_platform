@@ -27,7 +27,7 @@ from xml.sax.saxutils import escape
 
 import aiohttp
 from fastapi import APIRouter, FastAPI, Query, Response, WebSocket
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from . import admin_core
 from .bot import CallOutcome, run_bot
@@ -151,7 +151,10 @@ async def _synth_wav(text: str, speaker: str, model: str, lang: str) -> bytes | 
     return out.getvalue()
 
 
+# Both routes hit the same handler. Plivo (and some players) key on a file
+# extension, so the renderer uses /tts.wav; /tts stays for back-compat.
 @router.get("/tts")
+@router.get("/tts.wav")
 async def tts(
     text: str = Query(..., max_length=4000),
     voice: str = Query(""),
@@ -160,42 +163,40 @@ async def tts(
     """Natural-voice audio for a piece of prompt text (IVR menus etc.), in the SAME
     Sarvam voice as the AI agent — so IVR prompts stop sounding like a foreign TTS
     reading Hindi. Plivo <Play>s this URL. Synthesized ONCE per (text, voice, lang)
-    and cached to disk (a Docker volume) + memory, so playback on every subsequent
-    call is free — IVR prompts are static, so there is no recurring TTS cost."""
+    and cached to disk (a Docker volume), so playback on every subsequent call is
+    free — IVR prompts are static, so there is no recurring TTS cost.
+
+    Served via FileResponse so HTTP Range requests get a proper 206 + Accept-Ranges:
+    Plivo's media player streams audio with range requests and plays SILENCE when the
+    server answers 200-with-the-whole-body instead."""
     s = get_settings()
     speaker = (voice or s.sarvam_tts_voice).strip()
     model = s.sarvam_tts_model
     key = hashlib.sha1(f"{model}|{speaker}|{lang}|{text}".encode()).hexdigest()
+    path = os.path.join(s.tts_cache_dir, key + ".wav")
 
-    audio = _TTS_MEM.get(key)
-    if audio is None:
-        path = os.path.join(s.tts_cache_dir, key + ".wav")
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                audio = f.read()
-        else:
-            audio = await _synth_wav(text, speaker, model, lang)
-            if audio:
-                try:
-                    os.makedirs(s.tts_cache_dir, exist_ok=True)
-                    tmp = path + ".tmp"
-                    with open(tmp, "wb") as f:
-                        f.write(audio)
-                    os.replace(tmp, path)  # atomic: a concurrent reader never sees a partial file
-                except Exception:
-                    logger.exception("tts: disk cache write failed (serving anyway)")
-        if audio:
-            if len(_TTS_MEM) >= _TTS_MEM_MAX:
-                _TTS_MEM.pop(next(iter(_TTS_MEM)))
-            _TTS_MEM[key] = audio
+    if not os.path.exists(path):
+        audio = _TTS_MEM.get(key) or await _synth_wav(text, speaker, model, lang)
+        if not audio:
+            # Rare (Sarvam down + cold cache). Plivo skips a <Play> it can't fetch;
+            # the GATHER's no-input branch recovers and it caches next time.
+            return Response(status_code=502)
+        try:
+            os.makedirs(s.tts_cache_dir, exist_ok=True)
+            tmp = f"{path}.{os.getpid()}.tmp"
+            with open(tmp, "wb") as f:
+                f.write(audio)
+            os.replace(tmp, path)  # atomic: a concurrent reader never sees a partial file
+        except Exception:
+            logger.exception("tts: disk cache write failed")
+            # Fall back to an in-memory body (no range support, but better than 502).
+            return Response(content=audio, media_type="audio/wav")
+        if len(_TTS_MEM) >= _TTS_MEM_MAX:
+            _TTS_MEM.pop(next(iter(_TTS_MEM)))
+        _TTS_MEM[key] = audio
 
-    if not audio:
-        # Rare (Sarvam down + cold cache). Plivo skips a <Play> it can't fetch and
-        # continues the applet — the GATHER's retry/no-input branch still recovers,
-        # and the prompt caches on the next successful call.
-        return Response(status_code=502)
-    return Response(content=audio, media_type="audio/wav",
-                    headers={"Cache-Control": "public, max-age=31536000"})
+    return FileResponse(path, media_type="audio/wav",
+                        headers={"Cache-Control": "public, max-age=31536000"})
 
 
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)

@@ -56,7 +56,8 @@ public class VacademyAiAnswerUrls {
      * static menu prompt is synthesized once and replayed free on every call.
      */
     public String ttsUrl(String text, String lang) {
-        return botBase() + "/tts?text=" + enc(text)
+        // .wav path so Plivo's media player recognizes it as a WAV file.
+        return botBase() + "/tts.wav?text=" + enc(text)
                 + (lang != null && !lang.isBlank() ? "&lang=" + enc(lang) : "");
     }
 

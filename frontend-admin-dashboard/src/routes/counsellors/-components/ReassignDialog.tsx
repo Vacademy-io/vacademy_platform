@@ -67,10 +67,18 @@ export function ReassignDialog({
     const [submitting, setSubmitting] = useState(false);
     const [skipping, setSkipping] = useState(false);
 
+    // Pool-activeness is a PREFERENCE, not a gate: institutes that don't use
+    // counselor pools have zero "active" members, and the old hard filter
+    // left this dropdown empty — making reassignment impossible. Actives sort
+    // first; offline counsellors stay pickable, labelled "(offline)".
     const targets = useMemo(
-        () => candidates.filter((c) => c.user_id !== fromUserId && c.is_active),
+        () =>
+            candidates
+                .filter((c) => c.user_id !== fromUserId)
+                .sort((a, b) => Number(b.is_active) - Number(a.is_active)),
         [candidates, fromUserId]
     );
+    const activeTargetCount = useMemo(() => targets.filter((t) => t.is_active).length, [targets]);
 
     useEffect(() => {
         if (open) {
@@ -254,6 +262,7 @@ export function ReassignDialog({
                                 {targets.map((t) => (
                                     <option key={t.user_id} value={t.user_id}>
                                         {t.full_name ?? t.user_id}
+                                        {t.is_active ? '' : ' (offline)'}
                                         {t.rating != null ? ` · rating ${Math.round(t.rating)}` : ''}
                                     </option>
                                 ))}
@@ -263,8 +272,13 @@ export function ReassignDialog({
 
                     {mode === 'ROUND_ROBIN' && (
                         <p className="rounded border border-info-200 bg-primary-50 px-3 py-2 text-subtitle text-neutral-700">
-                            Leads will be distributed evenly across {targets.length} active counsellor
-                            {targets.length === 1 ? '' : 's'} in the team subtree.
+                            {/* Mirrors the backend rule: prefer active counsellors,
+                                fall back to everyone when none are pool-active. */}
+                            Leads will be distributed evenly across{' '}
+                            {activeTargetCount > 0
+                                ? `${activeTargetCount} active counsellor${activeTargetCount === 1 ? '' : 's'}`
+                                : `${targets.length} counsellor${targets.length === 1 ? '' : 's'}`}
+                            .
                         </p>
                     )}
 
@@ -433,6 +447,7 @@ function ManualPreviewTable({
                                         {candidates.map((c) => (
                                             <option key={c.user_id} value={c.user_id}>
                                                 {c.full_name ?? c.user_id}
+                                                {c.is_active ? '' : ' (offline)'}
                                             </option>
                                         ))}
                                     </select>

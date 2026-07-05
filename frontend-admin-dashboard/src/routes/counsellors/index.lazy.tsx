@@ -297,29 +297,34 @@ export function WorkbenchPage() {
     });
 
     /**
-     * Reassign-first INACTIVE flow:
-     * 1. Pre-fetch the counsellor's open leads (read-only, no state change).
-     * 2. Open the reassign dialog with markInactive=true.
-     * 3. Manager picks a target (or RR / MANUAL) and confirms — backend
-     *    atomically reassigns AND flips pool memberships INACTIVE in one
-     *    transaction. Cancelling leaves the counsellor ACTIVE.
+     * Shared opener for the reassign dialog, pre-populated with the
+     * counsellor's open leads.
+     *
+     * markInactive=true → the reassign-first INACTIVE flow: manager picks a
+     * target (or RR / MANUAL) and confirms — backend atomically reassigns AND
+     * flips pool memberships INACTIVE in one transaction. Cancelling leaves
+     * the counsellor ACTIVE.
+     *
+     * markInactive=false → plain bulk reassign — used to move the leads of an
+     * ALREADY-INACTIVE counsellor later (leads left behind by "mark inactive
+     * without reassigning" don't get stranded).
      */
-    async function startMarkInactive(userId: string, displayName: string) {
+    async function openReassignFlow(userId: string, displayName: string, markInactive: boolean) {
         if (!instituteId) return;
         setPendingMarkInactiveId(userId);
         try {
-            // Reassign-first needs the counsellor's ASSIGNED-but-not-yet-
-            // converted leads (the same set the card's "Assigned leads" count
-            // reflects). 'OPEN' is the backend's virtual filter for that
-            // (conversion_status NULL OR != 'CONVERTED') — converted leads are
-            // done and shouldn't be moved. Bumping size to 500 is the existing
-            // safety cap — beyond that we'd want a multi-page accumulator; flag
-            // if a counsellor routinely sits on more than ~500 open leads.
+            // Needs the counsellor's ASSIGNED-but-not-yet-converted leads (the
+            // same set the card's "Assigned leads" count reflects). 'OPEN' is
+            // the backend's virtual filter for that (conversion_status NULL OR
+            // != 'CONVERTED') — converted leads are done and shouldn't be
+            // moved. Size 500 is the existing safety cap — beyond that we'd
+            // want a multi-page accumulator; flag if a counsellor routinely
+            // sits on more than ~500 open leads.
             const leads = await fetchCounsellorLeads(instituteId, userId, 'OPEN', 0, 500);
             setReassignFromUserId(userId);
             setReassignFromName(displayName);
             setReassignLeads(leads?.content ?? []);
-            setReassignMarkInactive(true);
+            setReassignMarkInactive(markInactive);
             setReassignOpen(true);
         } catch (e) {
             const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
@@ -327,6 +332,14 @@ export function WorkbenchPage() {
         } finally {
             setPendingMarkInactiveId(null);
         }
+    }
+
+    function startMarkInactive(userId: string, displayName: string) {
+        return openReassignFlow(userId, displayName, true);
+    }
+
+    function startReassignLeads(userId: string, displayName: string) {
+        return openReassignFlow(userId, displayName, false);
     }
 
     function handleStatusToggle(userId: string, displayName: string, currentlyActive: boolean) {
@@ -525,6 +538,10 @@ export function WorkbenchPage() {
                         // isActive here is the NEXT state requested.
                         handleStatusToggle(uid, c?.full_name ?? uid, !isActive);
                     }}
+                    onReassignLeads={(uid) => {
+                        const c = counsellors.find((x) => x.user_id === uid);
+                        void startReassignLeads(uid, c?.full_name ?? uid);
+                    }}
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -538,6 +555,9 @@ export function WorkbenchPage() {
                             onOpen={() => openDrawer(c)}
                             onToggleStatus={() =>
                                 handleStatusToggle(c.user_id, c.full_name ?? c.user_id, c.is_active)
+                            }
+                            onReassignLeads={() =>
+                                void startReassignLeads(c.user_id, c.full_name ?? c.user_id)
                             }
                             statusLoading={
                                 pendingMarkInactiveId === c.user_id ||
@@ -655,6 +675,7 @@ function CounsellorCard({
     progressLoading,
     onOpen,
     onToggleStatus,
+    onReassignLeads,
     statusLoading,
 }: {
     counsellor: WorkbenchCounsellor;
@@ -663,6 +684,10 @@ function CounsellorCard({
     progressLoading: boolean;
     onOpen: () => void;
     onToggleStatus: () => void;
+    /** Bulk-move this counsellor's open leads — surfaced for INACTIVE
+     *  counsellors so leads left behind by "mark inactive without
+     *  reassigning" can still be moved later. */
+    onReassignLeads: () => void;
     statusLoading: boolean;
 }) {
     const name = counsellor.full_name || 'Unnamed';
@@ -736,29 +761,44 @@ function CounsellorCard({
                     />
                     {counsellor.is_active ? 'Active' : 'Inactive'}
                 </span>
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        // INACTIVE direction goes through the reassign dialog,
-                        // which is the explicit confirmation. ACTIVE direction
-                        // is a direct flip, so keep the confirm prompt there.
-                        if (counsellor.is_active) {
-                            onToggleStatus();
-                        } else if (window.confirm(`Mark ${name} active again?`)) {
-                            onToggleStatus();
-                        }
-                    }}
-                    disabled={statusLoading}
-                    className={cn(
-                        'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
-                        counsellor.is_active
-                            ? 'text-danger-600 hover:bg-danger-50'
-                            : 'text-success-700 hover:bg-success-50'
+                <span className="flex items-center gap-1">
+                    {!counsellor.is_active && counsellor.open_leads_count > 0 && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onReassignLeads();
+                            }}
+                            disabled={statusLoading}
+                            className="rounded-md px-2.5 py-1 text-caption font-medium text-primary-700 transition-colors hover:bg-primary-50"
+                        >
+                            Reassign leads
+                        </button>
                     )}
-                >
-                    {statusLoading ? '…' : counsellor.is_active ? 'Mark inactive' : 'Mark active'}
-                </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // INACTIVE direction goes through the reassign dialog,
+                            // which is the explicit confirmation. ACTIVE direction
+                            // is a direct flip, so keep the confirm prompt there.
+                            if (counsellor.is_active) {
+                                onToggleStatus();
+                            } else if (window.confirm(`Mark ${name} active again?`)) {
+                                onToggleStatus();
+                            }
+                        }}
+                        disabled={statusLoading}
+                        className={cn(
+                            'rounded-md px-2.5 py-1 text-caption font-medium transition-colors',
+                            counsellor.is_active
+                                ? 'text-danger-600 hover:bg-danger-50'
+                                : 'text-success-700 hover:bg-success-50'
+                        )}
+                    >
+                        {statusLoading ? '…' : counsellor.is_active ? 'Mark inactive' : 'Mark active'}
+                    </button>
+                </span>
             </div>
         </button>
     );
@@ -774,6 +814,7 @@ function CounsellorTable({
     statusPendingId,
     onOpen,
     onToggleStatus,
+    onReassignLeads,
 }: {
     counsellors: WorkbenchCounsellor[];
     instituteId: string;
@@ -782,6 +823,8 @@ function CounsellorTable({
     statusPendingId: string | null;
     onOpen: (userId: string) => void;
     onToggleStatus: (userId: string, isActive: boolean) => void;
+    /** Bulk-move a counsellor's open leads — surfaced for INACTIVE rows. */
+    onReassignLeads: (userId: string) => void;
 }) {
     return (
         <div className="overflow-auto rounded-md border border-neutral-200 bg-white">
@@ -862,6 +905,19 @@ function CounsellorTable({
                                     </span>
                                 </td>
                                 <td className="px-3 py-2.5 text-right">
+                                    {!c.is_active && c.open_leads_count > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onReassignLeads(c.user_id);
+                                            }}
+                                            disabled={pending}
+                                            className="rounded-md px-2.5 py-1 text-caption font-medium text-primary-700 transition-colors hover:bg-primary-50"
+                                        >
+                                            Reassign leads
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={(e) => {

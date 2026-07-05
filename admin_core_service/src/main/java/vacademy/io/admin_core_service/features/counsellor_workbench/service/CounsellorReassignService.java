@@ -214,13 +214,15 @@ public class CounsellorReassignService {
             candidates = (allowed == null ? Collections.<String>emptySet() : allowed).stream()
                     .sorted().collect(Collectors.toList());
         }
-        // Round-robin distributes only across ACTIVE counsellors (an ACTIVE pool
-        // membership) — drop anyone offline, whether they came from the explicit
-        // candidate list or the whole-scope fallback, so bulk-assign never lands
-        // a lead on an inactive counsellor.
-        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
+        // Prefer ACTIVE-pool counsellors, but only as a preference — see
+        // planRoundRobin: institutes without counselor pools have no ACTIVE
+        // pool rows and would otherwise never be able to bulk-assign.
+        List<String> active = retainActiveCounsellors(req.getInstituteId(), candidates);
+        if (!active.isEmpty()) {
+            candidates = active;
+        }
         if (candidates.isEmpty()) {
-            throw new VacademyException("No active counsellors available for round-robin assignment");
+            throw new VacademyException("No counsellors available for round-robin assignment");
         }
         return candidates;
     }
@@ -448,12 +450,17 @@ public class CounsellorReassignService {
                 .filter(uid -> !uid.equals(req.getFromUserId()))
                 .sorted()
                 .collect(Collectors.toList());
-        // Round-robin must skip counsellors who are OFFLINE (no ACTIVE pool
-        // membership) — same "active" rule the workbench roster shows. Without
-        // this, reassignment could hand leads to an inactive counsellor.
-        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
+        // Prefer counsellors with an ACTIVE pool membership — same "active"
+        // rule the workbench roster shows — but treat it as a PREFERENCE, not
+        // a gate: institutes that don't use counselor pools have no ACTIVE
+        // pool rows at all, and the old hard filter zeroed the candidate list
+        // there, making reassignment impossible.
+        List<String> active = retainActiveCounsellors(req.getInstituteId(), candidates);
+        if (!active.isEmpty()) {
+            candidates = active;
+        }
         if (candidates.isEmpty()) {
-            throw new VacademyException("No active counsellors available for round-robin reassignment");
+            throw new VacademyException("No counsellors available for round-robin reassignment");
         }
         List<Plan> out = new ArrayList<>(leads.size());
         int idx = 0;

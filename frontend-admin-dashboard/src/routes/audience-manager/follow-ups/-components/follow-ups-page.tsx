@@ -16,7 +16,7 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
-import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -132,21 +132,28 @@ const FollowUpsContent = () => {
     } | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-    // Counsellor option list — admin only.
-    const counsellorOptionsQuery = useQuery({
-        queryKey: ['counsellor-options', instituteId],
-        queryFn: fetchCounselors,
-        enabled: !!instituteId && isAdmin,
-        staleTime: 5 * 60 * 1000,
-    });
-    const counsellorOptions = counsellorOptionsQuery.data ?? [];
+    // Counsellor options, role + hierarchy scoped by the backend: a scoped
+    // caller (COUNSELLOR role) gets self + their counsellor reports; a pure
+    // admin gets the institute-wide COUNSELLOR-role roster.
+    const {
+        options: counsellorOptions,
+        scoped: isScopedCounsellor,
+        isLoading: counsellorOptionsLoading,
+    } = useLeadCounsellorOptions();
 
-    // Non-admins are locked server-side; admins drill in via the filter.
-    const effectiveCounsellorId = isAdmin
-        ? counsellorFilter === ALL_COUNSELLORS_VALUE
-            ? undefined
-            : counsellorFilter
-        : currentUserId || undefined;
+    // Managers (scoped with reports) and admins get the drill-in filter; a
+    // leaf counsellor's single-option filter would be noise.
+    const canFilterCounsellors = isAdmin || (isScopedCounsellor && counsellorOptions.length > 1);
+
+    // Admins and scoped counsellors rely on the backend's hierarchy RBAC when
+    // no explicit counsellor is picked (a scoped manager sees own + reports).
+    // Any other role keeps the old client-side lock to their own follow-ups.
+    const effectiveCounsellorId =
+        isAdmin || isScopedCounsellor
+            ? counsellorFilter === ALL_COUNSELLORS_VALUE
+                ? undefined
+                : counsellorFilter
+            : currentUserId || undefined;
 
     const { data, isLoading, error } = useQuery({
         queryKey: ['follow-ups', instituteId, effectiveCounsellorId],
@@ -329,7 +336,7 @@ const FollowUpsContent = () => {
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-semibold text-neutral-900">
-                        {isAdmin ? 'Follow-ups' : 'My Follow-ups'}
+                        {canFilterCounsellors ? 'Follow-ups' : 'My Follow-ups'}
                     </h1>
                     <p
                         className={`mt-0.5 text-sm ${
@@ -339,13 +346,13 @@ const FollowUpsContent = () => {
                         {subline} · {format(new Date(), 'EEEE, MMM d')}
                     </p>
                 </div>
-                {isAdmin && (
+                {canFilterCounsellors && (
                     <CounsellorFilter
                         value={counsellorFilter}
                         onChange={setCounsellorFilter}
                         allValue={ALL_COUNSELLORS_VALUE}
                         options={counsellorOptions}
-                        isLoading={counsellorOptionsQuery.isLoading}
+                        isLoading={counsellorOptionsLoading}
                     />
                 )}
             </div>

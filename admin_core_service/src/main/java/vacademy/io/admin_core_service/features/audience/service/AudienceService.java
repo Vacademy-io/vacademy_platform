@@ -116,9 +116,6 @@ public class AudienceService {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
-    /** Resolves leads_team_id and (when present) gates the CRM-Leads RBAC narrowing. */
-    @Autowired
-    private vacademy.io.admin_core_service.features.counsellor_workbench.service.LeadWorkbenchSettingService workbenchSettingService;
 
     /** Resolves caller + user-to-user descendants in the leads team. */
     @Autowired
@@ -2066,83 +2063,66 @@ public class AudienceService {
      * </ul>
      */
     /**
-     * Resolve the people a caller may assign a lead to.
-     *
-     * <p>Mirrors the visibility rule used by {@link #getLeads}: when the
-     * institute has configured a {@code leads_team_id} AND the caller is in
-     * that subtree, the candidate list is intersected with the caller's
-     * descendants ({@code self + reports + reports' reports}). For admins
-     * (no leads-team mapping) the picker stays institute-wide.
-     *
-     * <p>Implementation: the institute-wide pool comes from auth_service's
-     * autosuggest endpoint (full_name / email / mobile prefix match). When
-     * scoping applies we filter that pool in-process — autosuggest is
-     * capped at 10 results, so the intersection is cheap.
+     * Resolve the people a caller may assign a lead to: COUNSELLOR-role users
+     * only, mirroring the visibility rule used by {@link #getLeads}. A
+     * hierarchy-scoped caller (holds the COUNSELLOR role) gets their scope —
+     * {@code self + counsellor reports + reports' reports}; a pure admin gets
+     * the institute-wide counsellor roster. Either way the picker no longer
+     * offers non-counsellor users (the old admin branch was a raw
+     * autosuggest over ALL institute users).
      */
     public List<vacademy.io.common.auth.dto.UserDTO> eligibleAssignees(String instituteId,
                                                                        String query,
                                                                        CustomUserDetails caller) {
-        // Empty query → autosuggest would return empty (it requires a query).
-        // We still want to show some candidates so the picker isn't blank on
-        // first open — pull the caller's RBAC scope directly when in-team.
-        boolean rbac = caller != null && caller.getUserId() != null
-                && workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
-                && counsellorScopeService.isCallerInLeadsSubtree(instituteId, caller.getUserId());
-
-        if (rbac) {
-            List<String> userIds = counsellorScopeService
-                    .descendantUserIdsForCaller(instituteId, caller.getUserId());
-            if (userIds.isEmpty()) return List.of();
-            // Pull full user records for the scope (name / email / mobile).
-            List<vacademy.io.common.auth.dto.UserDTO> scopeUsers =
-                    authService.getUsersFromAuthServiceByUserIds(userIds);
-            if (query == null || query.isBlank()) {
-                return scopeUsers.stream().limit(10).toList();
-            }
-            final String q = query.toLowerCase();
-            return scopeUsers.stream()
-                    .filter(u -> matchesAutosuggest(u, q))
-                    .limit(10)
-                    .toList();
+        if (caller == null || caller.getUserId() == null) return List.of();
+        List<String> userIds = counsellorScopeService
+                .visibleCounsellorUserIds(instituteId, caller.getUserId());
+        if (userIds.isEmpty()) return List.of();
+        // Pull full user records for the candidate set (name / email / mobile),
+        // then filter in-process. Empty query → first 10 so the picker isn't
+        // blank on first open (autosuggest used to require a query).
+        List<vacademy.io.common.auth.dto.UserDTO> candidates =
+                authService.getUsersFromAuthServiceByUserIds(userIds);
+        if (query == null || query.isBlank()) {
+            return candidates.stream().limit(10).toList();
         }
-
-        // No RBAC gate → existing admin behaviour (institute-wide autosuggest).
-        if (query == null || query.isBlank()) return List.of();
-        return authService.autosuggestUsers(instituteId, query);
+        final String q = query.toLowerCase();
+        return candidates.stream()
+                .filter(u -> matchesAutosuggest(u, q))
+                .limit(10)
+                .toList();
     }
 
     /**
-     * Counsellor options for the CRM Leads "All counsellors" filter, scoped the SAME way
-     * {@link #getLeads} scopes the visible leads. When the institute has a leads_team_id
-     * configured AND the caller is in that subtree, returns the caller + their user-to-user
-     * descendants (self + reports + reports' reports) — so the filter only lists counsellors
-     * whose leads the caller can actually see. A team head sees their whole downstream; a
-     * mid-level manager sees their reports; a leaf counsellor sees only themselves.
+     * Counsellor options for the CRM Leads "All counsellors" filter, scoped the
+     * SAME way {@link #getLeads} scopes the visible leads: a hierarchy-scoped
+     * caller (COUNSELLOR role — even alongside ADMIN) gets the counsellors
+     * whose leads they can actually see (self + counsellor-role descendants);
+     * a pure admin gets the institute-wide COUNSELLOR-role roster.
      *
-     * <p>Outside that gate (admin, or no leads team configured) returns {@code scoped=false}
-     * with an empty list; the frontend then falls back to its institute-wide counsellor list,
-     * preserving the existing admin behaviour.</p>
+     * <p>The counsellor list is populated in BOTH cases (it used to be empty
+     * for admins, forcing an institute-wide frontend fallback that also
+     * offered ADMIN-role users). {@code scoped} keeps its RBAC meaning: true
+     * only when the caller is hierarchy-scoped — the frontend uses it to
+     * decide whether the caller's data is narrowed server-side.</p>
      */
     public LeadCounsellorOptionsDTO leadCounsellorOptions(String instituteId, CustomUserDetails caller) {
-        boolean rbac = caller != null && caller.getUserId() != null
-                && instituteId != null && !instituteId.isBlank()
-                && workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
-                && counsellorScopeService.isCallerInLeadsSubtree(instituteId, caller.getUserId());
-
-        if (!rbac) {
+        if (caller == null || caller.getUserId() == null
+                || instituteId == null || instituteId.isBlank()) {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
+        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller.getUserId());
         List<String> userIds = counsellorScopeService
-                .descendantUserIdsForCaller(instituteId, caller.getUserId());
+                .visibleCounsellorUserIds(instituteId, caller.getUserId());
         if (userIds.isEmpty()) {
-            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(List.of()).build();
+            return LeadCounsellorOptionsDTO.builder().scoped(scoped).counsellors(List.of()).build();
         }
         // Full user records (name/email/mobile) for the scope — no limit, unlike the
-        // assignment picker; a filter dropdown wants the complete team, not a top-10.
+        // assignment picker; a filter dropdown wants the complete roster, not a top-10.
         List<vacademy.io.common.auth.dto.UserDTO> users =
                 authService.getUsersFromAuthServiceByUserIds(userIds);
-        return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(users).build();
+        return LeadCounsellorOptionsDTO.builder().scoped(scoped).counsellors(users).build();
     }
 
     private static boolean matchesAutosuggest(vacademy.io.common.auth.dto.UserDTO u, String qLower) {
@@ -2173,13 +2153,14 @@ public class AudienceService {
         EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
                 user, filterDTO.getInstituteId());
 
-        // RBAC narrowing for the CRM Leads tab. When the institute has
-        // configured a leads_team_id AND the caller is in that subtree, we
-        // restrict the visible leads to the caller's user-to-user
-        // descendants (themselves + everyone reporting up to them through
-        // parent_user_id). A team head sees their whole downstream; a
-        // mid-level manager sees their reports; a leaf member sees only
-        // their own leads. Computed as a CSV that the native query plugs
+        // RBAC narrowing for the CRM Leads tab. When the caller holds the
+        // COUNSELLOR role (even alongside ADMIN — counsellor privilege wins),
+        // we restrict the visible leads to their hierarchy scope: themselves
+        // + every counsellor-role user reporting up to them through
+        // parent_user_id chains in any org team they belong to. A team head
+        // sees their whole downstream; a mid-level manager sees their
+        // reports; a leaf member sees only their own leads. Pure admins stay
+        // institute-wide. Computed as a CSV that the native query plugs
         // into a `STRING_TO_ARRAY(...) = ANY` predicate alongside the
         // single-id filter — so a manager can still drill into a specific
         // report by sending assignedCounselorId.
@@ -2189,10 +2170,9 @@ public class AudienceService {
                 && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
             String instituteId = filterDTO.getInstituteId();
-            if (workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
-                    && counsellorScopeService.isCallerInLeadsSubtree(instituteId, user.getUserId())) {
+            if (counsellorScopeService.isScopedCaller(instituteId, user.getUserId())) {
                 List<String> scope = counsellorScopeService
-                        .descendantUserIdsForCaller(instituteId, user.getUserId());
+                        .scopedCounsellorUserIds(instituteId, user.getUserId());
                 if (!scope.isEmpty()) {
                     assignedCounselorIdsCsv = String.join(",", scope);
                     rbacApplied = true;

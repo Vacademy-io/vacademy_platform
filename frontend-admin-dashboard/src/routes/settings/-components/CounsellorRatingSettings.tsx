@@ -50,11 +50,7 @@ export function CounsellorRatingSettings() {
         if (!draft) return;
         setSaving(true);
         try {
-            // leads_team_id is owned by the LeadsTeamPicker; a rating save must
-            // never re-write it (the echoed value could be stale if another admin
-            // changed the team meanwhile). Null + rating fields = backend leaves
-            // the team untouched.
-            await updateWorkbenchConfig({ ...draft, leads_team_id: null });
+            await updateWorkbenchConfig({ ...draft });
             toast.success('Saved');
         } catch (e) {
             const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;

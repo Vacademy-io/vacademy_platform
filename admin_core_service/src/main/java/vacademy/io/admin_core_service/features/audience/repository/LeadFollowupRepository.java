@@ -20,6 +20,10 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
 
     List<LeadFollowup> findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(String instituteId);
 
+    /** Manager view: pending follow-ups owned by anyone in the caller's hierarchy scope. */
+    List<LeadFollowup> findByInstituteIdAndCreatedByInAndIsClosedFalseOrderByScheduleTimeAsc(
+            String instituteId, List<String> createdBy);
+
     /**
      * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.
      * Used by the leads-list to populate the "Follow up at" column with the counsellor-scheduled

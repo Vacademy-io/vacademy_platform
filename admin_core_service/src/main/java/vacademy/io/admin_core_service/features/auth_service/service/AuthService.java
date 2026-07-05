@@ -564,6 +564,47 @@ public class AuthService {
         }
     }
 
+    /**
+     * Strict variant of {@link #getUserIdsByRole}: THROWS on lookup failure
+     * instead of returning an empty list, so callers that cache the result
+     * (e.g. CounsellorScopeService's role cache) can tell "institute has no
+     * such users" apart from "auth_service is down" and serve a stale value
+     * rather than silently widening/narrowing RBAC scope.
+     */
+    public List<String> getUserIdsByRoleStrict(String instituteId, String roleName) {
+        if (instituteId == null || instituteId.isBlank() || roleName == null || roleName.isBlank()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USERS_BY_ROLE
+                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&roleName=" + java.net.URLEncoder.encode(roleName, java.nio.charset.StandardCharsets.UTF_8);
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+            if (response == null || response.getBody() == null
+                    || !response.getStatusCode().is2xxSuccessful()) {
+                throw new VacademyException("users-by-role lookup failed for role " + roleName);
+            }
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            List<UserDTO> users = objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<UserDTO>>() {});
+            return users.stream()
+                    .map(UserDTO::getId)
+                    .filter(id -> id != null && !id.isEmpty())
+                    .distinct()
+                    .toList();
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            throw new VacademyException("users-by-role lookup failed: " + e.getMessage());
+        }
+    }
+
     public void updateInstituteSettings(String instituteId, String userIdentifier) {
         try {
             String endpoint = AuthServiceRoutes.UPDATE_INSTITUTE_SETTINGS;

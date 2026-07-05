@@ -91,32 +91,7 @@ public class AudienceRoleAccessService {
             logger.info("[audienceRoleAccess] caller=null → DEFAULT");
             return EffectiveAccess.defaultMode();
         }
-        // Pre-compute authorities as a Set<String> for both logging and matching.
-        Set<String> callerRoles = user.getAuthorities() == null ? new java.util.HashSet<>()
-                : user.getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority)
-                        .filter(Objects::nonNull)
-                        .map(String::toUpperCase)
-                        .collect(Collectors.toSet());
-        // JWT-decode fallback: when the JwtAuthFilter can't determine the
-        // institute from the request (e.g. POST /audience/leads carries the
-        // institute_id only in the body, not as a query param/header),
-        // `loadUserByUsername` ends up calling auth-service with
-        // `<null>@<username>` and gets back an empty authorities list.
-        //
-        // The JWT itself, however, contains the user's roles per institute.
-        // Read the Authorization header, decode the payload (Spring already
-        // verified its signature in JwtAuthFilter), and pluck
-        // `authorities[<instituteId>].roles`. We can't query the DB here
-        // because user_role lives in the auth_service database, not this
-        // service's database (the failing fallback that produced
-        // `relation "user_role" does not exist`).
-        if (callerRoles.isEmpty() && instituteId != null && !instituteId.isBlank()) {
-            Set<String> rolesFromJwt = readRolesFromJwt(instituteId);
-            for (String r : rolesFromJwt) {
-                callerRoles.add(r);
-            }
-        }
+        Set<String> callerRoles = resolvedCallerRoles(user, instituteId);
         logger.info("[audienceRoleAccess] caller userId={} root={} institute={} authorities={}",
                 user.getUserId(), user.isRootUser(), instituteId, callerRoles);
         if (instituteId == null || instituteId.isBlank()) {
@@ -188,6 +163,32 @@ public class AudienceRoleAccessService {
         }
         logger.info("[audienceRoleAccess] no matched mode produced a non-DEFAULT result → DEFAULT");
         return EffectiveAccess.defaultMode();
+    }
+
+    /**
+     * The caller's uppercase role/permission names for the institute, resolved
+     * from {@code CustomUserDetails.getAuthorities()} with a JWT-decode
+     * fallback. The fallback covers requests where JwtAuthFilter couldn't
+     * determine the institute (e.g. institute_id only in a POST body) and
+     * loadUserByUsername came back with empty authorities. We can't query the
+     * DB instead — user_role lives in the auth_service database, not this
+     * service's (`relation "user_role" does not exist`).
+     *
+     * <p>Shared with {@code CounsellorScopeService}, which needs the same
+     * ADMIN/COUNSELLOR differentiation for CRM-Leads RBAC scoping.
+     */
+    public Set<String> resolvedCallerRoles(CustomUserDetails user, String instituteId) {
+        if (user == null) return Collections.emptySet();
+        Set<String> callerRoles = user.getAuthorities() == null ? new java.util.HashSet<>()
+                : user.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .filter(Objects::nonNull)
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toSet());
+        if (callerRoles.isEmpty() && instituteId != null && !instituteId.isBlank()) {
+            callerRoles = new java.util.HashSet<>(readRolesFromJwt(instituteId));
+        }
+        return callerRoles;
     }
 
     private AudienceRoleAccessDto readConfig(String instituteId) {

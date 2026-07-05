@@ -24,10 +24,10 @@ interface TeamPickerProps {
  * Compact team-scope picker shared by the CRM analytics surfaces
  * (Sales Dashboard header, Reports Center filter bar).
  *
- * Resolves the caller's home team in the leads subtree via
- * GET /v1/counsellor-workbench/me/team. When that call fails (caller isn't
- * in the leads team — e.g. a plain admin) the picker hides entirely and the
- * consuming page keeps its current behavior (teamId = undefined).
+ * Resolves the caller's own team via GET /v1/counsellor-workbench/me/team.
+ * Users without a team membership (e.g. a plain admin) get an empty DTO —
+ * the picker hides entirely and the consuming page keeps its current
+ * behavior (teamId = undefined).
  *
  * Team names for the caller's descendant teams come from the org-team list
  * endpoint; descendants whose names can't be resolved (e.g. the caller lacks
@@ -44,21 +44,22 @@ export function TeamPicker({ instituteId, value, onChange }: TeamPickerProps) {
         queryFn: () => fetchMyTeam(instituteId),
     });
     const myTeam = myTeamQuery.data;
+    const myTeamId = myTeam?.team_id ?? null;
 
     const teamsQuery = useQuery({
         queryKey: ['org-teams', instituteId],
-        enabled: !!instituteId && !!myTeam,
+        enabled: !!instituteId && !!myTeamId,
         retry: false,
         staleTime: 5 * 60 * 1000,
         queryFn: () => listTeams(instituteId),
     });
 
-    // Loading or failed (caller outside the leads team) → no picker.
-    if (!myTeam) return null;
+    // Loading, failed, or caller has no team → no picker.
+    if (!myTeamId) return null;
 
     const nameById = new Map((teamsQuery.data ?? []).map((t) => [t.id, t.name]));
-    const descendantOptions = (myTeam.descendant_team_ids ?? [])
-        .filter((id) => id !== myTeam.team_id)
+    const descendantOptions = (myTeam?.descendant_team_ids ?? [])
+        .filter((id) => id !== myTeamId)
         .map((id) => ({ id, name: nameById.get(id) }))
         .filter((o): o is { id: string; name: string } => !!o.name)
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -74,7 +75,9 @@ export function TeamPicker({ instituteId, value, onChange }: TeamPickerProps) {
             </SelectTrigger>
             <SelectContent>
                 <SelectItem value={ALL_TEAMS_VALUE}>All my teams</SelectItem>
-                <SelectItem value={myTeam.team_id}>{myTeam.team_name} (my team)</SelectItem>
+                <SelectItem value={myTeamId}>
+                    {myTeam?.team_name ?? 'My team'} (my team)
+                </SelectItem>
                 {descendantOptions.map((o) => (
                     <SelectItem key={o.id} value={o.id}>
                         {o.name}

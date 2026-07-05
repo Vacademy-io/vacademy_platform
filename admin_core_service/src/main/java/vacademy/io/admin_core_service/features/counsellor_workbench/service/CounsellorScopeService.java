@@ -3,175 +3,192 @@ package vacademy.io.admin_core_service.features.counsellor_workbench.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchTeamDTO;
 import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
 import vacademy.io.common.auth.dto.organization.TeamMemberDTO;
-import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Resolves the caller's "team scope" for the counsellor workbench.
+ * Resolves the caller's RBAC scope for the counsellor / leads features.
  *
- * Workflow:
- *   1. Read leads_team_id from institute_setting (LEAD_SETTING.workbench).
- *   2. Pull the caller's team mappings from auth_service.
- *   3. Pick the mapping whose team_id sits inside the leads subtree.
- *   4. Resolve that team's subtree via auth_service (one HMAC call) — those
- *      are the teams whose members' leads the caller is allowed to see.
+ * Model (role-based — replaces the old "configured leads team" model):
+ *   • A counsellor is any institute user holding the ACTIVE {@code COUNSELLOR}
+ *     role in auth_service. Nothing is configured in LEAD_SETTING anymore;
+ *     the old {@code workbench.leads_team_id} JSON key is ignored.
+ *   • A caller who holds the COUNSELLOR role is ALWAYS hierarchy-scoped —
+ *     even when they also hold ADMIN (counsellor privilege wins by product
+ *     decision). Their scope = themselves + every counsellor-role user who
+ *     reports up to them through {@code parent_user_id} chains in ANY org
+ *     team they belong to.
+ *   • A caller without the COUNSELLOR role (pure admin, teacher, …) is not
+ *     hierarchy-scoped here; whether they see institute-wide data stays
+ *     governed by the caller-role checks at each endpoint (ADMIN) and by
+ *     {@code AudienceRoleAccessService} modes.
  *
- * All team-graph access goes through {@link OrganizationTeamAuthClient}; this
- * service holds no JPA references because the team graph lives in auth_service.
+ * Membership in unrelated teams (Finance, HR, …) is harmless: descendants are
+ * intersected with the counsellor-role set, which replaces the old "only walk
+ * teams under the leads root" guard.
+ *
+ * All team-graph access goes through {@link OrganizationTeamAuthClient} and the
+ * role list through {@link AuthService}; this service holds no JPA references
+ * because both the team graph and user_role live in auth_service.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CounsellorScopeService {
 
-    private final LeadWorkbenchSettingService configService;
+    public static final String COUNSELLOR_ROLE = "COUNSELLOR";
+
+    /** Role-list cache TTL. Scope freshness within a couple of minutes matches
+     *  the old behavior (team edits weren't instant either) and keeps the
+     *  per-request HMAC fan-out off the hot leads/report paths. */
+    private static final long ROLE_CACHE_TTL_MS = 2 * 60 * 1000L;
+
     private final OrganizationTeamAuthClient orgTeamClient;
+    private final AuthService authService;
 
-    public WorkbenchTeamDTO resolveHomeScope(String instituteId, String callerUserId) {
-        String leadsRootId = configService.getLeadsTeamId(instituteId)
-                .orElseThrow(() -> new VacademyException(
-                        "Leads team is not configured for this institute. Set it under Settings → Lead Workbench."));
+    private record CachedIds(List<String> userIds, long fetchedAt) {}
+    private final Map<String, CachedIds> counsellorCache = new ConcurrentHashMap<>();
 
-        // Resolve the leads subtree once — used both for the membership filter
-        // and to validate that the caller's home team falls inside it.
-        List<OrgTeamDTO> leadsSubtree = orgTeamClient.getSubtreeIncludingSelf(leadsRootId);
-        Set<String> leadsSubtreeIds = leadsSubtree.stream()
-                .map(OrgTeamDTO::getId).collect(Collectors.toSet());
-
-        // The caller's team mappings live in auth_service alongside their roles.
-        List<TeamMemberDTO> mappings = orgTeamClient.mappingsForUser(callerUserId);
-        String homeTeamId = null;
-        String homeTeamName = null;
-        for (TeamMemberDTO m : mappings) {
-            if (leadsSubtreeIds.contains(m.getTeamId())) {
-                homeTeamId = m.getTeamId();
-                break;
-            }
+    /**
+     * All ACTIVE counsellor-role user ids of the institute — the institute-wide
+     * roster admins see. Cached per institute; on auth_service failure the last
+     * known value is served (stale beats silently flipping everyone's RBAC),
+     * and with no cached value we degrade to an empty list (callers then scope
+     * to self / render an empty roster rather than erroring the whole page).
+     */
+    public List<String> allCounsellorUserIds(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return Collections.emptyList();
+        long now = System.currentTimeMillis();
+        CachedIds cached = counsellorCache.get(instituteId);
+        if (cached != null && now - cached.fetchedAt() < ROLE_CACHE_TTL_MS) {
+            return cached.userIds();
         }
-        if (homeTeamId == null) {
-            throw new VacademyException("You are not a member of any team within the leads org subtree.");
-        }
-        final String resolvedTeamId = homeTeamId;
-        for (OrgTeamDTO t : leadsSubtree) {
-            if (resolvedTeamId.equals(t.getId())) {
-                homeTeamName = t.getName();
-                break;
-            }
-        }
-
-        List<OrgTeamDTO> subtree = orgTeamClient.getSubtreeIncludingSelf(resolvedTeamId);
-        List<OrgTeamDTO> ancestors = orgTeamClient.getAncestors(resolvedTeamId);
-
-        return WorkbenchTeamDTO.builder()
-                .teamId(resolvedTeamId)
-                .teamName(homeTeamName)
-                .leadsRootTeamId(leadsRootId)
-                .ancestorNames(ancestors.stream().map(OrgTeamDTO::getName).collect(Collectors.toList()))
-                .descendantTeamIds(subtree.stream().map(OrgTeamDTO::getId).collect(Collectors.toList()))
-                .build();
-    }
-
-    /**
-     * Distinct user ids across the given teams. Single HMAC POST to
-     * auth_service — much cheaper than calling {@link #mappingsForUser} per user.
-     */
-    public List<String> usersInTeams(Collection<String> teamIds) {
-        if (teamIds == null || teamIds.isEmpty()) return Collections.emptyList();
-        return orgTeamClient.usersInTeams(new ArrayList<>(teamIds));
-    }
-
-    /** All teams under the institute's leads root — used by admin-scope queries. */
-    public List<String> allTeamIdsUnderLeadsRoot(String instituteId) {
-        return leadsRootSubtree(instituteId).stream()
-                .map(OrgTeamDTO::getId).collect(Collectors.toList());
-    }
-
-    /**
-     * Full DTO subtree under the institute's leads root. Returns empty when
-     * the institute has not configured a leads root yet.
-     */
-    public List<OrgTeamDTO> leadsRootSubtree(String instituteId) {
-        String leadsRootId = configService.getLeadsTeamId(instituteId).orElse(null);
-        if (leadsRootId == null) return Collections.emptyList();
-        return orgTeamClient.getSubtreeIncludingSelf(leadsRootId);
-    }
-
-    /**
-     * RBAC scope for the workbench / sales dashboard. Returns the caller's
-     * user_id plus every user that reports up to them through
-     * {@code parent_user_id} chains inside any team under the institute's
-     * configured leads root.
-     *
-     * <p>Concretely: a team head (parent_user_id = null inside the team)
-     * gets the whole team's downstream; a mid-level manager gets themselves
-     * + direct reports + their reports; a leaf member gets only themselves.
-     *
-     * <p>This is the canonical "what data can this caller see" answer —
-     * every endpoint that filters by counsellor user_id should run requests
-     * through here unless the caller has an admin-level permission that
-     * widens the scope explicitly. The caller's own user_id is always in
-     * the returned set so a leaf counsellor still sees their own data.
-     */
-    /**
-     * Does the caller have any team membership inside the institute's
-     * configured leads subtree? Used as the gate for the CRM-Leads RBAC
-     * scoping: only callers who are actually in the leads team should be
-     * narrowed to their descendants — admins / others stay institute-wide.
-     */
-    public boolean isCallerInLeadsSubtree(String instituteId, String callerUserId) {
-        if (callerUserId == null || callerUserId.isBlank()) return false;
-        Set<String> leadsTeamIds = new HashSet<>(allTeamIdsUnderLeadsRoot(instituteId));
-        if (leadsTeamIds.isEmpty()) return false;
         try {
-            return orgTeamClient.mappingsForUser(callerUserId).stream()
-                    .anyMatch(m -> m.getTeamId() != null && leadsTeamIds.contains(m.getTeamId()));
+            List<String> fresh = List.copyOf(
+                    authService.getUserIdsByRoleStrict(instituteId, COUNSELLOR_ROLE));
+            counsellorCache.put(instituteId, new CachedIds(fresh, now));
+            return fresh;
         } catch (Exception e) {
-            log.warn("isCallerInLeadsSubtree: mappingsForUser({}) failed: {}",
-                    callerUserId, e.getMessage());
-            return false;
+            log.warn("allCounsellorUserIds({}) failed, serving {}: {}", instituteId,
+                    cached != null ? "stale cache" : "empty", e.getMessage());
+            return cached != null ? cached.userIds() : Collections.emptyList();
         }
     }
 
-    public List<String> descendantUserIdsForCaller(String instituteId, String callerUserId) {
+    /**
+     * Should this caller's data access be narrowed to their hierarchy scope?
+     * True exactly when the caller holds the COUNSELLOR role — which makes the
+     * multi-role case (ADMIN + COUNSELLOR) scoped by construction: counsellor
+     * privilege wins over the admin institute-wide view.
+     */
+    public boolean isScopedCaller(String instituteId, String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) return false;
+        return allCounsellorUserIds(instituteId).contains(callerUserId);
+    }
+
+    /**
+     * The canonical "what data can this caller see" answer: the caller's own
+     * user_id plus every counsellor-role user reporting up to them through
+     * {@code parent_user_id} chains in any team the caller belongs to. A team
+     * head gets the whole team's counsellor downstream; a mid-level manager
+     * gets themselves + reports (+ their reports); a leaf counsellor or a
+     * caller with no team membership gets only themselves.
+     *
+     * <p>Every endpoint that filters by counsellor user_id should run requests
+     * through here when {@link #isScopedCaller} is true.
+     */
+    public List<String> scopedCounsellorUserIds(String instituteId, String callerUserId) {
         if (callerUserId == null || callerUserId.isBlank()) return Collections.emptyList();
 
-        Set<String> leadsTeamIds = new HashSet<>(allTeamIdsUnderLeadsRoot(instituteId));
-        // Caller might not be in any leads-team yet — that's fine, they still
-        // see themselves (and may have leads assigned without team membership).
-        Set<String> out = new HashSet<>();
+        Set<String> out = new LinkedHashSet<>();
         out.add(callerUserId);
+
+        Set<String> counsellors = new HashSet<>(allCounsellorUserIds(instituteId));
 
         List<TeamMemberDTO> callerMappings;
         try {
             callerMappings = orgTeamClient.mappingsForUser(callerUserId);
         } catch (Exception e) {
-            log.warn("descendantUserIdsForCaller: mappingsForUser({}) failed: {}",
+            log.warn("scopedCounsellorUserIds: mappingsForUser({}) failed: {}",
                     callerUserId, e.getMessage());
             return new ArrayList<>(out);
         }
 
         for (TeamMemberDTO m : callerMappings) {
             if (m.getTeamId() == null || m.getMappingId() == null) continue;
-            // Only walk through teams under the configured leads root, so a
-            // caller who happens to be in an unrelated team (e.g. Finance)
-            // doesn't accidentally see their Finance reports' leads.
-            if (!leadsTeamIds.isEmpty() && !leadsTeamIds.contains(m.getTeamId())) continue;
             try {
                 List<TeamMemberDTO> descendants = orgTeamClient.getDescendants(m.getTeamId(), m.getMappingId());
                 for (TeamMemberDTO d : descendants) {
-                    if (d.getUserId() != null) out.add(d.getUserId());
+                    if (d.getUserId() != null && counsellors.contains(d.getUserId())) {
+                        out.add(d.getUserId());
+                    }
                 }
             } catch (Exception e) {
-                log.warn("descendantUserIdsForCaller: getDescendants({}, {}) failed: {}",
+                log.warn("scopedCounsellorUserIds: getDescendants({}, {}) failed: {}",
                         m.getTeamId(), m.getMappingId(), e.getMessage());
             }
         }
         return new ArrayList<>(out);
+    }
+
+    /**
+     * The counsellor list a caller may see in rosters / filter dropdowns /
+     * assignment pickers: their hierarchy scope when scoped, the institute-wide
+     * counsellor-role list otherwise (pure admins and other unscoped roles).
+     */
+    public List<String> visibleCounsellorUserIds(String instituteId, String callerUserId) {
+        return isScopedCaller(instituteId, callerUserId)
+                ? scopedCounsellorUserIds(instituteId, callerUserId)
+                : allCounsellorUserIds(instituteId);
+    }
+
+    /**
+     * Distinct user ids across the given teams. Used by report queries that
+     * take an explicit teamId filter.
+     */
+    public List<String> usersInTeams(Collection<String> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) return Collections.emptyList();
+        return orgTeamClient.usersInTeams(new ArrayList<>(teamIds));
+    }
+
+    /**
+     * The caller's team memberships, for header/display purposes only — RBAC
+     * never depends on this. Returns an empty list for users without a team
+     * (no more "leads team is not configured" error: there is nothing to
+     * configure in the role-based model).
+     */
+    public List<WorkbenchTeamDTO> myTeams(String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) return Collections.emptyList();
+        List<TeamMemberDTO> mappings;
+        try {
+            mappings = orgTeamClient.mappingsForUser(callerUserId);
+        } catch (Exception e) {
+            log.warn("myTeams: mappingsForUser({}) failed: {}", callerUserId, e.getMessage());
+            return Collections.emptyList();
+        }
+        List<WorkbenchTeamDTO> out = new ArrayList<>();
+        for (TeamMemberDTO m : mappings) {
+            if (m.getTeamId() == null) continue;
+            String teamName = null;
+            try {
+                OrgTeamDTO team = orgTeamClient.getTeam(m.getTeamId());
+                if (team != null) teamName = team.getName();
+            } catch (Exception e) {
+                log.warn("myTeams: getTeam({}) failed: {}", m.getTeamId(), e.getMessage());
+            }
+            out.add(WorkbenchTeamDTO.builder()
+                    .teamId(m.getTeamId())
+                    .teamName(teamName)
+                    .ancestorNames(Collections.emptyList())
+                    .descendantTeamIds(List.of(m.getTeamId()))
+                    .build());
+        }
+        return out;
     }
 }

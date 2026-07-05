@@ -17,9 +17,10 @@ import java.util.List;
 /**
  * Counsellor-facing workbench endpoints.
  *
- * /me/*  resolve the caller's home team automatically (scope = own team +
- *        descendants under leads_team_id). Managers with broader scope use
- *        the /team/{teamId}/* variants to look at a specific subtree.
+ * RBAC model: counsellors are role-defined (COUNSELLOR in auth_service) —
+ * nothing is configured. /me/* resolve the caller's hierarchy scope (self +
+ * counsellor-role users below them through parent_user_id chains in any team
+ * they belong to); pure admins see the institute-wide counsellor roster.
  */
 @RestController
 @RequestMapping("/admin-core-service/v1/counsellor-workbench")
@@ -31,7 +32,8 @@ public class CounsellorWorkbenchController {
     private final LeadWorkbenchSettingService configService;
 
     // ────────────────────────────────────────────────────────────────
-    // Config (leads_team_id + rating strategy)
+    // Config (rating strategy — the old leads_team_id config is gone;
+    // counsellors are role-defined and scope comes from the org hierarchy)
     // ────────────────────────────────────────────────────────────────
 
     @GetMapping("/config")
@@ -40,19 +42,9 @@ public class CounsellorWorkbenchController {
     }
 
     /**
-     * Partial upsert of the workbench config. Two frontend pages PUT here
-     * with different payload shapes:
-     * <ul>
-     *   <li>Leads-team picker — {@code {institute_id, leads_team_id}} only
-     *       (leads_team_id may be an explicit null to CLEAR the team);</li>
-     *   <li>Rating settings — the full config echo with rating fields set
-     *       (its leads_team_id is whatever GET returned, possibly null when
-     *       the team was never configured).</li>
-     * </ul>
-     * setLeadsTeam(null) REMOVES the team, so we only honour a null
-     * leads_team_id when the payload carries no rating fields — a
-     * rating-settings save must never wipe an existing team just because
-     * the echoed leads_team_id was null.
+     * Upsert of the rating-strategy config. Old frontends that still PUT a
+     * {@code leads_team_id} get it silently ignored (the field no longer
+     * exists on {@link WorkbenchConfig} and Jackson skips unknown properties).
      */
     @PutMapping("/config")
     public ResponseEntity<WorkbenchConfig> updateConfig(@RequestBody WorkbenchConfig request) {
@@ -67,9 +59,6 @@ public class CounsellorWorkbenchController {
                 || request.getMinSampleSize() != null;
         if (hasRatingFields) {
             configService.upsertRatingStrategy(request);
-        }
-        if (request.getLeadsTeamId() != null || !hasRatingFields) {
-            configService.setLeadsTeam(request.getInstituteId(), request.getLeadsTeamId());
         }
         return ResponseEntity.ok(configService.get(request.getInstituteId()));
     }
@@ -96,11 +85,32 @@ public class CounsellorWorkbenchController {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Team-wide views
+    // Roster
     // ────────────────────────────────────────────────────────────────
 
-    @GetMapping("/team/{teamId}/counsellors")
+    /**
+     * The workbench roster: every COUNSELLOR-role user the caller may see —
+     * hierarchy scope for scoped callers, institute-wide for pure admins.
+     */
+    @GetMapping("/counsellors")
     public ResponseEntity<Page<WorkbenchCounsellorDTO>> listCounsellors(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(workbenchService.listCounsellors(
+                instituteId, search, status, page, size, user));
+    }
+
+    /**
+     * @deprecated the roster is role-based now; teamId is ignored. Kept so an
+     * old frontend keeps working during rollout — use {@code GET /counsellors}.
+     */
+    @Deprecated
+    @GetMapping("/team/{teamId}/counsellors")
+    public ResponseEntity<Page<WorkbenchCounsellorDTO>> listCounsellorsForTeam(
             @PathVariable String teamId,
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "search", required = false) String search,
@@ -116,7 +126,8 @@ public class CounsellorWorkbenchController {
      * Leads currently assigned to a specific counsellor. The CSO / manager
      * detail drawer hits this when opening someone else's profile — the
      * /me/leads endpoint is auth-scoped to the caller so it can't surface
-     * another counsellor's leads.
+     * another counsellor's leads. Hierarchy-scoped callers can only open
+     * users inside their own scope.
      */
     @GetMapping("/counsellors/{userId}/leads")
     public ResponseEntity<Page<WorkbenchLeadDTO>> counsellorLeads(
@@ -124,8 +135,9 @@ public class CounsellorWorkbenchController {
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(workbenchService.leadsForCounsellor(instituteId, userId, status, page, size));
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(workbenchService.leadsForCounsellor(instituteId, userId, status, page, size, user));
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -187,10 +199,11 @@ public class CounsellorWorkbenchController {
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "from", required = false) Long fromMillis,
             @RequestParam(value = "to", required = false) Long toMillis,
-            @RequestParam(value = "limit", defaultValue = "50") int limit) {
+            @RequestParam(value = "limit", defaultValue = "50") int limit,
+            @RequestAttribute("user") CustomUserDetails user) {
         Timestamp from = fromMillis != null ? new Timestamp(fromMillis) : null;
         Timestamp to = toMillis != null ? new Timestamp(toMillis) : null;
-        return ResponseEntity.ok(workbenchService.activityFeed(userId, instituteId, from, to, limit));
+        return ResponseEntity.ok(workbenchService.activityFeed(userId, instituteId, from, to, limit, user));
     }
 
     // ────────────────────────────────────────────────────────────────

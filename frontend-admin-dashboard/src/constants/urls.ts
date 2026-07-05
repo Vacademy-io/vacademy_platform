@@ -375,17 +375,16 @@ export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/p
 export const GET_INSTITUTE_USERS = `${BASE_URL}/auth-service/v1/user-roles/users-of-status`;
 export const GET_USER_ROLES_COUNT = `${BASE_URL}/auth-service/v1/user-roles/user-roles-count`;
 export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
-// RBAC-scoped variant of the autosuggest used by lead-assign dialogs. When
-// the institute has configured a leads_team_id AND the caller is in that
-// subtree, the list is intersected with the caller's user-to-user
-// descendants — a manager can't accidentally assign a lead to someone
-// outside their reporting chain. Falls back to institute-wide autosuggest
-// when the gate doesn't apply (admin behaviour preserved).
+// RBAC-scoped assignee picker for lead-assign dialogs: COUNSELLOR-role users
+// only. A hierarchy-scoped caller (holds the COUNSELLOR role) gets self +
+// their counsellor reports — a manager can't accidentally assign a lead to
+// someone outside their reporting chain; a pure admin gets the institute-wide
+// counsellor roster.
 export const GET_ELIGIBLE_ASSIGNEES = `${BASE_URL}/admin-core-service/v1/audience/eligible-assignees`;
-// Counsellor options for the Leads "All counsellors" filter. Returns { scoped, counsellors }:
-// when a leads_team_id is configured and the caller is in that subtree the list is scoped to
-// the caller's team hierarchy (self + reports); otherwise scoped=false and the caller falls
-// back to the institute-wide counsellor list. See useLeadCounsellorOptions.
+// Counsellor options for the Leads "All counsellors" filter. Returns
+// { scoped, counsellors }: counsellors is always the caller-visible
+// COUNSELLOR-role list (hierarchy scope when scoped=true, institute-wide for
+// pure admins). See useLeadCounsellorOptions.
 export const GET_LEAD_COUNSELLOR_OPTIONS = `${BASE_URL}/admin-core-service/v1/audience/lead-counsellor-options`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
@@ -1181,9 +1180,9 @@ export const ORG_TEAM_USER_MEMBERSHIPS = (userId: string) =>
 
 // =============================================================================
 // Counsellor workbench. Powers the /counsellors route and its config in
-// Settings → Leads → Workbench. Backed by the workbench section of
-// LEAD_SETTING JSON (leads_team_id + rating strategy + per-counsellor
-// cached scores). No dedicated tables — works against stage/prod.
+// Settings → Leads → Workbench. Counsellors are role-defined (COUNSELLOR in
+// auth_service) and data scope comes from the org hierarchy — no configured
+// leads team anymore. Rating strategy config stays in LEAD_SETTING JSON.
 // =============================================================================
 export const COUNSELLOR_WORKBENCH_BASE = `${BASE_URL}/admin-core-service/v1/counsellor-workbench`;
 export const COUNSELLOR_WORKBENCH_CONFIG = (instituteId: string) =>
@@ -1200,15 +1199,16 @@ export const COUNSELLOR_WORKBENCH_MY_LEADS = (
     `${COUNSELLOR_WORKBENCH_BASE}/me/leads?instituteId=${instituteId}` +
     (status ? `&status=${status}` : '') +
     `&page=${page}&size=${size}`;
-export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (
+/** Role-based roster: every COUNSELLOR-role user the caller may see
+ *  (hierarchy scope for scoped callers, institute-wide for pure admins). */
+export const COUNSELLOR_WORKBENCH_COUNSELLORS = (
     instituteId: string,
-    teamId: string,
     search?: string,
     status?: 'active' | 'inactive' | 'all',
     page: number = 0,
     size: number = 20
 ) =>
-    `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}` +
+    `${COUNSELLOR_WORKBENCH_BASE}/counsellors?instituteId=${instituteId}` +
     (search ? `&search=${encodeURIComponent(search)}` : '') +
     (status && status !== 'all' ? `&status=${status}` : '') +
     `&page=${page}&size=${size}`;

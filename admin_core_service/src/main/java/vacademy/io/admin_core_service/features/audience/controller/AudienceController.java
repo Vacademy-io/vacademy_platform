@@ -67,8 +67,9 @@ public class AudienceController {
     @GetMapping("/lead-counsellor-options")
     public ResponseEntity<LeadCounsellorOptionsDTO> leadCounsellorOptions(
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "assignable", defaultValue = "false") boolean assignable,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user));
+        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user, assignable));
     }
 
     @PostMapping("/campaign")

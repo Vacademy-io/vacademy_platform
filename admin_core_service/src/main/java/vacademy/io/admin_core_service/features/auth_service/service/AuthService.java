@@ -565,43 +565,45 @@ public class AuthService {
     }
 
     /**
-     * Strict variant of {@link #getUserIdsByRole}: THROWS on lookup failure
-     * instead of returning an empty list, so callers that cache the result
-     * (e.g. CounsellorScopeService's role cache) can tell "institute has no
-     * such users" apart from "auth_service is down" and serve a stale value
-     * rather than silently widening/narrowing RBAC scope.
+     * User ids of everyone holding ANY of the given roles (ACTIVE user_role
+     * rows) in the institute, via the HMAC-internal users-of-status endpoint —
+     * the same DTO-based RoleService path that powers the staff screen.
+     *
+     * <p>STRICT: throws on lookup failure instead of returning an empty list,
+     * so callers that cache the result (CounsellorScopeService's role cache)
+     * can tell "institute has no such users" apart from "auth_service is
+     * down" and serve a stale value rather than silently flipping RBAC scope.
      */
-    public List<String> getUserIdsByRoleStrict(String instituteId, String roleName) {
-        if (instituteId == null || instituteId.isBlank() || roleName == null || roleName.isBlank()) {
+    public List<String> getActiveUserIdsByRoles(String instituteId, List<String> roles) {
+        if (instituteId == null || instituteId.isBlank() || roles == null || roles.isEmpty()) {
             return List.of();
         }
         try {
-            String endpoint = AuthServiceRoutes.GET_USERS_BY_ROLE
-                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
-                    + "&roleName=" + java.net.URLEncoder.encode(roleName, java.nio.charset.StandardCharsets.UTF_8);
+            String endpoint = AuthServiceRoutes.USERS_OF_STATUS_INTERNAL
+                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8);
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName,
-                    HttpMethod.GET.name(),
+                    HttpMethod.POST.name(),
                     authServerBaseUrl,
                     endpoint,
-                    null);
+                    roles);
             if (response == null || response.getBody() == null
                     || !response.getStatusCode().is2xxSuccessful()) {
-                throw new VacademyException("users-by-role lookup failed for role " + roleName);
+                throw new VacademyException("users-of-status lookup failed for roles " + roles);
             }
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            List<UserDTO> users = objectMapper.readValue(response.getBody(),
-                    new TypeReference<List<UserDTO>>() {});
+            List<vacademy.io.common.auth.dto.UserWithRolesDTO> users = objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<vacademy.io.common.auth.dto.UserWithRolesDTO>>() {});
             return users.stream()
-                    .map(UserDTO::getId)
+                    .map(vacademy.io.common.auth.dto.UserWithRolesDTO::getId)
                     .filter(id -> id != null && !id.isEmpty())
                     .distinct()
                     .toList();
         } catch (VacademyException ve) {
             throw ve;
         } catch (Exception e) {
-            throw new VacademyException("users-by-role lookup failed: " + e.getMessage());
+            throw new VacademyException("users-of-status lookup failed: " + e.getMessage());
         }
     }
 

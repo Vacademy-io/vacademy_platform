@@ -175,7 +175,7 @@ public class CounsellorWorkbenchService {
                                                                String search, String statusFilter,
                                                                int page, int size,
                                                                CustomUserDetails caller) {
-        return listCounsellors(instituteId, search, statusFilter, page, size, caller);
+        return listCounsellors(instituteId, search, statusFilter, page, size, caller, false);
     }
 
     /**
@@ -190,16 +190,28 @@ public class CounsellorWorkbenchService {
      * (no "page 2 of 5 is empty" UX). Per-row aggregations (team mapping,
      * open-lead count) only run for the visible slice, keeping the cost
      * roughly proportional to `size`, not the roster's total size.
+     *
+     * @param assignable when true, resolve the ASSIGNMENT-target set instead
+     *        of the visibility set: ADMIN-role callers (even ones who also
+     *        hold COUNSELLOR and are hierarchy-scoped in the display roster)
+     *        get the institute-wide counsellor roster. Powers the reassign
+     *        dialog's target dropdown.
      */
     public Page<WorkbenchCounsellorDTO> listCounsellors(String instituteId,
                                                         String search, String statusFilter,
                                                         int page, int size,
-                                                        CustomUserDetails caller) {
+                                                        CustomUserDetails caller,
+                                                        boolean assignable) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
 
-        List<String> userIds = caller != null
-                ? scopeService.visibleCounsellorUserIds(instituteId, caller.getUserId())
-                : scopeService.allCounsellorUserIds(instituteId);
+        List<String> userIds;
+        if (caller == null) {
+            userIds = scopeService.allCounsellorUserIds(instituteId);
+        } else if (assignable) {
+            userIds = scopeService.assignableCounsellorUserIds(instituteId, caller);
+        } else {
+            userIds = scopeService.visibleCounsellorUserIds(instituteId, caller.getUserId());
+        }
         if (userIds.isEmpty()) return Page.empty(pageable);
 
         // Team names are display-only now. One listTeams call covers every

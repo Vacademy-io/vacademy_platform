@@ -308,10 +308,16 @@ const RecentLeadsContent = () => {
         customTo,
         sourceFilter,
     ]);
-    // Team-hierarchy scoped: a manager sees themselves + their reports; admins fall back to
-    // the institute-wide list. See useLeadCounsellorOptions.
+    // Filter options — hierarchy scoped: a manager sees themselves + their
+    // counsellor reports; pure admins get the institute-wide roster.
     const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
         useLeadCounsellorOptions();
+    // Assignment TARGETS for the bulk-assign dialog: an ADMIN who also holds
+    // the COUNSELLOR role filters by their hierarchy above, but may still
+    // assign leads to any counsellor of the institute.
+    const { options: assignableCounsellorOptions } = useLeadCounsellorOptions({
+        assignable: true,
+    });
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -1209,7 +1215,7 @@ const RecentLeadsContent = () => {
                     onOpenChange={setBulkAssignOpen}
                     instituteId={instituteId ?? ''}
                     leads={Array.from(selectedLeads.values())}
-                    counsellorOptions={counsellorOptions}
+                    counsellorOptions={assignableCounsellorOptions}
                     onSuccess={handleBulkAssignSuccess}
                 />
 

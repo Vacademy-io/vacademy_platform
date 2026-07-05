@@ -200,7 +200,17 @@ export async function fetchCounsellorLeads(
  */
 export async function fetchCounsellors(
     instituteId: string,
-    opts?: { search?: string; status?: 'active' | 'inactive' | 'all'; page?: number; size?: number }
+    opts?: {
+        search?: string;
+        status?: 'active' | 'inactive' | 'all';
+        page?: number;
+        size?: number;
+        /** Resolve assignment TARGETS instead of the visibility roster:
+         *  ADMIN-role callers get the institute-wide counsellor list even
+         *  when they also hold COUNSELLOR (and are hierarchy-scoped in the
+         *  display roster). Use for reassign/assign dropdowns only. */
+        assignable?: boolean;
+    }
 ) {
     const res = await authenticatedAxiosInstance.get<PaginatedResponse<WorkbenchCounsellor>>(
         COUNSELLOR_WORKBENCH_COUNSELLORS(
@@ -208,7 +218,8 @@ export async function fetchCounsellors(
             opts?.search,
             opts?.status,
             opts?.page,
-            opts?.size
+            opts?.size,
+            opts?.assignable
         )
     );
     return res.data;

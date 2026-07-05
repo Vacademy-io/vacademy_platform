@@ -1943,20 +1943,31 @@ public class AudienceService {
      */
     /**
      * Resolve the people a caller may assign a lead to: COUNSELLOR-role users
-     * only, mirroring the visibility rule used by {@link #getLeads}. A
-     * hierarchy-scoped caller (holds the COUNSELLOR role) gets their scope —
-     * {@code self + counsellor reports + reports' reports}; a pure admin gets
-     * the institute-wide counsellor roster. Either way the picker no longer
-     * offers non-counsellor users (the old admin branch was a raw
-     * autosuggest over ALL institute users).
+     * only. Assignment is an admin action, not data visibility — so any
+     * ADMIN-role caller (including one who ALSO holds the COUNSELLOR role and
+     * therefore sees only their hierarchy scope in the lists) may assign to
+     * the institute-wide counsellor roster. Non-admin counsellors stay
+     * restricted to their scope — {@code self + counsellor reports}. Either
+     * way the picker no longer offers non-counsellor users (the old admin
+     * branch was a raw autosuggest over ALL institute users).
      */
     public List<vacademy.io.common.auth.dto.UserDTO> eligibleAssignees(String instituteId,
                                                                        String query,
                                                                        CustomUserDetails caller) {
         if (caller == null || caller.getUserId() == null) return List.of();
         List<String> userIds = counsellorScopeService
-                .visibleCounsellorUserIds(instituteId, caller.getUserId());
-        if (userIds.isEmpty()) return List.of();
+                .assignableCounsellorUserIds(instituteId, caller);
+        if (userIds.isEmpty()) {
+            // Setup mode: the institute has no COUNSELLOR-role users yet (or the
+            // role lookup is degraded). Blocking assignment outright would brick
+            // the CRM mid-migration — admins keep the old institute-wide
+            // autosuggest until counsellor roles are granted.
+            if (counsellorScopeService.hasAdminRole(caller, instituteId)) {
+                if (query == null || query.isBlank()) return List.of();
+                return authService.autosuggestUsers(instituteId, query);
+            }
+            return List.of();
+        }
         // Pull full user records for the candidate set (name / email / mobile),
         // then filter in-process. Empty query → first 10 so the picker isn't
         // blank on first open (autosuggest used to require a query).
@@ -1985,15 +1996,21 @@ public class AudienceService {
      * only when the caller is hierarchy-scoped — the frontend uses it to
      * decide whether the caller's data is narrowed server-side.</p>
      */
-    public LeadCounsellorOptionsDTO leadCounsellorOptions(String instituteId, CustomUserDetails caller) {
+    public LeadCounsellorOptionsDTO leadCounsellorOptions(String instituteId, CustomUserDetails caller,
+                                                          boolean assignable) {
         if (caller == null || caller.getUserId() == null
                 || instituteId == null || instituteId.isBlank()) {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller.getUserId());
-        List<String> userIds = counsellorScopeService
-                .visibleCounsellorUserIds(instituteId, caller.getUserId());
+        // assignable=true resolves ASSIGNMENT targets (bulk-assign dialog,
+        // telephony/IVR routing config): ADMIN-role callers get the
+        // institute-wide roster even when they also hold COUNSELLOR and are
+        // hierarchy-scoped in the filter lists.
+        List<String> userIds = assignable
+                ? counsellorScopeService.assignableCounsellorUserIds(instituteId, caller)
+                : counsellorScopeService.visibleCounsellorUserIds(instituteId, caller.getUserId());
         if (userIds.isEmpty()) {
             return LeadCounsellorOptionsDTO.builder().scoped(scoped).counsellors(List.of()).build();
         }

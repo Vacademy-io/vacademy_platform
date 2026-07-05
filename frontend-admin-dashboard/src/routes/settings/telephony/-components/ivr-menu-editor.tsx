@@ -95,7 +95,9 @@ export function IvrMenuEditor({
         }
     }, [open, initialMenu, instituteId]);
 
-    const { options: counsellorRaw } = useLeadCounsellorOptions();
+    // Routing CONFIG picker — assignable mode so an ADMIN who also holds the
+    // COUNSELLOR role can route IVR keys to any counsellor, not just their hierarchy.
+    const { options: counsellorRaw } = useLeadCounsellorOptions({ assignable: true });
     const counsellorOptions = counsellorRaw.map((c) => ({ label: c.full_name, value: c.id }));
 
     const { agents } = useAiAgentOptions();

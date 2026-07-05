@@ -47,6 +47,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
             AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
             AND (:status IS NULL OR sa.status IN (:attemptType))
+            AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
             """,
             countQuery = """
                     select count(*)
@@ -62,12 +63,14 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
                     AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
                     AND (:status IS NULL OR sa.status IN (:attemptType))
+                    AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForBatch(@Param("assessmentId") String assessmentId,
                                                                         @Param("instituteId") String instituteId,
                                                                         @Param("batchIds") List<String> batchIds,
                                                                         @Param("status") List<String> status,
                                                                         @Param("attemptType") List<String> attemptType,
+                                                                        @Param("evaluationStatus") List<String> evaluationStatus,
                                                                         Pageable pageable);
 
     @Query(value = """
@@ -122,6 +125,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
             AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
             AND (:attemptType IS NULL OR sa.status IN (:attemptType))
+            AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
             """,
             countQuery = """
                     SELECT COUNT(*)
@@ -141,6 +145,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND (:batchIds IS NULL OR aur.source_id IN (:batchIds))
                     AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
                     AND (:attemptType IS NULL OR sa.status IN (:attemptType))
+                    AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
                     """,
             nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForBatch(
@@ -150,6 +155,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             @Param("batchIds") List<String> batchIds,
             @Param("status") List<String> status,
             @Param("attemptType") List<String> attemptType,
+            @Param("evaluationStatus") List<String> evaluationStatus,
             Pageable pageable
     );
 
@@ -166,6 +172,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND (:status IS NULL OR aur.status IN (:status))
             AND aur.source = :source
             AND (:status IS NULL OR sa.status IN (:attemptType))
+            AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
             """,
             countQuery = """
                     select count(distinct aur.user_id)
@@ -176,12 +183,14 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND (:status IS NULL OR aur.status IN (:status))
                     AND aur.source = :source
                     AND (:status IS NULL OR sa.status IN (:attemptType))
+                    AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForSource(@Param("assessmentId") String assessmentId,
                                                                          @Param("instituteId") String instituteId,
                                                                          @Param("status") List<String> status,
                                                                          @Param("attemptType") List<String> attemptType,
                                                                          @Param("source") String source,
+                                                                         @Param("evaluationStatus") List<String> evaluationStatus,
                                                                          Pageable pageable);
 
     @Query(value = """
@@ -227,6 +236,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
               AND (:status IS NULL OR aur.status IN (:status))
               AND aur.source = :source
               AND (:status IS NULL OR sa.status IN (:attemptType))
+              AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
             """,
             countQuery = """
                      select count(distinct aur.user_id)
@@ -243,6 +253,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                      AND (:status IS NULL OR aur.status IN (:status))
                      AND aur.source = :source
                      AND (:status IS NULL OR sa.status IN (:attemptType))
+                     AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForSource(@Param("name") String name,
                                                                                    @Param("assessmentId") String assessmentId,
@@ -250,6 +261,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                                    @Param("status") List<String> status,
                                                                                    @Param("attemptType") List<String> attemptType,
                                                                                    @Param("source") String source,
+                                                                                   @Param("evaluationStatus") List<String> evaluationStatus,
                                                                                    Pageable pageable);
 
 

@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { ColumnDef, Row } from '@tanstack/react-table';
-import { CaretUp, CaretDown } from '@phosphor-icons/react';
+import { CaretUp, CaretDown, WarningCircle } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { StudentTable } from '@/types/student-table-types';
@@ -63,6 +63,34 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<StudentTable>; column
     );
 };
 
+// Duration cell that flags a near-zero attempt time. A "0.00 min" duration means
+// the learner submitted almost instantly — usually a non-attempt or auto-submit,
+// which a teacher scanning submissions should be able to spot at a glance.
+const DurationCell = ({ row }: { row: Row<StudentTable> }) => {
+    const { handleClick, handleDoubleClick } = useClickHandlers();
+    const value = String(row.getValue('duration') ?? '');
+    const minutes = parseFloat(value);
+    const isInstant = !Number.isNaN(minutes) && minutes <= 0;
+
+    return (
+        <div
+            onClick={() => handleClick('duration', row)}
+            onDoubleClick={(e) => handleDoubleClick(e)}
+            className="flex cursor-pointer items-center gap-1"
+        >
+            <span>{value}</span>
+            {isInstant && (
+                <span
+                    title="Instant submit — no measurable time spent. Possible non-attempt or auto-submit."
+                    className="inline-flex items-center text-warning-600"
+                >
+                    <WarningCircle size={16} weight="fill" />
+                </span>
+            )}
+        </div>
+    );
+};
+
 const DetailsCell = ({ row }: { row: Row<StudentTable> }) => {
     const { setSelectedStudent } = useStudentSidebar();
 
@@ -74,6 +102,37 @@ const DetailsCell = ({ row }: { row: Row<StudentTable> }) => {
         >
             <ArrowSquareOut className="size-10 cursor-pointer text-neutral-600" />
         </SidebarTrigger>
+    );
+};
+
+// Reusable ASC/DESC sortable column header. `sortKey` is the frontend column id
+// the parent's `meta.onSort` maps to a backend sort key (studentName, score,
+// duration, attemptDate). Keeps the caret UI consistent across columns.
+const SortableHeader = ({
+    props,
+    label,
+    sortKey,
+}: {
+    props: { table: { options: { meta?: CustomTableMeta } } };
+    label: string;
+    sortKey: string;
+}) => {
+    const meta = props.table.options.meta as CustomTableMeta;
+    return (
+        <div className="relative">
+            <MyDropdown
+                dropdownList={['ASC', 'DESC']}
+                onSelect={(value) => meta.onSort?.(sortKey, value)}
+            >
+                <button className="flex w-full cursor-pointer items-center justify-between">
+                    <div>{label}</div>
+                    <div>
+                        <CaretUp />
+                        <CaretDown />
+                    </div>
+                </button>
+            </MyDropdown>
+        </div>
     );
 };
 
@@ -130,7 +189,7 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
     },
     {
         accessorKey: 'attempt_date',
-        header: 'Attempt Date',
+        header: (props) => <SortableHeader props={props} label="Attempt Date" sortKey="attempt_date" />,
         cell: ({ row }) => <CreateClickableCell row={row} columnId="attempt_date" />,
     },
     {
@@ -145,12 +204,12 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
     },
     {
         accessorKey: 'duration',
-        header: 'Duration',
-        cell: ({ row }) => <CreateClickableCell row={row} columnId="duration" />,
+        header: (props) => <SortableHeader props={props} label="Duration" sortKey="duration" />,
+        cell: ({ row }) => <DurationCell row={row} />,
     },
     {
         accessorKey: 'score',
-        header: 'Score',
+        header: (props) => <SortableHeader props={props} label="Score" sortKey="score" />,
         cell: ({ row }) => <CreateClickableCell row={row} columnId="score" />,
     },
 
@@ -358,7 +417,7 @@ export const assessmentStatusStudentAttemptedColumnsExternal: ColumnDef<StudentT
     },
     {
         accessorKey: 'attempt_date',
-        header: 'Attempt Date',
+        header: (props) => <SortableHeader props={props} label="Attempt Date" sortKey="attempt_date" />,
         cell: ({ row }) => <CreateClickableCell row={row} columnId="attempt_date" />,
     },
     {
@@ -373,12 +432,12 @@ export const assessmentStatusStudentAttemptedColumnsExternal: ColumnDef<StudentT
     },
     {
         accessorKey: 'duration',
-        header: 'Duration',
-        cell: ({ row }) => <CreateClickableCell row={row} columnId="duration" />,
+        header: (props) => <SortableHeader props={props} label="Duration" sortKey="duration" />,
+        cell: ({ row }) => <DurationCell row={row} />,
     },
     {
         accessorKey: 'score',
-        header: 'Score',
+        header: (props) => <SortableHeader props={props} label="Score" sortKey="score" />,
         cell: ({ row }) => <CreateClickableCell row={row} columnId="score" />,
     },
     {

@@ -19,6 +19,7 @@ import { SelectedFilterRevaluateInterface } from '@/types/assessments/assessment
 import {
     getReleaseStudentResult,
     getRevaluateStudentResult,
+    handleGetStudentReportExportPDF,
 } from '../../-services/assessment-details-services';
 import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
@@ -390,6 +391,30 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
         setSelectedOption(value);
     };
 
+    // Fetch the participant's submission report PDF and open it in a new tab.
+    const viewSubmissionMutation = useMutation({
+        mutationFn: () =>
+            handleGetStudentReportExportPDF(assessmentId, instituteId, student.attempt_id),
+        onSuccess: (pdfBlob: Blob) => {
+            const fileUrl = window.URL.createObjectURL(pdfBlob);
+            const submissionTab = window.open(fileUrl, '_blank');
+            if (!submissionTab) {
+                toast.error('Please allow pop-ups to view the submission.');
+            }
+            // Revoke after a delay so the new tab has time to load the blob.
+            setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+        },
+        onError: (error: unknown) => {
+            console.error('Failed to load submission PDF:', error);
+            toast.error('Failed to load submission. Please try again.');
+        },
+    });
+
+    const handleViewSubmission = () => {
+        if (viewSubmissionMutation.isPending) return;
+        viewSubmissionMutation.mutate();
+    };
+
     // Get evaluation_type from saved_data
     const evaluationType = assessmentData?.[0]?.saved_data?.evaluation_type;
     const isManualEvaluation = evaluationType === 'MANUAL';
@@ -412,6 +437,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </MyButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
+                    <DropdownMenuItem
+                        className="cursor-pointer"
+                        onSelect={(e) => {
+                            e.preventDefault();
+                            handleViewSubmission();
+                        }}
+                    >
+                        {viewSubmissionMutation.isPending
+                            ? 'Loading Submission...'
+                            : 'View Submission'}
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Provide Reattempt')}

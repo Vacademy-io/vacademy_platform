@@ -20,5 +20,8 @@ public class AssessmentUserFilter {
     private String registrationSource;
     private List<String> batches;
     private List<String> status;
+    // Optional filter on the attempt's evaluation state (student_attempt.result_status),
+    // e.g. ["PENDING"] to show only submissions a teacher still needs to grade.
+    private List<String> evaluationStatus;
     private Map<String, String> sortColumns;
 }

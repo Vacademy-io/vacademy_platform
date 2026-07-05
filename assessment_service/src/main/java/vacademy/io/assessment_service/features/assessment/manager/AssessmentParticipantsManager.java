@@ -533,7 +533,8 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
-                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+                                filter.getAttemptType(), filter.getRegistrationSource(),
+                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
 
             // If no results found, search for users based on batch, attempt type, and
@@ -542,7 +543,8 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getBatches(),
-                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+                                filter.getAttemptType(), filter.getRegistrationSource(),
+                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
         }
 
@@ -560,12 +562,13 @@ public class AssessmentParticipantsManager {
             if (StringUtils.hasText(filter.getName())) {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterWithSearchForBatch(filter.getName(), assessmentId, instituteId,
-                                filter.getBatches(), filter.getStatus(), filter.getAttemptType(), pageable);
+                                filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
+                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
             if (Objects.isNull(registeredUserPage)) {
                 registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(
                         assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
-                        pageable);
+                        evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
         }
 
@@ -631,7 +634,8 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
-                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+                                filter.getAttemptType(), filter.getRegistrationSource(),
+                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
 
             // If no results are found, perform a broader search
@@ -639,7 +643,8 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getStatus(),
-                                filter.getAttemptType(), filter.getRegistrationSource(), pageable);
+                                filter.getAttemptType(), filter.getRegistrationSource(),
+                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
             }
         }
 
@@ -681,6 +686,17 @@ public class AssessmentParticipantsManager {
             orders.add(new Sort.Order(direction, entry.getKey()));
         }
         return Sort.by(orders);
+    }
+
+    // Sentinel used when no evaluation-status filter is applied. The native queries
+    // guard with `('__ALL__' IN (:evaluationStatus) OR ...)`, so this value makes the
+    // guard pass for every row. We deliberately pass a non-empty, non-null list here:
+    // a null collection breaks the native `IN (:param)` binding, and an empty list
+    // renders `IN ()` which is invalid SQL in Postgres.
+    private static final List<String> EVALUATION_STATUS_NO_FILTER = List.of("__ALL__");
+
+    private List<String> evaluationStatusFilter(List<String> values) {
+        return (values == null || values.isEmpty()) ? EVALUATION_STATUS_NO_FILTER : values;
     }
 
     /**

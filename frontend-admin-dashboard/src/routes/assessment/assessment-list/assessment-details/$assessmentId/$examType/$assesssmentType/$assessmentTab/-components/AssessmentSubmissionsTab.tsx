@@ -36,6 +36,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { ControlledStudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/controlled-student-sidebar-provider';
 import { BulkActions } from './bulk-actions/bulk-actions';
 import { AssessmentSubmissionsStudentTable } from './AssessmentSubmissionsStudentTable';
+import { SubmissionsSummaryStrip } from './SubmissionsSummaryStrip';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import AssessmentGlobalLevelRevaluateAssessment from './assessment-global-level-revaluate/assessment-global-level-revaluate-assessment';
 import { AssessmentGlobalLevelRevaluateQuestionWise } from './assessment-global-level-revaluate/assessment-global-level-revaluate-question-wise';
@@ -55,8 +56,17 @@ export interface SelectedSubmissionsFilterInterface {
     registration_source: string;
     batches: MyFilterOption[];
     status: string[];
+    // Optional: filter Attempted rows by evaluation state (COMPLETED / PENDING).
+    evaluation_status?: MyFilterOption[];
     sort_columns: Record<string, string>;
 }
+
+// Options for the Evaluation Status filter. ids are the raw student_attempt
+// result_status values the backend filters on.
+export const EVALUATION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
+    { id: 'PENDING', name: 'Pending' },
+    { id: 'COMPLETED', name: 'Evaluated' },
+];
 
 export interface SelectedReleaseResultFilterInterface {
     attempt_ids: string[];
@@ -85,6 +95,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         registration_source: 'BATCH_PREVIEW_REGISTRATION',
         batches: [],
         status: ['ACTIVE'],
+        evaluation_status: [],
         sort_columns: {},
     });
 
@@ -110,6 +121,8 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const [ongoingCount, setOngoingCount] = useState(0);
     const [pendingCount, setPendingCount] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    // Bumped to force the summary strip to refetch its aggregate stats.
+    const [summaryRefreshKey, setSummaryRefreshKey] = useState(0);
 
     const getParticipantsListData = useMutation({
         mutationFn: ({
@@ -421,6 +434,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     };
 
     const handleRefreshLeaderboard = () => {
+        setSummaryRefreshKey((k) => k + 1);
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
             getParticipantsListData.mutate({
                 assessmentId,
@@ -619,11 +633,79 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         });
     };
 
+    // Resolve the registration_source / attempt_type for the currently-active
+    // sub-tab so a sort refetch keeps the same slice of participants in view.
+    const getCurrentRegistrationSource = () => {
+        if (selectedParticipantsTab === 'external') return 'OPEN_REGISTRATION';
+        return batchSelectionTab === 'batch'
+            ? 'BATCH_PREVIEW_REGISTRATION'
+            : 'ADMIN_PRE_REGISTRATION';
+    };
+
+    const getCurrentAttemptType = () =>
+        selectedTab === 'Attempted' ? 'ENDED' : selectedTab === 'Pending' ? 'PENDING' : 'LIVE';
+
+    // Server-side sort. Maps the table column id to the backend sort key and
+    // refetches page 0 with the new sort_columns. Only columns the gateway
+    // accepts are wired (end/submit time is blocked upstream, so it's omitted).
+    const handleSort = (columnId: string, direction: string) => {
+        const sortKeyMap: Record<string, string> = {
+            full_name: 'studentName',
+            attempt_date: 'attemptDate',
+            duration: 'duration',
+            score: 'score',
+        };
+        const backendKey = sortKeyMap[columnId];
+        if (!backendKey) return;
+
+        const nextFilter = {
+            ...selectedFilter,
+            registration_source: getCurrentRegistrationSource(),
+            attempt_type: [getCurrentAttemptType()],
+            sort_columns: { [backendKey]: direction },
+        };
+        setSelectedFilter(nextFilter);
+        setPage(0);
+        // Row selections are keyed by page index; reordering makes those indices
+        // point at different students, so clear them to avoid acting on the wrong rows.
+        handleResetSelections();
+        getParticipantsListData.mutate({
+            assessmentId,
+            instituteId,
+            pageNo: 0,
+            pageSize: 10,
+            selectedFilter: nextFilter,
+        });
+    };
+
+    // Evaluation Status filter (Attempted only) — applies immediately and refetches
+    // page 0 so a teacher can jump straight to submissions that still need grading.
+    const handleEvaluationStatusFilter = (items: MyFilterOption[]) => {
+        const nextFilter = {
+            ...selectedFilter,
+            evaluation_status: items,
+            registration_source: getCurrentRegistrationSource(),
+            attempt_type: [getCurrentAttemptType()],
+        };
+        setSelectedFilter(nextFilter);
+        setPage(0);
+        // Filtering changes which rows are present; clear index-keyed selections.
+        handleResetSelections();
+        getParticipantsListData.mutate({
+            assessmentId,
+            instituteId,
+            pageNo: 0,
+            pageSize: 10,
+            selectedFilter: nextFilter,
+        });
+    };
+
     const handleResetFilters = () => {
         setSelectedFilter((prevFilter) => ({
             ...prevFilter,
             name: '',
             batches: [],
+            evaluation_status: [],
         }));
         setSearchText('');
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
@@ -636,6 +718,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     ...selectedFilter,
                     name: '',
                     batches: [],
+                    evaluation_status: [],
                     registration_source: 'BATCH_PREVIEW_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -658,6 +741,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     ...selectedFilter,
                     name: '',
                     batches: [],
+                    evaluation_status: [],
                     registration_source: 'ADMIN_PRE_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -680,6 +764,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     ...selectedFilter,
                     name: '',
                     batches: [],
+                    evaluation_status: [],
                     registration_source: 'OPEN_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -1023,6 +1108,14 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             selectedItems={selectedFilter['batches'] || []}
                             onSelectionChange={(items) => handleFilterChange('batches', items)}
                         />
+                        {selectedTab === 'Attempted' && (
+                            <ScheduleTestFilters
+                                label="Evaluation Status"
+                                data={EVALUATION_STATUS_FILTER_OPTIONS}
+                                selectedItems={selectedFilter.evaluation_status || []}
+                                onSelectionChange={handleEvaluationStatusFilter}
+                            />
+                        )}
                         <AssessmentSubmissionsFilterButtons
                             selectedQuestionPaperFilters={selectedFilter}
                             handleSubmitFilters={handleRefreshLeaderboard}
@@ -1060,6 +1153,17 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     </div>
                 </div>
                 <div className="flex max-h-screen flex-col gap-6 overflow-y-auto p-4">
+                    {selectedTab === 'Attempted' && (
+                        <SubmissionsSummaryStrip
+                            assessmentId={assessmentId}
+                            instituteId={instituteId}
+                            assessmentType={assesssmentType}
+                            registrationSource={getCurrentRegistrationSource()}
+                            batches={selectedFilter.batches}
+                            totalMarks={totalMarks.total_achievable_marks}
+                            refreshKey={summaryRefreshKey}
+                        />
+                    )}
                     <TabsContent value={selectedTab} ref={tableRef}>
                         <SidebarProvider
                             style={{ ['--sidebar-width' as string]: '565px' } /* dynamic CSS custom property, cannot use Tailwind token */}
@@ -1094,6 +1198,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 }
                                 rowSelection={currentPageSelection}
                                 onRowSelectionChange={handleRowSelectionChange}
+                                onSort={handleSort}
                                 currentPage={page}
                             />
                             {selectedParticipantsTab === 'external' ? (

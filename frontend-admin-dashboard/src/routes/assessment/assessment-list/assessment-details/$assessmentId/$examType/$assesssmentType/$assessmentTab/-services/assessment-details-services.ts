@@ -425,6 +425,10 @@ export const getAdminParticipants = async (
         data: {
             ...selectedFilter,
             batches: selectedFilter.batches.map((batch: { id: string }) => batch.id),
+            // Send raw result_status values; empty array => backend treats as no filter.
+            evaluation_status: (selectedFilter.evaluation_status ?? []).map(
+                (option: { id: string }) => option.id
+            ),
         },
     });
     return response?.data;

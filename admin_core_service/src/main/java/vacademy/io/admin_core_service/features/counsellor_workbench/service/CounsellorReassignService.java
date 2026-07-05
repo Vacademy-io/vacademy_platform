@@ -211,7 +211,8 @@ public class CounsellorReassignService {
                     .sorted()
                     .collect(Collectors.toList());
         } else {
-            candidates = allowed.stream().sorted().collect(Collectors.toList());
+            candidates = (allowed == null ? Collections.<String>emptySet() : allowed).stream()
+                    .sorted().collect(Collectors.toList());
         }
         // Round-robin distributes only across ACTIVE counsellors (an ACTIVE pool
         // membership) — drop anyone offline, whether they came from the explicit
@@ -235,23 +236,33 @@ public class CounsellorReassignService {
         return candidates.stream().filter(active::contains).collect(Collectors.toList());
     }
 
+    /** {@code allowed == null} means unrestricted (admin setup-mode fallback). */
     private void assertAllowed(String userId, Set<String> allowed) {
-        if (!allowed.contains(userId)) {
+        if (allowed != null && !allowed.contains(userId)) {
             throw new VacademyException(
                     "Target user " + userId + " is not a counsellor you can assign leads to");
         }
     }
 
     /**
-     * Counsellors the actor may assign/reassign leads to: their hierarchy
-     * scope when the actor holds the COUNSELLOR role, the institute-wide
-     * COUNSELLOR-role roster otherwise (pure admins / internal paths). Every
-     * mode validates its targets against this set so a lead can't be handed
-     * to a non-counsellor or outside the actor's scope.
+     * Counsellors the actor may assign/reassign leads to. Assignment is an
+     * admin action: ADMIN-role actors (even ones who also hold COUNSELLOR and
+     * are therefore hierarchy-scoped in the lists) get the institute-wide
+     * COUNSELLOR-role roster; non-admin counsellors get their hierarchy
+     * scope. Every mode validates its targets against this set so a lead
+     * can't be handed to a non-counsellor or outside the actor's reach.
+     *
+     * <p>Returns {@code null} (= no restriction) for admins when the institute
+     * has no COUNSELLOR-role users at all — setup mode; blocking every target
+     * would brick reassignment mid-migration. ROUND_ROBIN still needs a real
+     * candidate set and keeps failing with a clear error in that state.
      */
     private Set<String> allowedTargets(String instituteId, CustomUserDetails actor) {
-        return new LinkedHashSet<>(scopeService.visibleCounsellorUserIds(
-                instituteId, actor != null ? actor.getUserId() : null));
+        Set<String> ids = new LinkedHashSet<>(scopeService.assignableCounsellorUserIds(instituteId, actor));
+        if (ids.isEmpty() && scopeService.hasAdminRole(actor, instituteId)) {
+            return null;
+        }
+        return ids;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -430,8 +441,10 @@ public class CounsellorReassignService {
     private List<Plan> planRoundRobin(List<UserLeadProfile> leads, ReassignRequest req, Set<String> allowed) {
         // Counsellors the actor may route to, excluding fromUserId itself —
         // same allowed-target rule as SINGLE/MANUAL so RR distribution can't
-        // reach outside the actor's scope.
-        List<String> candidates = allowed.stream()
+        // reach outside the actor's scope. A null (unrestricted, setup-mode)
+        // set gives RR nothing to distribute over — the empty-candidates
+        // error below explains it.
+        List<String> candidates = (allowed == null ? Collections.<String>emptySet() : allowed).stream()
                 .filter(uid -> !uid.equals(req.getFromUserId()))
                 .sorted()
                 .collect(Collectors.toList());

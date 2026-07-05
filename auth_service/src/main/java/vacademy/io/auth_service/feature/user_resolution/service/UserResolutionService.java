@@ -20,7 +20,15 @@ public class UserResolutionService {
     private final UserRepository userRepository;
 
     /**
-     * Get users by institute and role - with caching for performance
+     * Get users by institute and role - with caching for performance.
+     *
+     * Users are sanitized BEFORE caching — same reason as {@link #getUsersByIds}:
+     * caching the raw entity (with the lazy roles collection and its circular
+     * User → UserRole → User references) fails to serialize under the Redis
+     * cache manager, the exception propagated, and the controller's catch-all
+     * turned every call into an HTTP 400. That silently broke every consumer
+     * of /users/by-role (the doubt-notification role fallback, and the CRM
+     * counsellor-roster lookup that briefly depended on it).
      */
     @Cacheable(value = "usersByRole", key = "#instituteId + '_' + #roleName")
     @Transactional(readOnly = true)
@@ -30,7 +38,7 @@ public class UserResolutionService {
         try {
             List<User> users = userRoleRepository.findUsersByInstituteIdAndRoleName(instituteId, roleName);
             log.debug("Found {} users with role: {} in institute: {}", users.size(), roleName, instituteId);
-            return users;
+            return users.stream().map(this::sanitizeUser).toList();
 
         } catch (Exception e) {
             log.error("Error getting users by institute and role", e);

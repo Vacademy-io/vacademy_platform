@@ -204,6 +204,16 @@ export function WorkbenchPage() {
         queryFn: () => fetchCounsellors(instituteId!, { size: 500 }),
     });
 
+    // Assignment TARGETS for the reassign dialog. Separate from `candidates`
+    // (the caller-visible roster that drives stats/drawer): an ADMIN who also
+    // holds the COUNSELLOR role sees only their hierarchy scope on this page,
+    // but may still reassign leads to any counsellor of the institute.
+    const assignableCandidatesQuery = useQuery({
+        queryKey: ['workbench-counsellors-candidates', instituteId, 'assignable'],
+        enabled: !!instituteId,
+        queryFn: () => fetchCounsellors(instituteId!, { size: 500, assignable: true }),
+    });
+
     const counsellors = counsellorsQuery.data?.content ?? [];
     const totalCounsellors = counsellorsQuery.data?.totalElements ?? 0;
     const totalPages = Math.max(1, counsellorsQuery.data?.totalPages ?? 1);
@@ -574,7 +584,11 @@ export function WorkbenchPage() {
                 fromUserId={reassignFromUserId}
                 fromUserName={reassignFromName}
                 openLeads={reassignLeads}
-                candidates={candidates}
+                candidates={
+                    (assignableCandidatesQuery.data?.content?.length ?? 0) > 0
+                        ? assignableCandidatesQuery.data!.content
+                        : candidates
+                }
                 markInactive={reassignMarkInactive}
                 onComplete={handleReassignComplete}
                 onMarkInactiveWithoutReassign={handleMarkInactiveWithoutReassign}

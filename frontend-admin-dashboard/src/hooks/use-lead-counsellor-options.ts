@@ -25,11 +25,12 @@ interface LeadCounsellorOptionsResponse {
 }
 
 async function fetchLeadCounsellorOptions(
-    instituteId: string
+    instituteId: string,
+    assignable: boolean
 ): Promise<LeadCounsellorOptionsResponse> {
     const { data } = await authenticatedAxiosInstance.get<LeadCounsellorOptionsResponse>(
         GET_LEAD_COUNSELLOR_OPTIONS,
-        { params: { instituteId } }
+        { params: assignable ? { instituteId, assignable: true } : { instituteId } }
     );
     return {
         scoped: !!data?.scoped,
@@ -39,7 +40,13 @@ async function fetchLeadCounsellorOptions(
     };
 }
 
-export function useLeadCounsellorOptions(): {
+export function useLeadCounsellorOptions(opts?: {
+    /** Resolve assignment TARGETS instead of the visibility list: ADMIN-role
+     *  callers get the institute-wide counsellor roster even when they also
+     *  hold COUNSELLOR (and are hierarchy-scoped in filters/tables). Use for
+     *  assign dialogs and routing config pickers — never for data filters. */
+    assignable?: boolean;
+}): {
     options: CounsellorOption[];
     /** True when the caller is hierarchy-scoped (holds the COUNSELLOR role):
      *  the options are self + their counsellor reports, and the backend
@@ -49,10 +56,11 @@ export function useLeadCounsellorOptions(): {
     isLoading: boolean;
 } {
     const instituteId = getCurrentInstituteId() ?? '';
+    const assignable = opts?.assignable === true;
 
     const query = useQuery({
-        queryKey: ['lead-counsellor-options', instituteId],
-        queryFn: () => fetchLeadCounsellorOptions(instituteId),
+        queryKey: ['lead-counsellor-options', instituteId, assignable],
+        queryFn: () => fetchLeadCounsellorOptions(instituteId, assignable),
         enabled: !!instituteId,
         staleTime: 5 * 60 * 1000,
     });

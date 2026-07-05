@@ -3,11 +3,13 @@ package vacademy.io.admin_core_service.features.counsellor_workbench.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.auth_service.service.OrganizationTeamAuthClient;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchTeamDTO;
 import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
 import vacademy.io.common.auth.dto.organization.TeamMemberDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,7 +44,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class CounsellorScopeService {
 
-    public static final String COUNSELLOR_ROLE = "COUNSELLOR";
+    /**
+     * Both spellings are queried and unioned: the codebase mixes them (role
+     * seed + frontend role filters use COUNSELLOR; DB columns and the
+     * audience-access mode use COUNSELOR), so an institute's user_role rows
+     * could legitimately carry either.
+     */
+    public static final List<String> COUNSELLOR_ROLE_NAMES = List.of("COUNSELLOR", "COUNSELOR");
 
     /** Role-list cache TTL. Scope freshness within a couple of minutes matches
      *  the old behavior (team edits weren't instant either) and keeps the
@@ -51,6 +59,7 @@ public class CounsellorScopeService {
 
     private final OrganizationTeamAuthClient orgTeamClient;
     private final AuthService authService;
+    private final AudienceRoleAccessService roleAccessService;
 
     private record CachedIds(List<String> userIds, long fetchedAt) {}
     private final Map<String, CachedIds> counsellorCache = new ConcurrentHashMap<>();
@@ -70,8 +79,17 @@ public class CounsellorScopeService {
             return cached.userIds();
         }
         try {
-            List<String> fresh = List.copyOf(
-                    authService.getUserIdsByRoleStrict(instituteId, COUNSELLOR_ROLE));
+            LinkedHashSet<String> union = new LinkedHashSet<>(
+                    authService.getActiveUserIdsByRoles(instituteId, COUNSELLOR_ROLE_NAMES));
+            if (union.isEmpty()) {
+                // Legit for institutes that haven't granted counsellor roles yet
+                // (setup mode), but the most common misconfiguration too — make
+                // it findable in the logs when "the picker is empty".
+                log.warn("allCounsellorUserIds({}): no ACTIVE user_role rows for {} — "
+                        + "counsellor lists will be empty until the role is granted",
+                        instituteId, COUNSELLOR_ROLE_NAMES);
+            }
+            List<String> fresh = List.copyOf(union);
             counsellorCache.put(instituteId, new CachedIds(fresh, now));
             return fresh;
         } catch (Exception e) {
@@ -79,6 +97,12 @@ public class CounsellorScopeService {
                     cached != null ? "stale cache" : "empty", e.getMessage());
             return cached != null ? cached.userIds() : Collections.emptyList();
         }
+    }
+
+    /** Does the caller hold the ADMIN role for this institute? (JWT-resolved.) */
+    public boolean hasAdminRole(CustomUserDetails caller, String instituteId) {
+        return caller != null
+                && roleAccessService.resolvedCallerRoles(caller, instituteId).contains("ADMIN");
     }
 
     /**
@@ -146,6 +170,25 @@ public class CounsellorScopeService {
         return isScopedCaller(instituteId, callerUserId)
                 ? scopedCounsellorUserIds(instituteId, callerUserId)
                 : allCounsellorUserIds(instituteId);
+    }
+
+    /**
+     * The counsellors a caller may ASSIGN/REASSIGN leads to. Assignment is an
+     * admin action, not data visibility — so here the ADMIN role wins over
+     * the counsellor-scoping rule: an ADMIN (even one who also holds the
+     * COUNSELLOR role and therefore SEES only their hierarchy scope) can
+     * hand a lead to any counsellor of the institute. Non-admin scoped
+     * callers stay restricted to their hierarchy scope; callers without a
+     * user context (internal paths) get the institute-wide roster.
+     */
+    public List<String> assignableCounsellorUserIds(String instituteId, CustomUserDetails caller) {
+        if (caller == null || caller.getUserId() == null) {
+            return allCounsellorUserIds(instituteId);
+        }
+        if (hasAdminRole(caller, instituteId)) {
+            return allCounsellorUserIds(instituteId);
+        }
+        return visibleCounsellorUserIds(instituteId, caller.getUserId());
     }
 
     /**

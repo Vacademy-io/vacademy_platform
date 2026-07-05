@@ -51,7 +51,11 @@ export function TelephonyCounsellorMapCard() {
         provider.capabilities.includes('OUTBOUND_CALL') &&
         !provider.capabilities.includes('NUMBER_POOL');
 
-    const { options: counsellors, isLoading: counsellorsLoading } = useLeadCounsellorOptions();
+    // Routing CONFIG picker — assignable mode so an ADMIN who also holds the
+    // COUNSELLOR role can still map any counsellor, not just their hierarchy.
+    const { options: counsellors, isLoading: counsellorsLoading } = useLeadCounsellorOptions({
+        assignable: true,
+    });
     const nameById = useMemo(
         () => new Map(counsellors.map((c) => [c.id, c.full_name])),
         [counsellors]

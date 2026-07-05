@@ -91,6 +91,9 @@ public class CounsellorWorkbenchController {
     /**
      * The workbench roster: every COUNSELLOR-role user the caller may see —
      * hierarchy scope for scoped callers, institute-wide for pure admins.
+     * {@code assignable=true} resolves the ASSIGNMENT-target set instead
+     * (ADMIN-role callers get the institute-wide roster even when they also
+     * hold COUNSELLOR) — powers the reassign dialog's target dropdown.
      */
     @GetMapping("/counsellors")
     public ResponseEntity<Page<WorkbenchCounsellorDTO>> listCounsellors(
@@ -99,9 +102,10 @@ public class CounsellorWorkbenchController {
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestParam(value = "assignable", defaultValue = "false") boolean assignable,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(workbenchService.listCounsellors(
-                instituteId, search, status, page, size, user));
+                instituteId, search, status, page, size, user, assignable));
     }
 
     /**

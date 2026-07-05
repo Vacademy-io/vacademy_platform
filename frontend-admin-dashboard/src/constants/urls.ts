@@ -1200,17 +1200,21 @@ export const COUNSELLOR_WORKBENCH_MY_LEADS = (
     (status ? `&status=${status}` : '') +
     `&page=${page}&size=${size}`;
 /** Role-based roster: every COUNSELLOR-role user the caller may see
- *  (hierarchy scope for scoped callers, institute-wide for pure admins). */
+ *  (hierarchy scope for scoped callers, institute-wide for pure admins).
+ *  `assignable=true` resolves assignment targets instead — ADMIN-role
+ *  callers get the institute-wide roster even when hierarchy-scoped. */
 export const COUNSELLOR_WORKBENCH_COUNSELLORS = (
     instituteId: string,
     search?: string,
     status?: 'active' | 'inactive' | 'all',
     page: number = 0,
-    size: number = 20
+    size: number = 20,
+    assignable: boolean = false
 ) =>
     `${COUNSELLOR_WORKBENCH_BASE}/counsellors?instituteId=${instituteId}` +
     (search ? `&search=${encodeURIComponent(search)}` : '') +
     (status && status !== 'all' ? `&status=${status}` : '') +
+    (assignable ? `&assignable=true` : '') +
     `&page=${page}&size=${size}`;
 export const COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS = (
     instituteId: string,

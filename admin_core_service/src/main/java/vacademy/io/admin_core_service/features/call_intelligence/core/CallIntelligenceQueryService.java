@@ -72,7 +72,9 @@ public class CallIntelligenceQueryService {
      */
     public CallIntelligenceCoachingDto teamCoachingInsights(String instituteId, String callerUserId,
                                                             Long fromMillis, Long toMillis) {
-        List<String> ids = counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId);
+        // Scoped caller (COUNSELLOR role) → their reporting line; pure admin →
+        // every counsellor-role user of the institute.
+        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
         List<CallIntelligence> rows = (ids == null || ids.isEmpty())
                 ? List.of()
                 : repo.findByCounsellorUserIdInAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
@@ -232,10 +234,11 @@ public class CallIntelligenceQueryService {
                 .build();
     }
 
-    /** A sales head's whole team (self + all reports) over the window. */
+    /** A sales head's whole team (self + all reports) over the window;
+     *  pure admins get the institute-wide counsellor roster. */
     public CallIntelligenceAnalyticsDto teamAnalytics(String instituteId, String callerUserId,
                                                       Long fromMillis, Long toMillis) {
-        List<String> ids = counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId);
+        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
         return aggregate(ids, from(fromMillis), to(toMillis), true);
     }
 

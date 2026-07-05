@@ -26,13 +26,23 @@ public class LeadFollowupController {
     }
 
     @GetMapping("/{audienceResponseId}")
-    public ResponseEntity<List<LeadFollowupDto>> listForLead(@PathVariable String audienceResponseId) {
-        return ResponseEntity.ok(leadFollowupService.listForLead(audienceResponseId));
+    public ResponseEntity<List<LeadFollowupDto>> listForLead(@PathVariable String audienceResponseId,
+                                                             @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(leadFollowupService.listForLead(audienceResponseId, user));
     }
 
+    /**
+     * Legacy no-param shape returns the caller's own pending follow-ups.
+     * With {@code instituteId}: hierarchy-scoped callers get the manager view
+     * (own + counsellor-role reports'); pure admins get the institute, and
+     * {@code counsellorUserId} narrows to one user (scope-validated).
+     */
     @GetMapping("/my-pending")
-    public ResponseEntity<List<LeadFollowupDto>> myPending(@RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(leadFollowupService.myPending(user));
+    public ResponseEntity<List<LeadFollowupDto>> myPending(
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "counsellorUserId", required = false) String counsellorUserId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(leadFollowupService.myPending(user, instituteId, counsellorUserId));
     }
 
     @PutMapping("/{id}")

@@ -54,8 +54,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { TeamPicker } from '@/components/shared/crm/TeamPicker';
 import {
-    fetchMyTeam,
-    fetchTeamCounsellors,
+    fetchCounsellors,
 } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import type { ReportTab } from '../index';
@@ -308,7 +307,6 @@ export function LeadReportsPage() {
                 <TeamPicker instituteId={instituteId} value={teamId} onChange={handleTeamChange} />
                 <CounsellorScopePicker
                     instituteId={instituteId}
-                    teamId={teamId}
                     value={counsellorUserId}
                     onChange={setCounsellorUserId}
                 />
@@ -449,31 +447,21 @@ export function LeadReportsPage() {
  */
 function CounsellorScopePicker({
     instituteId,
-    teamId,
     value,
     onChange,
 }: {
     instituteId: string;
-    teamId: string | undefined;
     value: string | undefined;
     onChange: (userId: string | undefined) => void;
 }) {
-    // Same query key the Counsellor Workbench uses so the cache is shared.
-    const myTeamQuery = useQuery({
-        queryKey: ['workbench-my-team', instituteId],
+    // Role-based roster: every COUNSELLOR-role user the caller may see —
+    // hierarchy scope for scoped callers, institute-wide for pure admins.
+    const rosterQuery = useQuery({
+        queryKey: ['report-counsellor-roster', instituteId],
         enabled: !!instituteId,
         retry: false,
         staleTime: 5 * 60 * 1000,
-        queryFn: () => fetchMyTeam(instituteId),
-    });
-    const rosterTeamId = teamId ?? myTeamQuery.data?.team_id;
-
-    const rosterQuery = useQuery({
-        queryKey: ['report-counsellor-roster', instituteId, rosterTeamId],
-        enabled: !!instituteId && !!rosterTeamId,
-        retry: false,
-        staleTime: 5 * 60 * 1000,
-        queryFn: () => fetchTeamCounsellors(instituteId, rosterTeamId!, { size: 500 }),
+        queryFn: () => fetchCounsellors(instituteId, { size: 500 }),
     });
 
     const options = useMemo(
@@ -485,7 +473,7 @@ function CounsellorScopePicker({
     );
 
     // No roster visibility → no picker (reports stay scoped to the caller).
-    if (!myTeamQuery.data || rosterQuery.isError || options.length === 0) return null;
+    if (rosterQuery.isError || options.length === 0) return null;
 
     return (
         <Select

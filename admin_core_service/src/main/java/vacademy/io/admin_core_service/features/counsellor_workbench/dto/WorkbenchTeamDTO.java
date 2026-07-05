@@ -10,8 +10,9 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Result of GET /me/team. The caller's home team (= the team within the
- * leads_team_id subtree they belong to) plus the breadcrumb chain.
+ * Result of GET /me/team. The caller's own team, display-only (breadcrumb /
+ * header) — RBAC never depends on it. All fields are null for callers
+ * without a team membership.
  */
 @Data
 @NoArgsConstructor

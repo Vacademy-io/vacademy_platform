@@ -39,7 +39,7 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import {
     fetchCounsellorLeads,
     fetchMyTeam,
-    fetchTeamCounsellors,
+    fetchCounsellors,
     setCounsellorStatus,
     type WorkbenchCounsellor,
     type WorkbenchLead,
@@ -162,6 +162,8 @@ export function WorkbenchPage() {
     // leads for, so the "Mark inactive" button can show a spinner.
     const [pendingMarkInactiveId, setPendingMarkInactiveId] = useState<string | null>(null);
 
+    // Display-only breadcrumb: the caller's own team (empty for users
+    // without a team membership — no longer an error state).
     const teamQuery = useQuery({
         queryKey: ['workbench-my-team', instituteId],
         enabled: !!instituteId,
@@ -177,19 +179,13 @@ export function WorkbenchPage() {
         setPage(0);
     }, [search, statusFilter, viewMode]);
 
+    // Role-based roster: every COUNSELLOR-role user the caller may see —
+    // hierarchy scope for scoped callers, institute-wide for pure admins.
     const counsellorsQuery = useQuery({
-        queryKey: [
-            'workbench-counsellors',
-            instituteId,
-            teamQuery.data?.team_id,
-            search,
-            statusFilter,
-            page,
-            pageSize,
-        ],
-        enabled: !!instituteId && !!teamQuery.data?.team_id,
+        queryKey: ['workbench-counsellors', instituteId, search, statusFilter, page, pageSize],
+        enabled: !!instituteId,
         queryFn: () =>
-            fetchTeamCounsellors(instituteId!, teamQuery.data!.team_id, {
+            fetchCounsellors(instituteId!, {
                 search,
                 status: statusFilter,
                 page,
@@ -199,16 +195,13 @@ export function WorkbenchPage() {
     });
 
     // Candidates for the reassign dialog's target dropdown need the WHOLE
-    // team subtree, not just the current page. Separate query so the display
-    // list can paginate while reassign still picks across everyone. Cached
-    // by react-query so we don't re-fetch on every row click.
+    // visible roster, not just the current page. Separate query so the
+    // display list can paginate while reassign still picks across everyone.
+    // Cached by react-query so we don't re-fetch on every row click.
     const candidatesQuery = useQuery({
-        queryKey: ['workbench-counsellors-candidates', instituteId, teamQuery.data?.team_id],
-        enabled: !!instituteId && !!teamQuery.data?.team_id,
-        queryFn: () =>
-            fetchTeamCounsellors(instituteId!, teamQuery.data!.team_id, {
-                size: 500,
-            }),
+        queryKey: ['workbench-counsellors-candidates', instituteId],
+        enabled: !!instituteId,
+        queryFn: () => fetchCounsellors(instituteId!, { size: 500 }),
     });
 
     const counsellors = counsellorsQuery.data?.content ?? [];
@@ -383,23 +376,6 @@ export function WorkbenchPage() {
 
     if (!instituteId) return null;
 
-    if (teamQuery.isError) {
-        const msg =
-            (teamQuery.error as { response?: { data?: { ex?: string } } })?.response?.data?.ex ??
-            'Could not resolve your team.';
-        return (
-            <LayoutContainer>
-                <div className="rounded border border-warning-200 bg-warning-50 p-6 text-subtitle text-warning-700">
-                    {msg} Configure the leads team under{' '}
-                    <a href="/settings" className="underline">
-                        Settings → Lead Workbench
-                    </a>{' '}
-                    to get started.
-                </div>
-            </LayoutContainer>
-        );
-    }
-
     // Stat chips count over ALL counsellors, not just the current page.
     // Fall back to current page values until the all-candidates query
     // resolves, so the chips don't flash zeros on first load.
@@ -413,7 +389,7 @@ export function WorkbenchPage() {
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
                 <div>
                     <div className="text-caption text-neutral-500">
-                        {teamQuery.data?.ancestor_names.join(' › ') || 'Leads team'}
+                        {teamQuery.data?.ancestor_names?.join(' › ') || 'Counselling team'}
                     </div>
                     <h1 className="text-h1 font-medium text-neutral-900">
                         {teamQuery.data?.team_name ?? 'Counsellors'}

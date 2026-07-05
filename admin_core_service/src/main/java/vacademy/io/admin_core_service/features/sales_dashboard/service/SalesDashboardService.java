@@ -520,26 +520,26 @@ public class SalesDashboardService {
      * Priority:
      *   1. Explicit {@code teamId} → that team's members only (manager picks
      *      a specific team to drill into).
-     *   2. Default → caller's user-to-user descendants in the leads subtree
-     *      (RBAC). A team head sees their entire downstream; a manager sees
-     *      their reports; a leaf counsellor sees only themselves. Without
-     *      this, the funnel/KPIs would silently count every counsellor in
-     *      the institute regardless of who's logged in.
-     *   3. Leads team not configured AND caller has no scope → empty list,
-     *      which {@link #userScopeClause} translates to "no scope filter"
-     *      (the page still renders during admin setup).
+     *   2. Hierarchy-scoped caller (COUNSELLOR role) → their scope: self +
+     *      counsellor-role descendants. A team head sees their entire
+     *      downstream; a leaf counsellor sees only themselves. Without this,
+     *      the funnel/KPIs would silently count every counsellor in the
+     *      institute regardless of who's logged in.
+     *   3. Pure admin → every COUNSELLOR-role user; when the institute has
+     *      no counsellor-role users yet, empty list, which
+     *      {@link #userScopeClause} translates to "no scope filter" (the
+     *      page still renders during admin setup).
      */
     private List<String> scopedUsers(String instituteId, String teamId, String callerUserId) {
         if (teamId != null && !teamId.isBlank()) {
             return scopeService.usersInTeams(java.util.List.of(teamId));
         }
-        if (callerUserId != null && !callerUserId.isBlank()) {
-            List<String> scope = scopeService.descendantUserIdsForCaller(instituteId, callerUserId);
+        if (callerUserId != null && !callerUserId.isBlank()
+                && scopeService.isScopedCaller(instituteId, callerUserId)) {
+            List<String> scope = scopeService.scopedCounsellorUserIds(instituteId, callerUserId);
             if (!scope.isEmpty()) return scope;
         }
-        List<String> teamIds = scopeService.allTeamIdsUnderLeadsRoot(instituteId);
-        if (teamIds.isEmpty()) return Collections.emptyList();
-        return scopeService.usersInTeams(teamIds);
+        return scopeService.allCounsellorUserIds(instituteId);
     }
 
     /** Back-compat overload for paths that don't carry caller context (e.g. scheduled aggregations). */
@@ -555,9 +555,10 @@ public class SalesDashboardService {
      * graceful when a manager picks someone they shouldn't see anyway.
      */
     private List<String> narrowToCounsellor(String instituteId, String callerUserId, String counsellorUserId) {
-        if (callerUserId != null && !callerUserId.isBlank()) {
+        if (callerUserId != null && !callerUserId.isBlank()
+                && scopeService.isScopedCaller(instituteId, callerUserId)) {
             Set<String> allowed = new HashSet<>(
-                    scopeService.descendantUserIdsForCaller(instituteId, callerUserId));
+                    scopeService.scopedCounsellorUserIds(instituteId, callerUserId));
             if (!allowed.isEmpty() && !allowed.contains(counsellorUserId)) {
                 return Collections.emptyList();
             }

@@ -91,11 +91,11 @@ public class ManagerReportService {
         // 1. Reporting teams: the requested team alone, else every flat team in the institute.
         List<OrgTeamDTO> reportingTeams = resolveReportingTeams(instituteId, requestedTeamId);
 
-        // 2. RBAC narrowing: a scoped caller only sees teams containing ≥1 of their descendants,
-        //    and per-team membership is intersected with that descendant set.
-        boolean callerScoped = counsellorScopeService.isCallerInLeadsSubtree(instituteId, callerUserId);
+        // 2. RBAC narrowing: a scoped caller (COUNSELLOR role) only sees teams containing ≥1 of
+        //    their descendants, and per-team membership is intersected with that descendant set.
+        boolean callerScoped = counsellorScopeService.isScopedCaller(instituteId, callerUserId);
         Set<String> callerDescendants = callerScoped
-                ? new HashSet<>(counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId))
+                ? new HashSet<>(counsellorScopeService.scopedCounsellorUserIds(instituteId, callerUserId))
                 : Collections.emptySet();
 
         List<TeamRollupReportDTO.Row> rows = new ArrayList<>();

@@ -13,7 +13,7 @@
  */
 
 import { ListChecks, FileText, ExternalLink } from 'lucide-react';
-import { Phone } from '@phosphor-icons/react';
+import { Phone, Robot } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -23,7 +23,12 @@ import {
     isMultiSelectType,
     parseMultiSelectValue,
 } from '../../-utils/format-custom-field-value';
-import { CallPickerPopover, usePlaceCall } from '@/components/shared/leads';
+import {
+    CallPickerPopover,
+    usePlaceCall,
+    usePlaceAiCall,
+    useAiCallButtonEnabled,
+} from '@/components/shared/leads';
 import { cn } from '@/lib/utils';
 
 export interface LeadResponseField {
@@ -94,7 +99,51 @@ const CallButton = ({ call }: { call: CallAction }) => {
     );
 };
 
-const Row = ({ field, call }: { field: LeadResponseField; call?: CallAction }) => {
+interface AiCallAction {
+    /** Fire the AI voice-agent call to this lead (backend resolves phone from the response id). */
+    onCall: () => void;
+    disabled: boolean;
+    reason?: string;
+    isPending: boolean;
+}
+
+/**
+ * AI-call CTA — mirrors {@link CallButton} but places a call with the AI voice
+ * agent instead of a counsellor. Rendered only when AI calling's lead-list
+ * surface is enabled for the institute (same gate as the per-row robot button).
+ * Primary accent so it reads as distinct from the teal human "Call now".
+ */
+const AiCallButton = ({ ai }: { ai: AiCallAction }) => {
+    const muted = ai.disabled || ai.isPending;
+    return (
+        <button
+            type="button"
+            title={ai.reason ?? 'Place an AI voice-agent call to this lead'}
+            aria-label="AI call lead"
+            disabled={muted}
+            onClick={ai.onCall}
+            className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                muted
+                    ? 'cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400'
+                    : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
+            )}
+        >
+            <Robot weight="fill" className="size-3.5" />
+            {ai.isPending ? 'Calling…' : 'AI call'}
+        </button>
+    );
+};
+
+const Row = ({
+    field,
+    call,
+    aiCall,
+}: {
+    field: LeadResponseField;
+    call?: CallAction;
+    aiCall?: AiCallAction;
+}) => {
     const { name, type, rawValue } = field;
     const normalized = (type ?? '').toLowerCase();
 
@@ -174,7 +223,12 @@ const Row = ({ field, call }: { field: LeadResponseField; call?: CallAction }) =
                             display
                         )}
                     </p>
-                    {showCall && <CallButton call={call!} />}
+                    {showCall && (
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            {aiCall && <AiCallButton ai={aiCall} />}
+                            <CallButton call={call!} />
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -202,9 +256,11 @@ export const LeadFormResponseCard = () => {
     const responseId = ext?._response_id ?? null;
     const leadUserId = selectedStudent?.user_id ?? null;
 
-    // Hooks must run unconditionally — set up the mutation before the
+    // Hooks must run unconditionally — set up the mutations before the
     // empty-fields short-circuit so React's hook order stays stable.
     const placeCallMutation = usePlaceCall();
+    const aiEnabled = useAiCallButtonEnabled();
+    const placeAiCallMutation = usePlaceAiCall({ invalidateKeys: [['telephony-call-history']] });
 
     if (!fields || fields.length === 0) return null;
 
@@ -230,6 +286,25 @@ export const LeadFormResponseCard = () => {
         },
     };
 
+    // AI-call action — only when AI calling's lead-list surface is enabled for the
+    // institute (undefined otherwise, so the button isn't rendered).
+    const aiCall: AiCallAction | undefined = aiEnabled
+        ? {
+              disabled: !responseId,
+              reason: !responseId
+                  ? 'No campaign response linked — cannot place an AI call from here.'
+                  : undefined,
+              isPending: placeAiCallMutation.isPending,
+              onCall: () => {
+                  if (!responseId) return;
+                  placeAiCallMutation.mutate({
+                      responseId,
+                      userId: leadUserId ?? undefined,
+                  });
+              },
+          }
+        : undefined;
+
     return (
         <Card className="border-neutral-200 shadow-none">
             <CardHeader className="px-4 pb-3 pt-4">
@@ -246,7 +321,7 @@ export const LeadFormResponseCard = () => {
             <CardContent className="px-1 pb-3 pt-0">
                 {fields.map((field, idx) => (
                     <div key={field.id || `${field.name}-${idx}`}>
-                        <Row field={field} call={call} />
+                        <Row field={field} call={call} aiCall={aiCall} />
                         {idx < fields.length - 1 && <Separator className="bg-neutral-100" />}
                     </div>
                 ))}

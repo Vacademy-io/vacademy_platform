@@ -18,10 +18,21 @@ interface Props {
     instituteId: string;
     fromUserId: string | null;
     fromUserName: string | null;
-    /** Open-leads pre-populated by the inactive-toggle response (or empty when invoked from a single lead row). */
+    /** Open-leads pre-populated by the inactive-toggle response (or empty when invoked from a single lead row).
+     *  NOTE: capped at the fetch page size (500) — display/preview only when {@link reassignAll} is set. */
     openLeads: WorkbenchLead[];
     /** All counsellors in the team subtree — for the SINGLE picker and the MANUAL overrides. */
     candidates: WorkbenchCounsellor[];
+    /**
+     * When true the commit moves EVERY open lead of the source counsellor —
+     * the backend resolves the full set itself (no lead_ids whitelist, no 500
+     * cap). Used by the counsellor-level flows (mark inactive, Reassign
+     * leads). Per-row reassign keeps it false so a single-row action can't
+     * sweep the whole pipeline.
+     */
+    reassignAll?: boolean;
+    /** True total of open leads (from the paginated fetch) — may exceed openLeads.length. */
+    totalOpenLeads?: number;
     /**
      * When true the dialog confirms a reassign-AND-mark-inactive in one step:
      * the backend flips the source counsellor's pool memberships INACTIVE
@@ -56,6 +67,8 @@ export function ReassignDialog({
     fromUserName,
     openLeads,
     candidates,
+    reassignAll = false,
+    totalOpenLeads,
     markInactive = false,
     onComplete,
     onMarkInactiveWithoutReassign,
@@ -119,16 +132,21 @@ export function ReassignDialog({
         }
     }
 
+    // True count of open leads — openLeads is capped at the fetch page size
+    // (500), so counsellor-level flows show/move the real total instead.
+    const totalCount = totalOpenLeads ?? openLeads.length;
+
     async function submit() {
         if (!fromUserId) return;
         setSubmitting(true);
         try {
             let result;
-            // Every commit scopes to `openLeads` (the lead set the dialog was
-            // opened with). For per-row reassign that's a single lead — the
-            // backend's `lead_ids` whitelist keeps SINGLE/RR mode from
-            // sweeping up the source counsellor's whole pipeline.
-            const scopeIds = openLeads.map((l) => l.lead_id);
+            // reassignAll (counsellor-level flows): send NO lead_ids — the
+            // backend resolves and moves EVERY open lead of the source
+            // counsellor in one transaction, so nothing is left behind by the
+            // 500-row fetch cap. Per-row reassign keeps the whitelist so a
+            // single-row action can't sweep the whole pipeline.
+            const scopeIds = reassignAll ? undefined : openLeads.map((l) => l.lead_id);
             // Reassign-first edge case: marking inactive with no open leads —
             // backend short-circuits before evaluating mode-specific args, so
             // we send a no-op SINGLE request without a target. The flip still
@@ -176,17 +194,19 @@ export function ReassignDialog({
                         lead_id,
                         to_user_id,
                     })),
-                    // MANUAL already encodes the lead set via `assignments`,
-                    // but pass the scope explicitly anyway so the backend
-                    // never broadens beyond the dialog's intent.
-                    lead_ids: scopeIds,
+                    // MANUAL always scopes to exactly the previewed set — a
+                    // lead that drifted in after the preview has no target and
+                    // would fail the whole batch if the backend swept it up.
+                    lead_ids: Object.keys(perRowOverrides),
                     mark_inactive: markInactive,
                 });
             }
             // Toast varies by whether the counsellor was also taken offline,
             // so the manager gets a single clear confirmation of what
-            // actually happened in the same transaction.
-            const n = openLeads.length;
+            // actually happened in the same transaction. Count comes from the
+            // backend result — the authoritative number of leads moved (the
+            // dialog's openLeads list is capped at 500 for display).
+            const n = result.total_leads;
             if (markInactive && result.marked_inactive) {
                 toast.success(
                     n > 0
@@ -226,13 +246,19 @@ export function ReassignDialog({
                     <DialogTitle>
                         {markInactive
                             ? `Mark ${fromUserName ?? 'counsellor'} inactive`
-                            : `Reassign ${openLeads.length} lead${openLeads.length === 1 ? '' : 's'}${fromUserName ? ` from ${fromUserName}` : ''}`}
+                            : `Reassign ${totalCount} lead${totalCount === 1 ? '' : 's'}${fromUserName ? ` from ${fromUserName}` : ''}`}
                     </DialogTitle>
                     {markInactive && (
                         <p className="mt-1 text-caption text-neutral-500">
                             {openLeads.length === 0
                                 ? `${fromUserName ?? 'They'} have no assigned leads — confirming will just take them offline.`
-                                : `Reassign their ${openLeads.length} assigned lead${openLeads.length === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
+                                : `Reassign their ${totalCount} assigned lead${totalCount === 1 ? '' : 's'} first. They'll be taken offline atomically when you confirm.`}
+                        </p>
+                    )}
+                    {reassignAll && totalCount > openLeads.length && (
+                        <p className="mt-1 text-caption text-neutral-500">
+                            Showing the first {openLeads.length} of {totalCount} — confirming
+                            moves all {totalCount}.
                         </p>
                     )}
                 </DialogHeader>

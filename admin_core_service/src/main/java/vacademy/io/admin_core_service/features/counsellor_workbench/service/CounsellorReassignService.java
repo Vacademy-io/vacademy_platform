@@ -332,11 +332,81 @@ public class CounsellorReassignService {
             default -> throw new VacademyException("Unknown reassign mode: " + req.getMode());
         };
 
+        List<ReassignResultDTO.AssignmentResult> results = new ArrayList<>(plan.size());
+        Map<String, Long> countByTarget = new LinkedHashMap<>();
+        applyPlan(plan, req, actor, dryRun, results, countByTarget);
+
+        // Reassign-first flow: only after the routing loop completes do we
+        // flip the source counsellor's pool memberships INACTIVE. Same
+        // transaction as the assignments, so a failure rolls both back.
+        boolean flipped = !dryRun && shouldMarkInactive
+                && flipPoolMembersInactive(req.getInstituteId(), req.getFromUserId());
+
+        // One-click-ALL drain. A full sweep (no lead_ids whitelist, SINGLE /
+        // ROUND_ROBIN) races against concurrent auto-assignment: pool
+        // round-robin, form submissions and AI-call flows keep landing NEW
+        // leads on the source counsellor while this runs, which left a random
+        // 4–10 behind per pass. Re-read and re-route until the counsellor
+        // drains (bounded — inflow outrunning 5 passes means something is
+        // pathologically wrong; whatever lands in the final instant stays
+        // visible on their card and can be re-swept with "Reassign leads").
+        boolean fullSweep = (req.getLeadIds() == null || req.getLeadIds().isEmpty())
+                && !"MANUAL".equalsIgnoreCase(req.getMode());
+        if (fullSweep && !dryRun) {
+            for (int pass = 0; pass < 5; pass++) {
+                List<UserLeadProfile> stragglers = profileRepo
+                        .findOpenByInstituteAndCounsellor(req.getInstituteId(), req.getFromUserId());
+                if (stragglers.isEmpty()) break;
+                List<Plan> extra = "SINGLE".equalsIgnoreCase(req.getMode())
+                        ? planSingle(stragglers, req, allowed)
+                        : planRoundRobin(stragglers, req, allowed);
+                applyPlan(extra, req, actor, false, results, countByTarget);
+            }
+        }
+
+        // Bell notifications: ONE per target counsellor ("3 leads reassigned
+        // to you"), never one per lead. Registered as an after-commit hook so
+        // a rollback (any single assignCounselor failure aborts the whole
+        // batch) never produces a phantom alert. Preview (dryRun) sends nothing.
+        if (!dryRun && !countByTarget.isEmpty()) {
+            Map<String, Long> countsSnapshot = new LinkedHashMap<>(countByTarget);
+            String instituteId = req.getInstituteId();
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        notifyReassignTargets(instituteId, countsSnapshot);
+                    }
+                });
+            } else {
+                notifyReassignTargets(instituteId, countsSnapshot);
+            }
+        }
+
+        return ReassignResultDTO.builder()
+                .dryRun(dryRun)
+                .totalLeads(results.size())
+                .assignments(results)
+                .markedInactive(flipped)
+                .build();
+    }
+
+    /**
+     * Route one plan batch: resolve target names, record result rows, and
+     * (unless previewing) persist the assignment + journey event per lead.
+     * Accumulates per-target counts for the batched bell notifications so
+     * drain passes merge into one alert per counsellor.
+     */
+    private void applyPlan(List<Plan> plan, ReassignRequest req, CustomUserDetails actor,
+                           boolean dryRun,
+                           List<ReassignResultDTO.AssignmentResult> results,
+                           Map<String, Long> countByTarget) {
+        if (plan.isEmpty()) return;
+
         // Resolve display names for everyone we're routing to, in one batch.
         Set<String> targetIds = plan.stream().map(Plan::toUserId).collect(Collectors.toSet());
         Map<String, String> nameById = resolveNames(targetIds);
 
-        List<ReassignResultDTO.AssignmentResult> results = new ArrayList<>(plan.size());
         for (Plan p : plan) {
             String toName = nameById.get(p.toUserId());
             results.add(ReassignResultDTO.AssignmentResult.builder()
@@ -351,6 +421,7 @@ public class CounsellorReassignService {
                 profileService.assignCounselor(
                         p.leadProfile.getUserId(), req.getInstituteId(),
                         p.toUserId(), toName);
+                countByTarget.merge(p.toUserId(), 1L, Long::sum);
                 // Timeline event mirrors the manual reassign flow so the
                 // journey UI reads identically whether the route was SINGLE,
                 // ROUND_ROBIN, or MANUAL.
@@ -377,39 +448,6 @@ public class CounsellorReassignService {
                 }
             }
         }
-
-        // Reassign-first flow: only after the routing loop completes do we
-        // flip the source counsellor's pool memberships INACTIVE. Same
-        // transaction as the assignments, so a failure rolls both back.
-        boolean flipped = !dryRun && shouldMarkInactive
-                && flipPoolMembersInactive(req.getInstituteId(), req.getFromUserId());
-
-        // Bell notifications: ONE per target counsellor ("3 leads reassigned
-        // to you"), never one per lead. Registered as an after-commit hook so
-        // a rollback (any single assignCounselor failure aborts the whole
-        // batch) never produces a phantom alert. Preview (dryRun) sends nothing.
-        if (!dryRun && !plan.isEmpty()) {
-            Map<String, Long> countByTarget = plan.stream()
-                    .collect(Collectors.groupingBy(Plan::toUserId, Collectors.counting()));
-            String instituteId = req.getInstituteId();
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        notifyReassignTargets(instituteId, countByTarget);
-                    }
-                });
-            } else {
-                notifyReassignTargets(instituteId, countByTarget);
-            }
-        }
-
-        return ReassignResultDTO.builder()
-                .dryRun(dryRun)
-                .totalLeads(results.size())
-                .assignments(results)
-                .markedInactive(flipped)
-                .build();
     }
 
     /**

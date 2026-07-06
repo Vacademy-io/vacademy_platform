@@ -1518,8 +1518,24 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
-          <div className="flex flex-col gap-3">
-            {/* Get Started Button */}
+          <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? "mb-8" : ""}`}>
+            {/* Login Button */}
+            <button
+              onClick={() => navigate({ to: "/login" })}
+              className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg border transition-all duration-200"
+              style={{
+                color: domainRouting.instituteThemeCode
+                  ? `hsl(var(--primary))`
+                  : "#3b82f6", // design-lint-ignore: page-builder default color
+                borderColor: domainRouting.instituteThemeCode
+                  ? `hsl(var(--primary))`
+                  : "#3b82f6", // design-lint-ignore: page-builder default color
+              }}
+            >
+              Login
+            </button>
+
+            {/* Get Started / Enroll Button */}
             <button
               onClick={() => {
                 // Mirror the desktop CTA: enroll when payment is enabled,
@@ -1543,34 +1559,6 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   : "Enroll Now"
                 : "Get Started"}
             </button>
-
-            {/* Login Text */}
-            <div
-              className={`text-center border-gray-200 ${isAndroid || isIOS ? "mb-8" : ""}`}
-            >
-              <span
-                onClick={() => navigate({ to: "/login" })}
-                className="cursor-pointer text-sm transition-colors"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = "0.8";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = "1";
-                }}
-              >
-                <span className="text-black">Already have an account? </span>
-                <span
-                  className="underline"
-                  style={{
-                    color: domainRouting.instituteThemeCode
-                      ? `hsl(var(--primary))`
-                      : "#3b82f6", // design-lint-ignore: page-builder default color
-                  }}
-                >
-                  Login
-                </span>
-              </span>
-            </div>
           </div>
         </div>
       )}

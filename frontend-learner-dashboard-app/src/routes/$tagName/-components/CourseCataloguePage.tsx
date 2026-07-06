@@ -494,7 +494,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
-          <div className="flex flex-col gap-3">
+          <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
+            {/* Login Button */}
+            <button
+              onClick={handleIntroLogin}
+              className="catalogue-btn catalogue-btn-secondary w-full"
+            >
+              Login
+            </button>
+
             {/* Get Started Button */}
             {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
               onClick={() => {
@@ -504,25 +512,6 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
             >
               Get Started
             </button>}
-
-            {/* Login Text */}
-            <div className={`text-center ${isAndroid || isIOS ? 'mb-8' : ''}`}>
-              <span
-                onClick={handleIntroLogin}
-                className="cursor-pointer text-sm transition-colors"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = '0.8';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-              >
-                <span className="text-catalogue-text-secondary">Already have an account?</span>{" "}
-                <span className="underline text-primary-500">
-                  Login
-                </span>
-              </span>
-            </div>
           </div>
         </div>
       )}

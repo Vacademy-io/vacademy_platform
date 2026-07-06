@@ -371,6 +371,18 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       {(!showIntroPage || introCompleted) && catalogueData && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
+            {/* Login Button */}
+            <button
+              onClick={handleIntroLogin}
+              className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
+              style={{
+                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+              }}
+            >
+              Login
+            </button>
+
             {/* Get Started Button */}
             {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
               onClick={() => {
@@ -387,30 +399,6 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             >
               Get Started
             </button>}
-
-            {/* Login Text */}
-            <div className="text-center">
-              <span
-                onClick={handleIntroLogin}
-                className="cursor-pointer text-sm transition-colors"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.opacity = '0.8';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '1';
-                }}
-              >
-                <span className="text-black">Already have an account?</span>
-                <span
-                  className="underline"
-                  style={{
-                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                  }}
-                >
-                  Login
-                </span>
-              </span>
-            </div>
           </div>
         </div>
       )}

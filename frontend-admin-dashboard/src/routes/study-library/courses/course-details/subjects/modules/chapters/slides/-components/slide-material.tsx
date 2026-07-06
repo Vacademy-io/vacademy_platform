@@ -3489,6 +3489,11 @@ export const SlideMaterial = ({
                                   : 'h-full'
                           } ${
                               activeItem?.document_slide?.type === 'DOC' ||
+                              // CODE (esp. Question Mode) grows with its problem
+                              // text / test cases / starter code; pinning it to
+                              // overflow-hidden clips the lower tabs' content with
+                              // no scrollbar. Let the outer page-scroll reveal it.
+                              activeItem?.document_slide?.type === 'CODE' ||
                               activeItem?.source_type === 'ASSIGNMENT'
                                   ? 'overflow-visible'
                                   : 'overflow-hidden'

@@ -317,10 +317,16 @@ public class InvoiceService {
         try {
             List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
                     .findPaymentLogsByInvoiceId(invoice.getId());
+            // Discriminate on UserPlan presence, NOT list emptiness: an admin invoice gains a
+            // MANUAL/gateway PaymentLog mapping (with userPlan=null) once payment is initiated or
+            // marked paid, so emptiness would wrongly route it to the enrollment builder — which
+            // dereferences userPlan and NPEs. Treat it as an admin invoice unless at least one
+            // mapped log carries a real UserPlan.
+            boolean hasEnrollmentLog = paymentLogs.stream().anyMatch(pl -> pl.getUserPlan() != null);
             InvoiceData invoiceData;
-            if (paymentLogs.isEmpty()) {
-                // Admin invoice (no payment-log mappings) — rebuild from the persisted row +
-                // line items + stored overrides so the PDF regenerates with the admin's edits.
+            if (!hasEnrollmentLog) {
+                // Admin invoice — rebuild from the persisted row + line items + stored overrides
+                // so the PDF regenerates with the admin's edits (independent of payment state).
                 invoiceData = buildInvoiceDataFromPersistedInvoice(invoice);
                 if (invoiceData == null || invoiceData.getLineItems() == null
                         || invoiceData.getLineItems().isEmpty()) {
@@ -1812,7 +1818,10 @@ public class InvoiceService {
      * HTML-escape an admin-supplied override value before it is spliced into the
      * invoice template. Prevents a stray {@code <}/{@code &} from breaking the XHTML the
      * PDF renderer (openhtmltopdf) requires, and neutralises any markup/script in the
-     * preview HTML (which is also shown in a sandboxed iframe). Null → empty string.
+     * preview HTML (which is also shown in a sandboxed iframe). The curly braces are also
+     * encoded so an override value containing a {@code {{placeholder}}} token cannot be
+     * re-expanded by a later substitution pass (template substitution is sequential).
+     * Null → empty string.
      */
     private String escapeHtml(String value) {
         if (value == null) return "";
@@ -1821,7 +1830,9 @@ public class InvoiceService {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+                .replace("'", "&#39;")
+                .replace("{", "&#123;")
+                .replace("}", "&#125;");
     }
 
     private String buildLineItemsHtml(List<InvoiceLineItemData> lineItems, String currency) {
@@ -3698,14 +3709,22 @@ public class InvoiceService {
         }
 
         boolean singleUser = request.getUserIds() != null && request.getUserIds().size() == 1;
-        Map<String, String> overrides = sanitizeOverrides(request.getOverrides(), singleUser);
-        String effectiveNotes = overrides.containsKey("notes") ? overrides.get("notes") : request.getNotes();
-        if (StringUtils.hasText(effectiveNotes)) overrides.put("notes", effectiveNotes);
+        Map<String, String> userOverrides = sanitizeOverrides(request.getOverrides(), singleUser);
+        String effectiveNotes = userOverrides.containsKey("notes") ? userOverrides.get("notes") : request.getNotes();
+
+        // Resolve the invoice number exactly like createAdminInvoices: honour a unique admin
+        // override, else the freshly generated next number. This keeps the preview's rendered
+        // {{invoice_number}} equal to what create will actually assign on a collision.
+        String overrideNumber = userOverrides.get("invoice_number");
+        String invoiceNumber = (StringUtils.hasText(overrideNumber)
+                && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty())
+                ? overrideNumber.trim()
+                : generateInvoiceNumber(request.getInstituteId());
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)
                 .institute(institute)
-                .invoiceNumber(generateInvoiceNumber(request.getInstituteId()))
+                .invoiceNumber(invoiceNumber)
                 .invoiceDate(request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now())
                 .dueDate(request.getDueDate())
                 .subtotal(subtotal)
@@ -3721,8 +3740,23 @@ public class InvoiceService {
                 .paymentDate(LocalDateTime.now())
                 .lineItems(buildAdminLineItemData(request.getLineItems(), taxAmount, taxIncluded, taxRate, taxLabel))
                 .notes(effectiveNotes)
-                .overrides(overrides)
                 .build();
+
+        // Render EVERY editable placeholder through the escaping override path (defaults merged
+        // under the admin's edits) so the preview HTML matches the created PDF byte-for-byte —
+        // including the seed frame, where the admin has edited nothing. invoice_number is driven
+        // by invoiceData (collision-resolved above), notes are folded in escaped. Mirrors the
+        // renderOverrides createAdminInvoices builds.
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> renderOverrides = new HashMap<>(userOverrides);
+        for (String key : EDITABLE_OVERRIDE_KEYS) {
+            if (!renderOverrides.containsKey(key) && defaults.containsKey(key)) {
+                renderOverrides.put(key, defaults.get(key));
+            }
+        }
+        renderOverrides.remove("invoice_number");
+        if (StringUtils.hasText(effectiveNotes)) renderOverrides.put("notes", effectiveNotes);
+        invoiceData.setOverrides(renderOverrides);
 
         String templateHtml = loadInvoiceTemplate(request.getInstituteId());
         String html = replaceTemplatePlaceholders(templateHtml, invoiceData);

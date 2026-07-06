@@ -28,6 +28,9 @@ public class InvoiceController {
     @Autowired
     private vacademy.io.admin_core_service.features.invoice.service.ManualReminderService manualReminderService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
+
     /**
      * Get invoice by ID
      */
@@ -117,6 +120,8 @@ public class InvoiceController {
     public ResponseEntity<List<AdminInvoicePaymentLinkResponseDTO>> createAdminInvoices(
             @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
             @RequestAttribute("user") CustomUserDetails userDetails) {
+        // Cross-tenant guard: the caller must belong to the institute they are billing under.
+        instituteAccessValidator.validateUserAccess(userDetails, request.getInstituteId());
         List<AdminInvoicePaymentLinkResponseDTO> result = invoiceService.createAdminInvoices(request);
         return ResponseEntity.ok(result);
     }
@@ -134,6 +139,9 @@ public class InvoiceController {
     public ResponseEntity<vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePreviewResponseDTO> previewAdminInvoice(
             @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
             @RequestAttribute("user") CustomUserDetails userDetails) {
+        // Cross-tenant guard: preview resolves the institute's template + billed user's PII, so
+        // the caller must belong to the requested institute (mirrors createAdminInvoices).
+        instituteAccessValidator.validateUserAccess(userDetails, request.getInstituteId());
         return ResponseEntity.ok(invoiceService.previewAdminInvoice(request));
     }
 

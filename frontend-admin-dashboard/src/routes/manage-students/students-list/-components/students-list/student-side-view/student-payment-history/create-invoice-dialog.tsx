@@ -406,12 +406,17 @@ export function CreateInvoiceDialog({
         ov: Record<string, string>,
         dates: Record<string, string>
     ): AdminCreateInvoiceRequest => {
-        const dueRaw = dates.due_date || values.due_date;
-        const due = new Date(dueRaw);
+        // A cleared review date field is an empty string; treat that as "not overridden" and
+        // fall back to the step-1 (zod-validated) due date so we never build an invalid date.
+        const dueRaw = dates.due_date && dates.due_date !== '' ? dates.due_date : values.due_date;
+        let due = new Date(dueRaw);
+        if (Number.isNaN(due.getTime())) due = new Date(values.due_date);
         due.setHours(23, 59, 59, 0);
-        const invoiceDateIso = dates.invoice_date
-            ? new Date(`${dates.invoice_date}T00:00:00`).toISOString()
-            : undefined;
+        // Send invoice_date as a NAIVE local date-time string (no toISOString): the backend field
+        // is a LocalDateTime, and round-tripping local-midnight through toISOString() would shift
+        // the calendar day back for UTC+ timezones (e.g. IST). An empty value falls back to the
+        // server's now().
+        const invoiceDate = dates.invoice_date ? `${dates.invoice_date}T00:00:00` : undefined;
         return {
             user_ids: [userId],
             institute_id: instituteId,
@@ -423,7 +428,7 @@ export function CreateInvoiceDialog({
             })),
             currency: values.currency,
             due_date: due.toISOString(),
-            invoice_date: invoiceDateIso,
+            invoice_date: invoiceDate,
             notes: ov.notes || undefined,
             overrides: ov,
         };
@@ -476,9 +481,14 @@ export function CreateInvoiceDialog({
     const handleNext = async () => {
         const ok = await form.trigger();
         if (!ok) return;
+        const isSeed = resolvedValues === null;
+        // Re-entry (Back → Next): setStep('review') re-triggers the debounce effect, which would
+        // fire a second identical preview. Suppress that one — the direct runPreview(false) below
+        // already refreshes. (On first entry, runPreview(true) sets this flag itself.)
+        if (!isSeed) skipNextPreviewRef.current = true;
         setStep('review');
         // Seed on first entry; on re-entry just refresh so prior edits are kept.
-        await runPreview(resolvedValues === null);
+        await runPreview(isSeed);
     };
 
     const handleCreate = async () => {

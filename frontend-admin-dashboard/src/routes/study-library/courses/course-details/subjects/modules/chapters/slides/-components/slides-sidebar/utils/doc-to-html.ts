@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import { stripEmptyAnchors } from '../../slide-operations/formatHtmlString';
 
 const INLINE_TAGS = 'strong|em|b|i|u|code|span|mark|sub|sup|small';
 const BLOCK_CONTAINERS = new Set([
@@ -420,10 +421,16 @@ export const convertDocToHtml = async (file: File): Promise<string> => {
                 const imagesHoisted = hoistImagesFromBlocks(whitespaceFixed);
                 const listsFixed = splitListItemsOnDoubleBreaks(imagesHoisted);
                 const olsFlattened = flattenOrderedListsToParagraphs(listsFixed);
+                // Word inserts hidden "bookmark" anchors (<a id="_Toc…"></a>) at
+                // each heading when the doc has a Table of Contents / cross-refs;
+                // mammoth emits them as empty <a>. Strip them at import so they
+                // never reach the DB or the editor (root-cause fix — pairs with
+                // stripEmptyAnchors on save and repairSlateChildren on load).
+                const linksStripped = stripEmptyAnchors(olsFlattened);
 
                 const processedHTML = `
                     <div>
-                        ${olsFlattened}
+                        ${linksStripped}
                     </div>
                 `;
 

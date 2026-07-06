@@ -410,16 +410,29 @@ public class EmailService {
                         : instituteTheme;
                 instituteName = instituteInfoDTO.getInstituteName() != null ? instituteInfoDTO.getInstituteName()
                         : instituteName;
-                instituteUrl = instituteInfoDTO.getWebsiteUrl() != null ? instituteInfoDTO.getWebsiteUrl()
+                instituteUrl = StringUtils.hasText(instituteInfoDTO.getWebsiteUrl())
+                        ? instituteInfoDTO.getWebsiteUrl()
                         : instituteUrl;
             }
+
+            // Prefer the institute's real contact email for the footer; fall back to the
+            // sending address, normalized so a '"Display Name <email>"' from-value never
+            // leaks an HTML-tag-like "<...>" into the body.
+            String footerEmail = (instituteInfoDTO != null && StringUtils.hasText(instituteInfoDTO.getEmail()))
+                    ? instituteInfoDTO.getEmail().trim()
+                    : normalizeFromAddress(fromToUse);
+            if (footerEmail == null) {
+                footerEmail = "";
+            }
+            final String instituteEmailForBody = footerEmail;
 
             final String emailSubject = StringUtils.hasText(subject)
                     ? subject
                     : "Your One-Time Password (OTP) for " + instituteName + " Access | " + otp;
 
             // Build the HTML body for the OTP email
-            final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl, fromToUse);
+            final String emailBody = createEmailBody(name, otp, instituteTheme, instituteName, instituteUrl,
+                    instituteEmailForBody);
 
             final boolean includeSesHeader = shouldIncludeSesConfigurationHeader(instituteId);
 
@@ -544,14 +557,22 @@ public class EmailService {
                             contact our support team immediately.</p>
 
                             <p>Thank you,</p>
-                            <p><b>{{instituteName}} Team</b></p>
+                            <p><b>{{instituteName}} Support Team</b></p>
                             <p>Email: {{instituteEmail}}</p>
-                            <p>Web: <a href="{{instituteWebsite}}" target="_blank">{{instituteWebsite}}</a></p>
+                            <p>Web: <a href="{{instituteWebsiteHref}}" target="_blank">{{instituteWebsite}}</a></p>
                         </div>
                     </div>
                 </body>
                 </html>
                 """;
+
+        // Display text keeps the stored value; the href gets an https:// scheme when
+        // the stored URL lacks one so the link is not treated as relative.
+        String instituteWebsiteHref = instituteWebsite;
+        if (StringUtils.hasText(instituteWebsiteHref)
+                && !instituteWebsiteHref.matches("(?i)^[a-z][a-z0-9+.\\-]*://.*")) {
+            instituteWebsiteHref = "https://" + instituteWebsiteHref;
+        }
 
         return template
                 .replace("{{name}}", name)
@@ -559,6 +580,7 @@ public class EmailService {
                 .replace("{{theme}}", theme)
                 .replace("{{instituteEmail}}", instituteEmail)
                 .replace("{{instituteName}}", instituteName)
+                .replace("{{instituteWebsiteHref}}", instituteWebsiteHref)
                 .replace("{{instituteWebsite}}", instituteWebsite);
     }
 

@@ -50,6 +50,24 @@ public class SubOrgRegistration {
     @Column(name = "admin_phone")
     private String adminPhone;
 
+    // ---- Postal address, collected only when the template sets COLLECT_ADDRESS=true.
+    //      Stamped onto the spawned institute in complete(). ----
+
+    @Column(name = "address_line1")
+    private String addressLine1;
+
+    @Column(name = "address_line2")
+    private String addressLine2;
+
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "state")
+    private String state;
+
+    @Column(name = "pincode")
+    private String pincode;
+
     @Column(name = "otp_verified_at")
     private Timestamp otpVerifiedAt;
 

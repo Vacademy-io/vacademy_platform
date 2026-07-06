@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -30,6 +30,17 @@ const detailsSchema = z.object({
       (v) => !v || isBlankPhone(v) || isValidPhoneValue(v),
       "Enter a valid phone number for the selected country"
     ),
+  // Address is only collected (and required) when the template asks for it —
+  // the conditional requirements live in a superRefine so the output type is
+  // identical either way.
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  pincode: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.trim().length <= 20, "Pincode is too long"),
 });
 
 export type DetailsFormValues = z.infer<typeof detailsSchema>;
@@ -43,10 +54,26 @@ interface DetailsStepProps {
   initialValues?: DetailsStepValues | null;
   onSubmit: (values: DetailsStepValues) => void;
   isSubmitting: boolean;
+  /** Template's org_name_hint — caption under the Organization Name field. */
+  orgNameHint?: string | null;
+  /** Template's collect_address — shows the org address fields (line1/city/state/pincode required). */
+  collectAddress?: boolean;
+  /**
+   * The registration is already OTP-verified — submit updates the existing
+   * registration (no fresh code unless the email changed).
+   */
+  isEditingAfterVerification?: boolean;
 }
 
-/** Step 1 — organization + admin details, POSTs /start on continue. */
-const DetailsStep = ({ initialValues, onSubmit, isSubmitting }: DetailsStepProps) => {
+/** Step 1 — organization + admin details, POSTs /start (or /update-details) on continue. */
+const DetailsStep = ({
+  initialValues,
+  onSubmit,
+  isSubmitting,
+  orgNameHint,
+  collectAddress = false,
+  isEditingAfterVerification = false,
+}: DetailsStepProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadFilePublic, isUploading } = useFileUpload();
   const [logoFileId, setLogoFileId] = useState<string | null>(
@@ -54,13 +81,43 @@ const DetailsStep = ({ initialValues, onSubmit, isSubmitting }: DetailsStepProps
   );
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 
+  const schema = useMemo(
+    () =>
+      collectAddress
+        ? detailsSchema.superRefine((values, ctx) => {
+            const requireField = (
+              key: "addressLine1" | "city" | "state" | "pincode",
+              message: string
+            ) => {
+              if (!values[key]?.trim()) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: [key],
+                  message,
+                });
+              }
+            };
+            requireField("addressLine1", "Address line 1 is required");
+            requireField("city", "City is required");
+            requireField("state", "State is required");
+            requireField("pincode", "Pincode is required");
+          })
+        : detailsSchema,
+    [collectAddress]
+  );
+
   const form = useForm<DetailsFormValues>({
-    resolver: zodResolver(detailsSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       orgName: initialValues?.orgName ?? "",
       adminName: initialValues?.adminName ?? "",
       adminEmail: initialValues?.adminEmail ?? "",
       adminPhone: initialValues?.adminPhone ?? "",
+      addressLine1: initialValues?.addressLine1 ?? "",
+      addressLine2: initialValues?.addressLine2 ?? "",
+      city: initialValues?.city ?? "",
+      state: initialValues?.state ?? "",
+      pincode: initialValues?.pincode ?? "",
     },
     mode: "onTouched",
   });
@@ -174,6 +231,11 @@ const DetailsStep = ({ initialValues, onSubmit, isSubmitting }: DetailsStepProps
               </FormItem>
             )}
           />
+          {orgNameHint?.trim() && (
+            <p className="-mt-4 text-caption text-neutral-400">
+              {orgNameHint.trim()}
+            </p>
+          )}
 
           {/* Organization logo (optional) */}
           <div className="flex flex-col gap-1">
@@ -242,6 +304,121 @@ const DetailsStep = ({ initialValues, onSubmit, isSubmitting }: DetailsStepProps
               onChange={handleLogoChange}
             />
           </div>
+
+          {/* Organization address — only when the template collects it */}
+          {collectAddress && (
+            <>
+              <FormField
+                control={form.control}
+                name="addressLine1"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormControl>
+                      <MyInput
+                        label="Address Line 1"
+                        inputType="text"
+                        inputPlaceholder="Building, street"
+                        input={field.value ?? ""}
+                        onChangeFunction={field.onChange}
+                        onBlur={field.onBlur}
+                        error={fieldState.error?.message}
+                        required
+                        size="large"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="addressLine2"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormControl>
+                      <MyInput
+                        label="Address Line 2"
+                        inputType="text"
+                        inputPlaceholder="Area, landmark (optional)"
+                        input={field.value ?? ""}
+                        onChangeFunction={field.onChange}
+                        onBlur={field.onBlur}
+                        error={fieldState.error?.message}
+                        size="large"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="city"
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <FormControl>
+                        <MyInput
+                          label="City"
+                          inputType="text"
+                          inputPlaceholder="City"
+                          input={field.value ?? ""}
+                          onChangeFunction={field.onChange}
+                          onBlur={field.onBlur}
+                          error={fieldState.error?.message}
+                          required
+                          size="large"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="state"
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <FormControl>
+                        <MyInput
+                          label="State"
+                          inputType="text"
+                          inputPlaceholder="State"
+                          input={field.value ?? ""}
+                          onChangeFunction={field.onChange}
+                          onBlur={field.onBlur}
+                          error={fieldState.error?.message}
+                          required
+                          size="large"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="pincode"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormControl>
+                      <MyInput
+                        label="Pincode"
+                        inputType="text"
+                        inputPlaceholder="e.g. 110001"
+                        input={field.value ?? ""}
+                        onChangeFunction={field.onChange}
+                        onBlur={field.onBlur}
+                        error={fieldState.error?.message}
+                        required
+                        size="large"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
 
           <Separator />
 
@@ -312,7 +489,7 @@ const DetailsStep = ({ initialValues, onSubmit, isSubmitting }: DetailsStepProps
               {isSubmitting ? (
                 <>
                   <SpinnerGap className="mr-2 size-4 animate-spin" />
-                  Sending code...
+                  {isEditingAfterVerification ? "Saving..." : "Sending code..."}
                 </>
               ) : (
                 "Continue"

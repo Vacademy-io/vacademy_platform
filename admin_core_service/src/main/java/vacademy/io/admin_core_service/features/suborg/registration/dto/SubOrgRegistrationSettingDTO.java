@@ -91,5 +91,39 @@ public class SubOrgRegistrationSettingDTO {
          */
         @JsonProperty("KYC_DOCUMENTS")
         private List<String> kycDocuments;
+
+        // ---- Presentation + completion config (all optional). ----
+
+        /** Helper text under the org-name field on the DETAILS step. Max 300 chars. */
+        @JsonProperty("ORG_NAME_HINT")
+        private String orgNameHint;
+
+        /** True = DETAILS step also collects a postal address (line1/city/state/pincode required). */
+        @JsonProperty("COLLECT_ADDRESS")
+        private Boolean collectAddress;
+
+        /** Instructions shown above the KYC step. Max 1000 chars. */
+        @JsonProperty("KYC_INSTRUCTIONS")
+        private String kycInstructions;
+
+        /**
+         * Completion precedence: completionRedirectUrl set -> auto-redirect; else
+         * completionMessage/button set -> custom message page; else default success
+         * copy + "Go to Admin Portal" button -> admin_portal_url.
+         */
+        @JsonProperty("COMPLETION_MESSAGE")
+        private String completionMessage;
+
+        /** Set together with COMPLETION_BUTTON_URL (both or neither). Max 100 chars. */
+        @JsonProperty("COMPLETION_BUTTON_LABEL")
+        private String completionButtonLabel;
+
+        /** Must start with https://. */
+        @JsonProperty("COMPLETION_BUTTON_URL")
+        private String completionButtonUrl;
+
+        /** Auto-redirect target after completion; must start with https://. */
+        @JsonProperty("COMPLETION_REDIRECT_URL")
+        private String completionRedirectUrl;
     }
 }

@@ -22,11 +22,7 @@ import {
 } from "@/components/common/enroll-by-invite/-components/types";
 import type { PaymentPlan } from "@/components/common/enroll-by-invite/-utils/helper";
 import type { PaymentVendor } from "@/components/common/enroll-by-invite/-utils/payment-vendor-helper";
-import {
-  getCashfreeReturnUrl,
-  initiateCashfreePayment,
-} from "@/services/cashfree-payment";
-import { getPhonePeReturnUrl } from "@/services/phonepe-payment";
+import { initiateCashfreePayment } from "@/services/cashfree-payment";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getCurrencySymbol } from "@/utils/currency";
@@ -83,6 +79,8 @@ interface PaymentStepProps {
   payment: TemplatePaymentInfo;
   templateName: string;
   instituteId: string;
+  /** Registration-link code — carried on the payment-result return URL. */
+  code: string;
   registrationId: string | null;
   /** TNC step (when present) is acceptance-gated before payment is reached. */
   tncAccepted: boolean;
@@ -94,6 +92,8 @@ interface PaymentStepProps {
   onRegistered: (email: string | null) => void;
   /** Registration session lost → wizard restarts at DETAILS. */
   onSessionMissing: () => void;
+  /** Returns to the previous wizard step (only offered before gateway handoff). */
+  onBack?: () => void;
 }
 
 /**
@@ -108,6 +108,7 @@ const PaymentStep = ({
   payment,
   templateName,
   instituteId,
+  code,
   registrationId,
   tncAccepted,
   customFieldValues,
@@ -116,6 +117,7 @@ const PaymentStep = ({
   adminPhone,
   onRegistered,
   onSessionMissing,
+  onBack,
 }: PaymentStepProps) => {
   const vendor = (payment.vendor || "").toUpperCase() as PaymentVendor;
 
@@ -146,6 +148,38 @@ const PaymentStep = ({
 
   const currency = selectedPayment?.currency || payment.currency;
   const amount = getSelectedPaymentPrice(selectedPayment);
+
+  // Hosted-page vendors (Cashfree/PhonePe) return to the sub-org result page,
+  // which polls the registration status and renders the completion panel.
+  const returnUrl = useMemo(() => {
+    const params = new URLSearchParams({ instituteId, code });
+    if (registrationId) params.set("registrationId", registrationId);
+    return `${window.location.origin}/sub-org-registration/payment-result?${params.toString()}`;
+  }, [instituteId, code, registrationId]);
+
+  /**
+   * Stashes the registration context in sessionStorage before the gateway
+   * handoff (keyed by orderId + a fixed fallback key) so the return page
+   * survives gateways that drop the query params off the return URL.
+   */
+  const stashReturnContext = useCallback(
+    (ordId: string) => {
+      if (!ordId) return;
+      try {
+        const payload = JSON.stringify({
+          orderId: ordId,
+          registrationId,
+          instituteId,
+          code,
+        });
+        sessionStorage.setItem(`sub_org_payment_${ordId}`, payload);
+        sessionStorage.setItem("sub_org_payment_pending", payload);
+      } catch {
+        // Storage unavailable — the return URL params carry the ids.
+      }
+    },
+    [registrationId, instituteId, code]
+  );
 
   const paymentOptions = useMemo(
     () => ({
@@ -260,7 +294,7 @@ const PaymentStep = ({
             instituteId,
             email: adminEmail,
             contact: adminPhone,
-            returnUrl: getCashfreeReturnUrl(),
+            returnUrl,
           }),
           selectedPayment.id
         ));
@@ -295,7 +329,7 @@ const PaymentStep = ({
             amount: getSelectedPaymentPrice(selectedPayment),
             currency: selectedPayment.currency || payment.currency,
             email: adminEmail,
-            returnUrl: getCashfreeReturnUrl(),
+            returnUrl,
             token,
           }
         );
@@ -316,6 +350,9 @@ const PaymentStep = ({
         );
       }
       setOrderId(cfOrderId);
+      // Stash BEFORE the user can reach Cashfree's hosted page so the return
+      // page can recover the registration even if params get dropped.
+      stashReturnContext(cfOrderId);
       setCashfreeSession({
         paymentSessionId,
         orderId: cfOrderId,
@@ -335,6 +372,8 @@ const PaymentStep = ({
     instituteId,
     adminEmail,
     adminPhone,
+    returnUrl,
+    stashReturnContext,
     runComplete,
     handlePaymentFailure,
   ]);
@@ -476,7 +515,7 @@ const PaymentStep = ({
               instituteId,
               email: adminEmail,
               contact: adminPhone,
-              returnUrl: getPhonePeReturnUrl(instituteId),
+              returnUrl,
             }),
             selectedPayment.id
           ));
@@ -495,6 +534,7 @@ const PaymentStep = ({
         }
         const ordId = response.payment_response?.order_id ?? "";
         if (ordId) {
+          stashReturnContext(ordId);
           try {
             localStorage.setItem(
               "phonepe_pending_order",
@@ -591,6 +631,10 @@ const PaymentStep = ({
     );
   }
 
+  // Back is only offered before the gateway handoff — once /complete has run
+  // (order created), leaving the step could orphan an in-flight payment.
+  const canGoBack = !!onBack && !completeResponse;
+
   if (phase === "SELECT_PLAN") {
     return (
       <div className="space-y-4">
@@ -599,7 +643,23 @@ const PaymentStep = ({
           selectedPayment={selectedPayment}
           onPaymentSelect={handlePaymentSelect}
         />
-        <div className="flex justify-end">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+          {canGoBack ? (
+            <MyButton
+              type="button"
+              buttonType="secondary"
+              scale="large"
+              layoutVariant="default"
+              onClick={onBack}
+              disable={isProcessing}
+              className="w-full sm:w-auto"
+            >
+              <ArrowLeft className="mr-2 size-4" />
+              Back
+            </MyButton>
+          ) : (
+            <span className="hidden sm:block" />
+          )}
           <MyButton
             type="button"
             buttonType="primary"
@@ -686,7 +746,7 @@ const PaymentStep = ({
         razorpayRef={razorpayRef}
         cashfreePaymentSessionId={cashfreeSession?.paymentSessionId ?? null}
         cashfreeEnvironment={cashfreeSession?.environment}
-        cashfreeReturnUrl={getCashfreeReturnUrl()}
+        cashfreeReturnUrl={returnUrl}
         cashfreeOrderId={cashfreeSession?.orderId}
         cashfreeInitLoading={cashfreeInitLoading}
         cashfreeInstituteId={instituteId}

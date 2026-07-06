@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ListChecks, SpinnerGap } from "@phosphor-icons/react";
+import { ArrowLeft, ListChecks, SpinnerGap } from "@phosphor-icons/react";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { ModernCard } from "@/components/design-system/modern-card";
@@ -72,6 +72,11 @@ interface CustomFieldsStepProps {
   isFinalStep: boolean;
   isSubmitting: boolean;
   onContinue: (values: CustomFieldValuePayload[]) => void;
+  /**
+   * Returns to the previous wizard step. Receives the CURRENT (unvalidated)
+   * values so nothing typed so far is lost on back-navigation.
+   */
+  onBack?: (values: CustomFieldValuePayload[]) => void;
 }
 
 /** Step 3 — template-configured additional information (custom fields). */
@@ -81,6 +86,7 @@ const CustomFieldsStep = ({
   isFinalStep,
   isSubmitting,
   onContinue,
+  onBack,
 }: CustomFieldsStepProps) => {
   const formFields = useMemo(
     () => convertTemplateCustomFields(customFields),
@@ -141,8 +147,8 @@ const CustomFieldsStep = ({
     return "in";
   };
 
-  const handleSubmit = (values: FormValues) => {
-    // Collect values keyed by custom_field_id in the template's field order
+  /** Collects values keyed by custom_field_id in the template's field order. */
+  const collectPayload = (values: FormValues): CustomFieldValuePayload[] => {
     const payload: CustomFieldValuePayload[] = [];
     formFields.forEach((field) => {
       const entry = values[field.field_key];
@@ -151,7 +157,17 @@ const CustomFieldsStep = ({
         payload.push({ custom_field_id: field.id, value: String(value) });
       }
     });
-    onContinue(payload);
+    return payload;
+  };
+
+  const handleSubmit = (values: FormValues) => {
+    onContinue(collectPayload(values));
+  };
+
+  // Back navigation must not lose typed values — hand the wizard whatever is
+  // currently in the form (no validation; it re-validates on the way forward).
+  const handleBack = () => {
+    onBack?.(collectPayload(form.getValues()));
   };
 
   return (
@@ -180,16 +196,31 @@ const CustomFieldsStep = ({
       {formFields.length === 0 ? (
         <div className="py-8 text-center text-neutral-500">
           <p className="mb-4">No additional information is required.</p>
-          <MyButton
-            type="button"
-            buttonType="primary"
-            scale="large"
-            layoutVariant="default"
-            onClick={() => onContinue([])}
-            disable={isSubmitting}
-          >
-            Continue
-          </MyButton>
+          <div className="flex flex-col-reverse items-center justify-center gap-3 sm:flex-row">
+            {onBack && (
+              <MyButton
+                type="button"
+                buttonType="secondary"
+                scale="large"
+                layoutVariant="default"
+                onClick={() => onBack([])}
+                disable={isSubmitting}
+              >
+                <ArrowLeft className="mr-2 size-4" />
+                Back
+              </MyButton>
+            )}
+            <MyButton
+              type="button"
+              buttonType="primary"
+              scale="large"
+              layoutVariant="default"
+              onClick={() => onContinue([])}
+              disable={isSubmitting}
+            >
+              Continue
+            </MyButton>
+          </div>
         </div>
       ) : (
         <FormProvider {...form}>
@@ -265,7 +296,23 @@ const CustomFieldsStep = ({
               );
             })}
 
-            <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+              {onBack ? (
+                <MyButton
+                  type="button"
+                  buttonType="secondary"
+                  scale="large"
+                  layoutVariant="default"
+                  onClick={handleBack}
+                  disable={isSubmitting}
+                  className="w-full sm:w-auto"
+                >
+                  <ArrowLeft className="mr-2 size-4" />
+                  Back
+                </MyButton>
+              ) : (
+                <span className="hidden sm:block" />
+              )}
               <MyButton
                 type="submit"
                 buttonType="primary"

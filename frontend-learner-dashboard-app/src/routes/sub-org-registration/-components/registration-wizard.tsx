@@ -18,6 +18,7 @@ import type {
 } from "../-services/sub-org-registration-services";
 import {
   startSubOrgRegistration,
+  updateSubOrgRegistrationDetails,
   verifySubOrgRegistrationOtp,
   resendSubOrgRegistrationOtp,
   completeSubOrgRegistration,
@@ -109,6 +110,12 @@ const RegistrationWizard = ({
     CustomFieldValuePayload[]
   >([]);
   const [completedEmail, setCompletedEmail] = useState<string | null>(null);
+  // Registration passed OTP verification — Details edits now go through
+  // /update-details (a changed email flips this back to false via DRAFT).
+  const [otpVerified, setOtpVerified] = useState(false);
+  // TNC was accepted once this session — re-entering the step via Back keeps
+  // the checkboxes pre-checked.
+  const [tncAcceptedOnce, setTncAcceptedOnce] = useState(false);
 
   const [isStarting, setIsStarting] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -242,9 +249,50 @@ const RegistrationWizard = ({
     }
   };
 
+  const collectAddress = template.collect_address === true;
+
+  /** Address fields only travel when the template collects them (ignored otherwise). */
+  const buildAddressFields = (values: DetailsStepValues) =>
+    collectAddress
+      ? {
+          address_line1: values.addressLine1?.trim() || null,
+          address_line2: values.addressLine2?.trim() || null,
+          city: values.city?.trim() || null,
+          state: values.state?.trim() || null,
+          pincode: values.pincode?.trim() || null,
+        }
+      : {};
+
+  const isEditingAfterVerification = !!registrationId && otpVerified;
+
   const handleDetailsSubmit = async (values: DetailsStepValues) => {
     setIsStarting(true);
     try {
+      if (registrationId && otpVerified) {
+        // Already OTP-verified — edit the SAME registration via
+        // /update-details. A changed email resets the status to DRAFT (fresh
+        // OTP to the new address); otherwise continue forward as normal.
+        const response = await updateSubOrgRegistrationDetails({
+          registration_id: registrationId,
+          org_name: values.orgName.trim(),
+          org_logo_file_id: values.orgLogoFileId,
+          admin_name: values.adminName.trim(),
+          admin_email: values.adminEmail.trim(),
+          admin_phone: values.adminPhone?.trim() || null,
+          ...buildAddressFields(values),
+        });
+        setDetailsValues(values);
+        if (response.status === "DRAFT") {
+          setOtpVerified(false);
+          setPhase("OTP");
+          toast.success("Verification code sent to your new email");
+        } else {
+          toast.success("Details updated");
+          await advanceAfter("OTP", customFieldValues);
+        }
+        return;
+      }
+
       const response = await startSubOrgRegistration({
         institute_id: instituteId,
         code,
@@ -253,6 +301,7 @@ const RegistrationWizard = ({
         admin_name: values.adminName.trim(),
         admin_email: values.adminEmail.trim(),
         admin_phone: values.adminPhone?.trim() || null,
+        ...buildAddressFields(values),
       });
       setRegistrationId(response.registration_id);
       setDetailsValues(values);
@@ -263,7 +312,9 @@ const RegistrationWizard = ({
       toast.error(
         getSubOrgApiErrorMessage(
           error,
-          "Failed to start registration. Please try again"
+          isEditingAfterVerification
+            ? "Failed to save your details. Please try again"
+            : "Failed to start registration. Please try again"
         )
       );
     } finally {
@@ -280,6 +331,7 @@ const RegistrationWizard = ({
     setIsVerifying(true);
     try {
       await verifySubOrgRegistrationOtp({ registrationId, otp });
+      setOtpVerified(true);
       toast.success("Email verified successfully!");
       await advanceAfter("OTP", customFieldValues);
     } catch (error) {
@@ -312,12 +364,32 @@ const RegistrationWizard = ({
   };
 
   const handleTncContinue = async () => {
+    setTncAcceptedOnce(true);
     await advanceAfter("TNC", customFieldValues);
   };
 
   /** Only invoked by the KYC step once /kyc/status reports VERIFIED. */
   const handleKycContinue = async () => {
     await advanceAfter("KYC", customFieldValues);
+  };
+
+  /**
+   * Back navigation — previous post-OTP step, or DETAILS from the first one
+   * (OTP never needs re-entry: Details edits after verification go through
+   * /update-details, which only re-triggers OTP when the email changed).
+   */
+  const goBackFrom = (
+    step: "CUSTOM_FIELDS" | "TNC" | "KYC" | "PAYMENT"
+  ) => {
+    const index = postOtpSteps.indexOf(step);
+    const previous = index > 0 ? postOtpSteps[index - 1] : undefined;
+    setPhase(previous ?? "DETAILS");
+  };
+
+  /** Back from CUSTOM_FIELDS keeps whatever was typed (unvalidated). */
+  const handleCustomFieldsBack = (values: CustomFieldValuePayload[]) => {
+    setCustomFieldValues(values);
+    goBackFrom("CUSTOM_FIELDS");
   };
 
   // ─── Progress indicator ────────────────────────────────────────────────────
@@ -453,6 +525,9 @@ const RegistrationWizard = ({
               initialValues={detailsValues}
               onSubmit={handleDetailsSubmit}
               isSubmitting={isStarting}
+              orgNameHint={template.org_name_hint}
+              collectAddress={collectAddress}
+              isEditingAfterVerification={isEditingAfterVerification}
             />
           )}
 
@@ -474,6 +549,7 @@ const RegistrationWizard = ({
               isFinalStep={isFinalPostOtpStep("CUSTOM_FIELDS")}
               isSubmitting={isCompleting}
               onContinue={handleCustomFieldsContinue}
+              onBack={handleCustomFieldsBack}
             />
           )}
 
@@ -486,6 +562,8 @@ const RegistrationWizard = ({
               continueLabel={
                 isFinalPostOtpStep("TNC") ? undefined : "Continue"
               }
+              onBack={() => goBackFrom("TNC")}
+              initialAccepted={tncAcceptedOnce}
             />
           )}
 
@@ -493,10 +571,12 @@ const RegistrationWizard = ({
             <KycStep
               registrationId={registrationId}
               kycDocuments={template.kyc_documents}
+              kycInstructions={template.kyc_instructions}
               isFinalStep={isFinalPostOtpStep("KYC")}
               isSubmitting={isCompleting}
               onContinue={handleKycContinue}
               onSessionMissing={() => setPhase("DETAILS")}
+              onBack={() => goBackFrom("KYC")}
             />
           )}
 
@@ -514,6 +594,7 @@ const RegistrationWizard = ({
                     template.template_name || "Organization Registration"
                   }
                   instituteId={instituteId}
+                  code={code}
                   registrationId={registrationId}
                   tncAccepted={hasTncStep}
                   customFieldValues={customFieldValues}
@@ -525,6 +606,7 @@ const RegistrationWizard = ({
                     setPhase("SUCCESS");
                   }}
                   onSessionMissing={() => setPhase("DETAILS")}
+                  onBack={() => goBackFrom("PAYMENT")}
                 />
               </PaymentGatewayWrapper>
             </Suspense>
@@ -535,6 +617,7 @@ const RegistrationWizard = ({
               orgName={detailsValues?.orgName ?? ""}
               adminEmail={completedEmail ?? detailsValues?.adminEmail ?? ""}
               paid={hasPaymentStep}
+              template={template}
             />
           )}
         </div>

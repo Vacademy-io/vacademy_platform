@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
+  ArrowLeft,
   ArrowSquareOut,
   SpinnerGap,
   WarningCircle,
@@ -11,6 +12,7 @@ import { MyButton } from "@/components/design-system/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { renderSafeLinkText } from "../-utils/safe-link-text";
 
 interface TncStepProps {
   tncFileId: string | null;
@@ -20,42 +22,14 @@ interface TncStepProps {
   onContinue: () => void;
   /** Overrides the button label when TNC isn't the final step (e.g. payment follows). */
   continueLabel?: string;
+  /** Returns to the previous wizard step without losing entered state. */
+  onBack?: () => void;
+  /**
+   * The user already accepted the terms in this session (back/forward
+   * navigation) — pre-check everything so their acceptance isn't lost.
+   */
+  initialAccepted?: boolean;
 }
-
-const LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
-
-/**
- * Renders a consent statement, converting [label](url) segments into anchors.
- * Built as React nodes (never raw HTML) so institute-authored text stays inert;
- * only http(s) URLs become links.
- */
-const renderConsentText = (text: string): ReactNode[] => {
-  const nodes: ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const pattern = new RegExp(LINK_PATTERN);
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(text.slice(lastIndex, match.index));
-    }
-    nodes.push(
-      <a
-        key={`${match.index}-${match[2]}`}
-        href={match[2]}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-medium text-primary-500 underline underline-offset-2 hover:text-primary-400"
-      >
-        {match[1]}
-      </a>,
-    );
-    lastIndex = pattern.lastIndex;
-  }
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-  return nodes;
-};
 
 /** Step 4 — Terms & Conditions review + required acceptance (PDF and/or consent statements). */
 const TncStep = ({
@@ -64,6 +38,8 @@ const TncStep = ({
   isSubmitting,
   onContinue,
   continueLabel,
+  onBack,
+  initialAccepted = false,
 }: TncStepProps) => {
   const consentItems = useMemo(
     () => (tncConsentItems ?? []).filter((item) => item.trim().length > 0),
@@ -71,9 +47,9 @@ const TncStep = ({
   );
   const hasConsentItems = consentItems.length > 0;
 
-  const [pdfAccepted, setPdfAccepted] = useState(false);
+  const [pdfAccepted, setPdfAccepted] = useState(initialAccepted);
   const [itemsAccepted, setItemsAccepted] = useState<boolean[]>(() =>
-    consentItems.map(() => false),
+    consentItems.map(() => initialAccepted),
   );
 
   const {
@@ -202,7 +178,7 @@ const TncStep = ({
                 htmlFor={`sub-org-tnc-consent-${index}`}
                 className="cursor-pointer text-sm leading-relaxed text-neutral-600"
               >
-                {renderConsentText(item)}
+                {renderSafeLinkText(item)}
                 <span className="text-danger-600"> *</span>
               </label>
             </div>
@@ -210,7 +186,23 @@ const TncStep = ({
         </div>
       )}
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+        {onBack ? (
+          <MyButton
+            type="button"
+            buttonType="secondary"
+            scale="large"
+            layoutVariant="default"
+            onClick={onBack}
+            disable={isSubmitting}
+            className="w-full sm:w-auto"
+          >
+            <ArrowLeft className="mr-2 size-4" />
+            Back
+          </MyButton>
+        ) : (
+          <span className="hidden sm:block" />
+        )}
         <MyButton
           type="button"
           buttonType="primary"

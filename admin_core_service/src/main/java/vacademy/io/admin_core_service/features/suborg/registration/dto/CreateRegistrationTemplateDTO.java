@@ -67,4 +67,27 @@ public class CreateRegistrationTemplateDTO {
      * KYC step (must include AADHAAR). Empty/absent = no KYC.
      */
     private List<String> kycDocuments;
+
+    // ---- Presentation + completion config (all optional). ----
+
+    /** Helper text under the org-name field on the DETAILS step. Max 300 chars. */
+    private String orgNameHint;
+
+    /** True = DETAILS step also collects a postal address. */
+    private Boolean collectAddress;
+
+    /** Instructions shown above the KYC step. Max 1000 chars. */
+    private String kycInstructions;
+
+    /** Custom completion-page copy. Max 2000 chars. */
+    private String completionMessage;
+
+    /** Set together with completionButtonUrl (both or neither). Max 100 chars. */
+    private String completionButtonLabel;
+
+    /** Must start with https://. */
+    private String completionButtonUrl;
+
+    /** Auto-redirect target after completion; must start with https://. */
+    private String completionRedirectUrl;
 }

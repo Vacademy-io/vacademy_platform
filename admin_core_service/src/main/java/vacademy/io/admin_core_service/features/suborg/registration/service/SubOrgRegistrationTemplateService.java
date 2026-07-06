@@ -200,6 +200,13 @@ public class SubOrgRegistrationTemplateService {
                 .tncConsentItems(setting != null ? setting.getTncConsentItems() : null)
                 .maxRegistrations(setting != null ? setting.getMaxRegistrations() : null)
                 .kycDocuments(setting != null ? setting.getKycDocuments() : null)
+                .orgNameHint(setting != null ? setting.getOrgNameHint() : null)
+                .collectAddress(setting != null ? setting.getCollectAddress() : null)
+                .kycInstructions(setting != null ? setting.getKycInstructions() : null)
+                .completionMessage(setting != null ? setting.getCompletionMessage() : null)
+                .completionButtonLabel(setting != null ? setting.getCompletionButtonLabel() : null)
+                .completionButtonUrl(setting != null ? setting.getCompletionButtonUrl() : null)
+                .completionRedirectUrl(setting != null ? setting.getCompletionRedirectUrl() : null)
                 .paymentType(paymentType)
                 .paymentOptionId(setting != null ? setting.getPaymentOptionId() : null)
                 .vendor(setting != null ? setting.getVendor() : null)
@@ -453,7 +460,48 @@ public class SubOrgRegistrationTemplateService {
                 : request.getAuthRoles());
         setting.setAdminPermissions(request.getAdminPermissions());
         setting.setAllowedTeamRoles(request.getAllowedTeamRoles());
+
+        // ---- Presentation + completion config (all optional; trimmed). ----
+        String orgNameHint = trimToNull(request.getOrgNameHint());
+        if (orgNameHint != null && orgNameHint.length() > 300) {
+            throw new VacademyException("org_name_hint must be at most 300 characters");
+        }
+        setting.setOrgNameHint(orgNameHint);
+        setting.setCollectAddress(Boolean.TRUE.equals(request.getCollectAddress()) ? true : null);
+        String kycInstructions = trimToNull(request.getKycInstructions());
+        if (kycInstructions != null && kycInstructions.length() > 1000) {
+            throw new VacademyException("kyc_instructions must be at most 1000 characters");
+        }
+        setting.setKycInstructions(kycInstructions);
+        String completionMessage = trimToNull(request.getCompletionMessage());
+        if (completionMessage != null && completionMessage.length() > 2000) {
+            throw new VacademyException("completion_message must be at most 2000 characters");
+        }
+        setting.setCompletionMessage(completionMessage);
+        String buttonLabel = trimToNull(request.getCompletionButtonLabel());
+        String buttonUrl = trimToNull(request.getCompletionButtonUrl());
+        if ((buttonLabel == null) != (buttonUrl == null)) {
+            throw new VacademyException(
+                    "completion_button_label and completion_button_url must be set together");
+        }
+        if (buttonLabel != null && buttonLabel.length() > 100) {
+            throw new VacademyException("completion_button_label must be at most 100 characters");
+        }
+        if (buttonUrl != null && !buttonUrl.startsWith("https://")) {
+            throw new VacademyException("completion_button_url must start with https://");
+        }
+        setting.setCompletionButtonLabel(buttonLabel);
+        setting.setCompletionButtonUrl(buttonUrl);
+        String redirectUrl = trimToNull(request.getCompletionRedirectUrl());
+        if (redirectUrl != null && !redirectUrl.startsWith("https://")) {
+            throw new VacademyException("completion_redirect_url must start with https://");
+        }
+        setting.setCompletionRedirectUrl(redirectUrl);
         return setting;
+    }
+
+    private static String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private String generateInviteCode() {

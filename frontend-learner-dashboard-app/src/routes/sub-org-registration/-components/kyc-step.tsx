@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise,
+  ArrowLeft,
   ArrowSquareOut,
   CheckCircle,
   IdentificationCard,
+  Info,
   ShieldCheck,
   SpinnerGap,
   WarningCircle,
@@ -21,8 +23,16 @@ import {
   getKycStatus,
   getSubOrgApiErrorMessage,
 } from "../-services/sub-org-registration-services";
+import { renderSafeLinkText } from "../-utils/safe-link-text";
 
 const POLL_INTERVAL_MS = 4000;
+
+/**
+ * DigiLocker asks for per-document consent; a missed PAN checkbox is the top
+ * failure cause when both documents are required.
+ */
+const DEFAULT_PAN_INSTRUCTIONS =
+  "In DigiLocker, tick the checkboxes for BOTH Aadhaar and PAN when asked for consent — verification cannot complete if either is left unselected.";
 
 type KycUiState = "CHECKING" | "INTRO" | "WAITING" | "VERIFIED" | "FAILED";
 
@@ -43,12 +53,16 @@ interface KycStepProps {
   registrationId: string | null;
   /** Template's kyc_documents — e.g. ["AADHAAR"] or ["AADHAAR","PAN"]. */
   kycDocuments?: string[] | null;
+  /** Template's kyc_instructions — replaces the default consent callout when set. */
+  kycInstructions?: string | null;
   /** Final post-OTP step — Continue submits the registration. */
   isFinalStep: boolean;
   /** Wizard is running /complete after this step. */
   isSubmitting: boolean;
   onContinue: () => Promise<void> | void;
   onSessionMissing: () => void;
+  /** Returns to the previous wizard step without losing entered state. */
+  onBack?: () => void;
 }
 
 /**
@@ -60,10 +74,12 @@ interface KycStepProps {
 const KycStep = ({
   registrationId,
   kycDocuments,
+  kycInstructions,
   isFinalStep,
   isSubmitting,
   onContinue,
   onSessionMissing,
+  onBack,
 }: KycStepProps) => {
   const [uiState, setUiState] = useState<KycUiState>("CHECKING");
   const [summary, setSummary] = useState<KycSummary | null>(null);
@@ -76,6 +92,39 @@ const KycStep = ({
     String(doc).toUpperCase()
   );
   const requiresPan = requiredDocuments.includes("PAN");
+
+  // Institute-authored instructions win; otherwise the default PAN+Aadhaar
+  // consent note (only relevant when PAN is among the required documents).
+  const instructionText =
+    kycInstructions?.trim() || (requiresPan ? DEFAULT_PAN_INSTRUCTIONS : null);
+
+  const instructionsCallout = instructionText ? (
+    <div className="rounded-lg border border-primary-200 bg-primary-50 p-4">
+      <div className="flex gap-3">
+        <Info className="mt-0.5 size-5 flex-shrink-0 text-primary-500" />
+        <p className="text-sm leading-relaxed text-neutral-600">
+          {renderSafeLinkText(instructionText)}
+        </p>
+      </div>
+    </div>
+  ) : null;
+
+  const backButton = onBack ? (
+    <MyButton
+      type="button"
+      buttonType="secondary"
+      scale="large"
+      layoutVariant="default"
+      onClick={onBack}
+      disable={isSubmitting || isStartingKyc}
+      className="w-full sm:w-auto"
+    >
+      <ArrowLeft className="mr-2 size-4" />
+      Back
+    </MyButton>
+  ) : (
+    <span className="hidden sm:block" />
+  );
 
   // One status fetch on mount: a user who refreshed after verifying jumps
   // straight to the success state without minting a fresh consent URL.
@@ -259,7 +308,10 @@ const KycStep = ({
             {documentChips}
           </div>
 
-          <div className="flex justify-end">
+          {instructionsCallout}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            {backButton}
             <MyButton
               type="button"
               buttonType="primary"
@@ -370,7 +422,8 @@ const KycStep = ({
             </dl>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            {backButton}
             <MyButton
               type="button"
               buttonType="primary"
@@ -411,7 +464,10 @@ const KycStep = ({
             </div>
           </div>
 
-          <div className="flex justify-end">
+          {instructionsCallout}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+            {backButton}
             <MyButton
               type="button"
               buttonType="primary"

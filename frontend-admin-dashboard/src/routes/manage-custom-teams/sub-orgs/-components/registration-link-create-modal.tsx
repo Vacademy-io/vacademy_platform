@@ -98,6 +98,11 @@ type PaymentType = (typeof PAYMENT_TYPE_VALUES)[number];
 const KYC_SCOPE_VALUES = ['AADHAAR', 'AADHAAR_PAN'] as const;
 type KycScope = (typeof KYC_SCOPE_VALUES)[number];
 
+// What the registrant sees after completing — mirrors the backend precedence:
+// completion_redirect_url -> REDIRECT; completion_message/button -> MESSAGE; else DEFAULT.
+const COMPLETION_MODE_VALUES = ['DEFAULT', 'MESSAGE', 'REDIRECT'] as const;
+type CompletionMode = (typeof COMPLETION_MODE_VALUES)[number];
+
 const baseFormSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     memberCount: z.number().min(1, 'Must be at least 1').optional(),
@@ -231,6 +236,17 @@ export function RegistrationLinkCreateModal({
     const [tncConsentItems, setTncConsentItems] = useState<string[]>([]);
     const [kycEnabled, setKycEnabled] = useState(false);
     const [kycScope, setKycScope] = useState<KycScope>('AADHAAR');
+    // Optional copy shown on the identity-verification step; empty = backend default note.
+    const [kycInstructions, setKycInstructions] = useState('');
+    // Wizard content — helper text under the Organization Name field + full-address toggle.
+    const [orgNameHint, setOrgNameHint] = useState('');
+    const [collectAddress, setCollectAddress] = useState(false);
+    // After-registration behaviour (see CompletionMode precedence above).
+    const [completionMode, setCompletionMode] = useState<CompletionMode>('DEFAULT');
+    const [completionMessage, setCompletionMessage] = useState('');
+    const [completionButtonLabel, setCompletionButtonLabel] = useState('');
+    const [completionButtonUrl, setCompletionButtonUrl] = useState('');
+    const [completionRedirectUrl, setCompletionRedirectUrl] = useState('');
 
     const courseLabel = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const coursesLabel = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
@@ -373,6 +389,22 @@ export function RegistrationLinkCreateModal({
         const kycDocs = editTemplate.kyc_documents ?? [];
         setKycEnabled(kycDocs.length > 0);
         setKycScope(kycDocs.includes('PAN') ? 'AADHAAR_PAN' : 'AADHAAR');
+        setKycInstructions(editTemplate.kyc_instructions ?? '');
+        setOrgNameHint(editTemplate.org_name_hint ?? '');
+        setCollectAddress(editTemplate.collect_address === true);
+        // Completion mode follows the same precedence the wizard applies at runtime:
+        // redirect URL wins, then a custom message/button, else the default screen.
+        const redirectUrl = editTemplate.completion_redirect_url ?? '';
+        const message = editTemplate.completion_message ?? '';
+        const buttonLabel = editTemplate.completion_button_label ?? '';
+        const buttonUrl = editTemplate.completion_button_url ?? '';
+        setCompletionMode(
+            redirectUrl ? 'REDIRECT' : message || buttonLabel || buttonUrl ? 'MESSAGE' : 'DEFAULT'
+        );
+        setCompletionMessage(message);
+        setCompletionButtonLabel(buttonLabel);
+        setCompletionButtonUrl(buttonUrl);
+        setCompletionRedirectUrl(redirectUrl);
     }, [open, editTemplate, form]);
 
     const createMutation = useMutation({
@@ -438,6 +470,14 @@ export function RegistrationLinkCreateModal({
         setTncConsentItems([]);
         setKycEnabled(false);
         setKycScope('AADHAAR');
+        setKycInstructions('');
+        setOrgNameHint('');
+        setCollectAddress(false);
+        setCompletionMode('DEFAULT');
+        setCompletionMessage('');
+        setCompletionButtonLabel('');
+        setCompletionButtonUrl('');
+        setCompletionRedirectUrl('');
     };
 
     const togglePackageSession = (id: string) => {
@@ -585,6 +625,42 @@ export function RegistrationLinkCreateModal({
             return;
         }
 
+        // After-registration config — mirrors the backend buildSettings rules:
+        // button label+URL must be BOTH set or BOTH absent; URLs must be https://.
+        const trimmedCompletionMessage = completionMessage.trim();
+        const trimmedButtonLabel = completionButtonLabel.trim();
+        const trimmedButtonUrl = completionButtonUrl.trim();
+        const trimmedRedirectUrl = completionRedirectUrl.trim();
+        if (completionMode === 'MESSAGE') {
+            // Message OR a complete button pair is enough (backend allows button-only).
+            if (!trimmedCompletionMessage && !(trimmedButtonLabel && trimmedButtonUrl)) {
+                toast.error(
+                    'Add a completion message or a button, or switch "After registration" back to Default'
+                );
+                return;
+            }
+            if (!!trimmedButtonLabel !== !!trimmedButtonUrl) {
+                toast.error('Completion button label and URL are required together');
+                return;
+            }
+            if (trimmedButtonUrl && !trimmedButtonUrl.startsWith('https://')) {
+                toast.error('Completion button URL must start with https://');
+                return;
+            }
+        }
+        if (completionMode === 'REDIRECT') {
+            if (!trimmedRedirectUrl) {
+                toast.error('Enter the URL to redirect to after registration');
+                return;
+            }
+            if (!trimmedRedirectUrl.startsWith('https://')) {
+                toast.error('Redirect URL must start with https://');
+                return;
+            }
+        }
+        const trimmedOrgNameHint = orgNameHint.trim();
+        const trimmedKycInstructions = kycInstructions.trim();
+
         // FREE keeps the current fresh-option backend path — only paid links reuse an
         // existing institute payment option (+ gateway vendor).
         const isGatewayBacked =
@@ -610,6 +686,24 @@ export function RegistrationLinkCreateModal({
                 : undefined,
             max_registrations: values.maxRegistrations,
             institute_custom_fields: buildInstituteCustomFields(),
+            org_name_hint: trimmedOrgNameHint || undefined,
+            // Absent = false server-side, so omitting when unchecked also clears it on edit.
+            collect_address: collectAddress || undefined,
+            kyc_instructions:
+                kycEnabled && trimmedKycInstructions ? trimmedKycInstructions : undefined,
+            // Completion precedence: default -> omit all; custom message -> message
+            // (+ button pair when filled); redirect -> redirect URL only.
+            ...(completionMode === 'MESSAGE' && {
+                completion_message: trimmedCompletionMessage || undefined,
+                ...(trimmedButtonLabel &&
+                    trimmedButtonUrl && {
+                        completion_button_label: trimmedButtonLabel,
+                        completion_button_url: trimmedButtonUrl,
+                    }),
+            }),
+            ...(completionMode === 'REDIRECT' && {
+                completion_redirect_url: trimmedRedirectUrl,
+            }),
             // Payment config is immutable after creation — omit it entirely on edit
             // so the wire contract doesn't imply otherwise (backend ignores it anyway).
             ...(editTemplate
@@ -1141,6 +1235,48 @@ export function RegistrationLinkCreateModal({
                     )}
                 </div>
 
+                {/* 6b. Wizard content — copy tweaks + address collection */}
+                <div className="space-y-2">
+                    <div>
+                        <Label>Wizard content</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Fine-tune what registrants see while filling the form.
+                        </p>
+                    </div>
+                    <div className="space-y-2 rounded-md border p-3">
+                        <Label htmlFor="registration-link-org-name-hint">
+                            Organization name hint
+                        </Label>
+                        <Input
+                            id="registration-link-org-name-hint"
+                            maxLength={300}
+                            placeholder="e.g. If you have no registered organization, write your full name"
+                            value={orgNameHint}
+                            onChange={(e) => setOrgNameHint(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Shown as helper text under the Organization Name field in the
+                            registration form. Leave empty for none.
+                        </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                        <div>
+                            <Label htmlFor="registration-link-collect-address">
+                                Collect full address
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Adds Address Line 1/2, City, State and Pincode to the registration
+                                form and saves them on the new organization.
+                            </p>
+                        </div>
+                        <Switch
+                            id="registration-link-collect-address"
+                            checked={collectAddress}
+                            onCheckedChange={setCollectAddress}
+                        />
+                    </div>
+                </div>
+
                 {/* 7. Terms & Conditions */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between rounded-md border p-3">
@@ -1281,6 +1417,25 @@ export function RegistrationLinkCreateModal({
                                 The registering organization&apos;s admin must verify their identity
                                 through DigiLocker before completing registration.
                             </p>
+                            <div className="space-y-1 border-t pt-3">
+                                <Label htmlFor="registration-link-kyc-instructions">
+                                    DigiLocker instructions
+                                </Label>
+                                <Textarea
+                                    id="registration-link-kyc-instructions"
+                                    value={kycInstructions}
+                                    onChange={(e) => setKycInstructions(e.target.value)}
+                                    rows={3}
+                                    maxLength={1000}
+                                    placeholder="e.g. Keep your Aadhaar-linked mobile handy. Facing issues? See our [DigiLocker guide](https://example.com/digilocker-help)."
+                                    className="text-sm"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Shown on the identity-verification step. Leave empty for the
+                                    default note (which already tells users to tick both Aadhaar
+                                    &amp; PAN when PAN is required). Supports [label](url) links.
+                                </p>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -1304,6 +1459,122 @@ export function RegistrationLinkCreateModal({
                             {form.formState.errors.maxRegistrations.message}
                         </p>
                     )}
+                </div>
+
+                {/* 10. After registration — completion screen behaviour */}
+                <div className="space-y-2">
+                    <div>
+                        <Label>After registration</Label>
+                        <p className="text-xs text-muted-foreground">
+                            What the registrant sees once their registration completes.
+                        </p>
+                    </div>
+                    <div className="space-y-3 rounded-md border p-3">
+                        <RadioGroup
+                            value={completionMode}
+                            onValueChange={(v) => setCompletionMode(v as CompletionMode)}
+                        >
+                            <label className="flex cursor-pointer items-start gap-2 text-sm">
+                                <RadioGroupItem value="DEFAULT" className="mt-0.5" />
+                                <span>
+                                    Default
+                                    <span className="block text-xs text-muted-foreground">
+                                        Standard success screen with a &quot;Go to Admin
+                                        Portal&quot; button.
+                                    </span>
+                                </span>
+                            </label>
+                            <label className="flex cursor-pointer items-start gap-2 text-sm">
+                                <RadioGroupItem value="MESSAGE" className="mt-0.5" />
+                                <span>
+                                    Custom message
+                                    <span className="block text-xs text-muted-foreground">
+                                        Show your own success message, optionally with a button.
+                                    </span>
+                                </span>
+                            </label>
+                            <label className="flex cursor-pointer items-start gap-2 text-sm">
+                                <RadioGroupItem value="REDIRECT" className="mt-0.5" />
+                                <span>
+                                    Redirect to URL
+                                    <span className="block text-xs text-muted-foreground">
+                                        Send the registrant straight to your own page.
+                                    </span>
+                                </span>
+                            </label>
+                        </RadioGroup>
+                        {completionMode === 'MESSAGE' && (
+                            <div className="space-y-2 border-t pt-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="registration-link-completion-message">
+                                        Completion message *
+                                    </Label>
+                                    <Textarea
+                                        id="registration-link-completion-message"
+                                        value={completionMessage}
+                                        onChange={(e) => setCompletionMessage(e.target.value)}
+                                        rows={3}
+                                        maxLength={2000}
+                                        placeholder="e.g. Thanks for registering! Our team will reach out within 24 hours. Meanwhile, read the [getting-started guide](https://example.com/start)."
+                                        className="text-sm"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Supports [label](url) links.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="registration-link-completion-button-label">
+                                            Button label
+                                        </Label>
+                                        <Input
+                                            id="registration-link-completion-button-label"
+                                            maxLength={100}
+                                            placeholder="e.g. Open your portal"
+                                            value={completionButtonLabel}
+                                            onChange={(e) =>
+                                                setCompletionButtonLabel(e.target.value)
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="registration-link-completion-button-url">
+                                            Button URL
+                                        </Label>
+                                        <Input
+                                            id="registration-link-completion-button-url"
+                                            placeholder="https://..."
+                                            value={completionButtonUrl}
+                                            onChange={(e) =>
+                                                setCompletionButtonUrl(e.target.value)
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Optional button — label and URL are required together, and the
+                                    URL must start with https://.
+                                </p>
+                            </div>
+                        )}
+                        {completionMode === 'REDIRECT' && (
+                            <div className="space-y-1 border-t pt-3">
+                                <Label htmlFor="registration-link-completion-redirect-url">
+                                    Redirect URL *
+                                </Label>
+                                <Input
+                                    id="registration-link-completion-redirect-url"
+                                    placeholder="https://yourdomain.com/welcome"
+                                    value={completionRedirectUrl}
+                                    onChange={(e) => setCompletionRedirectUrl(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Registrants are redirected here automatically after completing.
+                                    Must start with https://.
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-3 border-t pt-4">

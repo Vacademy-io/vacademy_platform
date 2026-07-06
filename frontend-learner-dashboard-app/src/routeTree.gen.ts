@@ -41,6 +41,7 @@ import { Route as AudienceResponseIndexRouteImport } from './routes/audience-res
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
+import { Route as SubOrgRegistrationPaymentResultRouteImport } from './routes/sub-org-registration/payment-result'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
 import { Route as AssignmentSlideIdRouteImport } from './routes/assignment/$slideId'
 import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug'
@@ -258,6 +259,12 @@ const TagNameIndexRoute = TagNameIndexRouteImport.update({
   path: '/$tagName/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubOrgRegistrationPaymentResultRoute =
+  SubOrgRegistrationPaymentResultRouteImport.update({
+    id: '/sub-org-registration/payment-result',
+    path: '/sub-org-registration/payment-result',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ParentDocumentsRoute = ParentDocumentsRouteImport.update({
   id: '/parent/documents',
   path: '/parent/documents',
@@ -575,6 +582,7 @@ export interface FileRoutesByFullPath {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
+  '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
@@ -663,6 +671,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
+  '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
@@ -753,6 +762,7 @@ export interface FileRoutesById {
   '/$tagName/$pageSlug': typeof TagNamePageSlugRoute
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
+  '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName/': typeof TagNameIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
@@ -844,6 +854,7 @@ export interface FileRouteTypes {
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/parent/documents'
+    | '/sub-org-registration/payment-result'
     | '/$tagName'
     | '/ai-settings'
     | '/assessment'
@@ -932,6 +943,7 @@ export interface FileRouteTypes {
   to:
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
+    | '/sub-org-registration/payment-result'
     | '/$tagName'
     | '/ai-settings'
     | '/assessment'
@@ -1021,6 +1033,7 @@ export interface FileRouteTypes {
     | '/$tagName/$pageSlug'
     | '/assignment/$slideId'
     | '/parent/documents'
+    | '/sub-org-registration/payment-result'
     | '/$tagName/'
     | '/ai-settings/'
     | '/assessment/'
@@ -1111,6 +1124,7 @@ export interface RootRouteChildren {
   TagNamePageSlugRoute: typeof TagNamePageSlugRoute
   AssignmentSlideIdRoute: typeof AssignmentSlideIdRoute
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
+  SubOrgRegistrationPaymentResultRoute: typeof SubOrgRegistrationPaymentResultRoute
   TagNameIndexRoute: typeof TagNameIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
@@ -1420,6 +1434,13 @@ declare module '@tanstack/react-router' {
       path: '/$tagName'
       fullPath: '/$tagName'
       preLoaderRoute: typeof TagNameIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sub-org-registration/payment-result': {
+      id: '/sub-org-registration/payment-result'
+      path: '/sub-org-registration/payment-result'
+      fullPath: '/sub-org-registration/payment-result'
+      preLoaderRoute: typeof SubOrgRegistrationPaymentResultRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/documents': {
@@ -1826,6 +1847,7 @@ const rootRouteChildren: RootRouteChildren = {
   TagNamePageSlugRoute: TagNamePageSlugRoute,
   AssignmentSlideIdRoute: AssignmentSlideIdRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
+  SubOrgRegistrationPaymentResultRoute: SubOrgRegistrationPaymentResultRoute,
   TagNameIndexRoute: TagNameIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,

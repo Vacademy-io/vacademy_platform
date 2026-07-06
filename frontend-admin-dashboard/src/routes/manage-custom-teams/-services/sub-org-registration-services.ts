@@ -64,6 +64,30 @@ export interface CreateRegistrationTemplateRequest {
      * `["AADHAAR","PAN"]` (backend validates AADHAAR must be included). Omit/empty = no KYC step.
      */
     kyc_documents?: string[];
+    /** Helper text shown under the Organization Name field in the wizard (<=300 chars). */
+    org_name_hint?: string;
+    /**
+     * When true the wizard collects Address Line 1/2, City, State and Pincode
+     * (line 2 optional) and stamps them onto the spawned institute.
+     */
+    collect_address?: boolean;
+    /**
+     * Custom copy for the identity-verification step (<=1000 chars); supports
+     * [label](url) links. Omit for the backend's default DigiLocker note.
+     */
+    kyc_instructions?: string;
+    /**
+     * Completion precedence: completion_redirect_url -> auto-redirect; else
+     * completion_message/button -> custom success page; else the default success
+     * copy + "Go to Admin Portal" button. Message <=2000 chars, [label](url) links.
+     */
+    completion_message?: string;
+    /** Completion CTA label (<=100 chars) — must be sent together with completion_button_url. */
+    completion_button_label?: string;
+    /** Completion CTA target — must start with https:// and pair with completion_button_label. */
+    completion_button_url?: string;
+    /** Auto-redirect target after completion — must start with https://; wins over message/button. */
+    completion_redirect_url?: string;
 }
 
 export interface CreateRegistrationTemplateResponse {
@@ -108,6 +132,18 @@ export interface TemplateDetail {
     vendor: string | null;
     currency: string | null;
     institute_custom_fields: RegistrationTemplateCustomField[] | null;
+    /** Helper text under the wizard's Organization Name field. */
+    org_name_hint?: string | null;
+    /** Whether the wizard collects the full address (line1/line2/city/state/pincode). */
+    collect_address?: boolean | null;
+    /** Custom identity-verification step copy; null/absent = backend default note. */
+    kyc_instructions?: string | null;
+    /** Custom completion-page copy; see CreateRegistrationTemplateRequest for precedence. */
+    completion_message?: string | null;
+    completion_button_label?: string | null;
+    completion_button_url?: string | null;
+    /** Auto-redirect target after completion; wins over message/button. */
+    completion_redirect_url?: string | null;
 }
 
 export interface SubOrgRegistrationRow {

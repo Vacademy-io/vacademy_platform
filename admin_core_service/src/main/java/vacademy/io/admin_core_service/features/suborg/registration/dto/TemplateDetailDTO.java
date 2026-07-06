@@ -45,6 +45,16 @@ public class TemplateDetailDTO {
     /** ["AADHAAR"] or ["AADHAAR","PAN"]; null when no KYC step. */
     private List<String> kycDocuments;
 
+    // ---- Presentation + completion config (all optional). ----
+
+    private String orgNameHint;
+    private Boolean collectAddress;
+    private String kycInstructions;
+    private String completionMessage;
+    private String completionButtonLabel;
+    private String completionButtonUrl;
+    private String completionRedirectUrl;
+
     /** FREE | ONE_TIME | SUBSCRIPTION. Payment config is immutable after create. */
     private String paymentType;
     private String paymentOptionId;

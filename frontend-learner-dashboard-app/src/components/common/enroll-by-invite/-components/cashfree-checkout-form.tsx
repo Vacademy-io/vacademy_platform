@@ -68,9 +68,12 @@ export const CashfreeCheckoutForm = ({
         return;
       }
 
+      // The returnUrl may already carry a query string (e.g. the sub-org
+      // registration result page) — append with "&" then, "?" otherwise.
+      const separator = returnUrl.includes("?") ? "&" : "?";
       const fullReturnUrl = instituteId
-        ? `${returnUrl}?orderId=${orderId}&instituteId=${instituteId}`
-        : `${returnUrl}?orderId=${orderId}`;
+        ? `${returnUrl}${separator}orderId=${orderId}&instituteId=${instituteId}`
+        : `${returnUrl}${separator}orderId=${orderId}`;
 
       const result = await cashfree.checkout({
         paymentSessionId,

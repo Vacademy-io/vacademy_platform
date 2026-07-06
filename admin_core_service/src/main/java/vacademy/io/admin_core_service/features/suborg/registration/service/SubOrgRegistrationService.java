@@ -20,6 +20,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerEnrollRequestService;
 import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscriptionDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscriptionResponseDTO;
@@ -28,8 +29,10 @@ import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgReg
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicPaymentDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicPaymentPlanDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicTemplateDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationStatusResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationResponseDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.UpdateDetailsRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationSettingDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.entity.SubOrgRegistration;
 import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgKycStatus;
@@ -70,8 +73,10 @@ public class SubOrgRegistrationService {
     private static final String SEND_OTP_ROUTE = "/notification-service/internal/v1/send-email-otp";
     private static final String VERIFY_OTP_ROUTE = "/notification-service/internal/v1/verify-email-otp";
     private static final String OTP_SERVICE_NAME = "sub-org-registration";
+    private static final String DEFAULT_ADMIN_PORTAL_URL = "https://dash.vacademy.io";
 
     private final SubOrgRegistrationRepository registrationRepository;
+    private final InstituteRepository instituteRepository;
     private final PaymentOptionRepository paymentOptionRepository;
     private final EnrollInviteRepository enrollInviteRepository;
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
@@ -106,7 +111,24 @@ public class SubOrgRegistrationService {
                 .payment(buildPublicPayment(setting))
                 .kycDocuments(setting != null && !CollectionUtils.isEmpty(setting.getKycDocuments())
                         ? setting.getKycDocuments() : null)
+                .orgNameHint(setting != null ? setting.getOrgNameHint() : null)
+                .collectAddress(setting != null && Boolean.TRUE.equals(setting.getCollectAddress()))
+                .kycInstructions(setting != null ? setting.getKycInstructions() : null)
+                .completionMessage(setting != null ? setting.getCompletionMessage() : null)
+                .completionButtonLabel(setting != null ? setting.getCompletionButtonLabel() : null)
+                .completionButtonUrl(setting != null ? setting.getCompletionButtonUrl() : null)
+                .completionRedirectUrl(setting != null ? setting.getCompletionRedirectUrl() : null)
+                .adminPortalUrl(resolveAdminPortalUrl(template.getInstituteId()))
                 .build();
+    }
+
+    /** Institute's configured portal base URL; falls back to the shared dashboard. */
+    private String resolveAdminPortalUrl(String instituteId) {
+        return instituteRepository.findById(instituteId)
+                .map(institute -> institute.getAdminPortalBaseUrl())
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .orElse(DEFAULT_ADMIN_PORTAL_URL);
     }
 
     /** Payment block for the wizard's PAYMENT step; null for FREE templates. */
@@ -143,28 +165,13 @@ public class SubOrgRegistrationService {
 
     @Transactional
     public StartRegistrationResponseDTO start(StartRegistrationRequestDTO request) {
-        if (!StringUtils.hasText(request.getOrgName())) {
-            throw new VacademyException("Organization name is required");
-        }
-        if (!StringUtils.hasText(request.getAdminName())
-                || !StringUtils.hasText(request.getAdminEmail())) {
-            throw new VacademyException("Admin name and email are required");
-        }
+        validateRequiredDetails(request.getOrgName(), request.getAdminName(), request.getAdminEmail());
         EnrollInvite template = requireOpenTemplate(request.getInstituteId(), request.getCode());
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
 
         String email = request.getAdminEmail().trim().toLowerCase();
-        // One live registration per (template, email): verified-but-unfinished or completed
-        // attempts block re-registration; unverified DRAFTs don't (typos, abandoned forms).
-        boolean duplicate = registrationRepository
-                .existsByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
-                        template.getId(), email,
-                        List.of(SubOrgRegistrationStatus.OTP_VERIFIED.name(),
-                                SubOrgRegistrationStatus.PENDING_PAYMENT.name(),
-                                SubOrgRegistrationStatus.COMPLETED.name()));
-        if (duplicate) {
-            throw new VacademyException(
-                    "A registration with this email already exists for this link");
-        }
+        assertNoDuplicateRegistration(template.getId(), email);
 
         SubOrgRegistration registration = new SubOrgRegistration();
         registration.setTemplateInviteId(template.getId());
@@ -175,6 +182,8 @@ public class SubOrgRegistrationService {
         registration.setAdminName(request.getAdminName().trim());
         registration.setAdminEmail(email);
         registration.setAdminPhone(request.getAdminPhone());
+        applyAddress(registration, setting, request.getAddressLine1(), request.getAddressLine2(),
+                request.getCity(), request.getState(), request.getPincode());
         registration = registrationRepository.save(registration);
 
         sendOtp(registration);
@@ -182,6 +191,127 @@ public class SubOrgRegistrationService {
                 .registrationId(registration.getId())
                 .status(registration.getStatus())
                 .build();
+    }
+
+    /**
+     * Edits DETAILS of an existing DRAFT/OTP_VERIFIED registration. Changing the email
+     * re-runs the duplicate check, drops the registration back to DRAFT and sends a fresh
+     * OTP to the new address (a DRAFT response signals the wizard to re-verify).
+     */
+    @Transactional
+    public StartRegistrationResponseDTO updateDetails(UpdateDetailsRequestDTO request) {
+        // Pessimistic lock (same as complete()): otherwise a concurrent complete()/
+        // payment webhook could flip the row to PENDING_PAYMENT between our status
+        // check and save, and this write would silently regress it to DRAFT.
+        SubOrgRegistration registration = registrationRepository
+                .findWithLockById(request.getRegistrationId())
+                .orElseThrow(() -> new VacademyException("Registration not found"));
+        if (!SubOrgRegistrationStatus.DRAFT.name().equals(registration.getStatus())
+                && !SubOrgRegistrationStatus.OTP_VERIFIED.name().equals(registration.getStatus())) {
+            throw new VacademyException("Registration can no longer be edited");
+        }
+        validateRequiredDetails(request.getOrgName(), request.getAdminName(), request.getAdminEmail());
+        EnrollInvite template = enrollInviteRepository.findById(registration.getTemplateInviteId())
+                .orElseThrow(() -> new VacademyException("Registration template no longer exists"));
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
+
+        String email = request.getAdminEmail().trim().toLowerCase();
+        boolean emailChanged = !email.equalsIgnoreCase(registration.getAdminEmail());
+        if (emailChanged) {
+            assertNoDuplicateRegistration(template.getId(), email);
+        }
+
+        registration.setOrgName(request.getOrgName().trim());
+        registration.setOrgLogoFileId(request.getOrgLogoFileId());
+        registration.setAdminName(request.getAdminName().trim());
+        registration.setAdminPhone(request.getAdminPhone());
+        applyAddress(registration, setting, request.getAddressLine1(), request.getAddressLine2(),
+                request.getCity(), request.getState(), request.getPincode());
+        if (emailChanged) {
+            // New inbox owns the registration now: verification restarts from scratch.
+            registration.setAdminEmail(email);
+            registration.setStatus(SubOrgRegistrationStatus.DRAFT.name());
+            registration.setOtpVerifiedAt(null);
+        }
+        registration = registrationRepository.save(registration);
+
+        if (emailChanged) {
+            sendOtp(registration);
+        }
+        return StartRegistrationResponseDTO.builder()
+                .registrationId(registration.getId())
+                .status(registration.getStatus())
+                .build();
+    }
+
+    /** Public status poll for the payment-result/return page; exposes no third-party data. */
+    public RegistrationStatusResponseDTO getRegistrationStatus(String registrationId) {
+        SubOrgRegistration registration = requireRegistration(registrationId);
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting = enrollInviteRepository
+                .findById(registration.getTemplateInviteId())
+                .map(t -> SubOrgRegistrationSettings.parse(t.getSettingJson()))
+                .orElse(null);
+        return RegistrationStatusResponseDTO.builder()
+                .registrationId(registration.getId())
+                .status(registration.getStatus())
+                .orgName(registration.getOrgName())
+                .adminEmail(registration.getAdminEmail())
+                .adminPortalUrl(resolveAdminPortalUrl(registration.getInstituteId()))
+                .completionMessage(setting != null ? setting.getCompletionMessage() : null)
+                .completionButtonLabel(setting != null ? setting.getCompletionButtonLabel() : null)
+                .completionButtonUrl(setting != null ? setting.getCompletionButtonUrl() : null)
+                .completionRedirectUrl(setting != null ? setting.getCompletionRedirectUrl() : null)
+                .build();
+    }
+
+    private void validateRequiredDetails(String orgName, String adminName, String adminEmail) {
+        if (!StringUtils.hasText(orgName)) {
+            throw new VacademyException("Organization name is required");
+        }
+        if (!StringUtils.hasText(adminName) || !StringUtils.hasText(adminEmail)) {
+            throw new VacademyException("Admin name and email are required");
+        }
+    }
+
+    /**
+     * One live registration per (template, email): verified-but-unfinished or completed
+     * attempts block re-registration; unverified DRAFTs don't (typos, abandoned forms).
+     */
+    private void assertNoDuplicateRegistration(String templateInviteId, String email) {
+        boolean duplicate = registrationRepository
+                .existsByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
+                        templateInviteId, email,
+                        List.of(SubOrgRegistrationStatus.OTP_VERIFIED.name(),
+                                SubOrgRegistrationStatus.PENDING_PAYMENT.name(),
+                                SubOrgRegistrationStatus.COMPLETED.name()));
+        if (duplicate) {
+            throw new VacademyException(
+                    "A registration with this email already exists for this link");
+        }
+    }
+
+    /**
+     * Address is collected only when the template says so (collectAddress=true):
+     * line1/city/state/pincode required, line2 optional. Otherwise the request's
+     * address fields are ignored entirely.
+     */
+    private void applyAddress(
+            SubOrgRegistration registration,
+            SubOrgRegistrationSettingDTO.RegistrationSetting setting,
+            String line1, String line2, String city, String state, String pincode) {
+        if (setting == null || !Boolean.TRUE.equals(setting.getCollectAddress())) {
+            return;
+        }
+        if (!StringUtils.hasText(line1) || !StringUtils.hasText(city)
+                || !StringUtils.hasText(state) || !StringUtils.hasText(pincode)) {
+            throw new VacademyException("Address line 1, city, state and pincode are required");
+        }
+        registration.setAddressLine1(line1.trim());
+        registration.setAddressLine2(StringUtils.hasText(line2) ? line2.trim() : null);
+        registration.setCity(city.trim());
+        registration.setState(state.trim());
+        registration.setPincode(pincode.trim());
     }
 
     @Transactional
@@ -296,6 +426,18 @@ public class SubOrgRegistrationService {
         InstituteInfoDTO subOrgDetails = new InstituteInfoDTO();
         subOrgDetails.setInstituteName(registration.getOrgName());
         subOrgDetails.setInstituteLogoFileId(registration.getOrgLogoFileId());
+        // Collected address (collectAddress templates) flows onto the spawned institute —
+        // UserInstituteService already maps address/city/state/pinCode from this DTO.
+        if (StringUtils.hasText(registration.getAddressLine1())) {
+            String address = registration.getAddressLine1();
+            if (StringUtils.hasText(registration.getAddressLine2())) {
+                address += ", " + registration.getAddressLine2();
+            }
+            subOrgDetails.setAddress(address);
+            subOrgDetails.setCity(registration.getCity());
+            subOrgDetails.setState(registration.getState());
+            subOrgDetails.setPinCode(registration.getPincode());
+        }
 
         boolean isPaid = setting != null && isPaidType(setting.getPaymentType());
         if (isPaid && request.getPaymentInitiationRequest() == null) {

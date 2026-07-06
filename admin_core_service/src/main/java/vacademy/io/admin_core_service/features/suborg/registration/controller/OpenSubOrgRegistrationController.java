@@ -8,9 +8,11 @@ import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgReg
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CompleteRegistrationResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicTemplateDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationStatusResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.ResendOtpRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationResponseDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.UpdateDetailsRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.VerifyOtpRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.service.SubOrgRegistrationService;
 
@@ -41,6 +43,20 @@ public class OpenSubOrgRegistrationController {
     public ResponseEntity<StartRegistrationResponseDTO> start(
             @RequestBody StartRegistrationRequestDTO request) {
         return ResponseEntity.ok(registrationService.start(request));
+    }
+
+    /** Edit DETAILS of a DRAFT/OTP_VERIFIED registration; DRAFT response = re-verify OTP. */
+    @PostMapping("/update-details")
+    public ResponseEntity<StartRegistrationResponseDTO> updateDetails(
+            @RequestBody UpdateDetailsRequestDTO request) {
+        return ResponseEntity.ok(registrationService.updateDetails(request));
+    }
+
+    /** Status poll for the payment-result/return page (public; minimal fields only). */
+    @GetMapping("/status")
+    public ResponseEntity<RegistrationStatusResponseDTO> status(
+            @RequestParam("registrationId") String registrationId) {
+        return ResponseEntity.ok(registrationService.getRegistrationStatus(registrationId));
     }
 
     @PostMapping("/verify-otp")

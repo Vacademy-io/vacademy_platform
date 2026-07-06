@@ -88,6 +88,21 @@ export interface SubOrgRegistrationTemplate {
    * e.g. ["AADHAAR"] or ["AADHAAR","PAN"]. Null/absent when KYC is off.
    */
   kyc_documents?: string[] | null;
+  /** Caption shown under the Organization Name field on the details step. */
+  org_name_hint?: string | null;
+  /** When true the details step collects the org address (line1/city/state/pincode required). */
+  collect_address?: boolean | null;
+  /** Institute-authored KYC callout (overrides the default PAN/Aadhaar consent note). */
+  kyc_instructions?: string | null;
+  /** Custom completion-page message; inline links via [label](url). */
+  completion_message?: string | null;
+  /** Custom completion-page button — label + url are both set or both absent. */
+  completion_button_label?: string | null;
+  completion_button_url?: string | null;
+  /** When set, completion auto-redirects here (takes precedence over message/button). */
+  completion_redirect_url?: string | null;
+  /** Admin portal base URL for the default completion CTA. */
+  admin_portal_url?: string | null;
 }
 
 // ─── Flow request/response types ─────────────────────────────────────────────
@@ -100,11 +115,49 @@ export interface StartRegistrationRequest {
   admin_name: string;
   admin_email: string;
   admin_phone: string | null;
+  /** Collected only when the template has collect_address=true (ignored otherwise). */
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
 }
 
 export interface StartRegistrationResponse {
   registration_id: string;
   status: string;
+}
+
+/**
+ * POST /update-details — edits an existing DRAFT/OTP_VERIFIED registration.
+ * When admin_email changed the backend resets the status to DRAFT and sends a
+ * fresh OTP to the new email (the response status signals the FE to re-verify).
+ */
+export interface UpdateRegistrationDetailsRequest {
+  registration_id: string;
+  org_name: string;
+  org_logo_file_id: string | null;
+  admin_name: string;
+  admin_email: string;
+  admin_phone: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+}
+
+/** GET /status — public, minimal completion payload (no other registration data). */
+export interface RegistrationStatusResponse {
+  registration_id: string;
+  status: string;
+  org_name?: string | null;
+  admin_email?: string | null;
+  admin_portal_url?: string | null;
+  completion_message?: string | null;
+  completion_button_label?: string | null;
+  completion_button_url?: string | null;
+  completion_redirect_url?: string | null;
 }
 
 export interface CustomFieldValuePayload {
@@ -225,6 +278,36 @@ export const startSubOrgRegistration = async (
   const response = await axios.post<StartRegistrationResponse>(
     `${SUB_ORG_REGISTRATION_BASE}/start`,
     payload
+  );
+  return response?.data;
+};
+
+/**
+ * Edits a DRAFT/OTP_VERIFIED registration's details. A changed admin email
+ * resets the status to DRAFT (fresh OTP sent to the NEW email) — callers must
+ * route back to the OTP step when the response status is "DRAFT".
+ */
+export const updateSubOrgRegistrationDetails = async (
+  payload: UpdateRegistrationDetailsRequest
+): Promise<StartRegistrationResponse> => {
+  const response = await axios.post<StartRegistrationResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/update-details`,
+    payload
+  );
+  return response?.data;
+};
+
+/**
+ * Public registration status + completion fields (admin_portal_url and the
+ * template's completion message/button/redirect). Polled by the
+ * /sub-org-registration/payment-result page until status is COMPLETED.
+ */
+export const getSubOrgRegistrationStatus = async (
+  registrationId: string
+): Promise<RegistrationStatusResponse> => {
+  const response = await axios.get<RegistrationStatusResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/status`,
+    { params: { registrationId } }
   );
   return response?.data;
 };

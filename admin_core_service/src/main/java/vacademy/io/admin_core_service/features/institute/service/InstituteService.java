@@ -32,6 +32,7 @@ public class InstituteService {
                 .id(institute.getId())
                 .instituteName(institute.getInstituteName())
                 .setting(institute.getSetting())
+                .email(institute.getEmail())
                 .instituteThemeCode(institute.getInstituteThemeCode())
                 .address(institute.getAddress())
                 .websiteUrl(institute.getWebsiteUrl())

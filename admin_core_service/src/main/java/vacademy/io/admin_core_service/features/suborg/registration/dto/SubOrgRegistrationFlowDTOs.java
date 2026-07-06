@@ -38,6 +38,23 @@ public final class SubOrgRegistrationFlowDTOs {
         private PublicPaymentDTO payment;
         /** DigiLocker KYC docs for the KYC step (["AADHAAR"] or ["AADHAAR","PAN"]); null when no KYC. */
         private List<String> kycDocuments;
+        /** Helper text under the org-name field on the DETAILS step. */
+        private String orgNameHint;
+        /** True = DETAILS step also collects a postal address (line1/city/state/pincode required). */
+        private Boolean collectAddress;
+        /** Instructions shown above the KYC step. */
+        private String kycInstructions;
+        /**
+         * Completion precedence: completionRedirectUrl set -> auto-redirect; else
+         * completionMessage/button set -> custom message page; else default success
+         * copy + "Go to Admin Portal" button -> adminPortalUrl.
+         */
+        private String completionMessage;
+        private String completionButtonLabel;
+        private String completionButtonUrl;
+        private String completionRedirectUrl;
+        /** Institute's admin portal base URL; "https://dash.vacademy.io" when unset. */
+        private String adminPortalUrl;
     }
 
     @Data
@@ -115,6 +132,50 @@ public final class SubOrgRegistrationFlowDTOs {
         private String adminName;
         private String adminEmail;
         private String adminPhone;
+        // Required (except line2) when the template sets collect_address=true; ignored otherwise.
+        private String addressLine1;
+        private String addressLine2;
+        private String city;
+        private String state;
+        private String pincode;
+    }
+
+    /** Edit DETAILS of an existing DRAFT/OTP_VERIFIED registration (public). */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class UpdateDetailsRequestDTO {
+        private String registrationId;
+        private String orgName;
+        private String orgLogoFileId;
+        private String adminName;
+        private String adminEmail;
+        private String adminPhone;
+        private String addressLine1;
+        private String addressLine2;
+        private String city;
+        private String state;
+        private String pincode;
+    }
+
+    /** Public status poll for the return page; no data beyond what the registrant entered. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RegistrationStatusResponseDTO {
+        private String registrationId;
+        private String status;
+        private String orgName;
+        private String adminEmail;
+        /** Institute's admin portal base URL; "https://dash.vacademy.io" when unset. */
+        private String adminPortalUrl;
+        private String completionMessage;
+        private String completionButtonLabel;
+        private String completionButtonUrl;
+        private String completionRedirectUrl;
     }
 
     @Data

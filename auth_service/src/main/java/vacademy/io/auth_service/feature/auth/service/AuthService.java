@@ -252,6 +252,8 @@ public class AuthService {
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
+            } else if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl())) {
+                loginUrl = instituteInfoDTO.getAdminPortalUrl();
             }
         }
         GenericEmailRequest genericEmailRequest = new GenericEmailRequest();
@@ -290,6 +292,8 @@ public class AuthService {
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
+            } else if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl())) {
+                loginUrl = instituteInfoDTO.getAdminPortalUrl();
             }
         }
         String fullName = user.getFullName() != null ? user.getFullName() : "User";
@@ -556,6 +560,8 @@ public class AuthService {
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
+            } else if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl())) {
+                loginUrl = instituteInfoDTO.getAdminPortalUrl();
             }
         }
         // Package-level overrideLoginUrl takes priority over institute settings
@@ -616,6 +622,8 @@ public class AuthService {
                     loginUrl = instituteInfoDTO.getLearnerPortalUrl();
                 else
                     loginUrl = defaultLearnerPortalUrl;
+            } else if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl())) {
+                loginUrl = instituteInfoDTO.getAdminPortalUrl();
             }
         }
         // Package-level overrideLoginUrl takes priority over institute settings

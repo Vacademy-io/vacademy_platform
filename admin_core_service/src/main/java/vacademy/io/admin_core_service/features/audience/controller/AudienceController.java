@@ -391,17 +391,52 @@ public class AudienceController {
     }
 
     /**
-     * Assign a counselor to a user's lead profile.
+     * Assign — or remove — a counselor on a user's lead profile.
      * POST /admin-core-service/v1/audience/user-lead-profile/assign-counselor
      *   ?userId=...&instituteId=...&counselorId=...&counselorName=...
+     *
+     * <p>Omitting {@code counselorId} (or sending it blank) REMOVES the
+     * current assignment: the lead returns to the unassigned pool and a
+     * COUNSELOR_UNASSIGNED journey event is logged. Removing when nothing is
+     * assigned is a silent no-op (no event noise).
      */
     @PostMapping("/user-lead-profile/assign-counselor")
     public ResponseEntity<UserLeadProfileDTO> assignCounselor(
             @RequestParam String userId,
             @RequestParam String instituteId,
-            @RequestParam String counselorId,
+            @RequestParam(required = false) String counselorId,
             @RequestParam(required = false) String counselorName,
             @RequestAttribute("user") CustomUserDetails user) {
+        boolean unassign = counselorId == null || counselorId.isBlank();
+
+        if (unassign) {
+            String previousName = userLeadProfileService.getProfileDTO(userId, instituteId)
+                    .map(p -> p.getAssignedCounselorName() != null
+                            ? p.getAssignedCounselorName() : p.getAssignedCounselorId())
+                    .orElse(null);
+            if (previousName == null) {
+                // Nothing assigned — no-op, no journey noise.
+                return ResponseEntity.ok(
+                        userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
+            }
+            userLeadProfileService.assignCounselor(userId, instituteId, null, null);
+            try {
+                timelineEventService.logJourneyEvent(
+                        "USER_LEAD_PROFILE", userId,
+                        LeadJourneyActionType.COUNSELOR_UNASSIGNED,
+                        "ADMIN", user.getUserId(), user.getUsername(),
+                        "Counselor removed",
+                        "Removed " + previousName + " — lead is unassigned",
+                        Map.of("removed_counselor", previousName,
+                               "removed_by", user.getUsername() != null ? user.getUsername() : ""),
+                        userId);
+            } catch (Exception e) {
+                // best-effort — don't fail the removal if logging fails
+            }
+            return ResponseEntity.ok(
+                    userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
+        }
+
         userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
         try {
             timelineEventService.logJourneyEvent(

@@ -129,16 +129,25 @@ public class CounsellorReassignService {
                     targetByUserId.put(a.getUserId(), a.getToUserId());
                 }
             }
+            // Remove the assigned counsellor from every selected lead — back to
+            // the unassigned pool. Null target = "clear" for assignCounselor.
+            case "UNASSIGN" -> {
+                for (String uid : userIds) {
+                    targetByUserId.put(uid, null);
+                }
+            }
             default -> throw new VacademyException("Unknown assign mode: " + req.getMode());
         }
 
-        Map<String, String> nameById = resolveNames(new LinkedHashSet<>(targetByUserId.values()));
+        Map<String, String> nameById = resolveNames(targetByUserId.values().stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new)));
 
         List<AssignLeadsResultDTO.AssignmentResult> results = new ArrayList<>(targetByUserId.size());
         for (Map.Entry<String, String> e : targetByUserId.entrySet()) {
             String userId = e.getKey();
             String toUserId = e.getValue();
-            String toName = nameById.get(toUserId);
+            String toName = toUserId != null ? nameById.get(toUserId) : null;
             results.add(AssignLeadsResultDTO.AssignmentResult.builder()
                     .userId(userId)
                     .toUserId(toUserId)
@@ -150,14 +159,17 @@ public class CounsellorReassignService {
                 String actorId = actor != null ? actor.getUserId() : null;
                 String actorName = actor != null ? actor.getUsername() : null;
                 try {
+                    boolean unassign = toUserId == null;
                     timelineEventService.logJourneyEvent(
                             "USER_LEAD_PROFILE", userId,
-                            LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                            unassign ? LeadJourneyActionType.COUNSELOR_UNASSIGNED
+                                     : LeadJourneyActionType.COUNSELOR_ASSIGNED,
                             "ADMIN", actorId, actorName,
-                            "Counselor assigned",
-                            "Bulk-assigned from leads list (mode=" + req.getMode() + ")",
+                            unassign ? "Counselor removed" : "Counselor assigned",
+                            unassign ? "Bulk-removed from leads list"
+                                     : "Bulk-assigned from leads list (mode=" + req.getMode() + ")",
                             Map.of(
-                                    "counselor_id", toUserId,
+                                    "counselor_id", toUserId != null ? toUserId : "",
                                     "counselor_name", toName != null ? toName : "",
                                     "trigger", "BULK_ASSIGN",
                                     "mode", req.getMode(),
@@ -171,8 +183,10 @@ public class CounsellorReassignService {
         }
 
         // One batched bell per target counsellor, after commit (mirrors reassign).
+        // UNASSIGN rows have no target — nobody to notify.
         if (!dryRun && !results.isEmpty()) {
             Map<String, Long> countByTarget = results.stream()
+                    .filter(r -> r.getToUserId() != null)
                     .collect(Collectors.groupingBy(
                             AssignLeadsResultDTO.AssignmentResult::getToUserId, Collectors.counting()));
             String instituteId = req.getInstituteId();

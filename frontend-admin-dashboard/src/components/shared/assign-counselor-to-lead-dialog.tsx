@@ -42,6 +42,17 @@ async function assignCounselorToLead(
     return response.data;
 }
 
+/** Omitting counselorId removes the current assignment — the lead returns to
+ *  the unassigned pool (no-op server-side when nothing was assigned). */
+async function removeCounselorFromLead(userId: string, instituteId: string) {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: ASSIGN_COUNSELOR_TO_LEAD,
+        params: { userId, instituteId },
+    });
+    return response.data;
+}
+
 export const AssignCounselorToLeadDialog = ({
     open,
     onOpenChange,
@@ -65,21 +76,39 @@ export const AssignCounselorToLeadDialog = ({
     // so this is a safe drop-in replacement for the old role-based hook.
     const { data: counselors, isLoading } = useEligibleAssigneesDebounced(searchQuery, 300);
 
+    const invalidateAll = () => {
+        queryClient.invalidateQueries({ queryKey: ['contacts'] });
+        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+        for (const key of invalidateKeys) {
+            queryClient.invalidateQueries({ queryKey: key });
+        }
+    };
+
     const mutation = useMutation({
         mutationFn: () =>
             assignCounselorToLead(userId, instituteId, selectedCounselor!.id, selectedCounselor!.full_name),
         onSuccess: () => {
             toast.success('Counselor assigned successfully');
-            queryClient.invalidateQueries({ queryKey: ['contacts'] });
-            queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
-            for (const key of invalidateKeys) {
-                queryClient.invalidateQueries({ queryKey: key });
-            }
+            invalidateAll();
             onSuccess?.(selectedCounselor!.id, selectedCounselor!.full_name);
             handleClose();
         },
         onError: (error: any) => {
             toast.error(error?.response?.data?.message || 'Failed to assign counselor');
+        },
+    });
+
+    // Remove the current assignment — lead goes back to the unassigned pool.
+    // Server-side no-op when nothing was assigned, so it's safe to offer always.
+    const removeMutation = useMutation({
+        mutationFn: () => removeCounselorFromLead(userId, instituteId),
+        onSuccess: () => {
+            toast.success('Counselor removed — lead is unassigned');
+            invalidateAll();
+            handleClose();
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.message || 'Failed to remove counselor');
         },
     });
 
@@ -152,21 +181,31 @@ export const AssignCounselorToLeadDialog = ({
                     )}
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="flex-wrap gap-2 sm:justify-between">
                     <MyButton
-                        buttonType="secondary"
-                        onClick={handleClose}
-                        disabled={mutation.isPending}
+                        buttonType="text"
+                        className="text-danger-600 hover:bg-danger-50"
+                        onClick={() => removeMutation.mutate()}
+                        disabled={mutation.isPending || removeMutation.isPending}
                     >
-                        Cancel
+                        {removeMutation.isPending ? 'Removing...' : 'Remove counselor'}
                     </MyButton>
-                    <MyButton
-                        buttonType="primary"
-                        onClick={() => mutation.mutate()}
-                        disabled={!selectedCounselor || mutation.isPending}
-                    >
-                        {mutation.isPending ? 'Assigning...' : 'Assign'}
-                    </MyButton>
+                    <div className="flex gap-2">
+                        <MyButton
+                            buttonType="secondary"
+                            onClick={handleClose}
+                            disabled={mutation.isPending || removeMutation.isPending}
+                        >
+                            Cancel
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
+                            onClick={() => mutation.mutate()}
+                            disabled={!selectedCounselor || mutation.isPending || removeMutation.isPending}
+                        >
+                            {mutation.isPending ? 'Assigning...' : 'Assign'}
+                        </MyButton>
+                    </div>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

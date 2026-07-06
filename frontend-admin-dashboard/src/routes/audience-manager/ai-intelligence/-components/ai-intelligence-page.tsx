@@ -37,6 +37,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import {
     TeamCoachingSection,
     useCallIntelligenceEnabled,
+    useHasCallIntelligenceData,
     fetchTeamCallIntelligence,
     type CallIntelligenceAnalyticsDto,
 } from '@/components/shared/leads';
@@ -948,6 +949,10 @@ export function AiIntelligencePage() {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id ?? '';
     const enabled = useCallIntelligenceEnabled();
+    // When the feature is off but the institute has previously-analyzed data, we
+    // still show the historical insights (read-only) with an "off" banner.
+    const hasData = useHasCallIntelligenceData(!enabled);
+    const showContent = enabled || hasData;
     const [period, setPeriod] = useState<Period>({ kind: 'preset', days: 30 });
 
     const { current, previous } = useMemo(() => windowsFor(period), [period]);
@@ -969,8 +974,20 @@ export function AiIntelligencePage() {
                 <PeriodControl period={period} current={current} onChange={setPeriod} />
             </header>
 
+            {/* Feature is off but there's historical data — show it read-only and
+                make clear no new calls are being analyzed. */}
+            {instituteId && !enabled && hasData && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-caption text-amber-700">
+                    <Sparkle size={16} weight="fill" className="mt-0.5 shrink-0 text-amber-500" />
+                    <span>
+                        Call Intelligence is turned off — no new calls are being analyzed. Showing
+                        previously analyzed data. Enable it in Settings to resume analysis.
+                    </span>
+                </div>
+            )}
+
             {/* Explicit current-vs-previous comparison so "improved" is unambiguous */}
-            {instituteId && enabled && (
+            {instituteId && showContent && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-caption">
                     <span className="font-medium text-neutral-700">Comparing</span>
                     <span className="rounded-full bg-primary-50 px-2.5 py-1 font-medium text-primary-700">
@@ -987,7 +1004,7 @@ export function AiIntelligencePage() {
                 <div className="rounded-lg border border-dashed border-neutral-200 p-8 text-center text-body text-neutral-400">
                     Loading institute…
                 </div>
-            ) : !enabled ? (
+            ) : !showContent ? (
                 <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-200 p-10 text-center">
                     <Sparkle size={28} className="text-neutral-300" />
                     <p className="text-body font-medium text-neutral-600">

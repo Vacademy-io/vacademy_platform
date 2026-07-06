@@ -42,6 +42,7 @@ import { useSystemFieldVisibility } from "@/hooks/use-system-field-visibility";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
+import { PaymentBillingSection } from "./payment-billing/payment-billing-section";
 
 interface UpdateStudentRequest {
   user_id: string;
@@ -706,6 +707,17 @@ export default function EditProfile() {
               </MyButton>
             </div>
           </form>
+
+          {/* Payment & Billing — outside the profile <form> because the
+              billing details editor submits its own form */}
+          {studentData?.institute_id && formData.user_id && (
+            <div className="border-t border-gray-100 p-6 md:p-8">
+              <PaymentBillingSection
+                instituteId={studentData.institute_id}
+                userId={formData.user_id}
+              />
+            </div>
+          )}
         </div>
       </div>
     </FormProvider>

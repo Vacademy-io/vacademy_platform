@@ -183,6 +183,10 @@ public class InstituteSettingService {
         defaultData.put("taxLabel", "Tax");
         defaultData.put("currency", "INR");
         defaultData.put("sendInvoiceEmail", false);
+        // Admin copy: when sendAdminCopy is true, the admins in adminCopyUserIds also
+        // receive the invoice / payment-confirmation emails (see InvoiceAdminCopyRecipientResolver).
+        defaultData.put("sendAdminCopy", false);
+        defaultData.put("adminCopyUserIds", new ArrayList<>());
         // Country + tax components: the operating country, the institute's own tax
         // registration number (e.g. GSTIN/VAT no.) and a list of named tax components
         // (label + rate). These are injectable into invoice templates via the

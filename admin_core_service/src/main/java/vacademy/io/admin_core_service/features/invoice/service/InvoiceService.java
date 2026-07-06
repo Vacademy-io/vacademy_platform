@@ -125,6 +125,9 @@ public class InvoiceService {
     private vacademy.io.admin_core_service.features.notification_service.service.BillingContactRecipientResolver billingContactRecipientResolver;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.notification_service.service.InvoiceAdminCopyRecipientResolver invoiceAdminCopyRecipientResolver;
+
+    @Autowired
     @Lazy
     private PaymentService paymentService;
 
@@ -2428,6 +2431,10 @@ public class InvoiceService {
                 billingContactRecipientResolver
                         .buildBillingContactAttachmentRecipient(user.getId(), instituteId, user.getEmail(), List.of(attachmentDTO))
                         .ifPresent(recipients::add);
+                recipients.addAll(invoiceAdminCopyRecipientResolver.buildAdminCopyAttachmentRecipients(
+                        instituteId,
+                        recipients.stream().map(AttachmentUsersDTO::getChannelId).collect(Collectors.toSet()),
+                        List.of(attachmentDTO)));
 
                 AttachmentNotificationDTO attachmentDto = AttachmentNotificationDTO.builder()
                         .body(body)
@@ -2457,6 +2464,9 @@ public class InvoiceService {
                 billingContactRecipientResolver
                         .buildBillingContactRecipient(user.getId(), instituteId, user.getEmail())
                         .ifPresent(recipients::add);
+                recipients.addAll(invoiceAdminCopyRecipientResolver.buildAdminCopyRecipients(
+                        instituteId,
+                        recipients.stream().map(NotificationToUserDTO::getChannelId).collect(Collectors.toSet())));
                 notificationDTO.setUsers(recipients);
 
                 notificationService.sendEmailViaUnified(notificationDTO, instituteId);

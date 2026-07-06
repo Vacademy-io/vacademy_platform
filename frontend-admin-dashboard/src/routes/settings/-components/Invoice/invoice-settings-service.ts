@@ -1,5 +1,9 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_INSITITUTE_SETTINGS, SAVE_INSTITUTE_SETTING } from '@/constants/urls';
+import {
+    GET_INSITITUTE_SETTINGS,
+    GET_INSTITUTE_USERS,
+    SAVE_INSTITUTE_SETTING,
+} from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { CURRENCIES } from '@/constants/currencies';
 
@@ -73,6 +77,14 @@ export interface InvoiceSettingsData {
      * (no payment gateway). Read by BulkAssignmentService.
      */
     generateInvoiceOnManualEnroll: boolean;
+    /**
+     * When true, the admins in {@link adminCopyUserIds} also receive the
+     * invoice / payment-confirmation emails sent on a completed payment.
+     * Read by InvoiceAdminCopyRecipientResolver on the backend.
+     */
+    sendAdminCopy: boolean;
+    /** Auth-service user ids of the admins who receive the copy. */
+    adminCopyUserIds: string[];
     country: InvoiceCountryConfig;
 }
 
@@ -86,6 +98,8 @@ export const DEFAULT_INVOICE_SETTINGS: InvoiceSettingsData = {
     sendInvoiceEmail: false,
     invoicePdfPlacement: 'INVOICE_EMAIL',
     generateInvoiceOnManualEnroll: false,
+    sendAdminCopy: false,
+    adminCopyUserIds: [],
     country: {
         code: '',
         name: '',
@@ -167,6 +181,10 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
                 : DEFAULT_INVOICE_SETTINGS.invoicePdfPlacement,
         generateInvoiceOnManualEnroll:
             base.generateInvoiceOnManualEnroll ?? DEFAULT_INVOICE_SETTINGS.generateInvoiceOnManualEnroll,
+        sendAdminCopy: base.sendAdminCopy ?? DEFAULT_INVOICE_SETTINGS.sendAdminCopy,
+        adminCopyUserIds: Array.isArray(base.adminCopyUserIds)
+            ? base.adminCopyUserIds.filter((id): id is string => typeof id === 'string' && !!id)
+            : [],
         country: {
             code: country.code ?? '',
             name: country.name ?? '',
@@ -186,6 +204,35 @@ export const fetchInvoiceSettings = async (): Promise<InvoiceSettingsData> => {
         params: { instituteId, settingKey: SETTING_KEY },
     });
     return normalize(response.data?.data);
+};
+
+/** An institute admin selectable as an invoice-copy recipient. */
+export interface AdminCopyOption {
+    id: string;
+    fullName: string;
+    email: string;
+}
+
+/**
+ * Active users holding the ADMIN role in this institute. Users without an
+ * email are dropped — they cannot receive the copy anyway.
+ */
+export const fetchInvoiceAdminOptions = async (): Promise<AdminCopyOption[]> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GET_INSTITUTE_USERS,
+        params: { instituteId, pageNumber: 0, pageSize: 500 },
+        data: { roles: ['ADMIN'], status: ['ACTIVE'] },
+    });
+    const raw = Array.isArray(response.data) ? response.data : (response.data?.content ?? []);
+    return raw
+        .map((u: { id: string; full_name?: string; email?: string | null }) => ({
+            id: u.id,
+            fullName: u.full_name ?? '',
+            email: u.email ?? '',
+        }))
+        .filter((u: AdminCopyOption) => !!u.id && !!u.email);
 };
 
 export const saveInvoiceSettings = async (data: InvoiceSettingsData): Promise<void> => {

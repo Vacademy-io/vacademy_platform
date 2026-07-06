@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
+import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.entity.User;
 
 import java.util.ArrayList;
@@ -176,10 +177,48 @@ public class AuthServiceClient {
             allUsers.addAll(batchUsers);
         }
         
-        log.debug("Retrieved {} users total from {} batches", allUsers.size(), 
+        log.debug("Retrieved {} users total from {} batches", allUsers.size(),
                 (userIds.size() + batchSize - 1) / batchSize);
-        
+
         return allUsers;
+    }
+
+    /**
+     * Get login credentials (username/password) for users by IDs.
+     * Used to resolve {{password}} placeholders in announcement emails.
+     */
+    @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
+    public List<UserCredentials> getUsersCredentials(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        try {
+            String url = authServiceBaseUrl + "/auth-service/v1/user/internal/users-credential";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<List<String>> entity = new HttpEntity<>(userIds, headers);
+
+            ResponseEntity<List<UserCredentials>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    entity,
+                    new ParameterizedTypeReference<List<UserCredentials>>() {}
+            );
+
+            List<UserCredentials> credentials = response.getBody();
+            if (credentials == null) {
+                credentials = new ArrayList<>();
+            }
+
+            log.debug("Found credentials for {} users out of {} requested IDs", credentials.size(), userIds.size());
+            return credentials;
+
+        } catch (Exception e) {
+            log.error("Error calling auth service for user credentials", e);
+            return new ArrayList<>();
+        }
     }
 
     /**

@@ -18,6 +18,13 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
             String providerType, String providerCallId);
 
     /**
+     * Dispositioned calls for a batch of lead users — the CSV export's lead
+     * journey merges these in, because a counsellor's quick disposition only
+     * lives on the call row (CallDispositionService writes no timeline event).
+     */
+    List<TelephonyCallLog> findByUserIdInAndDispositionKeyIsNotNull(List<String> userIds);
+
+    /**
      * Dedup guard for AI dispatch: has an AI call for this (institute, user, provider)
      * been placed within the last {@code since} window? Aavtaar doesn't echo our
      * correlation id, so a duplicated dispatch (workflow entered twice / bulk + node)

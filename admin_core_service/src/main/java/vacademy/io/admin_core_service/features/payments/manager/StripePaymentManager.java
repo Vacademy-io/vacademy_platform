@@ -215,6 +215,169 @@ public class StripePaymentManager implements PaymentServiceStrategy {
         return dto;
     }
 
+    /**
+     * Creates an off-session SetupIntent so the learner can save a new card
+     * without being charged. The frontend confirms it with Stripe Elements
+     * (3DS handled client-side by confirmCardSetup).
+     */
+    public Map<String, Object> createSetupIntent(String customerId, Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            Stripe.apiKey = extractApiKey(paymentGatewaySpecificData);
+            SetupIntent setupIntent = SetupIntent.create(SetupIntentCreateParams.builder()
+                    .setCustomer(customerId)
+                    .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
+                    .addPaymentMethodType("card")
+                    .build());
+            Map<String, Object> response = new HashMap<>();
+            response.put("clientSecret", setupIntent.getClientSecret());
+            response.put("setupIntentId", setupIntent.getId());
+            return response;
+        } catch (StripeException e) {
+            logger.error("Stripe error creating SetupIntent for customer {}: {}", customerId, e.getMessage(), e);
+            throw new VacademyException("Failed to create Stripe SetupIntent: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Attaches the payment method to the customer (the attach call is also the
+     * ownership check — Stripe rejects a PM confirmed for another customer) and
+     * makes it the default for future off-session charges. Returns the card
+     * summary (brand/last4/expiry) for display and snapshot rewriting.
+     */
+    public Map<String, Object> attachAndSetDefaultPaymentMethod(String customerId, String paymentMethodId,
+                                                                Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            Stripe.apiKey = extractApiKey(paymentGatewaySpecificData);
+            attachPaymentMethodIfNeeded(customerId, paymentMethodId);
+            Customer.retrieve(customerId).update(CustomerUpdateParams.builder()
+                    .setInvoiceSettings(CustomerUpdateParams.InvoiceSettings.builder()
+                            .setDefaultPaymentMethod(paymentMethodId)
+                            .build())
+                    .build());
+            return buildCardSummary(PaymentMethod.retrieve(paymentMethodId));
+        } catch (StripeException e) {
+            logger.error("Stripe error attaching payment method {} to customer {}: {}", paymentMethodId, customerId,
+                    e.getMessage(), e);
+            throw new VacademyException("Failed to update Stripe payment method: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Live lookup of the customer's default payment method for the summary
+     * endpoint, used when our stored metadata has no card details yet
+     * (learners who enrolled before card metadata was persisted).
+     */
+    public Map<String, Object> getDefaultPaymentMethodSummary(String customerId,
+                                                              Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            Stripe.apiKey = extractApiKey(paymentGatewaySpecificData);
+            Customer customer = Customer.retrieve(customerId);
+            String defaultPmId = customer.getInvoiceSettings() != null
+                    ? customer.getInvoiceSettings().getDefaultPaymentMethod()
+                    : null;
+            if (!StringUtils.hasText(defaultPmId)) {
+                // Fall back to the most recently attached card
+                PaymentMethodListParams listParams = PaymentMethodListParams.builder()
+                        .setCustomer(customerId)
+                        .setType(PaymentMethodListParams.Type.CARD)
+                        .setLimit(1L)
+                        .build();
+                var cards = PaymentMethod.list(listParams).getData();
+                if (cards.isEmpty()) {
+                    return null;
+                }
+                return buildCardSummary(cards.get(0));
+            }
+            return buildCardSummary(PaymentMethod.retrieve(defaultPmId));
+        } catch (StripeException e) {
+            logger.warn("Stripe error fetching default payment method for customer {}: {}", customerId,
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Returns the customer's billing details (name/email/address) for the
+     * summary endpoint.
+     */
+    public Map<String, Object> getCustomerBillingDetails(String customerId,
+                                                         Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            Stripe.apiKey = extractApiKey(paymentGatewaySpecificData);
+            Customer customer = Customer.retrieve(customerId);
+            Map<String, Object> billing = new HashMap<>();
+            billing.put("name", customer.getName());
+            billing.put("email", customer.getEmail());
+            if (customer.getAddress() != null) {
+                billing.put("addressLine", customer.getAddress().getLine1());
+                billing.put("city", customer.getAddress().getCity());
+                billing.put("state", customer.getAddress().getState());
+                billing.put("postalCode", customer.getAddress().getPostalCode());
+                billing.put("country", customer.getAddress().getCountry());
+            }
+            return billing;
+        } catch (StripeException e) {
+            logger.warn("Stripe error fetching billing details for customer {}: {}", customerId, e.getMessage());
+            return null;
+        }
+    }
+
+    public void updateCustomerBillingDetails(String customerId, String name, String email, String addressLine,
+                                             String city, String state, String postalCode, String country,
+                                             Map<String, Object> paymentGatewaySpecificData) {
+        try {
+            Stripe.apiKey = extractApiKey(paymentGatewaySpecificData);
+            CustomerUpdateParams.Builder params = CustomerUpdateParams.builder();
+            if (StringUtils.hasText(name)) {
+                params.setName(name);
+            }
+            if (StringUtils.hasText(email)) {
+                params.setEmail(email);
+            }
+            CustomerUpdateParams.Address.Builder address = CustomerUpdateParams.Address.builder();
+            boolean hasAddress = false;
+            if (StringUtils.hasText(addressLine)) {
+                address.setLine1(addressLine);
+                hasAddress = true;
+            }
+            if (StringUtils.hasText(city)) {
+                address.setCity(city);
+                hasAddress = true;
+            }
+            if (StringUtils.hasText(state)) {
+                address.setState(state);
+                hasAddress = true;
+            }
+            if (StringUtils.hasText(postalCode)) {
+                address.setPostalCode(postalCode);
+                hasAddress = true;
+            }
+            if (StringUtils.hasText(country)) {
+                address.setCountry(country);
+                hasAddress = true;
+            }
+            if (hasAddress) {
+                params.setAddress(address.build());
+            }
+            Customer.retrieve(customerId).update(params.build());
+        } catch (StripeException e) {
+            logger.error("Stripe error updating billing details for customer {}: {}", customerId, e.getMessage(), e);
+            throw new VacademyException("Failed to update Stripe billing details: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> buildCardSummary(PaymentMethod paymentMethod) {
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("paymentMethodId", paymentMethod.getId());
+        if (paymentMethod.getCard() != null) {
+            summary.put("brand", paymentMethod.getCard().getBrand());
+            summary.put("last4", paymentMethod.getCard().getLast4());
+            summary.put("expMonth", paymentMethod.getCard().getExpMonth());
+            summary.put("expYear", paymentMethod.getCard().getExpYear());
+        }
+        return summary;
+    }
+
     private void attachPaymentMethodIfNeeded(String customerId, String paymentMethodId) throws StripeException {
         if (!StringUtils.hasText(customerId) || !StringUtils.hasText(paymentMethodId)) {
             return; // Cannot attach if IDs are missing

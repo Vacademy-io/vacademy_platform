@@ -29,6 +29,7 @@ import vacademy.io.notification_service.features.send.dto.UnifiedSendResponse;
 import vacademy.io.notification_service.features.send.service.UnifiedSendService;
 import vacademy.io.notification_service.service.EmailService;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
+import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.entity.User;
 
 import java.time.Instant;
@@ -191,6 +192,9 @@ public class AnnouncementDeliveryService {
         
         // Get rate limiter
         RateLimiter rateLimiter = getEmailRateLimiter();
+
+        // Credentials are fetched per batch only when the template actually uses {{password}}
+        boolean needsPasswords = content.getContent() != null && content.getContent().contains("{{password}}");
         
         // Track overall progress
         int totalSuccess = 0;
@@ -225,7 +229,10 @@ public class AnnouncementDeliveryService {
                     .toList();
             
             Map<String, User> userEmailMap = batchResolveUsers(userIds);
-            
+            Map<String, String> passwordByUserId = needsPasswords
+                    ? batchResolvePasswords(userIds)
+                    : Map.of();
+
             // Process each message in this batch
             int batchSuccess = 0;
             int batchFailed = 0;
@@ -263,7 +270,7 @@ public class AnnouncementDeliveryService {
                     }
 
                     // Process HTML content with variables (use cached users - no additional API calls)
-                    String processedContent = processHtmlVariables(content.getContent(), message, announcement, userEmailMap);
+                    String processedContent = processHtmlVariables(content.getContent(), message, announcement, userEmailMap, passwordByUserId);
 
                         // RATE LIMITING: Acquire permit before sending (blocks if limit exceeded)
                         rateLimiter.acquire();
@@ -626,8 +633,26 @@ public class AnnouncementDeliveryService {
         } catch (Exception e) {
             log.error("Error batch resolving user contact info", e);
         }
-        
+
         return userMap;
+    }
+
+    /**
+     * Batch resolve login passwords for {{password}} placeholder replacement.
+     * Only called when the announcement content actually contains {{password}}.
+     */
+    private Map<String, String> batchResolvePasswords(List<String> userIds) {
+        Map<String, String> passwordMap = new HashMap<>();
+        try {
+            for (UserCredentials credentials : authServiceClient.getUsersCredentials(userIds)) {
+                if (credentials.getUserId() != null && credentials.getPassword() != null) {
+                    passwordMap.put(credentials.getUserId(), credentials.getPassword());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error batch resolving user credentials", e);
+        }
+        return passwordMap;
     }
 
     /**
@@ -827,10 +852,12 @@ public class AnnouncementDeliveryService {
      * @param message The recipient message
      * @param announcement The announcement
      * @param userCache Cache of pre-resolved User objects (from batch resolution)
+     * @param passwordCache Pre-resolved login passwords by userId (empty unless the content uses {{password}})
      * @return Processed HTML with variables replaced
      */
-    private String processHtmlVariables(String htmlContent, RecipientMessage message, 
-                                       Announcement announcement, Map<String, User> userCache) {
+    private String processHtmlVariables(String htmlContent, RecipientMessage message,
+                                       Announcement announcement, Map<String, User> userCache,
+                                       Map<String, String> passwordCache) {
         if (htmlContent == null || htmlContent.isEmpty()) {
             return htmlContent;
         }
@@ -882,10 +909,15 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{user_name}}", displayName);
             processedContent = processedContent.replace("{{name}}", displayName);
             
-            // {{user_email}} → user.email
-            processedContent = processedContent.replace("{{user_email}}", 
-                user.getEmail() != null ? user.getEmail() : "");
-            
+            // {{user_email}} and {{email}} → user.email
+            String email = user.getEmail() != null ? user.getEmail() : "";
+            processedContent = processedContent.replace("{{user_email}}", email);
+            processedContent = processedContent.replace("{{email}}", email);
+
+            // {{password}} → login password (resolved only when the template uses it)
+            String password = passwordCache != null ? passwordCache.get(message.getUserId()) : null;
+            processedContent = processedContent.replace("{{password}}", password != null ? password : "");
+
             // {{user_phone}} → user.mobileNumber
             processedContent = processedContent.replace("{{user_phone}}", 
                 user.getMobileNumber() != null ? user.getMobileNumber() : "");
@@ -899,7 +931,9 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{user_last_name}}", lastName);
             processedContent = processedContent.replace("{{first_name}}", firstName);
             processedContent = processedContent.replace("{{last_name}}", lastName);
-            
+            processedContent = processedContent.replace("{{firstName}}", firstName);
+            processedContent = processedContent.replace("{{lastName}}", lastName);
+
         } else {
             // User not found in cache, replace with empty strings
             log.warn("User {} not found in cache for variable replacement in announcement {}", 
@@ -909,11 +943,15 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{name}}", "");
             processedContent = processedContent.replace("{{full_name}}", "");
             processedContent = processedContent.replace("{{user_email}}", "");
+            processedContent = processedContent.replace("{{email}}", "");
+            processedContent = processedContent.replace("{{password}}", "");
             processedContent = processedContent.replace("{{user_phone}}", "");
             processedContent = processedContent.replace("{{user_first_name}}", "");
             processedContent = processedContent.replace("{{user_last_name}}", "");
             processedContent = processedContent.replace("{{first_name}}", "");
             processedContent = processedContent.replace("{{last_name}}", "");
+            processedContent = processedContent.replace("{{firstName}}", "");
+            processedContent = processedContent.replace("{{lastName}}", "");
         }
         
         return processedContent;

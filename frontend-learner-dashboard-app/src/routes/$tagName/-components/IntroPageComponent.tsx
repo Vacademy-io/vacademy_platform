@@ -446,16 +446,19 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             <div className="flex flex-col gap-4 items-center pb-6">
               {/* Login Button */}
               {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
-                <button
-                  onClick={() => handleButtonClick('navigateToLogin')}
-                  className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200 border hover:opacity-90"
-                  style={{
-                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
-                    borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                  }}
-                >
-                  Login
-                </button>
+                <div className="flex flex-col gap-1 items-center">
+                  <button
+                    onClick={() => handleButtonClick('navigateToLogin')}
+                    className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200 border hover:opacity-90"
+                    style={{
+                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                      borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                    }}
+                  >
+                    Login
+                  </button>
+                  <span className="text-xs text-gray-500">If already registered</span>
+                </div>
               )}
 
               {/* Next Button - Show on all slides */}
@@ -489,16 +492,19 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
           <div className="flex flex-col gap-3">
             {/* Login Button - Mobile */}
             {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
-              <button
-                onClick={() => handleButtonClick('navigateToLogin')}
-                className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
-                style={{
-                  color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
-                  borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                }}
-              >
-                Login
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => handleButtonClick('navigateToLogin')}
+                  className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
+                  style={{
+                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                    borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                  }}
+                >
+                  Login
+                </button>
+                <span className="text-xs text-gray-500 text-center">If already registered</span>
+              </div>
             )}
 
             {/* Next Button - Full width on mobile */}

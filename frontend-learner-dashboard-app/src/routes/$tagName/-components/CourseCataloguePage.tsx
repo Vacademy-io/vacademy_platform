@@ -496,22 +496,30 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
             {/* Login Button */}
-            <button
-              onClick={handleIntroLogin}
-              className="catalogue-btn catalogue-btn-secondary w-full"
-            >
-              Login
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleIntroLogin}
+                className="catalogue-btn catalogue-btn-secondary w-full"
+              >
+                Login
+              </button>
+              <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
+            </div>
 
             {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
-              onClick={() => {
-                setShowLeadCollection(true);
-              }}
-              className="catalogue-btn catalogue-btn-primary w-full"
-            >
-              Get Started
-            </button>}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => {
+                    setShowLeadCollection(true);
+                  }}
+                  className="catalogue-btn catalogue-btn-primary w-full"
+                >
+                  Get Started
+                </button>
+                <span className="text-xs text-catalogue-text-secondary text-center">For new users</span>
+              </div>
+            )}
           </div>
         </div>
       )}

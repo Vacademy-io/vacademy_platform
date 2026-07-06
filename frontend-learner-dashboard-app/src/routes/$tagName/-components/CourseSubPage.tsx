@@ -372,33 +372,41 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Login Button */}
-            <button
-              onClick={handleIntroLogin}
-              className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
-              style={{
-                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
-                borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-              }}
-            >
-              Login
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleIntroLogin}
+                className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
+                style={{
+                  color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                  borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                }}
+              >
+                Login
+              </button>
+              <span className="text-xs text-gray-500 text-center">If already registered</span>
+            </div>
 
             {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && <button
-              onClick={() => {
-                if (catalogueData?.globalSettings.leadCollection.enabled) {
-                  setShowLeadCollection(true);
-                } else {
-                  console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
-                }
-              }}
-              className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
-              style={{
-                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-              }}
-            >
-              Get Started
-            </button>}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => {
+                    if (catalogueData?.globalSettings.leadCollection.enabled) {
+                      setShowLeadCollection(true);
+                    } else {
+                      console.log("[CourseSubPage] Lead collection is disabled, not showing modal");
+                    }
+                  }}
+                  className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
+                  style={{
+                    backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                  }}
+                >
+                  Get Started
+                </button>
+                <span className="text-xs text-gray-500 text-center">For new users</span>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -122,6 +122,22 @@ public class InvoiceController {
     }
 
     /**
+     * Non-persisting preview for the admin Create-Invoice dialog. Renders the institute's
+     * invoice template with the supplied line items + overrides and returns the rendered
+     * HTML plus the resolved value of every editable placeholder the template uses, so the
+     * admin can review, edit the dynamic values, and see the exact invoice before creating.
+     * Consumes no invoice number and writes nothing.
+     *
+     * POST /admin-core-service/v1/invoices/admin/preview
+     */
+    @PostMapping("/admin/preview")
+    public ResponseEntity<vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePreviewResponseDTO> previewAdminInvoice(
+            @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        return ResponseEntity.ok(invoiceService.previewAdminInvoice(request));
+    }
+
+    /**
      * Initiates gateway payment for an admin-created invoice.
      * Called when the user opens the payment link and clicks "Pay Now".
      * Returns gateway order/session details for the frontend to complete payment.

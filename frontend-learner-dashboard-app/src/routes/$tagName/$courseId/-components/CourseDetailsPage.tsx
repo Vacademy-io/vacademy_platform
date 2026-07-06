@@ -1520,45 +1520,51 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? "mb-8" : ""}`}>
             {/* Login Button */}
-            <button
-              onClick={() => navigate({ to: "/login" })}
-              className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg border transition-all duration-200"
-              style={{
-                color: domainRouting.instituteThemeCode
-                  ? `hsl(var(--primary))`
-                  : "#3b82f6", // design-lint-ignore: page-builder default color
-                borderColor: domainRouting.instituteThemeCode
-                  ? `hsl(var(--primary))`
-                  : "#3b82f6", // design-lint-ignore: page-builder default color
-              }}
-            >
-              Login
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => navigate({ to: "/login" })}
+                className="w-full px-4 py-3 text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg border transition-all duration-200"
+                style={{
+                  color: domainRouting.instituteThemeCode
+                    ? `hsl(var(--primary))`
+                    : "#3b82f6", // design-lint-ignore: page-builder default color
+                  borderColor: domainRouting.instituteThemeCode
+                    ? `hsl(var(--primary))`
+                    : "#3b82f6", // design-lint-ignore: page-builder default color
+                }}
+              >
+                Login
+              </button>
+              <span className="text-xs text-gray-500 text-center">If already registered</span>
+            </div>
 
             {/* Get Started / Enroll Button */}
-            <button
-              onClick={() => {
-                // Mirror the desktop CTA: enroll when payment is enabled,
-                // otherwise fall back to the lead-collection form.
-                if (catalogueData?.globalSettings?.payment?.enabled === true) {
-                  setEnrollmentDialogOpen(true);
-                } else {
-                  setShowLeadCollection(true);
-                }
-              }}
-              className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
-              style={{
-                backgroundColor: domainRouting.instituteThemeCode
-                  ? `hsl(var(--primary))`
-                  : "#3b82f6", // design-lint-ignore: page-builder default color
-              }}
-            >
-              {catalogueData?.globalSettings?.payment?.enabled !== false
-                ? courseData.price === 0
-                  ? "Enroll for Free"
-                  : "Enroll Now"
-                : "Get Started"}
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={() => {
+                  // Mirror the desktop CTA: enroll when payment is enabled,
+                  // otherwise fall back to the lead-collection form.
+                  if (catalogueData?.globalSettings?.payment?.enabled === true) {
+                    setEnrollmentDialogOpen(true);
+                  } else {
+                    setShowLeadCollection(true);
+                  }
+                }}
+                className="w-full px-4 py-3 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] rounded-lg shadow-md transition-all duration-200"
+                style={{
+                  backgroundColor: domainRouting.instituteThemeCode
+                    ? `hsl(var(--primary))`
+                    : "#3b82f6", // design-lint-ignore: page-builder default color
+                }}
+              >
+                {catalogueData?.globalSettings?.payment?.enabled !== false
+                  ? courseData.price === 0
+                    ? "Enroll for Free"
+                    : "Enroll Now"
+                  : "Get Started"}
+              </button>
+              <span className="text-xs text-gray-500 text-center">For new users</span>
+            </div>
           </div>
         </div>
       )}

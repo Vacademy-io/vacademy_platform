@@ -21,15 +21,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *   • A counsellor is any institute user holding the ACTIVE {@code COUNSELLOR}
  *     role in auth_service. Nothing is configured in LEAD_SETTING anymore;
  *     the old {@code workbench.leads_team_id} JSON key is ignored.
- *   • A caller who holds the COUNSELLOR role is ALWAYS hierarchy-scoped —
- *     even when they also hold ADMIN (counsellor privilege wins by product
- *     decision). Their scope = themselves + every counsellor-role user who
- *     reports up to them through {@code parent_user_id} chains in ANY org
- *     team they belong to.
- *   • A caller without the COUNSELLOR role (pure admin, teacher, …) is not
- *     hierarchy-scoped here; whether they see institute-wide data stays
- *     governed by the caller-role checks at each endpoint (ADMIN) and by
- *     {@code AudienceRoleAccessService} modes.
+ *   • ADMIN OUTRANKS EVERYTHING (product decision, 2026-07-06): a caller
+ *     holding the ADMIN role — even one who ALSO holds COUNSELLOR — sees all
+ *     leads, all data, and may assign any counsellor, institute-wide.
+ *   • A non-admin COUNSELLOR-role caller is hierarchy-scoped: their scope =
+ *     themselves + every counsellor-role user who reports up to them through
+ *     {@code parent_user_id} chains in ANY org team they belong to.
+ *   • A caller with neither role (teacher, …) is not hierarchy-scoped here;
+ *     what they see stays governed by the caller-role checks at each endpoint
+ *     and by {@code AudienceRoleAccessService} modes.
  *
  * Membership in unrelated teams (Finance, HR, …) is harmless: descendants are
  * intersected with the counsellor-role set, which replaces the old "only walk
@@ -107,13 +107,18 @@ public class CounsellorScopeService {
 
     /**
      * Should this caller's data access be narrowed to their hierarchy scope?
-     * True exactly when the caller holds the COUNSELLOR role — which makes the
-     * multi-role case (ADMIN + COUNSELLOR) scoped by construction: counsellor
-     * privilege wins over the admin institute-wide view.
+     * True when the caller holds the COUNSELLOR role AND does NOT hold the
+     * ADMIN role — ADMIN outranks: an admin who also counsels keeps the full
+     * institute-wide view everywhere (leads, roster, reports, follow-ups).
+     *
+     * <p>The admin check reads the CURRENT request's JWT (most call sites
+     * only have a user id in hand). Outside a request context it resolves to
+     * "not admin", i.e. scoped — the safe direction.
      */
     public boolean isScopedCaller(String instituteId, String callerUserId) {
         if (callerUserId == null || callerUserId.isBlank()) return false;
-        return allCounsellorUserIds(instituteId).contains(callerUserId);
+        if (!allCounsellorUserIds(instituteId).contains(callerUserId)) return false;
+        return !roleAccessService.currentRequestRoles(instituteId).contains("ADMIN");
     }
 
     /**
@@ -173,13 +178,12 @@ public class CounsellorScopeService {
     }
 
     /**
-     * The counsellors a caller may ASSIGN/REASSIGN leads to. Assignment is an
-     * admin action, not data visibility — so here the ADMIN role wins over
-     * the counsellor-scoping rule: an ADMIN (even one who also holds the
-     * COUNSELLOR role and therefore SEES only their hierarchy scope) can
-     * hand a lead to any counsellor of the institute. Non-admin scoped
-     * callers stay restricted to their hierarchy scope; callers without a
-     * user context (internal paths) get the institute-wide roster.
+     * The counsellors a caller may ASSIGN/REASSIGN leads to. Since ADMIN now
+     * outranks the counsellor scoping everywhere ({@link #isScopedCaller}),
+     * this coincides with {@link #visibleCounsellorUserIds}: admins get the
+     * institute-wide roster, non-admin counsellors their hierarchy scope.
+     * Kept as a named entry point so assignment call sites stay explicit —
+     * and use the caller's authorities directly when available.
      */
     public List<String> assignableCounsellorUserIds(String instituteId, CustomUserDetails caller) {
         if (caller == null || caller.getUserId() == null) {

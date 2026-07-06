@@ -4,6 +4,7 @@ import {
     GET_INVOICES_BY_INSTITUTE,
     GET_INVOICE_DOWNLOAD_URL,
     POST_ADMIN_CREATE_INVOICE,
+    POST_ADMIN_PREVIEW_INVOICE,
 } from '@/constants/urls';
 
 export interface InvoiceLineItemDTO {
@@ -99,7 +100,31 @@ export interface AdminCreateInvoiceRequest {
     line_items: AdminInvoiceLineItemRequest[];
     currency: string;
     due_date: string;
+    /** Admin-chosen invoice date (ISO). Defaults to now on the server when omitted. */
+    invoice_date?: string;
     notes?: string;
+    /** Per-invoice edits to dynamic template values, keyed by placeholder name. */
+    overrides?: Record<string, string>;
+}
+
+/** One editable/derived dynamic value discovered in the institute's invoice template. */
+export interface InvoicePlaceholderValue {
+    key: string;
+    label: string;
+    /** Grouping heading: INVOICE / BILL TO / INSTITUTE / TAX / AMOUNTS / NOTES. */
+    group: string;
+    /** Current value: override when set, else the auto-derived value. */
+    value: string;
+    editable: boolean;
+    /** Preferred input control: 'text' | 'textarea' | 'date'. */
+    input_type: string;
+}
+
+export interface AdminInvoicePreviewResponse {
+    /** Rendered invoice HTML (all placeholders substituted) for the live preview pane. */
+    html: string;
+    /** Editable/derived placeholder values to seed the review panel. */
+    resolved_values: InvoicePlaceholderValue[];
 }
 
 export interface AdminInvoicePaymentLinkResponse {
@@ -119,6 +144,21 @@ export async function createAdminInvoice(
 ): Promise<AdminInvoicePaymentLinkResponse[]> {
     const response = await authenticatedAxiosInstance.post<AdminInvoicePaymentLinkResponse[]>(
         POST_ADMIN_CREATE_INVOICE,
+        request
+    );
+    return response.data;
+}
+
+/**
+ * Non-persisting preview: renders the institute's invoice template with the given line
+ * items + overrides and returns the rendered HTML plus the resolved dynamic values. Used
+ * by the "Review & Preview" step before the invoice is actually created.
+ */
+export async function previewAdminInvoice(
+    request: AdminCreateInvoiceRequest
+): Promise<AdminInvoicePreviewResponse> {
+    const response = await authenticatedAxiosInstance.post<AdminInvoicePreviewResponse>(
+        POST_ADMIN_PREVIEW_INVOICE,
         request
     );
     return response.data;

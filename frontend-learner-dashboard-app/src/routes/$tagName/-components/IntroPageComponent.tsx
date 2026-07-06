@@ -444,6 +444,23 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             'justify-center'
           } px-4`}>
             <div className="flex flex-col gap-4 items-center pb-6">
+              {/* Login Button */}
+              {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
+                <div className="flex flex-col gap-1 items-center">
+                  <button
+                    onClick={() => handleButtonClick('navigateToLogin')}
+                    className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200 border hover:opacity-90"
+                    style={{
+                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                      borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                    }}
+                  >
+                    Login
+                  </button>
+                  <span className="text-xs text-gray-500">If already registered</span>
+                </div>
+              )}
+
               {/* Next Button - Show on all slides */}
               {processedImages.length > 1 && (
                 <button
@@ -464,30 +481,6 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                   Next
                 </button>
               )}
-              
-              {/* Login Text Button */}
-              {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
-                <span
-                  onClick={() => handleButtonClick('navigateToLogin')}
-                  className="cursor-pointer text-sm transition-colors"
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '0.8';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                  }}
-                >
-                  <span className="text-black">Already have an account? </span>
-                  <span 
-                    className="underline"
-                    style={{
-                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                    }}
-                  >
-                    Login
-                  </span>
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -497,6 +490,23 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
       {!showLeadForm && (
         <div className={`md:hidden fixed bottom-0 left-0 right-0 z-60 bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
           <div className="flex flex-col gap-3">
+            {/* Login Button - Mobile */}
+            {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => handleButtonClick('navigateToLogin')}
+                  className="w-full px-4 py-2 font-medium hover:opacity-90 rounded-md border transition-colors"
+                  style={{
+                    color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                    borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
+                  }}
+                >
+                  Login
+                </button>
+                <span className="text-xs text-gray-500 text-center">If already registered</span>
+              </div>
+            )}
+
             {/* Next Button - Full width on mobile */}
             {processedImages.length > 1 && (
               <button
@@ -516,26 +526,6 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
               >
                 Next
               </button>
-            )}
-            
-            {/* Login Text - Mobile */}
-            {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (
-              <div className="text-center">
-                <span
-                  onClick={() => handleButtonClick('navigateToLogin')}
-                  className="cursor-pointer text-sm transition-colors"
-                >
-                  <span className="text-black">Already have an account? </span>
-                  <span 
-                    className="underline"
-                    style={{
-                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
-                    }}
-                  >
-                    Login
-                  </span>
-                </span>
-              </div>
             )}
           </div>
         </div>

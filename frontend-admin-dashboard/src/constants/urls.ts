@@ -137,6 +137,10 @@ export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telepho
 // AI voice-agent call (provider-agnostic). Fire-and-forget — the outcome arrives
 // later via the end-of-call webhook, so (unlike the bridge call) there's no live SSE.
 export const TELEPHONY_AI_CALL_CONNECT = `${BASE_URL}/admin-core-service/v1/telephony/ai-call/connect`;
+// Bulk "AI calls first for a lead list": POST places a paced AI call to every
+// eligible lead in the audience. ?dryRun=true returns {total,eligible} without dialing.
+export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
@@ -269,7 +273,8 @@ export const ASSIGN_COUNSELOR_TO_LEAD = `${BASE_URL}/admin-core-service/v1/audie
 export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/user-audiences`;
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
-// Full lead journey (status/disposition changes + notes + calls) per lead, for CSV export.
+// Full lead journey (status/disposition changes + notes + calls + call
+// dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
@@ -968,6 +973,7 @@ export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
 export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
 export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/create`;
+export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot

@@ -158,6 +158,63 @@ function estimatePageCount(htmlString: string): number {
         return 1;
     }
 }
+
+/**
+ * Repair a Slate element's `children` so it satisfies Slate's structural
+ * invariants. This heals the production white-screen where a heading/paragraph
+ * began with an EMPTY inline <link> (url:"" , text:"") — such a node makes
+ * toDOMNode / Editor.start / focus throw ("Cannot resolve a DOM node from Slate
+ * node" / "...has no start text node"), crashing the whole slide on open. 250+
+ * stored slides carry this artifact, so we heal it on load instead of chasing
+ * async suppressors that can't catch the setTimeout-scheduled focus throw.
+ *
+ * Rules: drop empty broken links (type 'link', no url AND no text); guarantee a
+ * text node immediately before and after every inline element; never leave an
+ * element with empty children. Valid links (real url or text) pass untouched.
+ */
+const isInlineSlateElement = (n: any): boolean =>
+    !!n &&
+    typeof n === 'object' &&
+    Array.isArray(n.children) &&
+    (n?.props?.nodeType === 'inline' || n?.type === 'link' || n?.type === 'Link');
+const isSlateTextNode = (n: any): boolean =>
+    !!n && typeof n === 'object' && typeof n.text === 'string';
+const collectSlateText = (n: any): string => {
+    if (!n) return '';
+    if (typeof n.text === 'string') return n.text;
+    if (Array.isArray(n.children)) return n.children.map(collectSlateText).join('');
+    return '';
+};
+function repairSlateChildren(children: any): any {
+    if (!Array.isArray(children)) return children;
+    const out: any[] = [];
+    for (const child of children) {
+        if (!child) continue;
+        if (isInlineSlateElement(child)) {
+            const inner = repairSlateChildren(child.children);
+            const text = inner.map(collectSlateText).join('');
+            const url = child?.props?.url;
+            // Drop empty broken links — the artifact that crashes Slate.
+            if ((child.type === 'link' || child.type === 'Link') && !text.trim() && !url) {
+                continue;
+            }
+            // Slate invariant: a text node must precede an inline.
+            if (out.length === 0 || !isSlateTextNode(out[out.length - 1])) {
+                out.push({ text: '' });
+            }
+            out.push({ ...child, children: inner.length ? inner : [{ text: '' }] });
+        } else if (Array.isArray(child.children) && typeof child.type === 'string') {
+            out.push({ ...child, children: repairSlateChildren(child.children) });
+        } else {
+            out.push(child);
+        }
+    }
+    // Slate invariant: a text node must follow a trailing inline.
+    if (out.length && isInlineSlateElement(out[out.length - 1])) {
+        out.push({ text: '' });
+    }
+    return out.length ? out : [{ text: '' }];
+}
 import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
@@ -921,7 +978,10 @@ export const SlideMaterial = ({
                         ) {
                             return { ...slateEl, children: [{ text: '' }] };
                         }
-                        return slateEl;
+                        // Heal Slate inline invariants — e.g. an empty inline
+                        // <link> at the start of a heading/paragraph, which
+                        // otherwise crashes the whole slide on open.
+                        return { ...slateEl, children: repairSlateChildren(slateEl.children) };
                     });
                 }
             }
@@ -3429,6 +3489,11 @@ export const SlideMaterial = ({
                                   : 'h-full'
                           } ${
                               activeItem?.document_slide?.type === 'DOC' ||
+                              // CODE (esp. Question Mode) grows with its problem
+                              // text / test cases / starter code; pinning it to
+                              // overflow-hidden clips the lower tabs' content with
+                              // no scrollbar. Let the outer page-scroll reveal it.
+                              activeItem?.document_slide?.type === 'CODE' ||
                               activeItem?.source_type === 'ASSIGNMENT'
                                   ? 'overflow-visible'
                                   : 'overflow-hidden'

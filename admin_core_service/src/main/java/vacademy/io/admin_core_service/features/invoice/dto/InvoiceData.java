@@ -65,6 +65,21 @@ public class InvoiceData {
     // Line items for template
     private List<InvoiceLineItemData> lineItems;
 
+    // Free-text notes shown in the invoice (maps to {{notes}}).
+    private String notes;
+
+    /**
+     * Admin-supplied per-invoice overrides for editable text placeholders, keyed by
+     * placeholder name (e.g. {@code user_name}, {@code institute_address},
+     * {@code invoice_number}, {@code tax_label}). When present for a key,
+     * {@link vacademy.io.admin_core_service.features.invoice.service.InvoiceService#replaceTemplatePlaceholders}
+     * uses the override (HTML-escaped) instead of the value derived from the user /
+     * institute / settings. Derived amounts ({@code subtotal}/{@code tax_amount}/
+     * {@code total_amount}) and HTML placeholders ({@code line_items}, {@code institute_logo})
+     * are never overridable. Null / empty means "no overrides — derive everything".
+     */
+    private Map<String, String> overrides;
+
     /**
      * Aggregated tax-component breakdown for the {{tax_components}} placeholder,
      * computed per line item by package type and summed across the invoice. Each

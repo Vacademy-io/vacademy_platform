@@ -71,7 +71,9 @@ export interface ReassignAssignment {
     to_user_id: string;
 }
 
-export type ReassignMode = 'SINGLE' | 'ROUND_ROBIN' | 'MANUAL';
+/** UNASSIGN is only valid for the bulk-assign flow (remove counsellor from
+ *  the selected leads); the reassign flow's modes are the first three. */
+export type ReassignMode = 'SINGLE' | 'ROUND_ROBIN' | 'MANUAL' | 'UNASSIGN';
 
 export interface ReassignPayload {
     institute_id: string;

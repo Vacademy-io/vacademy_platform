@@ -188,6 +188,67 @@ public class InvoiceService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
+    // ── Editable-placeholder support (admin invoice preview / overrides) ──────────────
+    // Matches {{placeholder}} tokens (lowercase + underscore) in an invoice template.
+    private static final java.util.regex.Pattern PLACEHOLDER_PATTERN =
+            java.util.regex.Pattern.compile("\\{\\{([a-z_]+)\\}\\}");
+
+    /**
+     * Text placeholders an admin may override per-invoice. Anything NOT in this set
+     * (derived amounts, currency, HTML blocks like line_items / institute_logo, and the
+     * date fields which travel as real timestamps) is ignored if it appears in the
+     * overrides map — this whitelist is the security boundary for what admin-supplied
+     * text can reach the template.
+     */
+    private static final Set<String> EDITABLE_OVERRIDE_KEYS = Set.of(
+            "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
+            "place_of_supply", "institute_name", "institute_address", "institute_contact",
+            "tax_label", "tax_rate", "country", "country_code", "tax_registration_number",
+            "hsn_code", "notes");
+
+    /**
+     * Overrides that only make sense for a single billed user. Stripped for bulk
+     * (multi-user) creation so one user's identity / invoice number can't bleed onto
+     * everyone else's invoice (and to avoid unique-invoice-number collisions).
+     */
+    private static final Set<String> USER_SCOPED_OVERRIDE_KEYS = Set.of(
+            "invoice_number", "user_name", "user_email", "user_address", "user_tax_info",
+            "place_of_supply");
+
+    /** Display metadata for a template placeholder, powering the review/preview panel. */
+    private record PlaceholderMeta(String label, String group, boolean editable, String inputType) {}
+
+    /**
+     * Ordered metadata for every placeholder the review panel can surface. Only the
+     * entries whose key actually appears in the institute's template are returned by
+     * {@link #computeResolvedValues}. Insertion order drives display grouping.
+     */
+    private static final LinkedHashMap<String, PlaceholderMeta> PLACEHOLDER_META = new LinkedHashMap<>();
+    static {
+        PLACEHOLDER_META.put("invoice_number", new PlaceholderMeta("Invoice Number", "INVOICE", true, "text"));
+        PLACEHOLDER_META.put("invoice_date", new PlaceholderMeta("Invoice Date", "INVOICE", true, "date"));
+        PLACEHOLDER_META.put("due_date", new PlaceholderMeta("Due Date", "INVOICE", true, "date"));
+        PLACEHOLDER_META.put("user_name", new PlaceholderMeta("Billed To", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("user_email", new PlaceholderMeta("Email", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("user_address", new PlaceholderMeta("Address", "BILL TO", true, "textarea"));
+        PLACEHOLDER_META.put("user_tax_info", new PlaceholderMeta("Tax ID (GSTIN/VAT)", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("place_of_supply", new PlaceholderMeta("Place of Supply", "BILL TO", true, "text"));
+        PLACEHOLDER_META.put("institute_name", new PlaceholderMeta("Institute Name", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("institute_address", new PlaceholderMeta("Institute Address", "INSTITUTE", true, "textarea"));
+        PLACEHOLDER_META.put("institute_contact", new PlaceholderMeta("Institute Contact", "INSTITUTE", true, "text"));
+        PLACEHOLDER_META.put("tax_label", new PlaceholderMeta("Tax Label", "TAX", true, "text"));
+        PLACEHOLDER_META.put("tax_rate", new PlaceholderMeta("Tax Rate", "TAX", true, "text"));
+        PLACEHOLDER_META.put("country", new PlaceholderMeta("Country", "TAX", true, "text"));
+        PLACEHOLDER_META.put("country_code", new PlaceholderMeta("Country Code", "TAX", true, "text"));
+        PLACEHOLDER_META.put("tax_registration_number", new PlaceholderMeta("Tax Registration No.", "TAX", true, "text"));
+        PLACEHOLDER_META.put("hsn_code", new PlaceholderMeta("HSN/SAC Code", "TAX", true, "text"));
+        PLACEHOLDER_META.put("subtotal", new PlaceholderMeta("Subtotal", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("tax_amount", new PlaceholderMeta("Tax Amount", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("total_amount", new PlaceholderMeta("Total", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("currency", new PlaceholderMeta("Currency", "AMOUNTS", false, "text"));
+        PLACEHOLDER_META.put("notes", new PlaceholderMeta("Notes", "NOTES", true, "textarea"));
+    }
+
     /**
      * Unicode font for the invoice PDF. Candidates are checked in order; the first
      * one present on the classpath is embedded (under the family names templates
@@ -254,15 +315,32 @@ public class InvoiceService {
      */
     private String regenerateInvoicePdf(Invoice invoice) {
         try {
-            // Reuse the same builder path generateInvoice uses, but driven from the
-            // already-persisted PaymentLog mappings on the Invoice row.
             List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
                     .findPaymentLogsByInvoiceId(invoice.getId());
-            if (paymentLogs.isEmpty()) return null;
-            InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
-                    paymentLogs, invoice.getInstituteId());
-            // Preserve the original invoice number; this is a PDF refresh, not a new bill.
-            invoiceData.setInvoiceNumber(invoice.getInvoiceNumber());
+            // Discriminate on UserPlan presence, NOT list emptiness: an admin invoice gains a
+            // MANUAL/gateway PaymentLog mapping (with userPlan=null) once payment is initiated or
+            // marked paid, so emptiness would wrongly route it to the enrollment builder — which
+            // dereferences userPlan and NPEs. Treat it as an admin invoice unless at least one
+            // mapped log carries a real UserPlan.
+            boolean hasEnrollmentLog = paymentLogs.stream().anyMatch(pl -> pl.getUserPlan() != null);
+            InvoiceData invoiceData;
+            if (!hasEnrollmentLog) {
+                // Admin invoice — rebuild from the persisted row + line items + stored overrides
+                // so the PDF regenerates with the admin's edits (independent of payment state).
+                invoiceData = buildInvoiceDataFromPersistedInvoice(invoice);
+                if (invoiceData == null || invoiceData.getLineItems() == null
+                        || invoiceData.getLineItems().isEmpty()) {
+                    return null;
+                }
+            } else {
+                // Enrollment invoice — reuse the same builder path generateInvoice uses.
+                invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
+                        paymentLogs, invoice.getInstituteId());
+                // Preserve the original invoice number; this is a PDF refresh, not a new bill.
+                invoiceData.setInvoiceNumber(invoice.getInvoiceNumber());
+                // Carry forward any admin overrides / notes stored for this invoice.
+                applyStoredOverrides(invoice, invoiceData);
+            }
             String templateHtml = loadInvoiceTemplate(invoice.getInstituteId());
             String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
             byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
@@ -1353,23 +1431,38 @@ public class InvoiceService {
                 hasPlaceholders, filled.length(),
                 filled.substring(0, Math.min(200, filled.length())));
 
+        // Admin-supplied per-invoice overrides. When a key is present, its (HTML-escaped)
+        // value is used instead of the auto-derived one. `ov` = single-line text,
+        // `ovMulti` = multi-line text (newlines → <br/>) for addresses / notes. When no
+        // override is present, the derived default is used verbatim (unchanged behaviour).
+        final Map<String, String> overrides = invoiceData.getOverrides() != null
+                ? invoiceData.getOverrides() : Collections.emptyMap();
+        java.util.function.BiFunction<String, String, String> ov = (key, def) ->
+                overrides.containsKey(key) ? escapeHtml(overrides.get(key)) : (def != null ? def : "");
+        java.util.function.BiFunction<String, String, String> ovMulti = (key, def) ->
+                overrides.containsKey(key)
+                        ? escapeHtml(overrides.get(key)).replace("\n", "<br/>")
+                        : (def != null ? def : "");
+
         // Basic invoice info
         filled = filled.replace("{{invoice_number}}",
-                invoiceData.getInvoiceNumber() != null ? invoiceData.getInvoiceNumber() : "");
+                ov.apply("invoice_number", invoiceData.getInvoiceNumber()));
         filled = filled.replace("{{invoice_date}}",
-                invoiceData.getInvoiceDate() != null ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER)
-                        : "");
+                ov.apply("invoice_date", invoiceData.getInvoiceDate() != null
+                        ? invoiceData.getInvoiceDate().format(DISPLAY_DATE_FORMATTER) : ""));
         filled = filled.replace("{{due_date}}",
-                invoiceData.getDueDate() != null ? invoiceData.getDueDate().format(DISPLAY_DATE_FORMATTER) : "");
+                ov.apply("due_date", invoiceData.getDueDate() != null
+                        ? invoiceData.getDueDate().format(DISPLAY_DATE_FORMATTER) : ""));
 
         // Institute info
         Institute institute = invoiceData.getInstitute();
         filled = filled.replace("{{institute_name}}",
-                institute.getInstituteName() != null ? institute.getInstituteName() : "");
-        filled = filled.replace("{{institute_address}}", institute.getAddress() != null ? institute.getAddress() : "");
+                ov.apply("institute_name", institute.getInstituteName()));
+        filled = filled.replace("{{institute_address}}",
+                ovMulti.apply("institute_address", institute.getAddress()));
         filled = filled.replace("{{institute_contact}}",
-                institute.getMobileNumber() != null ? institute.getMobileNumber()
-                        : (institute.getEmail() != null ? institute.getEmail() : ""));
+                ov.apply("institute_contact", institute.getMobileNumber() != null ? institute.getMobileNumber()
+                        : (institute.getEmail() != null ? institute.getEmail() : "")));
 
         // Institute logo
         String instituteLogoHtml = buildInstituteLogoHtml(institute);
@@ -1384,9 +1477,18 @@ public class InvoiceService {
 
         // User info
         UserDTO user = invoiceData.getUser();
-        filled = filled.replace("{{user_name}}", user.getFullName() != null ? user.getFullName() : "");
-        filled = filled.replace("{{user_email}}", user.getEmail() != null ? user.getEmail() : "");
-        filled = filled.replace("{{user_address}}", user.getAddressLine() != null ? user.getAddressLine() : "");
+        filled = filled.replace("{{user_name}}", ov.apply("user_name", user.getFullName()));
+        filled = filled.replace("{{user_email}}", ov.apply("user_email", user.getEmail()));
+        filled = filled.replace("{{user_address}}", ovMulti.apply("user_address", user.getAddressLine()));
+        // Buyer tax id (GSTIN/VAT) and place of supply have no auto-source on the user
+        // record — they default to empty and are filled by the admin via overrides. Both
+        // are substituted here so custom templates that reference them don't leak the raw
+        // {{...}} token into the rendered invoice.
+        filled = filled.replace("{{user_tax_info}}", ov.apply("user_tax_info", ""));
+        filled = filled.replace("{{place_of_supply}}",
+                ov.apply("place_of_supply", user.getRegion() != null ? user.getRegion() : ""));
+        // Notes (admin-entered). Overridable; defaults to the value carried on InvoiceData.
+        filled = filled.replace("{{notes}}", ovMulti.apply("notes", invoiceData.getNotes()));
 
         // Financial info - format with currency symbol based on currency code
         String invoiceCurrency = invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR";
@@ -1449,14 +1551,15 @@ public class InvoiceService {
         if (aggComps != null && !aggComps.isEmpty()) {
             taxComponentsHtml = renderTaxComponentsHtml(aggComps, currencySymbol);
         }
-        filled = filled.replace("{{country}}", countryName);
-        filled = filled.replace("{{country_code}}", countryCode.toUpperCase());
-        filled = filled.replace("{{tax_registration_number}}", taxRegistrationNumber);
-        filled = filled.replace("{{hsn_code}}", hsnSacCode);
+        filled = filled.replace("{{country}}", ov.apply("country", countryName));
+        filled = filled.replace("{{country_code}}", ov.apply("country_code", countryCode.toUpperCase()));
+        filled = filled.replace("{{tax_registration_number}}",
+                ov.apply("tax_registration_number", taxRegistrationNumber));
+        filled = filled.replace("{{hsn_code}}", ov.apply("hsn_code", hsnSacCode));
         filled = filled.replace("{{tax_components}}", taxComponentsHtml);
-        filled = filled.replace("{{tax_label}}",
-                invoiceSettings.get("taxLabel") != null ? invoiceSettings.get("taxLabel").toString() : "Tax");
-        filled = filled.replace("{{tax_rate}}", formatRate(invoiceSettings.get("taxRate")));
+        filled = filled.replace("{{tax_label}}", ov.apply("tax_label",
+                invoiceSettings.get("taxLabel") != null ? invoiceSettings.get("taxLabel").toString() : "Tax"));
+        filled = filled.replace("{{tax_rate}}", ov.apply("tax_rate", formatRate(invoiceSettings.get("taxRate"))));
 
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
@@ -1711,6 +1814,27 @@ public class InvoiceService {
     /**
      * Build HTML table rows for line items
      */
+    /**
+     * HTML-escape an admin-supplied override value before it is spliced into the
+     * invoice template. Prevents a stray {@code <}/{@code &} from breaking the XHTML the
+     * PDF renderer (openhtmltopdf) requires, and neutralises any markup/script in the
+     * preview HTML (which is also shown in a sandboxed iframe). The curly braces are also
+     * encoded so an override value containing a {@code {{placeholder}}} token cannot be
+     * re-expanded by a later substitution pass (template substitution is sequential).
+     * Null → empty string.
+     */
+    private String escapeHtml(String value) {
+        if (value == null) return "";
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;")
+                .replace("{", "&#123;")
+                .replace("}", "&#125;");
+    }
+
     private String buildLineItemsHtml(List<InvoiceLineItemData> lineItems, String currency) {
         if (lineItems == null || lineItems.isEmpty()) {
             return "<tr><td colspan='4'>No items</td></tr>";
@@ -3008,6 +3132,15 @@ public class InvoiceService {
             totalAmount = subtotal.add(taxAmount);
         }
 
+        // Per-invoice text overrides (invoice_number, party & institute details, tax label…).
+        // User-scoped keys are stripped for bulk so they don't bleed across users.
+        boolean singleUser = request.getUserIds().size() == 1;
+        Map<String, String> baseOverrides = sanitizeOverrides(request.getOverrides(), singleUser);
+        // Notes may arrive either as the dedicated field or as an override; override wins.
+        String effectiveNotes = baseOverrides.containsKey("notes") ? baseOverrides.get("notes") : request.getNotes();
+        // Invoice date: admin-chosen or now.
+        LocalDateTime invoiceDate = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
+
         for (String userId : request.getUserIds()) {
             List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
             if (users.isEmpty()) {
@@ -3016,13 +3149,34 @@ public class InvoiceService {
             }
             UserDTO user = users.get(0);
 
-            String invoiceNumber = generateInvoiceNumber(request.getInstituteId());
+            // Per-user render overrides: start from the base set, then drop invoice_number
+            // (the number is authoritative on the Invoice row / invoiceData, never a text
+            // override) and fold in the resolved notes so they render escaped.
+            Map<String, String> renderOverrides = new HashMap<>(baseOverrides);
+            renderOverrides.remove("invoice_number");
+            if (StringUtils.hasText(effectiveNotes)) {
+                renderOverrides.put("notes", effectiveNotes);
+            }
+
+            // Invoice number: honour a unique admin override, else auto-generate.
+            String invoiceNumber;
+            String overrideNumber = baseOverrides.get("invoice_number");
+            if (StringUtils.hasText(overrideNumber)
+                    && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty()) {
+                invoiceNumber = overrideNumber.trim();
+            } else {
+                if (StringUtils.hasText(overrideNumber)) {
+                    log.warn("Overridden invoice number '{}' already exists — generating a fresh number instead",
+                            overrideNumber);
+                }
+                invoiceNumber = generateInvoiceNumber(request.getInstituteId());
+            }
 
             Invoice invoice = new Invoice();
             invoice.setInvoiceNumber(invoiceNumber);
             invoice.setUserId(userId);
             invoice.setInstituteId(request.getInstituteId());
-            invoice.setInvoiceDate(LocalDateTime.now());
+            invoice.setInvoiceDate(invoiceDate);
             invoice.setDueDate(request.getDueDate());
             invoice.setSubtotal(subtotal);
             invoice.setDiscountAmount(BigDecimal.ZERO);
@@ -3032,11 +3186,15 @@ public class InvoiceService {
             invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
             invoice.setTaxIncluded(taxIncluded);
 
-            if (StringUtils.hasText(request.getNotes())) {
-                try {
-                    invoice.setInvoiceDataJson(new ObjectMapper().writeValueAsString(Map.of("notes", request.getNotes())));
-                } catch (Exception ignored) {}
-            }
+            // Persist notes + overrides so a later PDF regeneration reproduces the admin's edits.
+            try {
+                Map<String, Object> dataJson = new HashMap<>();
+                if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
+                if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
+                if (!dataJson.isEmpty()) {
+                    invoice.setInvoiceDataJson(new ObjectMapper().writeValueAsString(dataJson));
+                }
+            } catch (Exception ignored) {}
 
             invoice = invoiceRepository.save(invoice);
 
@@ -3058,7 +3216,8 @@ public class InvoiceService {
             try {
                 pdfFileId = generateAndUploadAdminInvoicePdf(invoice, user, institute,
                         request.getLineItems(), subtotal, taxAmount, totalAmount,
-                        request.getCurrency(), taxIncluded, taxRate, taxLabel);
+                        request.getCurrency(), taxIncluded, taxRate, taxLabel,
+                        effectiveNotes, renderOverrides);
                 invoice.setPdfFileId(pdfFileId);
                 invoice = invoiceRepository.save(invoice);
             } catch (Exception e) {
@@ -3415,35 +3574,10 @@ public class InvoiceService {
     private String generateAndUploadAdminInvoicePdf(Invoice invoice, UserDTO user, Institute institute,
             List<AdminInvoiceLineItemRequestDTO> lineItems,
             BigDecimal subtotal, BigDecimal taxAmount, BigDecimal totalAmount,
-            String currency, Boolean taxIncluded, BigDecimal taxRate, String taxLabel) {
-        List<InvoiceLineItemData> lineItemData = lineItems.stream()
-                .map(item -> InvoiceLineItemData.builder()
-                        .itemType(StringUtils.hasText(item.getItemType()) ? item.getItemType() : "SERVICE")
-                        .description(item.getDescription())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .amount(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                        .build())
-                .collect(Collectors.toList());
-
-        // Mirror buildInvoiceDataFromMultiplePaymentLogs — append a TAX row when the
-        // institute's INVOICE_SETTING.taxRate yields a positive tax amount so the
-        // template's line-items table actually shows tax (instead of users wondering
-        // why their 18% GST is invisible). Skipped when taxIncluded=true because the
-        // line-item prices already carry the tax.
-        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0
-                && !Boolean.TRUE.equals(taxIncluded)) {
-            String taxLineDescription = (StringUtils.hasText(taxLabel) ? taxLabel : "Tax")
-                    + " @ " + taxRate.multiply(BigDecimal.valueOf(100))
-                    .setScale(0, RoundingMode.HALF_UP) + "%";
-            lineItemData.add(InvoiceLineItemData.builder()
-                    .itemType("TAX")
-                    .description(taxLineDescription)
-                    .quantity(1)
-                    .unitPrice(taxAmount)
-                    .amount(taxAmount)
-                    .build());
-        }
+            String currency, Boolean taxIncluded, BigDecimal taxRate, String taxLabel,
+            String notes, Map<String, String> overrides) {
+        List<InvoiceLineItemData> lineItemData =
+                buildAdminLineItemData(lineItems, taxAmount, taxIncluded, taxRate, taxLabel);
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)
@@ -3463,12 +3597,350 @@ public class InvoiceService {
                 .transactionId("")
                 .paymentDate(LocalDateTime.now())
                 .lineItems(lineItemData)
+                .notes(notes)
+                .overrides(overrides)
                 .build();
 
         String templateHtml = loadInvoiceTemplate(institute.getId());
         String filled = replaceTemplatePlaceholders(templateHtml, invoiceData);
         byte[] pdfBytes = generatePdfFromHtml(filled);
         return uploadInvoiceToS3(pdfBytes, invoice.getInvoiceNumber(), institute.getId());
+    }
+
+    /**
+     * Build the template line-item list for an admin invoice: one row per request item,
+     * plus a synthetic TAX row when the institute charges tax exclusively (so the table
+     * visibly shows the tax the totals include). Shared by create + preview so both render
+     * identically.
+     */
+    private List<InvoiceLineItemData> buildAdminLineItemData(List<AdminInvoiceLineItemRequestDTO> lineItems,
+            BigDecimal taxAmount, Boolean taxIncluded, BigDecimal taxRate, String taxLabel) {
+        List<InvoiceLineItemData> lineItemData = lineItems.stream()
+                .map(item -> InvoiceLineItemData.builder()
+                        .itemType(StringUtils.hasText(item.getItemType()) ? item.getItemType() : "SERVICE")
+                        .description(item.getDescription())
+                        .quantity(item.getQuantity())
+                        .unitPrice(item.getUnitPrice())
+                        .amount(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .build())
+                .collect(Collectors.toList());
+
+        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0
+                && !Boolean.TRUE.equals(taxIncluded)) {
+            lineItemData.add(InvoiceLineItemData.builder()
+                    .itemType("TAX")
+                    .description(buildTaxLineDescription(taxLabel, taxRate))
+                    .quantity(1)
+                    .unitPrice(taxAmount)
+                    .amount(taxAmount)
+                    .build());
+        }
+        return lineItemData;
+    }
+
+    private String buildTaxLineDescription(String taxLabel, BigDecimal taxRate) {
+        BigDecimal ratePct = (taxRate != null ? taxRate : BigDecimal.ZERO)
+                .multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP);
+        return (StringUtils.hasText(taxLabel) ? taxLabel : "Tax") + " @ " + ratePct + "%";
+    }
+
+    /**
+     * Keep only whitelisted, non-blank-key overrides. Drops any non-editable key
+     * (amounts, HTML blocks, dates) and — for bulk requests — user-scoped keys. This is
+     * the trust boundary: only these keys can carry admin text into the template.
+     */
+    private Map<String, String> sanitizeOverrides(Map<String, String> raw, boolean singleUser) {
+        Map<String, String> out = new HashMap<>();
+        if (raw == null || raw.isEmpty()) return out;
+        for (Map.Entry<String, String> e : raw.entrySet()) {
+            String key = e.getKey();
+            if (key == null || !EDITABLE_OVERRIDE_KEYS.contains(key)) continue;
+            if (!singleUser && USER_SCOPED_OVERRIDE_KEYS.contains(key)) continue;
+            out.put(key, e.getValue() != null ? e.getValue() : "");
+        }
+        return out;
+    }
+
+    private String nz(String s) {
+        return s != null ? s : "";
+    }
+
+    /**
+     * Renders a non-persisting preview of an admin invoice: fills the institute's
+     * template with the request's line items + any overrides, and returns the rendered
+     * HTML plus the resolved value of every editable placeholder the template uses.
+     * Consumes no invoice number and writes nothing.
+     */
+    public AdminInvoicePreviewResponseDTO previewAdminInvoice(AdminCreateInvoiceRequestDTO request) {
+        Institute institute = instituteRepository.findById(request.getInstituteId())
+                .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
+
+        // Billed user = first id in the request (the dialog is single-user). Missing user
+        // still previews with blank party fields the admin can fill via overrides.
+        UserDTO user = null;
+        if (request.getUserIds() != null && !request.getUserIds().isEmpty()) {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(
+                    List.of(request.getUserIds().get(0)));
+            if (!users.isEmpty()) user = users.get(0);
+        }
+        if (user == null) user = UserDTO.builder().build();
+
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
+        Double taxRateValue = invoiceSettings.get("taxRate") != null
+                ? ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
+        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
+                .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
+        String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
+
+        BigDecimal subtotal = request.getLineItems().stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal taxAmount;
+        BigDecimal totalAmount;
+        if (Boolean.TRUE.equals(taxIncluded)) {
+            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
+            BigDecimal netSubtotal = subtotal.divide(divisor, 2, RoundingMode.HALF_UP);
+            taxAmount = subtotal.subtract(netSubtotal);
+            totalAmount = subtotal;
+        } else {
+            taxAmount = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            totalAmount = subtotal.add(taxAmount);
+        }
+
+        boolean singleUser = request.getUserIds() != null && request.getUserIds().size() == 1;
+        Map<String, String> userOverrides = sanitizeOverrides(request.getOverrides(), singleUser);
+        String effectiveNotes = userOverrides.containsKey("notes") ? userOverrides.get("notes") : request.getNotes();
+
+        // Resolve the invoice number exactly like createAdminInvoices: honour a unique admin
+        // override, else the freshly generated next number. This keeps the preview's rendered
+        // {{invoice_number}} equal to what create will actually assign on a collision.
+        String overrideNumber = userOverrides.get("invoice_number");
+        String invoiceNumber = (StringUtils.hasText(overrideNumber)
+                && invoiceRepository.findByInvoiceNumber(overrideNumber.trim()).isEmpty())
+                ? overrideNumber.trim()
+                : generateInvoiceNumber(request.getInstituteId());
+
+        InvoiceData invoiceData = InvoiceData.builder()
+                .user(user)
+                .institute(institute)
+                .invoiceNumber(invoiceNumber)
+                .invoiceDate(request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now())
+                .dueDate(request.getDueDate())
+                .subtotal(subtotal)
+                .discountAmount(BigDecimal.ZERO)
+                .taxAmount(taxAmount)
+                .totalAmount(totalAmount)
+                .currency(request.getCurrency())
+                .taxIncluded(taxIncluded)
+                .taxRate(taxRate)
+                .taxLabel(taxLabel)
+                .paymentMethod("")
+                .transactionId("")
+                .paymentDate(LocalDateTime.now())
+                .lineItems(buildAdminLineItemData(request.getLineItems(), taxAmount, taxIncluded, taxRate, taxLabel))
+                .notes(effectiveNotes)
+                .build();
+
+        // Render EVERY editable placeholder through the escaping override path (defaults merged
+        // under the admin's edits) so the preview HTML matches the created PDF byte-for-byte —
+        // including the seed frame, where the admin has edited nothing. invoice_number is driven
+        // by invoiceData (collision-resolved above), notes are folded in escaped. Mirrors the
+        // renderOverrides createAdminInvoices builds.
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> renderOverrides = new HashMap<>(userOverrides);
+        for (String key : EDITABLE_OVERRIDE_KEYS) {
+            if (!renderOverrides.containsKey(key) && defaults.containsKey(key)) {
+                renderOverrides.put(key, defaults.get(key));
+            }
+        }
+        renderOverrides.remove("invoice_number");
+        if (StringUtils.hasText(effectiveNotes)) renderOverrides.put("notes", effectiveNotes);
+        invoiceData.setOverrides(renderOverrides);
+
+        String templateHtml = loadInvoiceTemplate(request.getInstituteId());
+        String html = replaceTemplatePlaceholders(templateHtml, invoiceData);
+        List<AdminInvoicePreviewResponseDTO.PlaceholderValue> resolved =
+                computeResolvedValues(invoiceData, templateHtml, invoiceSettings);
+
+        return AdminInvoicePreviewResponseDTO.builder().html(html).resolvedValues(resolved).build();
+    }
+
+    /**
+     * For each placeholder the template actually contains (and that we know how to label),
+     * produce its current value — the override when supplied, else the auto-derived value.
+     * Values are RAW (unescaped) so the UI can seed editable inputs; the preview HTML is
+     * separately escaped by {@link #replaceTemplatePlaceholders}.
+     */
+    private List<AdminInvoicePreviewResponseDTO.PlaceholderValue> computeResolvedValues(
+            InvoiceData invoiceData, String templateHtml, Map<String, Object> invoiceSettings) {
+        Set<String> present = new HashSet<>();
+        java.util.regex.Matcher m = PLACEHOLDER_PATTERN.matcher(templateHtml != null ? templateHtml : "");
+        while (m.find()) present.add(m.group(1));
+
+        Map<String, String> defaults = computeDefaultTextValues(invoiceData, invoiceSettings);
+        Map<String, String> overrides = invoiceData.getOverrides() != null
+                ? invoiceData.getOverrides() : Collections.emptyMap();
+
+        List<AdminInvoicePreviewResponseDTO.PlaceholderValue> out = new ArrayList<>();
+        for (Map.Entry<String, PlaceholderMeta> entry : PLACEHOLDER_META.entrySet()) {
+            String key = entry.getKey();
+            if (!present.contains(key)) continue;
+            PlaceholderMeta meta = entry.getValue();
+            // invoice_number falls back to the derived (freshly generated) value on preview.
+            String value = (meta.editable() && overrides.containsKey(key))
+                    ? overrides.get(key) : defaults.getOrDefault(key, "");
+            out.add(AdminInvoicePreviewResponseDTO.PlaceholderValue.builder()
+                    .key(key)
+                    .label(meta.label())
+                    .group(meta.group())
+                    .editable(meta.editable())
+                    .inputType(meta.inputType())
+                    .value(value != null ? value : "")
+                    .build());
+        }
+        return out;
+    }
+
+    /** Auto-derived (pre-override) value for each editable/derived text placeholder. */
+    @SuppressWarnings("unchecked")
+    private Map<String, String> computeDefaultTextValues(InvoiceData invoiceData, Map<String, Object> invoiceSettings) {
+        Map<String, String> d = new HashMap<>();
+        UserDTO user = invoiceData.getUser();
+        Institute institute = invoiceData.getInstitute();
+
+        d.put("invoice_number", nz(invoiceData.getInvoiceNumber()));
+        d.put("invoice_date", invoiceData.getInvoiceDate() != null
+                ? invoiceData.getInvoiceDate().toLocalDate().toString() : "");
+        d.put("due_date", invoiceData.getDueDate() != null
+                ? invoiceData.getDueDate().toLocalDate().toString() : "");
+
+        if (user != null) {
+            d.put("user_name", nz(user.getFullName()));
+            d.put("user_email", nz(user.getEmail()));
+            d.put("user_address", nz(user.getAddressLine()));
+            d.put("place_of_supply", nz(user.getRegion()));
+        }
+        d.put("user_tax_info", "");
+
+        if (institute != null) {
+            d.put("institute_name", nz(institute.getInstituteName()));
+            d.put("institute_address", nz(institute.getAddress()));
+            d.put("institute_contact", institute.getMobileNumber() != null
+                    ? institute.getMobileNumber() : nz(institute.getEmail()));
+        }
+
+        d.put("tax_label", invoiceSettings.get("taxLabel") != null
+                ? invoiceSettings.get("taxLabel").toString() : "Tax");
+        d.put("tax_rate", formatRate(invoiceSettings.get("taxRate")));
+        Object countryObj = invoiceSettings.get("country");
+        if (countryObj instanceof Map) {
+            Map<String, Object> c = (Map<String, Object>) countryObj;
+            d.put("country", c.get("name") != null ? c.get("name").toString() : "");
+            d.put("country_code", c.get("code") != null ? c.get("code").toString().toUpperCase() : "");
+            d.put("tax_registration_number", c.get("taxRegistrationNumber") != null
+                    ? c.get("taxRegistrationNumber").toString() : "");
+            d.put("hsn_code", c.get("hsnSacCode") != null ? c.get("hsnSacCode").toString() : "");
+        }
+
+        String sym = getCurrencySymbol(invoiceData.getCurrency() != null ? invoiceData.getCurrency() : "INR");
+        d.put("subtotal", sym + (invoiceData.getSubtotal() != null ? invoiceData.getSubtotal().toString() : "0.00"));
+        d.put("tax_amount", sym + (invoiceData.getTaxAmount() != null ? invoiceData.getTaxAmount().toString() : "0.00"));
+        d.put("total_amount", sym + (invoiceData.getTotalAmount() != null ? invoiceData.getTotalAmount().toString() : "0.00"));
+        d.put("currency", nz(invoiceData.getCurrency()));
+        d.put("notes", nz(invoiceData.getNotes()));
+        return d;
+    }
+
+    /**
+     * Rebuild {@link InvoiceData} for an admin invoice (no payment-log mappings) directly
+     * from the persisted row, its line items, and any stored notes/overrides — so the PDF
+     * can be regenerated on demand with the admin's edits intact. Returns null if the
+     * institute is gone.
+     */
+    private InvoiceData buildInvoiceDataFromPersistedInvoice(Invoice invoice) {
+        Institute institute = instituteRepository.findById(invoice.getInstituteId()).orElse(null);
+        if (institute == null) return null;
+
+        UserDTO user;
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()));
+        user = users.isEmpty() ? UserDTO.builder().build() : users.get(0);
+
+        List<InvoiceLineItemData> lineItemData = invoiceLineItemRepository.findByInvoiceId(invoice.getId()).stream()
+                .map(li -> InvoiceLineItemData.builder()
+                        .itemType(li.getItemType())
+                        .description(li.getDescription())
+                        .quantity(li.getQuantity())
+                        .unitPrice(li.getUnitPrice())
+                        .amount(li.getAmount())
+                        .build())
+                .collect(Collectors.toList());
+
+        Map<String, Object> settings = getInvoiceSettings(institute);
+        BigDecimal taxRate = settings.get("taxRate") != null
+                ? BigDecimal.valueOf(((Number) settings.get("taxRate")).doubleValue())
+                        .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        String taxLabel = settings.get("taxLabel") != null ? settings.get("taxLabel").toString() : "Tax";
+
+        // Persisted line items don't include the synthetic TAX row (only real items are
+        // stored) — re-append it so the regenerated table matches the original PDF.
+        BigDecimal taxAmount = invoice.getTaxAmount();
+        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0
+                && !Boolean.TRUE.equals(invoice.getTaxIncluded())) {
+            lineItemData.add(InvoiceLineItemData.builder()
+                    .itemType("TAX")
+                    .description(buildTaxLineDescription(taxLabel, taxRate))
+                    .quantity(1)
+                    .unitPrice(taxAmount)
+                    .amount(taxAmount)
+                    .build());
+        }
+
+        InvoiceData data = InvoiceData.builder()
+                .user(user)
+                .institute(institute)
+                .invoiceNumber(invoice.getInvoiceNumber())
+                .invoiceDate(invoice.getInvoiceDate())
+                .dueDate(invoice.getDueDate())
+                .subtotal(invoice.getSubtotal())
+                .discountAmount(invoice.getDiscountAmount())
+                .taxAmount(invoice.getTaxAmount())
+                .totalAmount(invoice.getTotalAmount())
+                .currency(invoice.getCurrency())
+                .taxIncluded(invoice.getTaxIncluded())
+                .taxRate(taxRate)
+                .taxLabel(taxLabel)
+                .paymentMethod("")
+                .transactionId("")
+                .paymentDate(invoice.getInvoiceDate())
+                .lineItems(lineItemData)
+                .build();
+        applyStoredOverrides(invoice, data);
+        return data;
+    }
+
+    /** Fold persisted notes + overrides (from invoice_data_json) onto an InvoiceData. */
+    @SuppressWarnings("unchecked")
+    private void applyStoredOverrides(Invoice invoice, InvoiceData data) {
+        if (invoice == null || data == null || !StringUtils.hasText(invoice.getInvoiceDataJson())) return;
+        try {
+            Map<String, Object> json = new ObjectMapper().readValue(invoice.getInvoiceDataJson(), Map.class);
+            Object notes = json.get("notes");
+            if (notes instanceof String && StringUtils.hasText((String) notes)) {
+                data.setNotes((String) notes);
+            }
+            Object ov = json.get("overrides");
+            if (ov instanceof Map) {
+                Map<String, String> overrides = new HashMap<>();
+                ((Map<String, Object>) ov).forEach((k, v) -> {
+                    if (k != null && v != null) overrides.put(k.toString(), v.toString());
+                });
+                data.setOverrides(overrides);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse invoice_data_json for invoice {}: {}", invoice.getId(), e.getMessage());
+        }
     }
 
     private byte[] fetchPdfBytesFromS3(String pdfFileId) {

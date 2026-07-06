@@ -10,6 +10,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -32,6 +33,22 @@ public class AdminCreateInvoiceRequestDTO {
     @NotNull(message = "Due date is required")
     private LocalDateTime dueDate;
 
+    // Optional: admin-chosen invoice date. Defaults to now when omitted. Drives both
+    // the persisted invoice_date column and the {{invoice_date}} placeholder.
+    private LocalDateTime invoiceDate;
+
     // Optional: admin notes shown in the invoice
     private String notes;
+
+    /**
+     * Optional per-invoice overrides for editable text placeholders (invoice_number,
+     * user_name, user_address, institute_name, tax_label, place_of_supply, notes, …),
+     * keyed by placeholder name. Applied on top of the auto-derived values before the
+     * invoice template is rendered. Amount placeholders (subtotal/tax_amount/total_amount)
+     * and HTML placeholders (line_items/institute_logo) are never overridable.
+     *
+     * <p>User-scoped keys (user_*) and invoice_number are only honoured for single-user
+     * requests — they are ignored for bulk (multi-user) creation.
+     */
+    private Map<String, String> overrides;
 }

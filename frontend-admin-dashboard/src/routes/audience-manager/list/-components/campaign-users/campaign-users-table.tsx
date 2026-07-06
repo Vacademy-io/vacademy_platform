@@ -34,6 +34,7 @@ import { StudentSidebar } from '@/routes/manage-students/students-list/-componen
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { CallAllWithAiButton } from './call-all-ai-button';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
@@ -928,6 +929,11 @@ const CampaignUsersContent = ({
                         <DownloadSimple className="mr-1.5 size-4" />
                         {isExporting ? 'Exporting…' : 'Export'}
                     </Button>
+                    <CallAllWithAiButton
+                        audienceId={campaignId}
+                        instituteId={instituteId}
+                        totalElements={totalElements}
+                    />
                 </div>
             </div>
 

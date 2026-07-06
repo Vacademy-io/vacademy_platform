@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.AiCallingSettingsPojo;
@@ -41,6 +42,7 @@ public class AiCallCampaignService {
     private static final Logger log = LoggerFactory.getLogger(AiCallCampaignService.class);
 
     private final AudienceResponseRepository audienceResponseRepository;
+    private final AudienceRepository audienceRepository;
     private final AiCallingSettingsService settingsService;
     private final AiCallService aiCallService;
 
@@ -55,14 +57,21 @@ public class AiCallCampaignService {
     @Value("${aavtaar.bulk.pace-ms:800}")
     private long paceMs;
 
+    /** A bulk run for the same audience is refused within this window (idempotency —
+     *  prevents a re-fire of the same list from double-dialing every lead). */
+    @Value("${aavtaar.bulk.cooldown-sec:300}")
+    private long bulkCooldownSec;
+
     public record StartResult(int total, int eligible, boolean dispatched, String message) {}
 
-    public StartResult startForAudience(String instituteId, String audienceId) {
+    public StartResult startForAudience(String instituteId, String audienceId, boolean dryRun) {
         AiCallingSettingsPojo settings = settingsService.get(instituteId);
         if (!settings.isEnabled()) {
             throw new VacademyException("AI calling is disabled for this institute.");
         }
-        String campaignId = settings.getDefaultCampaignId();
+        // Resolve through the settings resolver (not getDefaultCampaignId directly) so a
+        // defaultCampaignId holding an agent NAME (e.g. "Jin AI") maps to the real agent id.
+        String campaignId = settings.resolveCampaignId(settings.getProvider(), null);
         if (isBlank(campaignId)) {
             throw new VacademyException("No default Campaign ID set in AI Calling settings.");
         }
@@ -77,6 +86,22 @@ public class AiCallCampaignService {
 
         if (refs.isEmpty()) {
             return new StartResult(leads.size(), 0, false, "No eligible leads (none have a user id).");
+        }
+
+        // Dry run: report the counts the confirm dialog needs, WITHOUT placing any calls.
+        if (dryRun) {
+            return new StartResult(leads.size(), refs.size(), false,
+                    refs.size() + " eligible lead(s) will be called.");
+        }
+
+        // Idempotency: claim this audience for the cooldown window. The per-lead 30s
+        // dedup can't catch a re-fire of the SAME list started minutes later (each lead
+        // would be dialed a second time — double spend), so gate the whole run here. An
+        // atomic conditional UPDATE, so two concurrent/re-fired starts can't both win.
+        if (audienceRepository.tryClaimAiCampaign(audienceId, bulkCooldownSec) == 0) {
+            throw new VacademyException(
+                    "A bulk AI call for this list was started in the last few minutes — "
+                    + "please wait before starting another.");
         }
 
         try {

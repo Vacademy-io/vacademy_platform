@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowsClockwise, UsersThree, User, PencilSimple } from '@phosphor-icons/react';
+import { ArrowsClockwise, UsersThree, User, UserMinus, PencilSimple } from '@phosphor-icons/react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import type { CounsellorOption } from '@/hooks/use-lead-counsellor-options';
 import { assignLeads } from '@/routes/counsellors/-services/counsellor-workbench-services';
 
-type Mode = 'ROUND_ROBIN' | 'SINGLE' | 'MANUAL';
+type Mode = 'ROUND_ROBIN' | 'SINGLE' | 'MANUAL' | 'REMOVE';
 
 export interface BulkAssignLead {
     userId: string;
@@ -53,6 +53,12 @@ const MODES: { key: Mode; label: string; icon: React.ReactNode; hint: string }[]
         label: 'Manual',
         icon: <PencilSimple className="size-4" />,
         hint: 'Pick a counsellor per lead below.',
+    },
+    {
+        key: 'REMOVE',
+        label: 'Remove',
+        icon: <UserMinus className="size-4" />,
+        hint: 'Unassign the counsellor — selected leads return to the unassigned pool.',
     },
 ];
 
@@ -122,6 +128,14 @@ export function BulkAssignCounsellorDialog({
 
     const mutation = useMutation({
         mutationFn: () => {
+            if (mode === 'REMOVE') {
+                // No targets — the backend clears the assignment on every lead.
+                return assignLeads({
+                    institute_id: instituteId,
+                    user_ids: leads.map((l) => l.userId),
+                    mode: 'UNASSIGN',
+                });
+            }
             const assignments = leads.map((lead, index) => ({
                 user_id: lead.userId,
                 to_user_id: targetFor(lead, index),
@@ -134,20 +148,28 @@ export function BulkAssignCounsellorDialog({
             });
         },
         onSuccess: (res) => {
-            toast.success(`Assigned ${res.total_leads} lead(s) to counsellors`);
+            toast.success(
+                mode === 'REMOVE'
+                    ? `Removed counsellor from ${res.total_leads} lead(s)`
+                    : `Assigned ${res.total_leads} lead(s) to counsellors`
+            );
             onOpenChange(false);
             onSuccess?.();
         },
         onError: (err: unknown) => {
             const message =
                 (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-                'Failed to assign counsellors';
+                (mode === 'REMOVE' ? 'Failed to remove counsellor' : 'Failed to assign counsellors');
             toast.error(message);
         },
     });
 
     const handleAssign = () => {
         if (leads.length === 0) return;
+        if (mode === 'REMOVE') {
+            mutation.mutate();
+            return;
+        }
         if (mode === 'SINGLE' && !singleTarget) {
             toast.error('Select a counsellor');
             return;
@@ -177,7 +199,13 @@ export function BulkAssignCounsellorDialog({
                     disable={mutation.isPending}
                     onClick={handleAssign}
                 >
-                    {mutation.isPending ? 'Assigning…' : `Assign ${leads.length} lead(s)`}
+                    {mutation.isPending
+                        ? mode === 'REMOVE'
+                            ? 'Removing…'
+                            : 'Assigning…'
+                        : mode === 'REMOVE'
+                          ? `Remove counsellor from ${leads.length} lead(s)`
+                          : `Assign ${leads.length} lead(s)`}
                 </MyButton>
             </div>
         </div>
@@ -193,7 +221,7 @@ export function BulkAssignCounsellorDialog({
         >
             <div className="flex flex-col gap-4">
                 {/* Mode picker */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                     {MODES.map((m) => (
                         <button
                             key={m.key}
@@ -262,7 +290,27 @@ export function BulkAssignCounsellorDialog({
                     </div>
                 )}
 
-                {/* Per-lead preview — always shown, editable. */}
+                {/* REMOVE: plain confirmation list — no targets to pick. */}
+                {mode === 'REMOVE' && (
+                    <div className="flex flex-col gap-2">
+                        <p className="rounded border border-warning-200 bg-warning-50 px-3 py-2 text-subtitle text-warning-700">
+                            The assigned counsellor will be removed from the leads below. They
+                            return to the unassigned pool and can be assigned again anytime.
+                        </p>
+                        <div className="max-h-64 overflow-y-auto rounded-md border border-neutral-200">
+                            <ul className="divide-y divide-neutral-100">
+                                {leads.map((lead) => (
+                                    <li key={lead.userId} className="truncate px-3 py-2 text-body text-neutral-800">
+                                        {lead.name}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                {/* Per-lead preview — shown for target-picking modes, editable. */}
+                {mode !== 'REMOVE' && (
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-body font-medium text-neutral-700">
@@ -317,6 +365,7 @@ export function BulkAssignCounsellorDialog({
                         </table>
                     </div>
                 </div>
+                )}
             </div>
         </MyDialog>
     );

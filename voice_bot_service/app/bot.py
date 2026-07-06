@@ -220,7 +220,20 @@ class SentinelGate(FrameProcessor):
 # Sarvam Bulbul voices → grammatical gender. Hindi/Hinglish first-person verbs are
 # gendered, so a female voice saying masculine "kar raha hoon" is the #1 immersion
 # breaker on Indian calls. We know the voice, so we pin the grammar to match it.
-_MALE_VOICES = {"abhilash", "karun", "hitesh", "amol", "amartya", "arvind", "neel", "vian"}
+# Union across Bulbul versions (a name's gender doesn't change between versions, and
+# there's no male/female name collision), so a voice picked from ANY version's palette
+# is classified right. bulbul:v3 male speakers must be here or a v3 male voice would
+# be spoken with FEMALE grammar (the bug this set exists to prevent).
+_MALE_VOICES = {
+    # bulbul:v3 male
+    "shubh", "aditya", "rahul", "rohan", "amit", "dev", "ratan", "varun", "manan",
+    "sumit", "kabir", "aayan", "ashutosh", "advait", "anand", "tarun", "sunny", "mani",
+    "gokul", "vijay", "mohit", "rehan", "soham",
+    # bulbul:v2 male
+    "abhilash", "karun", "hitesh",
+    # bulbul:v1 male (legacy)
+    "amol", "amartya", "arvind", "neel", "vian",
+}
 
 
 def _voice_gender(voice) -> str:
@@ -252,6 +265,34 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "Keep this consistent the whole call."
         )
 
+    # SECOND-person agreement: Hindi addresses the LISTENER with gendered forms too
+    # ('aap kaisi hain' to a woman vs 'aap kaise hain' to a man), separate from the
+    # bot's OWN gender above. An explicit leadGender wins; otherwise infer from the
+    # name + the voice on the line. Neither should be confused with the agent's gender.
+    lead_gender = str(context.get("leadGender") or "").strip().lower()
+    if lead_gender in ("female", "f", "woman"):
+        who = f"{lead_name} is a woman" if lead_name else "The person on the line is a woman"
+        addressee_line = (
+            f"{who}. Address HER with FEMININE second-person Hindi forms — 'aap kaisi hain', "
+            "'aap kya chahti hain', 'aapne socha hoga', 'aap bata sakti hain' — never the masculine ones."
+        )
+    elif lead_gender in ("male", "m", "man"):
+        who = f"{lead_name} is a man" if lead_name else "The person on the line is a man"
+        addressee_line = (
+            f"{who}. Address HIM with MASCULINE second-person Hindi forms — 'aap kaise hain', "
+            "'aap kya chahte hain', 'aap bata sakte hain' — never the feminine ones."
+        )
+    else:
+        addressee_line = (
+            "Judge whether the person you are speaking with is a man or a woman from their "
+            + (f"name ('{lead_name}') and from " if lead_name else "from ")
+            + "how they refer to themselves (a man says 'main aaya', 'main karunga'; a woman says "
+            "'main aayi', 'main karungi'), and match your SECOND-person Hindi forms to THEM: to a "
+            "woman 'aap kaisi hain', 'aap kya chahti hain'; to a man 'aap kaise hain', 'aap kya "
+            "chahte hain'. Until you can tell, use the respectful neutral form ('aap kaise hain'). "
+            "This is about THEM, not you."
+        )
+
     if direction == "INBOUND":
         intent_line = (
             f"This person has CALLED {institute}. You are answering their call — greet them "
@@ -268,12 +309,22 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     lines = [
         agent.get("systemPrompt") or "You are a friendly, concise phone assistant.",
         f"You are {name}. {gender_line}",
+        addressee_line,
         intent_line,
         f"The caller's name is {lead_name}." if lead_name else "",
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
+        # Numbers/times/money are the #1 audio-quality break on Hinglish calls: the
+        # model spells digits ('two zero zero') or mixes languages ('twelve baje').
+        "- Numbers, times and money: say them as natural spoken WORDS in the SAME language as "
+        "the rest of the sentence — never digit-by-digit, never mixing languages. In "
+        "Hindi/Hinglish: 'do sau rupaye' (NOT 'two zero zero', NOT 'do zero zero'), 'barah baje' "
+        "or 'dopahar barah baje' (NOT 'twelve baje'), 'pandrah tarikh', 'saade paanch baje'. In "
+        "English: 'two hundred rupees', 'twelve pm', 'half past five'. One language per number — "
+        "'twelve baje' and 'two zero zero' are both wrong. A 10-digit phone number IS read digit "
+        "by digit, but grouped ('nau eight ...' → say each digit in the sentence's language).",
         f"- When the conversation has reached a natural end, say a short goodbye and append {END_MARKER}.",
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting them and append {TRANSFER_MARKER}."
         if (context.get("handoff") or {}).get("enabled")
@@ -347,12 +398,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     )
     sentinel.set_task(task)
 
+    async def _greet_when_ready():
+        """Don't blast the opening the instant the line connects — a real caller waits
+        for the callee to pick up and say 'hello'. Give them a short beat: if they speak
+        first, the normal STT→LLM turn greets them back (so the bot never talks over their
+        'hello' and never double-greets); if they stay silent past the grace window, WE
+        open. flags['t'] advances on the first transcribed user speech, so t > connect_t
+        means the callee spoke."""
+        opening = agent.get("openingLine")
+        if not opening:
+            return
+        connect_t = time.time()
+        while time.time() - connect_t < settings.greet_delay_secs:
+            if flags["t"] > connect_t + 0.05:
+                logger.info("greet: callee spoke first — LLM will reply, skipping scripted opening (corr=%s)", corr)
+                return
+            await asyncio.sleep(0.1)
+        outcome.transcript.append({"role": "assistant", "text": opening})
+        await task.queue_frames([TTSSpeakFrame(opening)])
+
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
-        opening = agent.get("openingLine")
-        if opening:
-            outcome.transcript.append({"role": "assistant", "text": opening})
-            await task.queue_frames([TTSSpeakFrame(opening)])
+        asyncio.create_task(_greet_when_ready())
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):

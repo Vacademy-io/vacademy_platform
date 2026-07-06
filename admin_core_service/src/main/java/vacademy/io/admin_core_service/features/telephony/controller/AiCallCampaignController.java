@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.telephony.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.telephony.core.AiCallCampaignService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -22,12 +23,15 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 public class AiCallCampaignController {
 
     private final AiCallCampaignService campaignService;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     @PostMapping("/{audienceId}")
     public ResponseEntity<AiCallCampaignService.StartResult> start(
             @PathVariable String audienceId,
             @RequestParam String instituteId,
+            @RequestParam(value = "dryRun", defaultValue = "false") boolean dryRun,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(campaignService.startForAudience(instituteId, audienceId));
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(campaignService.startForAudience(instituteId, audienceId, dryRun));
     }
 }

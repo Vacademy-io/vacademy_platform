@@ -65,7 +65,10 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Lightning } from '@phosphor-icons/react';
 import { CategoryRail, type CategoryId } from './category-rail';
 import { SidebarPanel } from './sidebar-panel';
-import { useCallIntelligenceEnabled } from '@/components/shared/leads';
+import {
+    useCallIntelligenceEnabled,
+    useHasCallIntelligenceData,
+} from '@/components/shared/leads';
 
 const voltSidebarData: SidebarItemsType[] = [
     {
@@ -127,13 +130,17 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     });
     const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
 
-    // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. When
-    // CRM/Call Intelligence is off for the institute the page has no data to show,
-    // so the sidebar entry is stripped regardless of the Display Settings toggle
-    // (the admin can still hide it via Display Settings when the feature IS on).
-    // Fail closed: the hook returns false while loading, so it stays hidden until
-    // the setting resolves.
+    // AI Intelligence (Leads > AI Intelligence) rides on Call Intelligence. The
+    // entry is available when the feature is ON, or when it's off but the institute
+    // has previously-analyzed data to look back on (the page then shows historical
+    // insights with an "off, no new analysis" banner). Once available, Display
+    // Settings governs whether it actually shows (admins can still hide it).
+    // Fail closed: both hooks return false while loading, so it stays hidden until
+    // the settings/data resolve. The has-data probe is skipped when the feature is
+    // on (the entry shows regardless), avoiding an extra analytics call.
     const isCrmIntelligenceEnabled = useCallIntelligenceEnabled();
+    const hasCrmIntelligenceData = useHasCallIntelligenceData(!isCrmIntelligenceEnabled);
+    const isCrmIntelligenceAvailable = isCrmIntelligenceEnabled || hasCrmIntelligenceData;
 
     useEffect(() => {
         setIsVoltSubdomain(
@@ -248,18 +255,19 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
         // institute has explicitly enabled chat. Fail closed: isChatEnabled is false
         // while the notification-settings query is loading/errored, so the entry stays
         // hidden until we confirm chat is on.
-        // Strip feature-gated sub-items that the institute hasn't enabled: Chat
-        // (unless notifications.chat is on) and AI Intelligence (unless CRM/Call
-        // Intelligence is on). Applied together so we only remap once.
+        // Strip feature-gated sub-items that the institute can't use: Chat (unless
+        // notifications.chat is on) and AI Intelligence (unless Call Intelligence is
+        // on OR there's historical analyzed data to look back on). Applied together
+        // so we only remap once.
         const base =
-            isChatEnabled && isCrmIntelligenceEnabled
+            isChatEnabled && isCrmIntelligenceAvailable
                 ? rawBase
                 : rawBase.map((item) => ({
                       ...item,
                       subItems: item.subItems?.filter(
                           (s) =>
                               (isChatEnabled || s.subItemId !== 'chat') &&
-                              (isCrmIntelligenceEnabled || s.subItemId !== 'ai-intelligence')
+                              (isCrmIntelligenceAvailable || s.subItemId !== 'ai-intelligence')
                       ),
                   }));
         if (!roleDisplay) return base;

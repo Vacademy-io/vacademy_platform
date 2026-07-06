@@ -321,7 +321,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query(value = """
             SELECT s.user_id AS userId,
                    s.full_name AS fullName,
-                   SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) AS totalTimeSpent,
+                   (SUM(COALESCE(a.engaged_ms, 0)) / 1000.0) AS totalTimeSpent,
                    MAX(a.updated_at) AS lastActive,
                    CASE
                      WHEN COUNT(ast.id) = 0 THEN NULL
@@ -469,7 +469,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         COALESCE(SUM(
                             CASE
                                 WHEN al.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                                ELSE (COALESCE(al.engaged_ms, 0) / 60000.0)
                             END
                         ), 0) AS total_time_spent_minutes
                     FROM filtered_activity_log al
@@ -504,7 +504,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SUM(
                         CASE
                             WHEN al.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                            ELSE (COALESCE(al.engaged_ms, 0) / 60000.0)
                         END
                     ) AS total_minutes_spent
                 FROM activity_log al
@@ -539,7 +539,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN a.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                                ELSE (COALESCE(a.engaged_ms, 0) / 60000.0)
                             END
                         ) AS total_minutes,
                         COUNT(DISTINCT DATE(a.start_time)) AS active_days
@@ -589,6 +589,41 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("statusList") List<String> statusList,
             Pageable pageable);
 
+    /**
+     * Real engaged time for one activity = merged (union) of its breadcrumb intervals, in ms.
+     * Gaps-and-islands over document/video/audio segments; immune to tab-open inflation.
+     * Returns NULL when the activity has no breadcrumbs (caller then keeps the wall-clock fallback).
+     */
+    @Query(value = """
+            SELECT CAST(SUM(EXTRACT(EPOCH FROM (island_end - island_start)) * 1000) AS bigint)
+            FROM (
+                SELECT MIN(s) AS island_start, MAX(e) AS island_end
+                FROM (
+                    SELECT s, e, SUM(new_island) OVER (ORDER BY s, e) AS island
+                    FROM (
+                        SELECT s, e,
+                               CASE WHEN prev_max_e IS NULL OR s > prev_max_e THEN 1 ELSE 0 END AS new_island
+                        FROM (
+                            SELECT s, e,
+                                   MAX(e) OVER (ORDER BY s, e ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_max_e
+                            FROM (
+                                SELECT start_time AS s, end_time AS e FROM document_tracked
+                                    WHERE activity_id = :activityId AND end_time >= start_time
+                                UNION ALL
+                                SELECT start_time, end_time FROM video_tracked
+                                    WHERE activity_id = :activityId AND end_time >= start_time
+                                UNION ALL
+                                SELECT start_time, end_time FROM audio_tracked
+                                    WHERE activity_id = :activityId AND end_time >= start_time
+                            ) segs
+                        ) w
+                    ) g
+                ) i
+                GROUP BY island
+            ) islands
+            """, nativeQuery = true)
+    Long computeEngagedMsFromBreadcrumbs(@Param("activityId") String activityId);
+
     @Query(value = """
                 WITH date_series AS (
                     SELECT generate_series(
@@ -610,7 +645,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                             THEN SUM(
                                 CASE
                                     WHEN a.start_time < '2023-01-01' THEN 0
-                                    ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                                    ELSE (COALESCE(a.engaged_ms, 0) / 60000.0)
                                 END
                             ) / (SELECT COUNT(*) FROM active_users)
                             ELSE 0
@@ -684,7 +719,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN al.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                                ELSE (COALESCE(al.engaged_ms, 0) / 1000.0)
                             END
                         ) AS total_time_seconds
                     FROM ChapterSlides cs
@@ -809,6 +844,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         al.slide_id,
                         al.start_time,
                         al.end_time,
+                        al.engaged_ms,
                         al.user_id,
                         al.created_at
                     FROM activity_log al
@@ -821,6 +857,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         al.id AS activity_id,
                         al.start_time,
                         al.end_time,
+                        al.engaged_ms,
                         al.created_at,
                         al.user_id
                     FROM activity_log al
@@ -842,7 +879,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (end_time - start_time)) / 60, 1440)
+                                ELSE (COALESCE(engaged_ms, 0) / 60000.0)
                             END
                         ) AS avg_time_spent,
                         MAX(created_at) AS last_active_date
@@ -863,7 +900,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (end_time - start_time)) / 60, 1440)
+                                ELSE (COALESCE(engaged_ms, 0) / 60000.0)
                             END
                         ) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent_by_batch
                     FROM BatchActivity
@@ -1002,7 +1039,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     COALESCE(SUM(
                         CASE
                             WHEN al.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                            ELSE (COALESCE(al.engaged_ms, 0) / 60000.0)
                         END
                     ), 0) AS total_time_spent_minutes
                 FROM activity_log al
@@ -1053,7 +1090,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     COALESCE(SUM(
                         CASE
                             WHEN a.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                            ELSE (COALESCE(a.engaged_ms, 0) / 60000.0)
                         END
                     ), 0) AS time_spent_minutes
                 FROM date_series ds
@@ -1135,7 +1172,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN al.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                                ELSE (COALESCE(al.engaged_ms, 0) / 1000.0)
                             END
                         ) / 60 AS learner_time
                     FROM ChapterSlides cs
@@ -1150,7 +1187,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN al.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                                ELSE (COALESCE(al.engaged_ms, 0) / 1000.0)
                             END
                         ) / COUNT(DISTINCT ssigm.user_id) / 60 AS batch_time
                     FROM ChapterSlides cs
@@ -1258,7 +1295,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     (SUM(
                         CASE
                             WHEN al.start_time < '2023-01-01' THEN 0
-                            ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                            ELSE (COALESCE(al.engaged_ms, 0) / 1000.0)
                         END
                     ) / 60) AS avg_time_spent
                 FROM ActivityLogs al
@@ -1359,7 +1396,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         COALESCE(SUM(
                             CASE
                                 WHEN al.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)) / 60, 1440)
+                                ELSE (COALESCE(al.engaged_ms, 0) / 60000.0)
                             END
                         ), 0) AS time_spent_minutes
                     FROM ChapterSlides cs
@@ -1426,7 +1463,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN a.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                                ELSE (COALESCE(a.engaged_ms, 0) / 60000.0)
                             END
                         ) AS total_minutes,
                         COUNT(DISTINCT DATE(a.start_time)) AS active_days
@@ -1493,7 +1530,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         SUM(
                             CASE
                                 WHEN a.start_time < '2023-01-01' THEN 0
-                                ELSE LEAST(EXTRACT(EPOCH FROM (a.end_time - a.start_time)) / 60, 1440)
+                                ELSE (COALESCE(a.engaged_ms, 0) / 60000.0)
                             END
                         ) AS total_minutes,
                         COUNT(DISTINCT DATE(a.start_time)) AS active_days
@@ -1591,7 +1628,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
               CASE
                 WHEN al.end_time > al.start_time
                  AND al.start_time > TIMESTAMP '2023-01-01'
-                THEN LEAST(EXTRACT(EPOCH FROM (al.end_time - al.start_time)), 86400)
+                THEN (COALESCE(al.engaged_ms, 0) / 1000.0)
                 ELSE 0
               END
             ) / 60) / NULLIF((SELECT distinct_users FROM StudentCount), 0) AS avg_time_spent
@@ -1646,7 +1683,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 SELECT
                     al.user_id,
                     DATE(al.created_at) AS activity_date,
-                    EXTRACT(EPOCH FROM (al.end_time - al.start_time)) * 1000 AS activity_duration_millis
+                    COALESCE(al.engaged_ms, 0) AS activity_duration_millis
                 FROM activity_log al
 
                 -- Join slide

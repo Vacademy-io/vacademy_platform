@@ -38,10 +38,10 @@ public class AudienceController {
 
     /**
      * Returns the candidate counsellors a caller is allowed to assign a lead
-     * to. When the institute has configured a leads_team_id AND the caller
-     * is in that subtree, the picker is narrowed to the caller's user-to-user
-     * descendants (themselves + reports + reports' reports). Outside that
-     * gate the picker is institute-wide (admin behaviour).
+     * to: COUNSELLOR-role users only. A hierarchy-scoped caller (holds the
+     * COUNSELLOR role) is narrowed to their scope (themselves + counsellor
+     * reports + reports' reports); a pure admin gets the institute-wide
+     * counsellor roster.
      *
      * Used by the "Assign counsellor" dialogs on Recent Leads / per-campaign
      * leads / Enquiries. Replaces direct calls to /auth-service/v1/user/
@@ -57,18 +57,19 @@ public class AudienceController {
     }
 
     /**
-     * Counsellor options for the CRM Leads "All counsellors" filter. When the institute has a
-     * leads_team_id configured AND the caller is in that subtree, the list is scoped to the
-     * caller's team hierarchy (themselves + reports + reports' reports) — matching the leads
-     * they can actually see. Otherwise {@code scoped=false} and the frontend falls back to its
-     * institute-wide counsellor list (admin behaviour). Used by the Recent Leads / per-campaign
-     * leads / Follow-ups filter bars.
+     * Counsellor options for the CRM Leads "All counsellors" filter — always the
+     * caller-visible COUNSELLOR-role list. A hierarchy-scoped caller (COUNSELLOR role) gets
+     * their scope (themselves + counsellor reports) with {@code scoped=true}, matching the
+     * leads they can actually see; a pure admin gets the institute-wide counsellor roster
+     * with {@code scoped=false}. Used by the Recent Leads / per-campaign leads / Follow-ups
+     * filter bars.
      */
     @GetMapping("/lead-counsellor-options")
     public ResponseEntity<LeadCounsellorOptionsDTO> leadCounsellorOptions(
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "assignable", defaultValue = "false") boolean assignable,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user));
+        return ResponseEntity.ok(audienceService.leadCounsellorOptions(instituteId, user, assignable));
     }
 
     @PostMapping("/campaign")

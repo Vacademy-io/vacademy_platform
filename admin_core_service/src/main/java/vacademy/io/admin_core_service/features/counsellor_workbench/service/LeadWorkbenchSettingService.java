@@ -44,10 +44,13 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * <h3>JSON shape under LEAD_SETTING.data (config only — scores moved out in V327)</h3>
+ * A legacy {@code leads_team_id} key may still sit under {@code workbench} in
+ * existing institutes' JSON — it configured the old "counselling team" model
+ * and is deliberately ignored now: counsellors are role-defined (COUNSELLOR)
+ * and scope comes from the org hierarchy (see {@code CounsellorScopeService}).
  * <pre>
  * {
  *   "workbench": {
- *     "leads_team_id": "&lt;organization_team.id or null&gt;",
  *     "rating": {
  *       "strategy_type": "STATIC" | "STRATEGY_BASED",
  *       "starting_rating": 0,
@@ -85,9 +88,6 @@ public class LeadWorkbenchSettingService {
         if (workbench == null || workbench.isMissingNode() || workbench.isNull()) {
             return cfg;
         }
-        if (workbench.hasNonNull("leads_team_id")) {
-            cfg.setLeadsTeamId(workbench.get("leads_team_id").asText());
-        }
         JsonNode rating = workbench.path("rating");
         if (rating.isObject()) {
             if (rating.hasNonNull("strategy_type"))
@@ -115,27 +115,9 @@ public class LeadWorkbenchSettingService {
         return cfg;
     }
 
-    public Optional<String> getLeadsTeamId(String instituteId) {
-        return Optional.ofNullable(get(instituteId).getLeadsTeamId());
-    }
-
     // ────────────────────────────────────────────────────────────────
     // Write
     // ────────────────────────────────────────────────────────────────
-
-    @Transactional
-    public WorkbenchConfig setLeadsTeam(String instituteId, String leadsTeamId) {
-        Institute institute = getInstitute(instituteId);
-        ObjectNode root = mutableRoot(institute.getSetting());
-        ObjectNode workbench = ensureWorkbenchNode(root);
-        if (leadsTeamId == null || leadsTeamId.isBlank()) {
-            workbench.remove("leads_team_id");
-        } else {
-            workbench.put("leads_team_id", leadsTeamId);
-        }
-        persist(institute, root);
-        return get(instituteId);
-    }
 
     @Transactional
     public WorkbenchConfig upsertRatingStrategy(WorkbenchConfig req) {
@@ -170,7 +152,7 @@ public class LeadWorkbenchSettingService {
     // Per-counsellor targets — stored under workbench.targets in the
     // institute setting blob. Targets are admin-set CONFIG (the "completed"
     // numbers are computed live, never stored), so JSON is the right home —
-    // same rationale as leads_team_id + rating config. Written only by
+    // same rationale as the rating config. Written only by
     // occasional admin edits, so no concurrent-writer race (unlike rating
     // SCORES, which a nightly job writes → V327 moved those to a table).
     //

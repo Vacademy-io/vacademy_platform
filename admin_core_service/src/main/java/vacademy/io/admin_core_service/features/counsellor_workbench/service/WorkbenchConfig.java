@@ -24,8 +24,11 @@ public class WorkbenchConfig {
 
     private String instituteId;
 
-    /** Root team for the leads/sales subtree. Null until admin sets it. */
-    private String leadsTeamId;
+    // NOTE: the old leads_team_id field is gone — the counselling team is no
+    // longer configured. Counsellors are role-defined (COUNSELLOR) and data
+    // scope comes from the org hierarchy; see CounsellorScopeService. Old
+    // frontends that still PUT leads_team_id are ignored harmlessly (Jackson
+    // skips unknown properties).
 
     // ── Rating strategy (flat — service handles JSON nesting) ────────────
     private String strategyType;            // STATIC | STRATEGY_BASED
@@ -41,7 +44,6 @@ public class WorkbenchConfig {
     public static WorkbenchConfig withDefaults(String instituteId) {
         return WorkbenchConfig.builder()
                 .instituteId(instituteId)
-                .leadsTeamId(null)
                 .strategyType("STRATEGY_BASED")
                 .startingRating(BigDecimal.ZERO)
                 .windowDays(90)

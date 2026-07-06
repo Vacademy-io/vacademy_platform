@@ -44,6 +44,7 @@ import {
     COUNTRY_DEFAULT_CURRENCY,
     DEFAULT_INVOICE_SETTINGS,
     PACKAGE_TYPES,
+    fetchInvoiceAdminOptions,
     fetchInvoiceSettings,
     saveInvoiceSettings,
     type InvoiceSettingsData,
@@ -133,6 +134,111 @@ function CountryCombobox({
                 </Command>
             </PopoverContent>
         </Popover>
+    );
+}
+
+function AdminCopyMultiSelect({
+    selectedIds,
+    onChange,
+}: {
+    selectedIds: string[];
+    onChange: (ids: string[]) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const { data: admins = [], isLoading } = useQuery({
+        queryKey: ['invoice-admin-copy-options'],
+        queryFn: fetchInvoiceAdminOptions,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const toggle = (id: string) =>
+        onChange(
+            selectedIds.includes(id)
+                ? selectedIds.filter((x) => x !== id)
+                : [...selectedIds, id]
+        );
+
+    const selectedAdmins = admins.filter((a) => selectedIds.includes(a.id));
+
+    return (
+        <div className="space-y-2">
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <button
+                        type="button"
+                        className="flex h-9 w-full max-w-sm items-center justify-between rounded-md border border-slate-200 bg-white px-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                        {selectedIds.length > 0 ? (
+                            <span>
+                                {selectedIds.length} admin{selectedIds.length > 1 ? 's' : ''}{' '}
+                                selected
+                            </span>
+                        ) : (
+                            <span className="text-slate-500">Select admins…</span>
+                        )}
+                        <CaretUpDown className="size-4 text-slate-400" />
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[360px] p-0" align="start">
+                    <Command>
+                        <CommandInput placeholder="Search admins…" className="h-9" />
+                        <CommandList className="max-h-64">
+                            <CommandEmpty>
+                                {isLoading ? 'Loading admins…' : 'No admins found.'}
+                            </CommandEmpty>
+                            <CommandGroup>
+                                {admins.map((admin) => {
+                                    const checked = selectedIds.includes(admin.id);
+                                    return (
+                                        <CommandItem
+                                            key={admin.id}
+                                            value={`${admin.fullName} ${admin.email}`}
+                                            onSelect={() => toggle(admin.id)}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <Check
+                                                className={cn(
+                                                    'size-4',
+                                                    checked
+                                                        ? 'opacity-100 text-blue-600'
+                                                        : 'opacity-0'
+                                                )}
+                                            />
+                                            <span className="flex-1 truncate text-sm">
+                                                {admin.fullName || admin.email}
+                                            </span>
+                                            <span className="max-w-[150px] truncate text-xs text-slate-400">
+                                                {admin.email}
+                                            </span>
+                                        </CommandItem>
+                                    );
+                                })}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            {selectedAdmins.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                    {selectedAdmins.map((admin) => (
+                        <span
+                            key={admin.id}
+                            className="inline-flex items-center gap-1 rounded-full border bg-slate-50 px-2 py-0.5 text-xs text-slate-600"
+                        >
+                            {admin.fullName || admin.email}
+                            <button
+                                type="button"
+                                className="text-slate-400 hover:text-slate-600"
+                                onClick={() => toggle(admin.id)}
+                                title="Remove"
+                            >
+                                ×
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -467,6 +573,35 @@ export default function InvoiceSettings() {
                                 </SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-3">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="invoice-admin-copy" className="cursor-pointer">
+                                    Send copy to admins
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Whenever a payment completes, the selected admins also receive
+                                    the invoice / payment confirmation email (including the invoice
+                                    PDF).
+                                </p>
+                            </div>
+                            <Switch
+                                id="invoice-admin-copy"
+                                checked={settings.sendAdminCopy}
+                                onCheckedChange={(v) => update({ sendAdminCopy: v })}
+                            />
+                        </div>
+                        {settings.sendAdminCopy && (
+                            <div className="space-y-1.5">
+                                <Label>Admins to copy</Label>
+                                <AdminCopyMultiSelect
+                                    selectedIds={settings.adminCopyUserIds}
+                                    onChange={(ids) => update({ adminCopyUserIds: ids })}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex items-center justify-between rounded-lg border p-3">

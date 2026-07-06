@@ -97,11 +97,7 @@ public class CounsellorReassignService {
                 .distinct()
                 .collect(Collectors.toList());
 
-        // Counsellors the caller may assign to = active users in the leads team
-        // subtree (same scope the reassign round-robin uses). Every target is
-        // validated against this set so a lead can't be handed outside it.
-        Set<String> allowed = new LinkedHashSet<>(
-                scopeService.usersInTeams(scopeService.allTeamIdsUnderLeadsRoot(req.getInstituteId())));
+        Set<String> allowed = allowedTargets(req.getInstituteId(), actor);
 
         // Build the lead-user-id → target-counsellor plan for the chosen mode.
         Map<String, String> targetByUserId = new LinkedHashMap<>();
@@ -215,15 +211,18 @@ public class CounsellorReassignService {
                     .sorted()
                     .collect(Collectors.toList());
         } else {
-            candidates = allowed.stream().sorted().collect(Collectors.toList());
+            candidates = (allowed == null ? Collections.<String>emptySet() : allowed).stream()
+                    .sorted().collect(Collectors.toList());
         }
-        // Round-robin distributes only across ACTIVE counsellors (an ACTIVE pool
-        // membership) — drop anyone offline, whether they came from the explicit
-        // candidate list or the whole-scope fallback, so bulk-assign never lands
-        // a lead on an inactive counsellor.
-        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
+        // Prefer ACTIVE-pool counsellors, but only as a preference — see
+        // planRoundRobin: institutes without counselor pools have no ACTIVE
+        // pool rows and would otherwise never be able to bulk-assign.
+        List<String> active = retainActiveCounsellors(req.getInstituteId(), candidates);
+        if (!active.isEmpty()) {
+            candidates = active;
+        }
         if (candidates.isEmpty()) {
-            throw new VacademyException("No active counsellors available for round-robin assignment");
+            throw new VacademyException("No counsellors available for round-robin assignment");
         }
         return candidates;
     }
@@ -239,10 +238,33 @@ public class CounsellorReassignService {
         return candidates.stream().filter(active::contains).collect(Collectors.toList());
     }
 
+    /** {@code allowed == null} means unrestricted (admin setup-mode fallback). */
     private void assertAllowed(String userId, Set<String> allowed) {
-        if (!allowed.contains(userId)) {
-            throw new VacademyException("Target user " + userId + " is outside the leads team subtree");
+        if (allowed != null && !allowed.contains(userId)) {
+            throw new VacademyException(
+                    "Target user " + userId + " is not a counsellor you can assign leads to");
         }
+    }
+
+    /**
+     * Counsellors the actor may assign/reassign leads to. Assignment is an
+     * admin action: ADMIN-role actors (even ones who also hold COUNSELLOR and
+     * are therefore hierarchy-scoped in the lists) get the institute-wide
+     * COUNSELLOR-role roster; non-admin counsellors get their hierarchy
+     * scope. Every mode validates its targets against this set so a lead
+     * can't be handed to a non-counsellor or outside the actor's reach.
+     *
+     * <p>Returns {@code null} (= no restriction) for admins when the institute
+     * has no COUNSELLOR-role users at all — setup mode; blocking every target
+     * would brick reassignment mid-migration. ROUND_ROBIN still needs a real
+     * candidate set and keeps failing with a clear error in that state.
+     */
+    private Set<String> allowedTargets(String instituteId, CustomUserDetails actor) {
+        Set<String> ids = new LinkedHashSet<>(scopeService.assignableCounsellorUserIds(instituteId, actor));
+        if (ids.isEmpty() && scopeService.hasAdminRole(actor, instituteId)) {
+            return null;
+        }
+        return ids;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -288,10 +310,11 @@ public class CounsellorReassignService {
                     .build();
         }
 
+        Set<String> allowed = allowedTargets(req.getInstituteId(), actor);
         List<Plan> plan = switch (req.getMode().toUpperCase(Locale.ROOT)) {
-            case "SINGLE" -> planSingle(openLeads, req);
-            case "ROUND_ROBIN" -> planRoundRobin(openLeads, req);
-            case "MANUAL" -> planManual(openLeads, req);
+            case "SINGLE" -> planSingle(openLeads, req, allowed);
+            case "ROUND_ROBIN" -> planRoundRobin(openLeads, req, allowed);
+            case "MANUAL" -> planManual(openLeads, req, allowed);
             default -> throw new VacademyException("Unknown reassign mode: " + req.getMode());
         };
 
@@ -406,31 +429,38 @@ public class CounsellorReassignService {
         return changed > 0;
     }
 
-    private List<Plan> planSingle(List<UserLeadProfile> leads, ReassignRequest req) {
+    private List<Plan> planSingle(List<UserLeadProfile> leads, ReassignRequest req, Set<String> allowed) {
         require(req.getTargetUserId(), "target_user_id is required for SINGLE mode");
         if (req.getTargetUserId().equals(req.getFromUserId())) {
             throw new VacademyException("Target counsellor must differ from the source");
         }
+        assertAllowed(req.getTargetUserId(), allowed);
         return leads.stream()
                 .map(l -> new Plan(l, req.getTargetUserId()))
                 .collect(Collectors.toList());
     }
 
-    private List<Plan> planRoundRobin(List<UserLeadProfile> leads, ReassignRequest req) {
-        // Active counsellors within the same team subtree as fromUserId,
-        // excluding fromUserId itself. Resolved via the workbench scope so
-        // the same team rules apply to RR distribution as to the lead list.
-        List<String> teamIds = scopeService.allTeamIdsUnderLeadsRoot(req.getInstituteId());
-        List<String> candidates = scopeService.usersInTeams(teamIds).stream()
+    private List<Plan> planRoundRobin(List<UserLeadProfile> leads, ReassignRequest req, Set<String> allowed) {
+        // Counsellors the actor may route to, excluding fromUserId itself —
+        // same allowed-target rule as SINGLE/MANUAL so RR distribution can't
+        // reach outside the actor's scope. A null (unrestricted, setup-mode)
+        // set gives RR nothing to distribute over — the empty-candidates
+        // error below explains it.
+        List<String> candidates = (allowed == null ? Collections.<String>emptySet() : allowed).stream()
                 .filter(uid -> !uid.equals(req.getFromUserId()))
                 .sorted()
                 .collect(Collectors.toList());
-        // Round-robin must skip counsellors who are OFFLINE (no ACTIVE pool
-        // membership) — same "active" rule the workbench roster shows. Without
-        // this, reassignment could hand leads to an inactive counsellor.
-        candidates = retainActiveCounsellors(req.getInstituteId(), candidates);
+        // Prefer counsellors with an ACTIVE pool membership — same "active"
+        // rule the workbench roster shows — but treat it as a PREFERENCE, not
+        // a gate: institutes that don't use counselor pools have no ACTIVE
+        // pool rows at all, and the old hard filter zeroed the candidate list
+        // there, making reassignment impossible.
+        List<String> active = retainActiveCounsellors(req.getInstituteId(), candidates);
+        if (!active.isEmpty()) {
+            candidates = active;
+        }
         if (candidates.isEmpty()) {
-            throw new VacademyException("No active counsellors available for round-robin reassignment");
+            throw new VacademyException("No counsellors available for round-robin reassignment");
         }
         List<Plan> out = new ArrayList<>(leads.size());
         int idx = 0;
@@ -441,7 +471,7 @@ public class CounsellorReassignService {
         return out;
     }
 
-    private List<Plan> planManual(List<UserLeadProfile> leads, ReassignRequest req) {
+    private List<Plan> planManual(List<UserLeadProfile> leads, ReassignRequest req, Set<String> allowed) {
         if (req.getAssignments() == null || req.getAssignments().isEmpty()) {
             throw new VacademyException("assignments list is required for MANUAL mode");
         }
@@ -452,17 +482,13 @@ public class CounsellorReassignService {
             }
             overrideByLeadId.put(a.getLeadId(), a.getToUserId());
         }
-        Set<String> allowed = new HashSet<>(
-                scopeService.usersInTeams(scopeService.allTeamIdsUnderLeadsRoot(req.getInstituteId())));
         List<Plan> out = new ArrayList<>(leads.size());
         for (UserLeadProfile l : leads) {
             String to = overrideByLeadId.get(l.getId());
             if (to == null) {
                 throw new VacademyException("Missing target for lead " + l.getId());
             }
-            if (!allowed.contains(to)) {
-                throw new VacademyException("Target user " + to + " is outside the leads team subtree");
-            }
+            assertAllowed(to, allowed);
             out.add(new Plan(l, to));
         }
         return out;

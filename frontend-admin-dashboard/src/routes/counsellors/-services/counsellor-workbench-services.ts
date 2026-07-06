@@ -4,6 +4,7 @@ import {
     COUNSELLOR_WORKBENCH_CONFIG,
     COUNSELLOR_WORKBENCH_CONFIG_UPDATE,
     COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS,
+    COUNSELLOR_WORKBENCH_COUNSELLORS,
     COUNSELLOR_WORKBENCH_LEAD_TRANSFERS,
     COUNSELLOR_WORKBENCH_MY_LEADS,
     COUNSELLOR_WORKBENCH_MY_TEAM,
@@ -12,15 +13,14 @@ import {
     COUNSELLOR_WORKBENCH_REASSIGN,
     COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW,
     COUNSELLOR_WORKBENCH_SET_STATUS,
-    COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS,
 } from '@/constants/urls';
 
+/** Display-only team info; all fields are null for users without a team. */
 export interface WorkbenchTeam {
-    team_id: string;
-    team_name: string;
-    leads_root_team_id: string;
-    ancestor_names: string[];
-    descendant_team_ids: string[];
+    team_id: string | null;
+    team_name: string | null;
+    ancestor_names: string[] | null;
+    descendant_team_ids: string[] | null;
 }
 
 export interface WorkbenchCounsellor {
@@ -116,9 +116,9 @@ export interface StatusChangeResponse {
 
 export interface WorkbenchConfig {
     institute_id: string;
-    leads_team_id: string | null;
     // Rating strategy fields — flattened on the wire, persisted inside
-    // LEAD_SETTING.workbench.rating in the institute_setting JSON.
+    // LEAD_SETTING.workbench.rating in the institute_setting JSON. (The old
+    // leads_team_id config is gone — counsellors are role-defined.)
     strategy_type?: 'STATIC' | 'STRATEGY_BASED';
     starting_rating?: number;
     window_days?: number;
@@ -193,19 +193,33 @@ export async function fetchCounsellorLeads(
     return res.data;
 }
 
-export async function fetchTeamCounsellors(
+/**
+ * Role-based roster: every COUNSELLOR-role user the caller may see — their
+ * hierarchy scope when the caller holds the COUNSELLOR role, institute-wide
+ * for pure admins. Replaces the old team-based fetchTeamCounsellors.
+ */
+export async function fetchCounsellors(
     instituteId: string,
-    teamId: string,
-    opts?: { search?: string; status?: 'active' | 'inactive' | 'all'; page?: number; size?: number }
+    opts?: {
+        search?: string;
+        status?: 'active' | 'inactive' | 'all';
+        page?: number;
+        size?: number;
+        /** Resolve assignment TARGETS instead of the visibility roster:
+         *  ADMIN-role callers get the institute-wide counsellor list even
+         *  when they also hold COUNSELLOR (and are hierarchy-scoped in the
+         *  display roster). Use for reassign/assign dropdowns only. */
+        assignable?: boolean;
+    }
 ) {
     const res = await authenticatedAxiosInstance.get<PaginatedResponse<WorkbenchCounsellor>>(
-        COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS(
+        COUNSELLOR_WORKBENCH_COUNSELLORS(
             instituteId,
-            teamId,
             opts?.search,
             opts?.status,
             opts?.page,
-            opts?.size
+            opts?.size,
+            opts?.assignable
         )
     );
     return res.data;

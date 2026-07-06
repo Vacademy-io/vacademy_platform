@@ -33,6 +33,8 @@ public class LeadFollowupService {
     private final TimelineEventService timelineEventService;
     private final AudienceResponseRepository audienceResponseRepository;
     private final AudienceRepository audienceRepository;
+    private final vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+    private final vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchLeadRepository workbenchLeadRepository;
 
     @Transactional
     public LeadFollowupDto create(CreateLeadFollowupRequest request, CustomUserDetails user) {
@@ -66,20 +68,84 @@ public class LeadFollowupService {
         return LeadFollowupDto.from(saved);
     }
 
+    /**
+     * All follow-ups for one lead. RBAC: a hierarchy-scoped caller (COUNSELLOR
+     * role) may only read them when the lead's current assignee sits inside
+     * their scope (unassigned leads stay visible — same rule the leads list
+     * applies to the shared unassigned pool).
+     */
     @Transactional(readOnly = true)
-    public List<LeadFollowupDto> listForLead(String audienceResponseId) {
-        return leadFollowupRepository
-                .findByAudienceResponseIdOrderByScheduleTimeAsc(audienceResponseId)
-                .stream()
+    public List<LeadFollowupDto> listForLead(String audienceResponseId, CustomUserDetails user) {
+        List<LeadFollowup> rows = leadFollowupRepository
+                .findByAudienceResponseIdOrderByScheduleTimeAsc(audienceResponseId);
+        if (!rows.isEmpty() && user != null && user.getUserId() != null) {
+            String instituteId = resolveInstituteId(audienceResponseId, rows.get(0).getInstituteId());
+            if (counsellorScopeService.isScopedCaller(instituteId, user.getUserId())) {
+                String leadUserId = audienceResponseRepository.findById(audienceResponseId)
+                        .map(AudienceResponse::getUserId)
+                        .orElse(null);
+                String assignee = null;
+                if (leadUserId != null) {
+                    try {
+                        assignee = workbenchLeadRepository.currentAssigneeForLead(instituteId, leadUserId);
+                    } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+                        // No user_lead_profile row yet — treat as unassigned.
+                    }
+                }
+                if (assignee != null && !counsellorScopeService
+                        .scopedCounsellorUserIds(instituteId, user.getUserId()).contains(assignee)) {
+                    throw new VacademyException("You don't have access to this lead's follow-ups");
+                }
+            }
+        }
+        return rows.stream()
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Pending follow-ups the caller may work on.
+     *
+     * <p>Legacy shape (no instituteId): the caller's own follow-ups only —
+     * kept so old frontends behave exactly as before.
+     *
+     * <p>With instituteId: hierarchy-scoped callers (COUNSELLOR role) get
+     * their own + their counsellor-role reports' pending follow-ups (the
+     * manager view); pure admins get the whole institute. An explicit
+     * {@code counsellorUserId} narrows to that one user — validated against
+     * the caller's scope when the caller is scoped.
+     */
     @Transactional(readOnly = true)
-    public List<LeadFollowupDto> myPending(CustomUserDetails user) {
-        return leadFollowupRepository
-                .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId())
-                .stream()
+    public List<LeadFollowupDto> myPending(CustomUserDetails user, String instituteId, String counsellorUserId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return leadFollowupRepository
+                    .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId())
+                    .stream()
+                    .map(LeadFollowupDto::from)
+                    .collect(Collectors.toList());
+        }
+
+        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user.getUserId());
+        List<LeadFollowup> rows;
+        if (counsellorUserId != null && !counsellorUserId.isBlank()) {
+            if (scoped && !user.getUserId().equals(counsellorUserId)
+                    && !counsellorScopeService.scopedCounsellorUserIds(instituteId, user.getUserId())
+                            .contains(counsellorUserId)) {
+                throw new VacademyException("You don't have access to this counsellor's follow-ups");
+            }
+            rows = leadFollowupRepository
+                    .findByInstituteIdAndCreatedByInAndIsClosedFalseOrderByScheduleTimeAsc(
+                            instituteId, List.of(counsellorUserId));
+        } else if (scoped) {
+            rows = leadFollowupRepository
+                    .findByInstituteIdAndCreatedByInAndIsClosedFalseOrderByScheduleTimeAsc(
+                            instituteId,
+                            counsellorScopeService.scopedCounsellorUserIds(instituteId, user.getUserId()));
+        } else {
+            rows = leadFollowupRepository
+                    .findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(instituteId);
+        }
+        return rows.stream()
                 .map(LeadFollowupDto::from)
                 .collect(Collectors.toList());
     }

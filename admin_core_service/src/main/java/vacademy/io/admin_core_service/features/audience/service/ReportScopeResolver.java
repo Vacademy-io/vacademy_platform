@@ -54,15 +54,16 @@ public class ReportScopeResolver {
      *
      * Priority:
      *   1. Explicit {@code counsellorUserId} → that single counsellor. When the
-     *      caller is themselves inside the leads subtree, the target must sit
-     *      inside their RBAC descendants — 403 otherwise.
-     *   2. Explicit {@code teamId} → all users across that team's subtree,
-     *      intersected with the caller's RBAC scope when the caller is scoped.
-     *   3. Caller inside the leads subtree → their RBAC descendants. A leaf
-     *      counsellor resolves to just themselves — self-scoped reports are the
-     *      chosen product behavior.
-     *   4. Admin outside the leads subtree → everyone under the leads root.
-     *   5. Leads team not configured → null = institute-wide (admin setup mode).
+     *      caller is hierarchy-scoped (COUNSELLOR role), the target must sit
+     *      inside their scope — 403 otherwise.
+     *   2. Explicit {@code teamId} → all users across that team, intersected
+     *      with the caller's scope when the caller is scoped.
+     *   3. Hierarchy-scoped caller → their scope (self + counsellor-role
+     *      descendants). A leaf counsellor resolves to just themselves —
+     *      self-scoped reports are the chosen product behavior.
+     *   4. Pure admin → every COUNSELLOR-role user of the institute.
+     *   5. Institute has no counsellor-role users yet → null = institute-wide
+     *      (admin setup mode).
      *
      * Returns null for "no scope filter". A non-empty list MUST be applied; an
      * EMPTY list means "scoped to nothing" — the report comes back zeroed rather
@@ -70,9 +71,9 @@ public class ReportScopeResolver {
      */
     private List<String> resolveScopeUserIds(String instituteId, String callerUserId,
                                              String teamId, String counsellorUserId) {
-        boolean callerScoped = counsellorScopeService.isCallerInLeadsSubtree(instituteId, callerUserId);
+        boolean callerScoped = counsellorScopeService.isScopedCaller(instituteId, callerUserId);
         List<String> callerScope = callerScoped
-                ? counsellorScopeService.descendantUserIdsForCaller(instituteId, callerUserId)
+                ? counsellorScopeService.scopedCounsellorUserIds(instituteId, callerUserId)
                 : Collections.emptyList();
 
         if (counsellorUserId != null) {
@@ -98,10 +99,8 @@ public class ReportScopeResolver {
             return callerScope;
         }
 
-        List<String> leadsTeamIds = counsellorScopeService.allTeamIdsUnderLeadsRoot(instituteId);
-        if (leadsTeamIds.isEmpty()) return null; // admin setup mode — no scope filter
-        List<String> users = counsellorScopeService.usersInTeams(leadsTeamIds);
-        return users.isEmpty() ? null : users;
+        List<String> counsellors = counsellorScopeService.allCounsellorUserIds(instituteId);
+        return counsellors.isEmpty() ? null : counsellors; // empty = setup mode — no scope filter
     }
 
     private static String trimToNull(String s) {

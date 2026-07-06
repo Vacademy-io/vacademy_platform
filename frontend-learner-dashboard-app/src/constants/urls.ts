@@ -82,6 +82,11 @@ const ENROLL_API_BASE =
 export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
+// Learner self-service payment method (saved card + billing details)
+export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/learner/payment-method/v1/summary`;
+export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;
+export const LEARNER_PAYMENT_METHOD_CONFIRM_CARD = `${BASE_URL}/admin-core-service/learner/payment-method/v1/confirm-card-update`;
+export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-service/learner/payment-method/v1/billing-details`;
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;

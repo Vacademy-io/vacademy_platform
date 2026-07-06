@@ -65,6 +65,25 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("statuses") List<String> statuses,
                         Pageable pageable);
 
+        /**
+         * Used by LearnerPaymentMethodService to rewrite the Stripe
+         * paymentMethodId inside json_payment_details after a learner updates
+         * their card. EnrollInvite is fetched for the vendor/currency needed
+         * to normalize legacy snapshot shapes; PaymentPlan for the amount.
+         */
+        @Query("""
+                        SELECT DISTINCT up FROM UserPlan up
+                        JOIN FETCH up.enrollInvite ei
+                        LEFT JOIN FETCH up.paymentPlan pp
+                        WHERE up.userId = :userId
+                          AND ei.instituteId = :instituteId
+                          AND up.status IN :statuses
+                        """)
+        List<UserPlan> findAllByUserIdAndInstituteIdAndStatusIn(
+                        @Param("userId") String userId,
+                        @Param("instituteId") String instituteId,
+                        @Param("statuses") List<String> statuses);
+
         Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
                         String userId,
                         String enrollInviteId,

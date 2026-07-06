@@ -225,12 +225,35 @@ public class TimelineEventService {
                 Map<String, List<TimelineEventDTO>> result = new HashMap<>();
                 if (studentUserIds == null || studentUserIds.isEmpty()) return result;
 
-                List<TimelineEvent> events = timelineEventRepository
-                                .findRecentPerStudent(studentUserIds, JOURNEY_EXPORT_CAP);
-                for (TimelineEvent e : events) {
-                        if (e.getStudentUserId() == null) continue;
-                        result.computeIfAbsent(e.getStudentUserId(), k -> new ArrayList<>())
-                                        .add(mapToDTO(e));
+                // Dual-linkage lookup — events stamped with student_user_id AND
+                // events keyed only by their audience_response (status changes
+                // etc., whose student_user_id is often null). The old
+                // findRecentPerStudent-based version missed the latter, so the
+                // export's journey column carried a single row per lead.
+                List<TimelineEventRepository.JourneyEventRow> rows = timelineEventRepository
+                                .findJourneyRowsForUsers(studentUserIds, JOURNEY_EXPORT_CAP);
+                for (TimelineEventRepository.JourneyEventRow r : rows) {
+                        if (r.getJourneyUserId() == null) continue;
+                        TimelineCategory category = null;
+                        if (r.getCategory() != null) {
+                                try {
+                                        category = TimelineCategory.valueOf(r.getCategory());
+                                } catch (IllegalArgumentException ignored) {
+                                        // Unknown/legacy category value — leave null, the export
+                                        // formatter only uses it as a display hint.
+                                }
+                        }
+                        result.computeIfAbsent(r.getJourneyUserId(), k -> new ArrayList<>())
+                                        .add(TimelineEventDTO.builder()
+                                                        .id(r.getId())
+                                                        .actionType(r.getActionType())
+                                                        .actorName(r.getActorName())
+                                                        .title(r.getTitle())
+                                                        .description(r.getDescription())
+                                                        .category(category)
+                                                        .createdAt(r.getCreatedAt())
+                                                        .studentUserId(r.getJourneyUserId())
+                                                        .build());
                 }
                 // The window query returns newest-first; a journey reads better oldest-first.
                 for (List<TimelineEventDTO> list : result.values()) java.util.Collections.reverse(list);

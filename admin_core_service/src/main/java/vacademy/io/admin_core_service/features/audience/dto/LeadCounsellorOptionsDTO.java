@@ -11,11 +11,12 @@ import java.util.List;
 /**
  * Options for the CRM Leads "All counsellors" filter.
  *
- * <p>{@code scoped == true} means team-hierarchy scoping applied: {@code counsellors} is the
- * caller plus their user-to-user descendants (self + reports + reports' reports), matching the
- * set of counsellors whose leads the caller can actually see in getLeads(). {@code scoped == false}
- * means the caller is unscoped (admin, or no leads_team_id configured) — {@code counsellors} is
- * empty and the frontend falls back to its institute-wide counsellor list.</p>
+ * <p>{@code counsellors} is always the caller-visible COUNSELLOR-role list.
+ * {@code scoped == true} means the caller is hierarchy-scoped (holds the COUNSELLOR role):
+ * the list is the caller plus their counsellor-role descendants, matching the set of
+ * counsellors whose leads they can actually see in getLeads(). {@code scoped == false}
+ * means the caller is unscoped (pure admin / other roles) and the list is the
+ * institute-wide COUNSELLOR-role roster.</p>
  */
 @Data
 @NoArgsConstructor

@@ -54,16 +54,24 @@ public class CounsellorWorkbenchService {
     // /me
     // ────────────────────────────────────────────────────────────────
 
+    /**
+     * The caller's team, for header display only — RBAC no longer depends on
+     * team configuration. Returns an empty DTO (all-null fields) for callers
+     * without any team membership instead of erroring: in the role-based
+     * model "no team" just means "no breadcrumb to show".
+     */
     public WorkbenchTeamDTO myTeam(String instituteId, CustomUserDetails caller) {
-        return scopeService.resolveHomeScope(instituteId, caller.getUserId());
+        return scopeService.myTeams(caller.getUserId()).stream()
+                .findFirst()
+                .orElseGet(() -> WorkbenchTeamDTO.builder().build());
     }
 
     public Page<WorkbenchLeadDTO> myLeads(String instituteId, CustomUserDetails caller,
                                           String conversionStatus, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
-        // RBAC: caller + descendants via parent_user_id. A team head gets
-        // their whole downstream; a leaf member gets only their own leads.
-        List<String> users = scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId());
+        // RBAC: caller + counsellor-role descendants via parent_user_id. A team
+        // head gets their whole downstream; a leaf member gets only their own leads.
+        List<String> users = scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId());
         if (users.isEmpty()) return Page.empty(pageable);
         long total = leadRepo.countLeadsForCounsellors(instituteId, users, conversionStatus);
         if (total == 0) return new PageImpl<>(List.of(), pageable, 0);
@@ -76,10 +84,16 @@ public class CounsellorWorkbenchService {
     /**
      * Per-counsellor leads list (admin / manager path). The /me/leads
      * variant is auth-scoped to the caller; this one accepts an explicit
-     * user_id so a CSO can drill into anyone in the team subtree.
+     * user_id so a CSO can drill into anyone in their downstream.
+     *
+     * <p>RBAC: a hierarchy-scoped caller (COUNSELLOR role) may only look at
+     * users inside their own scope — previously this endpoint had no check
+     * at all. Unscoped callers (pure admins) can drill into anyone.
      */
     public Page<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
-                                                     String conversionStatus, int page, int size) {
+                                                     String conversionStatus, int page, int size,
+                                                     CustomUserDetails caller) {
+        assertCallerMayView(instituteId, counsellorUserId, caller);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
 
         // "OPEN" is a VIRTUAL filter, not a real conversion_status value: it
@@ -153,51 +167,63 @@ public class CounsellorWorkbenchService {
     // ────────────────────────────────────────────────────────────────
 
     /**
-     * Build the workbench roster for a team subtree, intersected with the
-     * caller's RBAC scope (their user-to-user descendants). A team head
-     * sees their whole downstream; a manager sees their reports; a leaf
-     * counsellor sees only themselves. Pass {@code caller=null} to bypass
-     * the RBAC filter (admin / scheduled-job paths).
-     *
-     * Server-side paginated. Search and status filters are applied to the
-     * resolved user set before slicing so the page count stays meaningful
-     * (no "page 2 of 5 is empty" UX). Per-row aggregations (team mapping,
-     * open-lead count) only run for the visible slice, keeping the cost
-     * roughly proportional to `size`, not the team's total counsellor count.
+     * Delegate kept for the deprecated /team/{teamId}/counsellors route so an
+     * old frontend keeps working during rollout. The teamId no longer selects
+     * the roster — counsellors are role-defined; scope comes from the caller.
      */
     public Page<WorkbenchCounsellorDTO> listCounsellorsForTeam(String instituteId, String teamId,
                                                                String search, String statusFilter,
                                                                int page, int size,
                                                                CustomUserDetails caller) {
+        return listCounsellors(instituteId, search, statusFilter, page, size, caller, false);
+    }
+
+    /**
+     * Build the workbench roster: every COUNSELLOR-role user the caller may
+     * see. A hierarchy-scoped caller (holds the COUNSELLOR role — including
+     * admins who also counsel) sees themselves + their counsellor downstream;
+     * an unscoped caller (pure admin) sees the institute-wide counsellor
+     * roster. Pass {@code caller=null} to bypass RBAC (scheduled-job paths).
+     *
+     * Server-side paginated. Search and status filters are applied to the
+     * resolved user set before slicing so the page count stays meaningful
+     * (no "page 2 of 5 is empty" UX). Per-row aggregations (team mapping,
+     * open-lead count) only run for the visible slice, keeping the cost
+     * roughly proportional to `size`, not the roster's total size.
+     *
+     * @param assignable when true, resolve the ASSIGNMENT-target set instead
+     *        of the visibility set: ADMIN-role callers (even ones who also
+     *        hold COUNSELLOR and are hierarchy-scoped in the display roster)
+     *        get the institute-wide counsellor roster. Powers the reassign
+     *        dialog's target dropdown.
+     */
+    public Page<WorkbenchCounsellorDTO> listCounsellors(String instituteId,
+                                                        String search, String statusFilter,
+                                                        int page, int size,
+                                                        CustomUserDetails caller,
+                                                        boolean assignable) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
 
-        // Resolve the team subtree once via auth_service. When teamId is
-        // omitted, fall back to "everything under the institute's leads root".
-        List<OrgTeamDTO> subtree = (teamId != null && !teamId.isBlank())
-                ? orgTeamClient.getSubtreeIncludingSelf(teamId)
-                : scopeService.leadsRootSubtree(instituteId);
-        if (subtree.isEmpty()) return Page.empty(pageable);
-        Map<String, String> teamNameById = subtree.stream()
-                .collect(Collectors.toMap(OrgTeamDTO::getId, OrgTeamDTO::getName, (a, b) -> a));
-
-        // Pull membership rows for the subtree from auth_service. The endpoint
-        // returns DISTINCT user ids; we walk per-user to recover their primary
-        // (most-recent) team mapping for display purposes.
-        List<String> userIds = orgTeamClient.usersInTeams(new ArrayList<>(teamNameById.keySet()));
+        List<String> userIds;
+        if (caller == null) {
+            userIds = scopeService.allCounsellorUserIds(instituteId);
+        } else if (assignable) {
+            userIds = scopeService.assignableCounsellorUserIds(instituteId, caller);
+        } else {
+            userIds = scopeService.visibleCounsellorUserIds(instituteId, caller.getUserId());
+        }
         if (userIds.isEmpty()) return Page.empty(pageable);
 
-        // RBAC: every caller (including root admins) sees only themselves +
-        // their downstream in the team hierarchy. A root admin who isn't
-        // mapped into the leads team subtree sees only themselves; if they
-        // need the whole team view, they should be added to the team's
-        // root mapping via Manage Institute → Teams. The caller=null path
-        // (scheduled jobs, admin-internal flows) still gets the unfiltered
-        // view.
-        if (caller != null) {
-            Set<String> allowed = new HashSet<>(
-                    scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
-            userIds = userIds.stream().filter(allowed::contains).toList();
-            if (userIds.isEmpty()) return Page.empty(pageable);
+        // Team names are display-only now. One listTeams call covers every
+        // mapping we might surface on the visible page.
+        Map<String, String> teamNameById = new HashMap<>();
+        try {
+            for (OrgTeamDTO t : orgTeamClient.listTeams(instituteId)) {
+                if (t != null && t.getId() != null) teamNameById.put(t.getId(), t.getName());
+            }
+        } catch (Exception e) {
+            log.warn("listCounsellors: listTeams({}) failed, team chips will be blank: {}",
+                    instituteId, e.getMessage());
         }
 
         // Resolve names in one batch — needed BEFORE filtering so search can
@@ -346,11 +372,28 @@ public class CounsellorWorkbenchService {
     // ────────────────────────────────────────────────────────────────
 
     public List<ActivityFeedItemDTO> activityFeed(String counsellorUserId, String instituteId,
-                                                  Timestamp from, Timestamp to, int limit) {
+                                                  Timestamp from, Timestamp to, int limit,
+                                                  CustomUserDetails caller) {
+        assertCallerMayView(instituteId, counsellorUserId, caller);
         if (from == null) from = new Timestamp(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000);
         if (to == null) to = new Timestamp(System.currentTimeMillis() + 60_000); // small future buffer
         int safeLimit = Math.max(1, Math.min(limit, 200));
         return activityRepo.fetchFeed(counsellorUserId, instituteId, from, to, safeLimit);
+    }
+
+    /**
+     * Shared RBAC gate for the per-counsellor drill-down endpoints (leads,
+     * activity): a hierarchy-scoped caller may only view users inside their
+     * own scope. Unscoped callers (pure admins) pass through, as do
+     * caller-less internal paths.
+     */
+    private void assertCallerMayView(String instituteId, String targetUserId, CustomUserDetails caller) {
+        if (caller == null || caller.getUserId() == null) return;
+        if (caller.getUserId().equals(targetUserId)) return;
+        if (!scopeService.isScopedCaller(instituteId, caller.getUserId())) return;
+        if (!scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()).contains(targetUserId)) {
+            throw new VacademyException("You don't have access to this counsellor's data");
+        }
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -358,9 +401,9 @@ public class CounsellorWorkbenchService {
     // ────────────────────────────────────────────────────────────────
 
     /**
-     * Counsellor-assignment chain for one lead. RBAC: the lead's current
-     * assignee must sit inside the caller's descendant set — a manager can't
-     * peek at a peer team's lead just by knowing its user_id.
+     * Counsellor-assignment chain for one lead. RBAC: for hierarchy-scoped
+     * callers the lead's current assignee must sit inside their scope — a
+     * manager can't peek at a peer team's lead just by knowing its user_id.
      *
      * Names on both sides of each transfer are hydrated through auth_service
      * in one batched call (admin_core and auth_service own separate Postgres
@@ -373,9 +416,10 @@ public class CounsellorWorkbenchService {
         if (currentAssignee.isEmpty()) {
             throw new VacademyException("Lead not found in this institute");
         }
-        if (caller != null && !caller.isRootUser()) {
+        if (caller != null && caller.getUserId() != null
+                && scopeService.isScopedCaller(instituteId, caller.getUserId())) {
             Set<String> allowed = new HashSet<>(
-                    scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
+                    scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()));
             String assignee = currentAssignee.get();
             if (assignee != null && !allowed.contains(assignee)) {
                 throw new VacademyException(

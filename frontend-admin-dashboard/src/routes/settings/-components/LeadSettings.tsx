@@ -17,7 +17,6 @@ import LeadReportSettings from './LeadReportSettings';
 import PoolsList from './pools/PoolsList';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
 // and configure the counsellor rating strategy.
-import { LeadsTeamPicker } from './LeadsTeamPicker';
 import { CounsellorRatingSettings } from './CounsellorRatingSettings';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -182,7 +181,6 @@ export default function LeadSettings() {
                 </TabsContent>
 
                 <TabsContent value="workbench" className="space-y-6">
-                    <LeadsTeamPicker />
                     <CounsellorRatingSettings />
                 </TabsContent>
             </Tabs>

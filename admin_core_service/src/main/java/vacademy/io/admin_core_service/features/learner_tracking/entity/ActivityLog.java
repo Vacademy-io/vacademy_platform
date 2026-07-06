@@ -42,6 +42,9 @@ public class ActivityLog {
         @Column(name = "percentage_watched")
         private Double percentageWatched;
 
+        @Column(name = "engaged_ms")
+        private Long engagedMs;
+
         @Column(name = "status", length = 50)
         private String status;
 
@@ -97,6 +100,37 @@ public class ActivityLog {
                         this.endTime = new Timestamp(activityLogDTO.getEndTimeInMillis());
                 }
                 this.percentageWatched = activityLogDTO.getPercentageWatched();
+        }
+
+        /** Anything before this is a client-side unset (start_time_in_millis = 0 -> 1970-01-01). */
+        private static final long MIN_VALID_EPOCH_MS = 1672531200000L; // 2023-01-01T00:00:00Z
+
+        /** Per-activity sanity ceiling (24h), matching the old query cap. No single slide session
+         *  should credit more than a day; guards against inflated breadcrumbs / left-open sessions. */
+        private static final long MAX_ENGAGED_MS = 86400000L;
+
+        /**
+         * Runs before every insert/update. Repairs client-supplied times and derives a fallback
+         * engaged time so no consumer ever reads a garbage (end_time - start_time) again:
+         *  - Bug 2: a missing/epoch start_time is reset to the reliable server time.
+         *  - Bug 4: an end_time before start_time is clamped up to start_time.
+         *  - engaged_ms falls back to the clamped wall-clock window ONLY when it was not set
+         *    explicitly. Passive-media rows overwrite it with the merged breadcrumb duration
+         *    (see LearnerTrackingService#recomputeEngagedMsFromBreadcrumbs); interactive slides,
+         *    which have no breadcrumbs, keep this fallback.
+         */
+        @PrePersist
+        @PreUpdate
+        private void sanitizeTimesAndDeriveEngaged() {
+                if (startTime == null || startTime.getTime() < MIN_VALID_EPOCH_MS) {
+                        startTime = (createdAt != null) ? createdAt : new Timestamp(System.currentTimeMillis());
+                }
+                if (endTime != null && endTime.before(startTime)) {
+                        endTime = startTime;
+                }
+                if (engagedMs == null && endTime != null) {
+                        engagedMs = Math.min(MAX_ENGAGED_MS, Math.max(0L, endTime.getTime() - startTime.getTime()));
+                }
         }
 
         public ActivityLogDTO toActivityLogDTO() {

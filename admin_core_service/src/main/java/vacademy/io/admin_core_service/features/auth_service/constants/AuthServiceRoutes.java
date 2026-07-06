@@ -49,6 +49,19 @@ public class AuthServiceRoutes {
      */
     public static final String ADD_USER_ROLES_INTERNAL = "/auth-service/internal/v1/user-roles/add-user-roles";
 
+    /**
+     * HMAC-internal "users holding any of these roles" lookup. Body: JSON array
+     * of role names; query param: instituteId. Returns UserWithRolesDTO list,
+     * ACTIVE user_role rows only — the same RoleService path that powers the
+     * staff-management screen, and DTO-based end to end.
+     *
+     * <p>Deliberately NOT {@code /auth-service/v1/users/by-role}: that endpoint
+     * @Cacheable's raw User ENTITIES whose lazy/circular refs fail Redis cache
+     * serialization, turning every call into an HTTP 400 (fixed in auth, but
+     * this route is the safer contract regardless).
+     */
+    public static final String USERS_OF_STATUS_INTERNAL = "/auth-service/internal/v1/user-roles/users-of-status";
+
     public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
 
     // ── Organization teams (hybrid: flat teams + user-to-user inside) ──────

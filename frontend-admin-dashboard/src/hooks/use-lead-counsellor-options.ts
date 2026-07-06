@@ -1,21 +1,18 @@
 /**
  * useLeadCounsellorOptions — counsellor list for the Leads filter bars (Recent Leads,
- * per-campaign leads, Follow-ups), scoped to the caller's team hierarchy.
+ * per-campaign leads, Follow-ups), scoped to the caller's role + org hierarchy.
  *
- * The backend `/lead-counsellor-options` endpoint returns `{ scoped, counsellors }`. When a
- * leads team is configured AND the caller is inside that subtree, `scoped` is true and
- * `counsellors` is the caller + their reports (self + reports + reports' reports) — so the
- * filter only lists counsellors whose leads the caller can actually see. Otherwise `scoped`
- * is false and we fall back to the institute-wide counsellor list (preserving admin behaviour).
- *
- * Replaces the previous `useQuery(['counsellor-options'], fetchCounselors)` blocks that each
- * surface hand-rolled — those always returned every institute counsellor regardless of team.
+ * The backend `/lead-counsellor-options` endpoint returns `{ scoped, counsellors }`.
+ * Counsellors are role-defined (COUNSELLOR) — a hierarchy-scoped caller (anyone holding
+ * the COUNSELLOR role, even alongside ADMIN) gets self + their counsellor reports; a pure
+ * admin gets the institute-wide COUNSELLOR-role roster. The list is authoritative either
+ * way, so the old institute-wide `fetchCounselors` fallback (which also offered ADMIN-role
+ * users) is gone.
  */
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { GET_LEAD_COUNSELLOR_OPTIONS } from '@/constants/urls';
-import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
 
 export interface CounsellorOption {
     id: string;
@@ -28,11 +25,12 @@ interface LeadCounsellorOptionsResponse {
 }
 
 async function fetchLeadCounsellorOptions(
-    instituteId: string
+    instituteId: string,
+    assignable: boolean
 ): Promise<LeadCounsellorOptionsResponse> {
     const { data } = await authenticatedAxiosInstance.get<LeadCounsellorOptionsResponse>(
         GET_LEAD_COUNSELLOR_OPTIONS,
-        { params: { instituteId } }
+        { params: assignable ? { instituteId, assignable: true } : { instituteId } }
     );
     return {
         scoped: !!data?.scoped,
@@ -42,32 +40,34 @@ async function fetchLeadCounsellorOptions(
     };
 }
 
-export function useLeadCounsellorOptions(): {
+export function useLeadCounsellorOptions(opts?: {
+    /** Resolve assignment TARGETS instead of the visibility list: ADMIN-role
+     *  callers get the institute-wide counsellor roster even when they also
+     *  hold COUNSELLOR (and are hierarchy-scoped in filters/tables). Use for
+     *  assign dialogs and routing config pickers — never for data filters. */
+    assignable?: boolean;
+}): {
     options: CounsellorOption[];
+    /** True when the caller is hierarchy-scoped (holds the COUNSELLOR role):
+     *  the options are self + their counsellor reports, and the backend
+     *  narrows their data the same way. False for pure admins (institute-wide
+     *  roster) and for non-counsellor roles. */
+    scoped: boolean;
     isLoading: boolean;
 } {
     const instituteId = getCurrentInstituteId() ?? '';
+    const assignable = opts?.assignable === true;
 
-    const scopedQuery = useQuery({
-        queryKey: ['lead-counsellor-options', instituteId],
-        queryFn: () => fetchLeadCounsellorOptions(instituteId),
+    const query = useQuery({
+        queryKey: ['lead-counsellor-options', instituteId, assignable],
+        queryFn: () => fetchLeadCounsellorOptions(instituteId, assignable),
         enabled: !!instituteId,
         staleTime: 5 * 60 * 1000,
     });
 
-    const isScoped = scopedQuery.data?.scoped === true;
-    // Only the unscoped (admin / no leads-team) path needs the institute-wide list.
-    const needsFallback = scopedQuery.data?.scoped === false;
-
-    const fallbackQuery = useQuery({
-        queryKey: ['counsellor-options', instituteId],
-        queryFn: fetchCounselors,
-        enabled: !!instituteId && needsFallback,
-        staleTime: 5 * 60 * 1000,
-    });
-
-    const options = isScoped ? (scopedQuery.data?.counsellors ?? []) : (fallbackQuery.data ?? []);
-    const isLoading = scopedQuery.isLoading || (needsFallback && fallbackQuery.isLoading);
-
-    return { options, isLoading };
+    return {
+        options: query.data?.counsellors ?? [],
+        scoped: query.data?.scoped === true,
+        isLoading: query.isLoading,
+    };
 }

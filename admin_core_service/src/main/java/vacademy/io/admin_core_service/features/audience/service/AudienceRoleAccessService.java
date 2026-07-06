@@ -191,6 +191,18 @@ public class AudienceRoleAccessService {
         return callerRoles;
     }
 
+    /**
+     * Role names of the CURRENT request's JWT for the institute — for callers
+     * that don't have the {@code CustomUserDetails} in hand (e.g. the
+     * CounsellorScopeService gate, which most consumers invoke with just a
+     * user id). Empty outside a request context (schedulers, HMAC-internal),
+     * which callers must treat as "no privileged role" — the safe direction.
+     */
+    public Set<String> currentRequestRoles(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return Collections.emptySet();
+        return readRolesFromJwt(instituteId);
+    }
+
     private AudienceRoleAccessDto readConfig(String instituteId) {
         // Primary source: nested under ROLE_DISPLAY_SETTING.audienceRoleAccess.
         // The frontend writes here so the audience-access config lives next to

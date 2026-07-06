@@ -385,23 +385,46 @@ public class LearnerPaymentMethodService {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
+    /** Deterministic preference order when probing for a saved card. */
+    private static final List<String> SUPPORTED_VENDOR_PROBE_ORDER = List.of(
+            PaymentGateway.STRIPE.name(), PaymentGateway.EWAY.name());
+
     /**
      * The vendor whose saved payment method matters is the one on the
-     * learner's most recent chargeable plan; fall back to the institute's
-     * latest configured gateway for learners with no plans yet.
+     * learner's most recent chargeable plan. But plan invites frequently
+     * carry no vendor (free/manual invites), and the institute's
+     * newest-configured gateway is an arbitrary tiebreak — so before giving
+     * up on an unsupported answer, prefer a supported gateway where the
+     * learner actually has a customer mapping (that is where a saved card
+     * lives). Only report an unsupported vendor when the learner genuinely
+     * has no Stripe/eWay customer.
      */
     private String resolveVendor(String userId, String instituteId) {
         List<UserPlan> plans = userPlanRepository.findAllByUserIdAndInstituteIdAndStatusIn(
                 userId, instituteId, RELEVANT_PLAN_STATUSES);
-        Optional<String> planVendor = plans.stream()
+        String planVendor = plans.stream()
                 .sorted(Comparator.comparing(UserPlan::getCreatedAt,
                         Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
                 .map(p -> p.getEnrollInvite() != null ? p.getEnrollInvite().getVendor() : null)
                 .filter(StringUtils::hasText)
                 .map(String::toUpperCase)
-                .findFirst();
-        return planVendor.orElseGet(
-                () -> institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId).getVendor());
+                .findFirst()
+                .orElse(null);
+
+        if (planVendor != null && UPDATE_SUPPORTED_VENDORS.contains(planVendor)) {
+            return planVendor;
+        }
+
+        for (String candidate : SUPPORTED_VENDOR_PROBE_ORDER) {
+            if (userGatewayMappingService.findByUserIdAndInstituteId(userId, instituteId, candidate).isPresent()) {
+                return candidate;
+            }
+        }
+
+        if (planVendor != null) {
+            return planVendor;
+        }
+        return institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId).getVendor();
     }
 
     private UserInstitutePaymentGatewayMapping requireMapping(String userId, String instituteId, String vendor) {

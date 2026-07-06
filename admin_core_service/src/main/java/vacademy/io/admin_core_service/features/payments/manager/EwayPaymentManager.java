@@ -149,6 +149,91 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
         return paymentResponse;
     }
 
+    /**
+     * Replaces the card stored against an existing eWay Token Customer
+     * (Method="UpdateTokenCustomer" on the same Transaction endpoint). The
+     * TokenCustomerID is unchanged, so renewal charges pick up the new card
+     * with no local snapshot rewrite. eWay requires the customer's name on
+     * update, so identity fields are re-sent from the stored customer data.
+     * Card number / CVN arrive client-side encrypted (eCrypt), same as
+     * CreateTokenCustomer.
+     */
+    public EwayApiResponseDTO updateTokenCustomer(String tokenCustomerId,
+                                                  EwayRequestDTO cardRequest,
+                                                  EwayApiResponseDTO.Customer storedCustomer,
+                                                  Map<String, Object> paymentGatewaySpecificData) {
+        EwayApiResponseDTO.Customer customer = new EwayApiResponseDTO.Customer();
+        customer.TokenCustomerID = tokenCustomerId;
+        if (storedCustomer != null) {
+            customer.FirstName = storedCustomer.FirstName;
+            customer.LastName = storedCustomer.LastName;
+            customer.Email = storedCustomer.Email;
+            customer.Country = storedCustomer.Country;
+        }
+        if (cardRequest != null && StringUtils.hasText(cardRequest.getCountryCode())) {
+            customer.Country = cardRequest.getCountryCode();
+        }
+
+        if (cardRequest != null && StringUtils.hasText(cardRequest.getCardNumber())) {
+            EwayApiResponseDTO.CardDetails cardDetails = new EwayApiResponseDTO.CardDetails();
+            cardDetails.Name = cardRequest.getCardName();
+            cardDetails.Number = cardRequest.getCardNumber();
+            cardDetails.ExpiryMonth = cardRequest.getExpiryMonth();
+            cardDetails.ExpiryYear = cardRequest.getExpiryYear();
+            cardDetails.CVN = cardRequest.getCvn();
+            customer.CardDetails = cardDetails;
+        }
+
+        EwayApiResponseDTO.Transaction transaction = new EwayApiResponseDTO.Transaction();
+        transaction.Customer = customer;
+        transaction.Method = "UpdateTokenCustomer";
+        transaction.TransactionType = "Purchase";
+
+        EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+
+        if (response == null) {
+            throw new VacademyException("No response from e-way while updating token customer");
+        }
+        if (StringUtils.hasText(response.Errors)) {
+            throw new VacademyException("e-way token customer update failed: " + response.Errors);
+        }
+        if (response.Customer == null || !StringUtils.hasText(response.Customer.TokenCustomerID)) {
+            throw new VacademyException("e-way token customer update returned no customer");
+        }
+        return response;
+    }
+
+    /**
+     * Updates only the identity/billing fields on a Token Customer, leaving
+     * the stored card untouched (CardDetails omitted from the payload).
+     */
+    public EwayApiResponseDTO updateTokenCustomerBillingDetails(String tokenCustomerId,
+                                                                String firstName, String lastName,
+                                                                String email, String country,
+                                                                Map<String, Object> paymentGatewaySpecificData) {
+        EwayApiResponseDTO.Customer customer = new EwayApiResponseDTO.Customer();
+        customer.TokenCustomerID = tokenCustomerId;
+        customer.FirstName = firstName;
+        customer.LastName = lastName;
+        customer.Email = email;
+        customer.Country = country;
+
+        EwayApiResponseDTO.Transaction transaction = new EwayApiResponseDTO.Transaction();
+        transaction.Customer = customer;
+        transaction.Method = "UpdateTokenCustomer";
+        transaction.TransactionType = "Purchase";
+
+        EwayApiResponseDTO response = callEwayTransactionApi(transaction, paymentGatewaySpecificData);
+
+        if (response == null) {
+            throw new VacademyException("No response from e-way while updating token customer billing details");
+        }
+        if (StringUtils.hasText(response.Errors)) {
+            throw new VacademyException("e-way billing details update failed: " + response.Errors);
+        }
+        return response;
+    }
+
     public EwayTransaction getTransactionById(String transactionId, Map<String, Object> paymentGatewaySpecificData) {
         LOGGER.info("Fetching Eway transaction details for transactionId: {}", transactionId);
 

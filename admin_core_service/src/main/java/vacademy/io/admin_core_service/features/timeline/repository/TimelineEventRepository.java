@@ -113,6 +113,69 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
             @Param("studentUserIds") List<String> studentUserIds,
             @Param("perStudentLimit") int perStudentLimit);
 
+    /** Row of {@link #findJourneyRowsForUsers} — a timeline event resolved to
+     *  the lead user id it belongs to, regardless of how it was keyed. */
+    interface JourneyEventRow {
+        String getJourneyUserId();
+        String getId();
+        String getActionType();
+        String getCategory();
+        String getTitle();
+        String getDescription();
+        String getActorName();
+        java.sql.Timestamp getCreatedAt();
+    }
+
+    /**
+     * Journey events per lead user id for the CSV export, matched through BOTH
+     * linkages timeline events actually carry (same dual-keying issue
+     * {@link #findAllEventsForLead} documents for the side panel):
+     * <ul>
+     *   <li>{@code student_user_id} — how notes / follow-ups / reassign events
+     *       are stamped;</li>
+     *   <li>the {@code audience_response} behind {@code type_id} — how
+     *       status-change (and other response-keyed) events are written, whose
+     *       {@code student_user_id} is often NULL or the linked student rather
+     *       than the lead.</li>
+     * </ul>
+     * The old student_user_id-only lookup silently dropped the second class —
+     * which is most of the lead flow — so exports showed a single journey row.
+     * UNION (not ALL) dedupes events matched by both branches; the window cap
+     * applies per resolved user, newest first.
+     */
+    @Query(value = """
+            SELECT journey_user_id AS "journeyUserId",
+                   id, action_type AS "actionType", category, title, description,
+                   actor_name AS "actorName", created_at AS "createdAt"
+            FROM (
+                SELECT u.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY u.journey_user_id
+                           ORDER BY u.created_at DESC
+                       ) AS rn
+                FROM (
+                    SELECT te.id, te.action_type, te.category, te.title, te.description,
+                           te.actor_name, te.created_at,
+                           te.student_user_id AS journey_user_id
+                    FROM timeline_event te
+                    WHERE te.student_user_id IN (:userIds)
+                    UNION
+                    SELECT te.id, te.action_type, te.category, te.title, te.description,
+                           te.actor_name, te.created_at,
+                           ar.user_id AS journey_user_id
+                    FROM timeline_event te
+                    JOIN audience_response ar
+                      ON te.type IN ('AUDIENCE_RESPONSE', 'LEAD') AND ar.id = te.type_id
+                    WHERE ar.user_id IN (:userIds)
+                ) u
+            ) ranked
+            WHERE rn <= :perUserLimit
+            ORDER BY journey_user_id, created_at DESC
+            """, nativeQuery = true)
+    List<JourneyEventRow> findJourneyRowsForUsers(
+            @Param("userIds") List<String> userIds,
+            @Param("perUserLimit") int perUserLimit);
+
     /**
      * Per-student note count for a batch of users. Returns rows of
      * [student_user_id, count] so the FE can render a count chip without

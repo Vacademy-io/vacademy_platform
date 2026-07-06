@@ -27,6 +27,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class PaymentNotificatonService {
@@ -41,6 +42,9 @@ public class PaymentNotificatonService {
 
     @Autowired
     private BillingContactRecipientResolver billingContactRecipientResolver;
+
+    @Autowired
+    private InvoiceAdminCopyRecipientResolver invoiceAdminCopyRecipientResolver;
 
     public boolean sendPaymentConfirmationNotification(
             String instituteId,
@@ -108,6 +112,10 @@ public class PaymentNotificatonService {
                         .buildBillingContactAttachmentRecipient(userDTO.getId(), instituteId, channelId,
                                 List.of(attachmentDTO))
                         .ifPresent(recipients::add);
+                recipients.addAll(invoiceAdminCopyRecipientResolver.buildAdminCopyAttachmentRecipients(
+                        instituteId,
+                        recipients.stream().map(AttachmentUsersDTO::getChannelId).collect(Collectors.toSet()),
+                        List.of(attachmentDTO)));
 
                 AttachmentNotificationDTO attachmentNotification = AttachmentNotificationDTO.builder()
                         .body(emailBody)
@@ -135,6 +143,9 @@ public class PaymentNotificatonService {
                 billingContactRecipientResolver
                         .buildBillingContactRecipient(userDTO.getId(), instituteId, channelId)
                         .ifPresent(recipients::add);
+                recipients.addAll(invoiceAdminCopyRecipientResolver.buildAdminCopyRecipients(
+                        instituteId,
+                        recipients.stream().map(NotificationToUserDTO::getChannelId).collect(Collectors.toSet())));
                 notificationDTO.setUsers(recipients);
 
                 notificationService.sendEmailViaUnified(notificationDTO, instituteId);

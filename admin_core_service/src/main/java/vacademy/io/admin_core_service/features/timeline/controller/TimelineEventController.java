@@ -23,6 +23,9 @@ public class TimelineEventController {
         @Autowired
         private TimelineEventService timelineEventService;
 
+        @Autowired
+        private vacademy.io.admin_core_service.features.timeline.service.LeadJourneyBatchService leadJourneyBatchService;
+
         @GetMapping("/events")
         public ResponseEntity<Page<TimelineEventDTO>> getTimelineEvents(
                         @RequestParam String type,
@@ -92,7 +95,8 @@ public class TimelineEventController {
         @PostMapping("/student/journey-batch")
         public ResponseEntity<Map<String, List<TimelineEventDTO>>> getJourneyBatch(
                         @RequestBody List<String> studentUserIds) {
-                return ResponseEntity.ok(timelineEventService.getJourneyBatch(studentUserIds));
+                // Timeline events + call dispositions merged — see LeadJourneyBatchService.
+                return ResponseEntity.ok(leadJourneyBatchService.journeyBatch(studentUserIds));
         }
 
         /**

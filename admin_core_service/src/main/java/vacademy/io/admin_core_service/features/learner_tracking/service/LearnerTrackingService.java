@@ -60,6 +60,7 @@ public class LearnerTrackingService {
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
                 : updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
+        recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,
                 subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
@@ -75,6 +76,7 @@ public class LearnerTrackingService {
                 : updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveVideoTracking(activityLogDTO, activityLog);
+        recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForVideo(user.getUserId(), slideId, chapterId, moduleId,
                 subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
@@ -90,6 +92,7 @@ public class LearnerTrackingService {
                 : updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveVideoTracking(activityLogDTO, activityLog); // Reuse VideoTracking entity
+        recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForHtmlVideo(user.getUserId(), slideId, chapterId, moduleId,
                 subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);
@@ -105,6 +108,20 @@ public class LearnerTrackingService {
                 .orElseThrow(() -> new VacademyException("Activity Log not found"));
         updateActivityFields(activityLog, activityLogDTO);
         return activityLogRepository.save(activityLog);
+    }
+
+    /**
+     * After breadcrumbs are saved, set engaged_ms to the merged (union) breadcrumb duration -- the
+     * real engaged time, instead of the wall-clock (end_time - start_time) that counted tab-open time.
+     * If the activity has no breadcrumbs yet, we leave the entity's wall-clock fallback in place.
+     */
+    private void recomputeEngagedMsFromBreadcrumbs(ActivityLog activityLog) {
+        Long engagedMs = activityLogRepository.computeEngagedMsFromBreadcrumbs(activityLog.getId());
+        if (engagedMs != null) {
+            // 24h per-activity ceiling: guards against inflated breadcrumbs (client idle timer failing).
+            activityLog.setEngagedMs(Math.min(86_400_000L, engagedMs));
+            activityLogRepository.save(activityLog);
+        }
     }
 
     private void saveDocumentTracking(ActivityLogDTO activityLogDTO, ActivityLog activityLog) {
@@ -182,6 +199,7 @@ public class LearnerTrackingService {
                 : updateActivityLog(activityLogDTO, activityLogDTO.getId());
 
         saveAudioTracking(activityLogDTO, activityLog);
+        recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForAudio(user.getUserId(), slideId, chapterId, moduleId,
                 subjectId, packageSessionId, activityLogDTO);
         concentrationScoreService.addConcentrationScore(activityLogDTO.getConcentrationScore(), activityLog);

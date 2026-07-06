@@ -136,6 +136,20 @@ export const useVideoSync = () => {
           );
           if (validTimestamps.length === 0) continue;
 
+          // Guard the activity-level window too (mirrors syncVideoTrackingData's
+          // hasValidActivityWindow). Without this, a tab closed before playback set
+          // videoStartTime beacons start_time = 0 (-> 1970) or an end < start row.
+          if (
+            typeof activity.start_time !== "number" ||
+            typeof activity.end_time !== "number" ||
+            isNaN(activity.start_time) ||
+            isNaN(activity.end_time) ||
+            activity.start_time <= 0 ||
+            activity.end_time <= activity.start_time
+          ) {
+            continue;
+          }
+
           const payload: TrackingDataType = {
             id: activity.activity_id,
             source_id: "",

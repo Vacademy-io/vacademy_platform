@@ -96,6 +96,21 @@ export function JupyterNotebook({
                 backgroundColor: '#fafafa',
             }}
         >
+            {/*
+              Non-editable island. This block renders native <input>/<select>
+              controls and static labels *inside* Slate's contentEditable region.
+              Without contentEditable={false}, two things break:
+                1. Typing in a field fires a native `beforeinput` that bubbles to
+                   Slate's editable handler, which calls toSlatePoint on the
+                   input's DOM node (not in Slate's model) and throws
+                   "Cannot resolve a Slate point from DOM point" on every keystroke.
+                2. Slate treats the labels as editable document text, so clicking a
+                   label and typing corrupts it (e.g. "notebook" -> "noteboasdfok").
+              Marking this subtree non-editable makes Slate's hasEditableTarget
+              check bail out, fixing both. The `{children}` text anchor Slate
+              requires is kept OUTSIDE this wrapper so Slate still manages it.
+            */}
+            <div contentEditable={false} suppressContentEditableWarning>
             <div style={{ marginBottom: '16px' }}>
                 <div
                     style={{
@@ -401,8 +416,19 @@ export function JupyterNotebook({
                     )}
                 </div>
             )}
+            </div>
+            {/* end non-editable island */}
 
-            {children}
+            {/* Slate requires {children} in the DOM for the block to stay valid,
+                but Yoopta paints its default "Type / for commands" placeholder
+                over it. Keep it mounted but visually hidden — same pattern as
+                tabs-editor / mermaid-editor / table-of-contents. */}
+            <div
+                aria-hidden
+                className="pointer-events-none absolute size-0 overflow-hidden opacity-0"
+            >
+                {children}
+            </div>
 
             <style>{`
         @keyframes spin {

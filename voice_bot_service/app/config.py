@@ -100,6 +100,12 @@ class Settings:
         )
     )
 
+    # Call-open pacing: a real caller doesn't blast audio the instant the line
+    # opens. On connect the bot waits up to this long for the callee to answer /
+    # say "hello" (if they speak first, the normal turn greets them back so the
+    # bot never talks over them); on continued silence, the bot opens itself.
+    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "2.0")))
+
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).
     idle_timeout_secs: float = 7.0

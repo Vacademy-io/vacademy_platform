@@ -398,12 +398,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     )
     sentinel.set_task(task)
 
+    async def _greet_when_ready():
+        """Don't blast the opening the instant the line connects — a real caller waits
+        for the callee to pick up and say 'hello'. Give them a short beat: if they speak
+        first, the normal STT→LLM turn greets them back (so the bot never talks over their
+        'hello' and never double-greets); if they stay silent past the grace window, WE
+        open. flags['t'] advances on the first transcribed user speech, so t > connect_t
+        means the callee spoke."""
+        opening = agent.get("openingLine")
+        if not opening:
+            return
+        connect_t = time.time()
+        while time.time() - connect_t < settings.greet_delay_secs:
+            if flags["t"] > connect_t + 0.05:
+                logger.info("greet: callee spoke first — LLM will reply, skipping scripted opening (corr=%s)", corr)
+                return
+            await asyncio.sleep(0.1)
+        outcome.transcript.append({"role": "assistant", "text": opening})
+        await task.queue_frames([TTSSpeakFrame(opening)])
+
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
-        opening = agent.get("openingLine")
-        if opening:
-            outcome.transcript.append({"role": "assistant", "text": opening})
-            await task.queue_frames([TTSSpeakFrame(opening)])
+        asyncio.create_task(_greet_when_ready())
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):

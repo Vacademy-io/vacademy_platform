@@ -153,6 +153,10 @@ export function WorkbenchPage() {
     const [reassignLeads, setReassignLeads] = useState<WorkbenchLead[]>([]);
     const [reassignFromUserId, setReassignFromUserId] = useState<string | null>(null);
     const [reassignFromName, setReassignFromName] = useState<string | null>(null);
+    // Counsellor-level flows move ALL open leads server-side (no 500 cap);
+    // per-row reassign stays scoped to the one lead.
+    const [reassignAllMode, setReassignAllMode] = useState(false);
+    const [reassignTotalOpen, setReassignTotalOpen] = useState<number | null>(null);
     // True when the reassign dialog is opened from the "Mark inactive"
     // action — submit then atomically reassigns AND flips pool memberships
     // INACTIVE in one backend transaction. Cancelling leaves the counsellor
@@ -324,6 +328,10 @@ export function WorkbenchPage() {
             setReassignFromUserId(userId);
             setReassignFromName(displayName);
             setReassignLeads(leads?.content ?? []);
+            // The dialog list is a preview (page cap 500); the commit moves the
+            // TRUE total server-side via reassignAll.
+            setReassignTotalOpen(leads?.totalElements ?? leads?.content?.length ?? 0);
+            setReassignAllMode(true);
             setReassignMarkInactive(markInactive);
             setReassignOpen(true);
         } catch (e) {
@@ -354,6 +362,9 @@ export function WorkbenchPage() {
         setReassignFromUserId(lead.assigned_counselor_id);
         setReassignFromName(lead.assigned_counselor_name);
         setReassignLeads([lead]);
+        // Per-row: scope strictly to this one lead — never sweep the pipeline.
+        setReassignAllMode(false);
+        setReassignTotalOpen(null);
         setReassignMarkInactive(false);
         setReassignOpen(true);
     }
@@ -604,6 +615,8 @@ export function WorkbenchPage() {
                 fromUserId={reassignFromUserId}
                 fromUserName={reassignFromName}
                 openLeads={reassignLeads}
+                reassignAll={reassignAllMode}
+                totalOpenLeads={reassignTotalOpen ?? undefined}
                 candidates={
                     (assignableCandidatesQuery.data?.content?.length ?? 0) > 0
                         ? assignableCandidatesQuery.data!.content

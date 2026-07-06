@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { fetchTeamCallIntelligence } from './services/call-intelligence';
 
 const SETTING_KEY = 'CRM_INTELLIGENCE_SETTING';
 const GET_URL = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
@@ -31,6 +32,29 @@ export function useCallIntelligenceEnabled(): boolean {
                 | undefined;
             return Boolean(cfg?.enabled && cfg?.calls?.enabled);
         },
+        staleTime: 5 * 60 * 1000,
+    });
+    return data ?? false;
+}
+
+/**
+ * Whether the institute has ANY previously-analyzed call data (all-time). Lets the
+ * AI Intelligence tab/page keep surfacing historical insights after Call
+ * Intelligence is switched off ("off, no new data is being analyzed"). RBAC-scoped
+ * to the caller's descendants like the analytics endpoints, so a rep only counts
+ * calls in their own scope. Pass {@code enabled=false} to skip the network call
+ * when the feature is already on (the tab/page shows regardless in that case).
+ */
+export function useHasCallIntelligenceData(enabled = true): boolean {
+    const instituteId = getCurrentInstituteId();
+    const { data } = useQuery({
+        queryKey: ['crm-intelligence-has-data', instituteId],
+        queryFn: async () => {
+            // from=0 → all-time; totalAnalyzed>0 means at least one call was analyzed.
+            const res = await fetchTeamCallIntelligence(instituteId ?? '', 0, Date.now());
+            return (res?.totalAnalyzed ?? 0) > 0;
+        },
+        enabled: enabled && !!instituteId,
         staleTime: 5 * 60 * 1000,
     });
     return data ?? false;

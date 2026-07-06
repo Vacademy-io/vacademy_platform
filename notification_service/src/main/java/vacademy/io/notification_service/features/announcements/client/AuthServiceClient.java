@@ -13,9 +13,12 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,9 +31,14 @@ import java.util.Map;
 public class AuthServiceClient {
 
     private final RestTemplate restTemplate;
+    private final InternalClientUtils internalClientUtils;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${auth.server.baseurl}")
     private String authServiceBaseUrl;
+
+    @Value("${spring.application.name:notification_service}")
+    private String clientName;
 
     /**
      * Get users by role for a specific institute - with caching and retry
@@ -186,6 +194,10 @@ public class AuthServiceClient {
     /**
      * Get login credentials (username/password) for users by IDs.
      * Used to resolve {{password}} placeholders in announcement emails.
+     *
+     * NOTE: the target route contains "internal", so it is gated by InternalAuthFilter
+     * (requires clientName + HMAC Signature headers). A plain RestTemplate call returns
+     * 401 here — we MUST go through InternalClientUtils.makeHmacRequest.
      */
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))
     public List<UserCredentials> getUsersCredentials(List<String> userIds) {
@@ -194,23 +206,23 @@ public class AuthServiceClient {
         }
 
         try {
-            String url = authServiceBaseUrl + "/auth-service/v1/user/internal/users-credential";
+            String route = "/auth-service/v1/user/internal/users-credential";
+            String requestBodyJson = objectMapper.writeValueAsString(userIds);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<List<String>> entity = new HttpEntity<>(userIds, headers);
-
-            ResponseEntity<List<UserCredentials>> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    new ParameterizedTypeReference<List<UserCredentials>>() {}
+            ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServiceBaseUrl,
+                    route,
+                    requestBodyJson
             );
 
-            List<UserCredentials> credentials = response.getBody();
-            if (credentials == null) {
-                credentials = new ArrayList<>();
+            if (response.getBody() == null) {
+                return new ArrayList<>();
             }
+
+            List<UserCredentials> credentials = objectMapper.readValue(
+                    response.getBody(), new TypeReference<List<UserCredentials>>() {});
 
             log.debug("Found credentials for {} users out of {} requested IDs", credentials.size(), userIds.size());
             return credentials;

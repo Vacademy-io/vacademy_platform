@@ -21,6 +21,9 @@ public enum LeadJourneyActionType {
     /** A counselor was assigned (or reassigned) to this lead. */
     COUNSELOR_ASSIGNED,
 
+    /** The assigned counselor was removed from this lead (back to unassigned pool). */
+    COUNSELOR_UNASSIGNED,
+
     // ── Pipeline movement ────────────────────────────────────────────────────
     /** Lead moved from one pipeline status to another (metadata: from/to status). */
     STATUS_CHANGED,

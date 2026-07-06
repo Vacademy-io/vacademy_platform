@@ -87,6 +87,12 @@ export interface AiCallingSettingsData {
     // assigned to a human.
     assignOnDispositions: string[];
     stopOnDispositions: string[];
+    /**
+     * Admin-defined outcomes beyond the built-in set — the disposition strings the
+     * institute's own AI agent can return. They appear as extra rows in the
+     * Outcome → Action table and behave exactly like the built-ins.
+     */
+    customDispositions: string[];
 
     // Counsellor assignment
     assignmentMode: AssignmentMode;
@@ -130,6 +136,7 @@ const DEFAULT_AI_CALLING_SETTINGS: AiCallingSettingsData = {
     timezone: 'Asia/Kolkata',
     assignOnDispositions: ['Interested', 'Likely_Interested'],
     stopOnDispositions: ['Not_Interested'],
+    customDispositions: [],
     assignmentMode: 'ROUND_ROBIN',
     assignExhaustedToHuman: true,
     inboundLeadCapture: { enabled: false },
@@ -219,8 +226,12 @@ const fetchAiCallingSettings = async (): Promise<AiCallingSettingsData> => {
         | undefined;
     if (!saved) return DEFAULT_AI_CALLING_SETTINGS;
     const merged = { ...DEFAULT_AI_CALLING_SETTINGS, ...saved };
+    if (!Array.isArray(merged.customDispositions)) merged.customDispositions = [];
     // Migrate the legacy single window → one shift when shifts weren't saved yet.
-    if ((!saved.callingShifts || saved.callingShifts.length === 0) && (saved.windowStart || saved.windowEnd)) {
+    if (
+        (!saved.callingShifts || saved.callingShifts.length === 0) &&
+        (saved.windowStart || saved.windowEnd)
+    ) {
         merged.callingShifts = [
             { start: saved.windowStart ?? '09:00', end: saved.windowEnd ?? '21:00' },
         ];
@@ -269,6 +280,7 @@ export default function AiCallingSettings() {
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<AiCallingSettingsData>(DEFAULT_AI_CALLING_SETTINGS);
     const [hasChanges, setHasChanges] = useState(false);
+    const [newDisposition, setNewDisposition] = useState('');
 
     const { data, isLoading } = useQuery({
         queryKey: ['ai-calling-settings'],
@@ -361,11 +373,40 @@ export default function AiCallingSettings() {
             if (on) current.add(disposition);
             else current.delete(disposition);
             // A disposition can't be both "assign" and "stop" — clear the other side.
-            const other = field === 'assignOnDispositions' ? 'stopOnDispositions' : 'assignOnDispositions';
+            const other =
+                field === 'assignOnDispositions' ? 'stopOnDispositions' : 'assignOnDispositions';
             const otherSet = new Set(prev[other]);
             if (on) otherSet.delete(disposition);
             return { ...prev, [field]: Array.from(current), [other]: Array.from(otherSet) };
         });
+        setHasChanges(true);
+    };
+
+    const addCustomDisposition = () => {
+        const key = newDisposition.trim().replace(/\s+/g, '_');
+        if (!key) return;
+        const exists = [...DISPOSITIONS, ...settings.customDispositions].some(
+            (d) => d.toLowerCase() === key.toLowerCase()
+        );
+        if (exists) {
+            setNewDisposition('');
+            return;
+        }
+        setSettings((prev) => ({
+            ...prev,
+            customDispositions: [...prev.customDispositions, key],
+        }));
+        setNewDisposition('');
+        setHasChanges(true);
+    };
+
+    const removeCustomDisposition = (key: string) => {
+        setSettings((prev) => ({
+            ...prev,
+            customDispositions: prev.customDispositions.filter((d) => d !== key),
+            assignOnDispositions: prev.assignOnDispositions.filter((d) => d !== key),
+            stopOnDispositions: prev.stopOnDispositions.filter((d) => d !== key),
+        }));
         setHasChanges(true);
     };
 
@@ -427,10 +468,7 @@ export default function AiCallingSettings() {
     const mirrorBridgedCampaign = (c: Campaign) => {
         setSettings((prev) => ({
             ...prev,
-            campaigns: [
-                ...(prev.campaigns ?? []).filter((x) => x.campaignId !== c.campaignId),
-                c,
-            ],
+            campaigns: [...(prev.campaigns ?? []).filter((x) => x.campaignId !== c.campaignId), c],
         }));
     };
     const mirrorRemovedCampaign = (agentId: string) => {
@@ -458,9 +496,9 @@ export default function AiCallingSettings() {
                 <CardHeader>
                     <CardTitle>AI Calling</CardTitle>
                     <CardDescription>
-                        When enabled, leads are first called by the AI voice agent. The recording and
-                        AI summary appear on the lead profile, and a counsellor is assigned only when
-                        the outcome rules below say so.
+                        When enabled, leads are first called by the AI voice agent. The recording
+                        and AI summary appear on the lead profile, and a counsellor is assigned only
+                        when the outcome rules below say so.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -505,10 +543,11 @@ export default function AiCallingSettings() {
                         </Label>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        For an inbound AI helpline: when someone calls and isn't already a lead, a lead
-                        is created (matched by phone, so repeat callers aren&apos;t duplicated) and the
-                        call attaches to it — so it shows in Recent Leads and the Call Log, and you can
-                        follow up. Off means unknown callers&apos; calls are recorded but no lead is made.
+                        For an inbound AI helpline: when someone calls and isn&apos;t already a
+                        lead, a lead is created (matched by phone, so repeat callers aren&apos;t
+                        duplicated) and the call attaches to it — so it shows in Recent Leads and
+                        the Call Log, and you can follow up. Off means unknown callers&apos; calls
+                        are recorded but no lead is made.
                     </p>
 
                     <Separator />
@@ -531,8 +570,8 @@ export default function AiCallingSettings() {
                             </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
-                            The AI calling agent used for this institute. The credentials and campaign
-                            below are for the selected provider.
+                            The AI calling agent used for this institute. The credentials and
+                            campaign below are for the selected provider.
                         </p>
                     </div>
 
@@ -556,11 +595,12 @@ export default function AiCallingSettings() {
                 <CardHeader>
                     <CardTitle>Campaigns / Agents</CardTitle>
                     <CardDescription>
-                        Register each AI campaign id and give it an agent <b>name</b> (e.g. &ldquo;Class
-                        Feedback&rdquo;). Workflows reference the <b>name</b>, not the raw id — pick the
-                        same name once per provider and switching provider resolves to the right id
-                        automatically. Tag each Outbound (you dial) or Inbound (they dial your AI line);
-                        Inbound ids classify incoming webhooks (matched to the lead by phone).
+                        Register each AI campaign id and give it an agent <b>name</b> (e.g.
+                        &ldquo;Class Feedback&rdquo;). Workflows reference the <b>name</b>, not the
+                        raw id — pick the same name once per provider and switching provider
+                        resolves to the right id automatically. Tag each Outbound (you dial) or
+                        Inbound (they dial your AI line); Inbound ids classify incoming webhooks
+                        (matched to the lead by phone).
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -576,7 +616,9 @@ export default function AiCallingSettings() {
                                 <Input
                                     value={c.campaignId}
                                     placeholder="Campaign ID"
-                                    onChange={(e) => updateCampaign(i, { campaignId: e.target.value })}
+                                    onChange={(e) =>
+                                        updateCampaign(i, { campaignId: e.target.value })
+                                    }
                                     className="flex-1"
                                 />
                                 <Select
@@ -634,10 +676,7 @@ export default function AiCallingSettings() {
 
             {/* ── Vacademy AI agent registry (personas for our own caller) ── */}
             {providerCodes.includes('VACADEMY_AI') && (
-                <AiAgentsCard
-                    onBridged={mirrorBridgedCampaign}
-                    onRemoved={mirrorRemovedCampaign}
-                />
+                <AiAgentsCard onBridged={mirrorBridgedCampaign} onRemoved={mirrorRemovedCampaign} />
             )}
 
             {/* ── Credentials ── */}
@@ -687,8 +726,9 @@ export default function AiCallingSettings() {
                             onChange={(e) => setWebhookSecret(e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">
-                            Authenticates the provider&apos;s end-of-call webhook. Hand your AI provider
-                            the URL {webhookPath}?instituteId=…&amp;token=&lt;this secret&gt;.
+                            Authenticates the provider&apos;s end-of-call webhook. Hand your AI
+                            provider the URL {webhookPath}?instituteId=…&amp;token=&lt;this
+                            secret&gt;.
                         </p>
                     </div>
                     <div className="flex justify-end">
@@ -711,8 +751,8 @@ export default function AiCallingSettings() {
                         <CardHeader>
                             <CardTitle>Retries &amp; Calling Shifts</CardTitle>
                             <CardDescription>
-                                If a lead doesn&apos;t answer, the AI retries within these limits before
-                                giving up. Retries are only placed inside the shifts below.
+                                If a lead doesn&apos;t answer, the AI retries within these limits
+                                before giving up. Retries are only placed inside the shifts below.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -740,7 +780,8 @@ export default function AiCallingSettings() {
                                     value={settings.maxCallsPerDayPerLead}
                                     onChange={(e) =>
                                         update({
-                                            maxCallsPerDayPerLead: parseInt(e.target.value, 10) || 1,
+                                            maxCallsPerDayPerLead:
+                                                parseInt(e.target.value, 10) || 1,
                                         })
                                     }
                                     className="w-28"
@@ -769,8 +810,8 @@ export default function AiCallingSettings() {
                                 <Label>Calling shifts</Label>
                                 <p className="text-xs text-muted-foreground">
                                     Time windows the bot may (re)dial in. Add multiple shifts (e.g.
-                                    morning + evening). Applies to the timed retry re-dialer; immediate
-                                    new-lead, manual and bulk calls fire right away.
+                                    morning + evening). Applies to the timed retry re-dialer;
+                                    immediate new-lead, manual and bulk calls fire right away.
                                 </p>
                                 <div className="space-y-2">
                                     {settings.callingShifts.map((shift, i) => (
@@ -783,7 +824,9 @@ export default function AiCallingSettings() {
                                                 }
                                                 className="w-36"
                                             />
-                                            <span className="text-sm text-muted-foreground">to</span>
+                                            <span className="text-sm text-muted-foreground">
+                                                to
+                                            </span>
                                             <Input
                                                 type="time"
                                                 value={shift.end}
@@ -804,7 +847,11 @@ export default function AiCallingSettings() {
                                     ))}
                                 </div>
                                 <div>
-                                    <MyButton buttonType="secondary" scale="medium" onClick={addShift}>
+                                    <MyButton
+                                        buttonType="secondary"
+                                        scale="medium"
+                                        onClick={addShift}
+                                    >
                                         <Plus className="size-4" /> Add shift
                                     </MyButton>
                                 </div>
@@ -834,7 +881,8 @@ export default function AiCallingSettings() {
                                     className="w-28"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Shorter calls count as &ldquo;not connected&rdquo; and are retried.
+                                    Shorter calls count as &ldquo;not connected&rdquo; and are
+                                    retried.
                                 </p>
                             </div>
                         </CardContent>
@@ -845,8 +893,10 @@ export default function AiCallingSettings() {
                         <CardHeader>
                             <CardTitle>Outcome &rarr; Action</CardTitle>
                             <CardDescription>
-                                For each AI-call outcome, choose what happens. Outcomes left off both
-                                lists are retried until max retries, then assigned to a human.
+                                For each AI-call outcome, choose what happens. Outcomes left off
+                                both lists are retried until max retries, then assigned to a human.
+                                Add custom outcomes below for the dispositions your own AI agent
+                                returns.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -855,30 +905,69 @@ export default function AiCallingSettings() {
                                 <span className="w-28 text-center">Assign counsellor</span>
                                 <span className="w-28 text-center">Stop (no retry)</span>
                             </div>
-                            {DISPOSITIONS.map((d) => (
-                                <div
-                                    key={d}
-                                    className="grid grid-cols-[1fr_auto_auto] items-center gap-x-6"
+                            {[...DISPOSITIONS, ...settings.customDispositions].map((d) => {
+                                const isCustom = !(DISPOSITIONS as readonly string[]).includes(d);
+                                return (
+                                    <div
+                                        key={d}
+                                        className="grid grid-cols-[1fr_auto_auto] items-center gap-x-6"
+                                    >
+                                        <span className="flex items-center gap-2 text-sm">
+                                            {d.replace(/_/g, ' ')}
+                                            {isCustom && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeCustomDisposition(d)}
+                                                    className="text-muted-foreground transition-colors hover:text-danger-600"
+                                                    aria-label={`Remove ${d.replace(/_/g, ' ')}`}
+                                                >
+                                                    <Trash size={14} />
+                                                </button>
+                                            )}
+                                        </span>
+                                        <div className="flex w-28 justify-center">
+                                            <Switch
+                                                checked={settings.assignOnDispositions.includes(d)}
+                                                onCheckedChange={(v) =>
+                                                    toggleDisposition('assignOnDispositions', d, v)
+                                                }
+                                            />
+                                        </div>
+                                        <div className="flex w-28 justify-center">
+                                            <Switch
+                                                checked={settings.stopOnDispositions.includes(d)}
+                                                onCheckedChange={(v) =>
+                                                    toggleDisposition('stopOnDispositions', d, v)
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            <Separator />
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={newDisposition}
+                                    onChange={(e) => setNewDisposition(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            addCustomDisposition();
+                                        }
+                                    }}
+                                    placeholder="Add a custom outcome (e.g. Wrong Number)"
+                                    className="h-9 max-w-xs"
+                                />
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={addCustomDisposition}
+                                    disable={!newDisposition.trim()}
                                 >
-                                    <span className="text-sm">{d.replace(/_/g, ' ')}</span>
-                                    <div className="flex w-28 justify-center">
-                                        <Switch
-                                            checked={settings.assignOnDispositions.includes(d)}
-                                            onCheckedChange={(v) =>
-                                                toggleDisposition('assignOnDispositions', d, v)
-                                            }
-                                        />
-                                    </div>
-                                    <div className="flex w-28 justify-center">
-                                        <Switch
-                                            checked={settings.stopOnDispositions.includes(d)}
-                                            onCheckedChange={(v) =>
-                                                toggleDisposition('stopOnDispositions', d, v)
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                    <Plus size={14} /> Add outcome
+                                </MyButton>
+                            </div>
                         </CardContent>
                     </Card>
 
@@ -887,8 +976,8 @@ export default function AiCallingSettings() {
                         <CardHeader>
                             <CardTitle>Counsellor Assignment</CardTitle>
                             <CardDescription>
-                                How a counsellor is picked when a lead qualifies (or when retries are
-                                exhausted).
+                                How a counsellor is picked when a lead qualifies (or when retries
+                                are exhausted).
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">

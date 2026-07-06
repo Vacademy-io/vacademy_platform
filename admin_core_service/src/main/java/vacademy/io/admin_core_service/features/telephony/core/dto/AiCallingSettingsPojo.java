@@ -119,6 +119,24 @@ public class AiCallingSettingsPojo {
             if (byProvider != null) return byProvider;
             if (byAny != null) return byAny;
         }
+        // defaultCampaignId may hold an agent NAME rather than a raw campaign id: the
+        // Settings "Default Campaign ID" field is free text, and admins routinely paste
+        // the agent's name (e.g. "Jin AI") instead of its uuid. If it matches a
+        // registered campaign's name, resolve to that campaign's real id; otherwise use
+        // it verbatim (a raw provider campaign id, e.g. an Aavtaar id). This makes every
+        // call path — manual, bulk, workflow — reach the right agent despite the mix-up.
+        if (defaultCampaignId != null && !defaultCampaignId.isBlank() && campaigns != null) {
+            String byName = null;
+            for (CampaignConfig c : campaigns) {
+                if (c == null || c.getCampaignId() == null || c.getCampaignId().isBlank()) continue;
+                if (!defaultCampaignId.equalsIgnoreCase(c.getName())) continue;
+                if (provider != null && provider.equalsIgnoreCase(c.getProvider())) {
+                    return c.getCampaignId();          // a provider-specific name match wins
+                }
+                if (byName == null) byName = c.getCampaignId(); // else fall back to any-provider match
+            }
+            if (byName != null) return byName;
+        }
         return defaultCampaignId;
     }
 

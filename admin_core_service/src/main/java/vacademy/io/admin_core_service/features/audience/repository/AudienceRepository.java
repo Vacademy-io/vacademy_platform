@@ -3,9 +3,11 @@ package vacademy.io.admin_core_service.features.audience.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
 
 import java.sql.Timestamp;
@@ -17,6 +19,23 @@ import java.util.Optional;
  */
 @Repository
 public interface AudienceRepository extends JpaRepository<Audience, String> {
+
+    /**
+     * Atomically claim the right to start a bulk AI-call campaign for this audience:
+     * stamps {@code last_ai_campaign_started_at = now()} only if no run was started
+     * within {@code cooldownSec}. Returns 1 when claimed (proceed), 0 when a run was
+     * started recently (reject) — a single conditional UPDATE, so it's race-safe
+     * across pods and doubles as the "don't re-dial the whole list twice" guard.
+     * Own transaction so the marker commits before the async dispatch begins.
+     */
+    @Transactional
+    @Modifying
+    @Query(value = "UPDATE audience SET last_ai_campaign_started_at = now() "
+            + "WHERE id = :audienceId AND (last_ai_campaign_started_at IS NULL "
+            + "OR last_ai_campaign_started_at < now() - (:cooldownSec * interval '1 second'))",
+            nativeQuery = true)
+    int tryClaimAiCampaign(@Param("audienceId") String audienceId,
+                           @Param("cooldownSec") long cooldownSec);
 
     /**
      * Find all campaigns for a specific institute

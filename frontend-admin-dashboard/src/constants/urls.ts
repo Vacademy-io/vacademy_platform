@@ -137,6 +137,10 @@ export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telepho
 // AI voice-agent call (provider-agnostic). Fire-and-forget — the outcome arrives
 // later via the end-of-call webhook, so (unlike the bridge call) there's no live SSE.
 export const TELEPHONY_AI_CALL_CONNECT = `${BASE_URL}/admin-core-service/v1/telephony/ai-call/connect`;
+// Bulk "AI calls first for a lead list": POST places a paced AI call to every
+// eligible lead in the audience. ?dryRun=true returns {total,eligible} without dialing.
+export const TELEPHONY_AI_CALL_CAMPAIGN = (audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/ai-call/campaign/${audienceId}`;
 // Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
 // picker on the Call button when an institute has multiple ExoPhones.
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>

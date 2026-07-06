@@ -326,12 +326,13 @@ public class RestartAssessmentService {
         long differenceInMillis = attemptEndTime.getTime() - currentTime.getTime();
         long differenceInSeconds = differenceInMillis / 1000;
 
-        // Check condition
-        if (attemptEndTime.before(currentTime)) {
-            throw new VacademyException("Attempt already Ended");
-        }
-
-        return differenceInSeconds;
+        // Previously this threw "Attempt already Ended" once the window elapsed,
+        // which permanently locked a stuck-LIVE attempt (status never flipped to
+        // ENDED after a crash/disconnect) out of the resume path — the learner
+        // could never re-enter to submit even with their answer sheet ready.
+        // Clamp to 0 instead so restart succeeds and the learner is dropped into
+        // a submit-only (no time left) state rather than a dead end.
+        return Math.max(0L, differenceInSeconds);
     }
 
     private <T> void updateIfNotNull(T value, java.util.function.Consumer<T> setterMethod) {

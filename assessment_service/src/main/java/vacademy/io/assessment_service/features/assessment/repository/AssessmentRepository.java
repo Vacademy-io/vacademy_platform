@@ -221,7 +221,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN :userIds " +
             "LEFT JOIN ( " +
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
-            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -243,7 +243,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
             "LEFT JOIN ( " +
             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
-            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
             "FROM public.student_attempt sa " +
             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -263,7 +263,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "LEFT JOIN public.assessment_user_registration aur ON a.id = aur.assessment_id AND aur.user_id IN :userIds " +
                             "LEFT JOIN ( " +
                             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
-                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
                             "FROM public.student_attempt sa " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
@@ -281,7 +281,7 @@ public interface AssessmentRepository extends CrudRepository<Assessment, String>
                             "LEFT JOIN public.assessment_institute_mapping aim ON a.id = aim.assessment_id " +
                             "LEFT JOIN ( " +
                             "SELECT sa.registration_id, sa.status, sa.start_time, sa.id, sa.report_release_status, " +
-                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY sa.start_time DESC) AS rn , COUNT(*) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
+                            "ROW_NUMBER() OVER (PARTITION BY sa.registration_id ORDER BY CASE WHEN sa.status = 'LIVE' THEN 0 ELSE 1 END, sa.start_time DESC, sa.created_at DESC, sa.id DESC) AS rn , COUNT(*) FILTER (WHERE sa.status IN ('LIVE', 'ENDED')) OVER (PARTITION BY sa.registration_id) AS total_attempts " +
                             "FROM public.student_attempt sa " +
                             ") AS recent_attempt ON aur.id = recent_attempt.registration_id AND recent_attempt.rn = 1 " +
                             "WHERE (:name IS NULL OR :name = '' OR LOWER(a.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +

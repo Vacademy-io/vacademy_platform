@@ -189,7 +189,18 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         });
       });
 
-      const entireTestTimer = assessment.duration * 60;
+      // Guard against a missing/0/NaN duration. `undefined * 60` is NaN and
+      // `0 * 60`/`null * 60` is 0 — both make the live-test timer read as
+      // "00:00 / time's up" from the start (the root of the 0-score glitch).
+      // Never let a bad duration produce 0/NaN: fall back to any timer already
+      // computed for this attempt so we don't clobber a good value.
+      const durationMinutes = Number(assessment.duration);
+      const entireTestTimer =
+        Number.isFinite(durationMinutes) && durationMinutes > 0
+          ? durationMinutes * 60
+          : state.entireTestTimer > 0
+            ? state.entireTestTimer
+            : 0;
 
       return {
         assessment,

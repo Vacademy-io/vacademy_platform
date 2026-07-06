@@ -81,11 +81,19 @@ const formatStoredAssessmentData = (storedData: StoredData): FormattedData | nul
       status: "LIVE",
       tabSwitchCount: storedData.tabSwitchCount || 0,
     },
-    sections: storedData.assessment?.section_dtos?.map((section) => ({
+    sections: storedData.assessment?.section_dtos?.map((section) => {
+      // sectionTimers store timeLeft in MILLISECONDS (assessment-store.ts:168),
+      // but these fields are seconds. Convert once here — previously the raw ms
+      // value was emitted as seconds and subtracted from section.duration*60,
+      // producing wildly wrong (negative) elapsed times in the restart payload.
+      const sectionTimeLeftSeconds = Math.round(
+        (storedData.sectionTimers?.[section.id]?.timeLeft || 0) / 1000
+      );
+      return {
       sectionId: section.id,
-      sectionDurationLeftInSeconds: storedData.sectionTimers?.[section.id]?.timeLeft || 0,
+      sectionDurationLeftInSeconds: sectionTimeLeftSeconds,
       timeElapsedInSeconds: section.duration
-        ? section.duration * 60 - (storedData.sectionTimers?.[section.id]?.timeLeft || 0)
+        ? section.duration * 60 - sectionTimeLeftSeconds
         : 0,
       questions: section.question_preview_dto_list?.map((question) => ({
         questionId: question.question_id,
@@ -101,7 +109,8 @@ const formatStoredAssessmentData = (storedData: StoredData): FormattedData | nul
           optionIds: storedData.answers?.[question.question_id] || [],
         },
       })) || [],
-    })) || [],
+      };
+    }) || [],
   };
 };
 
@@ -187,6 +196,11 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
     }
   
     state.setAssessment(preview_response);
+    // setAssessment (above) computes a correct entireTestTimer from the
+    // assessment duration. Capture it so the restore setState below can fall
+    // back to it instead of clobbering the timer to 0/undefined when the
+    // server/stored remaining-time is missing.
+    const computedEntireTestTimer = useAssessmentStore.getState().entireTestTimer;
     
     // Ensure we have valid data before setting state
     if (!preview_response.section_dtos || preview_response.section_dtos.length === 0) {
@@ -261,7 +275,10 @@ export const storeFormattedData = async (formattedData: any, preview_response : 
           ])
         )
       ),
-      entireTestTimer: formattedData?.assessment?.entireTestDurationLeftInSeconds,
+      entireTestTimer:
+        Number(formattedData?.assessment?.entireTestDurationLeftInSeconds) > 0
+          ? formattedData.assessment.entireTestDurationLeftInSeconds
+          : computedEntireTestTimer,
       tabSwitchCount: formattedData?.assessment?.tabSwitchCount,
       questionStartTime: {}, // Needs separate handling
     });

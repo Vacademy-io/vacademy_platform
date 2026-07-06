@@ -250,7 +250,14 @@ export const AssessmentCard = ({
     isUpcoming && msToStart !== null && msToStart > 0 && msToStart < ONE_DAY_MS;
 
   const usedAttempts = assessmentInfo.created_attempts ?? 0;
-  const maxAttempts = assessmentInfo.assessment_attempts ?? 0;
+  // Show the SAME max the exhaustion gate uses (per-user `user_attempts` when
+  // set, else the assessment default). Previously this line always showed
+  // `assessment_attempts`, so a card could read "Attempt 2 of 5" while the
+  // button was disabled to "ENDED" because the real per-user limit was 2.
+  const maxAttempts =
+    assessmentInfo.user_attempts !== null && assessmentInfo.user_attempts !== 0
+      ? assessmentInfo.user_attempts
+      : (assessmentInfo.assessment_attempts ?? 0);
 
   const showPlayModeChip = assessment_types === "ASSESSMENT";
 

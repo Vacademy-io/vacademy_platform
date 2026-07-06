@@ -312,10 +312,21 @@ export const fetchPreviewData = async (
         value: JSON.stringify(responseData),
       });
 
-      // Update the state
+      // Update the state. This path sets `assessment` directly instead of going
+      // through the `setAssessment` reducer, so `entireTestTimer` would stay at
+      // its default 0 and the live-test timer would read "00:00 / time's up"
+      // from the start. Derive the timer from the merged duration here too, but
+      // never clobber an already-running timer (>0) for this attempt.
+      const durationMinutes = Number(responseData.duration);
       useAssessmentStore.setState((state) => ({
         ...state,
         assessment: responseData,
+        entireTestTimer:
+          state.entireTestTimer > 0
+            ? state.entireTestTimer
+            : Number.isFinite(durationMinutes) && durationMinutes > 0
+              ? durationMinutes * 60
+              : state.entireTestTimer,
       }));
     }
 

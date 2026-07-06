@@ -128,6 +128,16 @@ public class LearnerAssessmentManualStatusManager {
         if (Objects.isNull(attemptData))
             throw new VacademyException("Attempt Data is Null");
 
+        // This endpoint is used exclusively for PDF-upload (answer-sheet) manual
+        // submissions — the learner client routes coding/subjective MANUAL exams
+        // (which carry per-question responses instead of a file) to the AUTO
+        // submit endpoint. So a blank fileId here means "submit with no answer
+        // sheet". Reject it instead of silently marking the attempt ENDED with
+        // result_marks=0, which is how empty PDF submissions got auto-scored 0.
+        if (Objects.isNull(attemptData.getFileId()) || attemptData.getFileId().isBlank()) {
+            throw new VacademyException("No answer sheet uploaded. Please upload your PDF before submitting.");
+        }
+
         // Extract client sync time from the parsed JSON
         String clientSyncTime = attemptData.getClientLastSync();
         ManualAssessmentAttemptDto assessmentAttemptDto = attemptData.getAssessment();

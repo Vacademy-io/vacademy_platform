@@ -512,15 +512,16 @@ const RecentLeadsContent = () => {
         queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
     };
 
-    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
-    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    // ── Bulk assign / remove counsellor (multi-select, every view) ──
     const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
-    // Selection is only meaningful on the Unassigned view; drop it when the
-    // counsellor filter changes so stale ids can't leak into an assign.
+    // Selection works in EVERY view (assign, reassign AND bulk-remove need
+    // assigned leads too — it was previously Unassigned-only, which made the
+    // dialog's Remove mode unreachable). Drop it when the counsellor filter
+    // changes so stale ids can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
     }, [counsellorFilter]);
@@ -1137,8 +1138,8 @@ const RecentLeadsContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
-                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
-                    {isUnassignedView && selectedLeads.size > 0 && (
+                    {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
+                    {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
                                 {selectedLeads.size} selected
@@ -1191,7 +1192,7 @@ const RecentLeadsContent = () => {
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
-                            selectable={isUnassignedView}
+                            selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}

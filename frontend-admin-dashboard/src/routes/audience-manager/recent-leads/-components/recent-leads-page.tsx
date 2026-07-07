@@ -51,10 +51,14 @@ import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-f
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
-import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    BulkAssignCounsellorDialog,
+    type BulkAssignMode,
+} from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
-import { UserPlus } from '@phosphor-icons/react';
+import { CaretDown, UserMinus, UserPlus } from '@phosphor-icons/react';
 import {
     LeadEmptyState,
     LeadTable,
@@ -517,6 +521,9 @@ const RecentLeadsContent = () => {
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    // Which flow the "Bulk actions" menu opened: assign (round-robin default)
+    // or unassign (REMOVE).
+    const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
 
     // Selection works in EVERY view (assign, reassign AND bulk-remove need
     // assigned leads too — it was previously Unassigned-only, which made the
@@ -1164,14 +1171,31 @@ const RecentLeadsContent = () => {
                                 >
                                     Clear
                                 </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    scale="small"
-                                    onClick={() => setBulkAssignOpen(true)}
+                                <MyDropdown
+                                    dropdownList={[
+                                        {
+                                            label: 'Assign leads',
+                                            value: 'assign',
+                                            icon: <UserPlus className="size-4" />,
+                                        },
+                                        {
+                                            label: 'Unassign leads',
+                                            value: 'unassign',
+                                            icon: <UserMinus className="size-4" />,
+                                        },
+                                    ]}
+                                    onSelect={(value) => {
+                                        setBulkActionMode(
+                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
+                                        );
+                                        setBulkAssignOpen(true);
+                                    }}
                                 >
-                                    <UserPlus className="size-3.5" />
-                                    Assign counsellor
-                                </MyButton>
+                                    <MyButton buttonType="primary" scale="small">
+                                        Bulk actions
+                                        <CaretDown className="size-3.5" />
+                                    </MyButton>
+                                </MyDropdown>
                             </div>
                         </div>
                     )}
@@ -1217,6 +1241,7 @@ const RecentLeadsContent = () => {
                     instituteId={instituteId ?? ''}
                     leads={Array.from(selectedLeads.values())}
                     counsellorOptions={assignableCounsellorOptions}
+                    initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
                 />
 

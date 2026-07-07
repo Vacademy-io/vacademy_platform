@@ -1,0 +1,297 @@
+# AI-Assisted Workflow Creation — Design & Build Plan
+
+**Status:** Phase 0 + Phase 1 BUILT (2026-07-07, compiles + typechecks; not yet live-tested against the LLM) · **Owner:** TBD
+**Decision locked:** Template-first hybrid generation · assistive / human-in-the-loop (never auto-publishes)
+
+## Build status (2026-07-07)
+
+**Phase 0 — DONE (admin_core, BUILD SUCCESS):**
+- P0 fix: `fetch_expiring_memberships` is now institute-scoped + real end_date window (new `UserPlanRepository.findActivePlansExpiringSoonByInstitute`). No more cross-tenant leak.
+- Catalog reconciliation: fixed ~10 param-name mismatches in `WorkflowCatalogController.getQueryKeys()`, added the 2 missing queries (`fetch_live_session_attendance`, `fetch_enrollment_details`), added `POOL` applied-type.
+- New AI-grade grounding endpoint `GET /admin-core-service/v1/workflow/ai-catalog` (`WorkflowAiCatalogController`): query output shapes, per-node safety flags, generation rules, workflow JSON shape (aligned to `WorkflowBuilderDTO` @JsonProperty names).
+
+**Phase 1 — DONE (backend BUILD SUCCESS, frontend typecheck + design-lint clean):**
+- `POST /admin-core-service/v1/workflow/ai-draft` (`WorkflowAiDraftController` + `WorkflowAiDraftService`): grounding pack → LLM (reuses `LLMService`/OpenRouter, model prop `workflow.ai.draft.model`) → parse → `WorkflowValidationService.validate` → bounded repair loop (3 attempts) → returns `{workflow, rationale, clarifyingQuestions, templateUsed, validationErrors, warnings}`. Forces `status=DRAFT` + the caller's `instituteId`.
+- Frontend: `draftWorkflowWithAi` service + types; `AiDraftPanel` "Describe your automation" box wired into Step 1 of the create wizard — drafts, shows rationale/warnings, and loads the draft into the existing builder canvas (reusing the editor's DTO→ReactFlow mapping) for review before Publish.
+
+**Smoke test — PASSED 3/3 (2026-07-07)** against real OpenRouter (key from the ai-service/voice-bot pods): reproduced the exact system prompt + grounding pack and generated workflows for (1) instant thank-you email `TRIGGER→SEND_EMAIL`, (2) 3-day delayed conditional WhatsApp `TRIGGER→DELAY→CONDITION→SEND_WHATSAPP`, (3) scheduled weekly attendance `TRIGGER→QUERY→SEND_EMAIL`. All matched the `WorkflowBuilderDTO` shape (correct `trigger_event_name`/`node_type`/`source_node_id`), used no dead/mutating nodes, and had valid edges + rationale. Two bugs found + fixed: (a) the model default `anthropic/claude-3.5-sonnet` 404s on this OpenRouter account — changed to `anthropic/claude-sonnet-4.5`; (b) **admin_core has NO `openrouter.api.key`/`OPENROUTER_API_KEY` env** (only ai-service + voice-bot do), so the endpoint will 500 in prod until that key is added to admin_core's deployment.
+
+**Deploy prerequisites:** (1) add `OPENROUTER_API_KEY` to the admin_core pod env (same value ai-service uses); (2) optionally set `workflow.ai.draft.model` (default `anthropic/claude-sonnet-4.5`; `anthropic/claude-sonnet-5`/`opus-4.8` also available on the account).
+
+**Not yet done:** in-cluster end-to-end test of the deployed `/ai-draft` endpoint (the LLM path itself is verified; the Spring wiring is not exercised until deployed); institute-entity grounding injection (real audiences/batches/templates into the prompt — currently the drafter asks clarifying questions for IDs); `ai_workflow_draft` audit table + eval harness (Phase 2); conversational refinement (Phase 3).
+
+> Companion to [WORKFLOW_PLATFORM_PROGRESS.md](WORKFLOW_PLATFORM_PROGRESS.md) (the verified engine reference). Every constraint in this doc is grounded in the 2026-07-07 code+prod audit — read that doc first if a term here is unfamiliar.
+
+---
+
+## 1. Goal
+
+Let an admin describe an automation in plain language —
+
+> *"3 days after someone fills the JEE lead form, if they haven't enrolled yet, WhatsApp them the brochure."*
+
+— and get back a **complete, valid, editable workflow draft** loaded into the existing builder canvas, with a plain-English explanation of each node. The admin reviews, tweaks any node, and clicks **Publish**. Nothing is ever auto-activated.
+
+**Non-goals (v1):** autonomous/unattended workflow creation; editing arbitrary existing production workflows via chat; generating brand-new node *types* or prebuilt queries; multi-workflow campaign orchestration.
+
+### Why this is tractable (architecture fit)
+
+1. Workflows are already **declarative JSON** (`{name, trigger|schedule, nodes[], edges[]}`) — the model emits a data structure, not code or freehand SpEL.
+2. A **machine-readable catalog** already exists (`/catalog/trigger-events`, `/query-keys`, `/event-applied-types`, `/trigger-context-variables`, `/actions`) — the grounding schema is 80% there.
+3. `POST /v1/workflow/validate` gives a **closed generate→validate→repair loop** before a human sees anything.
+4. **25 tested use-case templates** with deterministic `generateWorkflow(answers)` codegen are both few-shot examples and a safe parameterization path.
+5. The builder **already loads a workflow JSON for editing** — the AI output lands in the real editor; review-before-publish *is* the human-in-the-loop guarantee.
+
+---
+
+## 2. Prerequisite (Phase 0) — the catalog is the model's ground truth, and it is currently wrong
+
+An LLM fed today's catalog will confidently emit invalid params. Before generation can be reliable, reconcile `WorkflowCatalogController` with `QueryServiceImpl` and **enrich it into an AI-grade schema**. This also fixes the human builder's dropdowns, so it pays for itself independent of the AI feature.
+
+### 2a. Fix the ~12 known param mismatches (source of truth = `QueryServiceImpl.execute()`)
+
+| Catalog says | Code actually reads |
+|---|---|
+| `statuses` | `statusList` |
+| `fieldId` (upsertUserCustomField) | `customFieldId` |
+| `studentId` (checkStudentIsPresentInPackageSession) | `userId` |
+| `dayDifference` (getAudienceResponsesByDayDifference) | `instituteId` + `daysAgo` |
+| `userId` (createSessionParticipent) | `sourceId` |
+| createSessionSchedule: `endTime`/`timezone` | only `sessionId` (+ recurrence fields) exist |
+| fetchPackageLMSSetting: `packageId` only | also requires `settingKey` |
+| getUpcomingFeeInstallments: `startDate`/`endDate` | no such params; zero required |
+| fetch_live_session_participants: `status` | no status param |
+| fetch_batch_attendance_report | omits `from`/`to`/`excludeToday` |
+
+Also: **add the 2 implemented-but-uncatalogued queries** (`fetch_live_session_attendance`, `fetch_enrollment_details`); **add event metadata** for `LEAD_CALLED_BACK` and `AUDIENCE_OPT_OUT` (currently fall back to "General/null" in the picker); **add the `POOL` event-applied-type** description.
+
+### 2b. Enrich into an AI-grade schema (new fields per catalog entry)
+
+The current catalog describes *inputs*. The model also needs *outputs* and *safety metadata*:
+
+- **Per query:** exact output keys **and the field names inside list items** (e.g. `fetch_ssigm_by_package` → `ssigm_list[]` with snake_case `full_name`/`mobile_number`; `fetch_batch_attendance_report` → `students[]` with camelCase `fullName`/`attendancePercentage`). Field-name casing differs per query — this is the #1 thing the model gets wrong.
+- **Per trigger event:** the context keys it produces (already partially in `/trigger-context-variables` — extend to all 34 wired events, not just 6).
+- **Per node type:** its config JSON schema.
+- **Safety flags:** `mutating: true` (createLiveSession, createSessionSchedule, createSessionParticipent, upsertUserCustomField, updateSSIGMRemaingDaysByOne), `dryRunSafe: false` (QUERY, SET_LEAD_STATUS, COMBOT), `hasHandler: false` (ROUTER), `stub: true` (SEND_PUSH_NOTIFICATION), `semanticWarning` (INVITE_FORM_FILL fires on page view; LIVE_SESSION_START/END are 5-min-scan approximations).
+
+Ship this as a single internal endpoint the drafter consumes: `GET /internal/workflow/ai-catalog?instituteId=…` returning the merged, corrected, enriched schema.
+
+> **Bundle the P0 fix here.** `fetch_expiring_memberships` does `userPlanRepository.findAll()` with no institute or expiry filter (cross-tenant exposure; `QueryServiceImpl.java:1616-1676`). Fix its scoping in the same pass — it lives in the layer being reconciled, and an AI that offers the expiry-reminder templates would otherwise generate a data-leaking workflow.
+
+---
+
+## 3. UX flow
+
+```
+Workflow → Create
+  ┌─────────────────────────────────────────────┐
+  │  ✦ Describe your automation                  │
+  │  ┌───────────────────────────────────────┐   │
+  │  │ 3 days after a JEE lead form fill, if  │   │
+  │  │ they haven't enrolled, WhatsApp the    │   │
+  │  │ brochure.                              │   │
+  │  └───────────────────────────────────────┘   │
+  │                       [ Draft with AI ]       │
+  └─────────────────────────────────────────────┘
+        │
+        ▼  (0–2 clarifying questions if ambiguous)
+   "Which audience is the JEE lead form?"  [ dropdown of real audiences ]
+        │
+        ▼
+   Draft rendered in the existing builder canvas
+   + right-panel explanation:
+     "① Trigger: Audience Lead Submission (JEE Leads)
+      ② Delay 3 days
+      ③ Condition: not yet enrolled
+      ④ Send WhatsApp: brochure template"
+        │
+        ▼
+   Admin edits any node → [ Publish ]   (never auto-activated; lands as DRAFT)
+```
+
+Key properties:
+- **Clarifying questions are bounded** (≤2) and prefer resolving to a *real entity picker* (audiences/batches/invites the institute owns) rather than free text — reuses the existing `EventEntityPicker` data sources.
+- The draft is a **normal workflow in the builder** — no special "AI mode." Everything downstream (validate, test-run, publish) is the existing path.
+- The explanation panel is generated alongside the JSON (the model returns `{workflow, rationale[]}`), so the admin understands what they're about to publish.
+
+---
+
+## 4. Architecture
+
+```
+┌── frontend-admin-dashboard ──────────────────────────────┐
+│  workflow/create: "Describe your automation" box         │
+│  → POST /v1/workflow/ai-draft {goal, answers?}           │
+│  ← {workflow JSON, rationale[], clarifyingQuestions[]}   │
+│  loads workflow JSON into the existing Zustand builder    │
+└──────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌── admin_core_service (orchestrator — owns workflow domain) ┐
+│  WorkflowAiDraftController.draft(goal, answers)            │
+│   1. build GROUNDING PACK (§5)                             │
+│   2. call model (ai_service / registry) with pack + goal   │
+│   3. parse → workflow JSON + rationale                     │
+│   4. VALIDATE (/validate) + LINT (§6)  ── repair loop ×N   │
+│   5. return draft (persist as DRAFT only on Publish)       │
+└───────────────────────────────────────────────────────────┘
+                         │  model completion only
+                         ▼
+┌── ai_service (model provider) ───────────────────────────┐
+│  /v1/workflow/generate  → LLM via DB model registry       │
+│  (Claude / OpenRouter; same gateway as other AI features) │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Why admin_core orchestrates (not ai_service):** the catalog, `/validate`, the institute's entities/templates, and persistence all live in admin_core. Keeping the workflow-domain logic there and treating ai_service purely as the model call avoids splitting workflow knowledge across two services. ai_service stays a thin, swappable completion provider (consistent with the existing AI-in-ai_service migration).
+
+---
+
+## 5. The grounding pack (the crux)
+
+Assembled per-request by admin_core and handed to the model. Contents:
+
+1. **Corrected + enriched catalog** (§2b) — events, queries (with output field names + safety flags), node config schemas, actions.
+2. **The institute's real entities** — audiences, batches, live sessions, enroll invites (same APIs the entity picker uses), so the model resolves "the JEE lead form" → a real `audienceId`. Names + IDs only; capped.
+3. **The institute's existing templates** — ACTIVE EMAIL + WHATSAPP `message_template` names, their `dynamic_parameters`, and channel. Lets the model reference a real `templateName` (or flag "you'll need to create a template").
+4. **Few-shot exemplars** — 3–5 of the 25 `USE_CASE_TEMPLATES`' generated JSON, chosen by trigger-type relevance to the goal. These encode the correct patterns (list-wrapping `on`, `forEach`, real field names, EVENT_BASED idempotency where needed).
+5. **The hard constraints (§7)** as explicit system-prompt rules.
+
+Token budget: the catalog + node schemas are static (cache); entities/templates are institute-scoped and capped (top-N by recency, with a note if truncated — never silently drop).
+
+---
+
+## 6. Generation strategy — template-first hybrid
+
+```
+                ┌─ goal ─┐
+                ▼        │
+   Classify trigger + intent (which of the 25 templates, if any, fits?)
+                │
+        ┌───────┴────────┐
+   template fits?      no template fits
+        │                    │
+        ▼                    ▼
+  Parameterize the     Freeform node composition
+  template's answers   from the catalog (few-shot
+  (safe codegen path;  guided). Higher scrutiny in
+  reuses tested JSON)  validate + lint.
+        │                    │
+        └──────┬─────────────┘
+               ▼
+     VALIDATE (/validate) + LINT (§6 rules)
+               │
+        errors?├── yes → feed errors back to model → regenerate (≤3 tries)
+               │
+               ▼ no
+        Draft + rationale returned
+```
+
+Template-first because the 25 templates already bake in the patterns a naive LLM breaks (see §7). The model's *first* job is classification + slot-filling against a proven template; only genuinely novel goals drop to freeform, where the validate+lint net is tightest.
+
+### Output contract the model must emit
+
+```jsonc
+{
+  "workflow": {
+    "name": "…", "description": "…",
+    "workflow_type": "EVENT_DRIVEN | SCHEDULED",
+    "trigger": { "event_name": "...", "event_applied_type": "...", "event_id": "..." },   // or
+    "schedule": { "schedule_type": "CRON", "cron_expression": "...", "timezone": "..." },
+    "nodes": [ { "id", "data": { "label", "nodeType", "config" } } ],
+    "edges": [ { "source", "target" } ]
+  },
+  "rationale": [ { "nodeId": "...", "explains": "why this node, in plain English" } ],
+  "clarifyingQuestions": [ { "id", "question", "entityType": "AUDIENCE|BATCH|...|FREE" } ],
+  "templateUsed": "lead_followup_email | null"
+}
+```
+
+If `clarifyingQuestions` is non-empty, the frontend renders them (entity pickers where possible) and re-submits with `answers` — the model must not invent an `event_id` it wasn't given.
+
+---
+
+## 7. Guardrails — the lint pass
+
+Every draft (template or freeform) runs a static lint before it's returned. Each rule encodes an audited failure mode:
+
+| # | Rule | Why (audit finding) |
+|---|---|---|
+| L1 | No reliance on QUERY `resultKey`; downstream refs use the query's real output keys | `resultKey` is silently ignored — results flat-merge via `putAll` |
+| L2 | SEND_EMAIL/SEND_WHATSAPP `on` must resolve to a List; wrap singletons `{#ctx['x']}` | handler errors if `on` isn't a Collection |
+| L3 | Recipient + `templateVars` field names must exist in the source query's output field set | snake_case vs camelCase differs per query; wrong name → literal `{{var}}` / skipped recipient |
+| L4 | Reject `ROUTER` (no handler) and `SEND_PUSH_NOTIFICATION` (stub) | unexecutable / no-op |
+| L5 | Event trigger on an at-least-once emitter → require `EVENT_BASED` idempotency | default is random UUID = no dedup → double-fires |
+| L6 | No `mutating` query in a flow the admin will Test-Run; block auto test-run if present | QUERY/SET_LEAD_STATUS/COMBOT have no dryRun gate |
+| L7 | Attach a semanticWarning when using INVITE_FORM_FILL / LIVE_SESSION_START / LIVE_SESSION_END | fires on page view / 5-min-scan approximation |
+| L8 | DELAY must use nested `delay.{value,unit}`, never flat `delayValue/delayUnit` | legacy flat shape executes as 0 delay |
+| L9 | Graph reachability: every node reachable from start; every path reaches `end`; every `targetNodeId` exists | unknown target = dropped branch + Sentry |
+| L10 | `templateName` must reference an ACTIVE institute template of the right channel — else emit "create this template first" | missing/empty `dynamic_parameters` → no mapping UI |
+| L11 | `event_id` and all entity IDs must belong to the requesting institute | cross-tenant scoping |
+| L12 | User-facing copy in any generated template must use terminology settings, not hardcoded terms | per CLAUDE.md naming rule |
+
+Lint failures that the model can fix → fed back into the repair loop. Lint *warnings* (L7) travel with the draft into the rationale panel so the admin sees them.
+
+---
+
+## 8. Safety model
+
+- **Never auto-activates.** AI output is a DRAFT; publish is a separate human action (the existing Publish button with its confirm).
+- **No side effects during drafting.** Generation reads catalog/entities/templates only; it does not run the workflow. If we later offer an in-draft "preview run," it must use `/test-run` (dryRun) **and** be blocked by L6 when mutating nodes are present.
+- **Institute-scoped** end to end (L11); the drafter only sees the requesting institute's entities/templates.
+- **Model output is untrusted** — always through validate + lint before it reaches the builder; the builder itself remains the final editable gate.
+- **Bounded cost** — ≤3 repair iterations, capped grounding pack, per-institute rate limit on drafting.
+
+---
+
+## 9. API surface (new)
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /admin-core-service/v1/workflow/ai-draft` | `{goal, answers?}` → `{workflow, rationale, clarifyingQuestions, templateUsed}` |
+| `GET /admin-core-service/internal/workflow/ai-catalog?instituteId` | merged/corrected/enriched grounding schema (also reusable by the human builder) |
+| `POST /ai-service/v1/workflow/generate` | thin model-completion endpoint (grounding pack + goal → raw model JSON) |
+
+Reuses existing: `POST /v1/workflow/validate`, `POST /v1/workflow` (create as DRAFT), the entity-picker and template-list APIs.
+
+No new tables required for v1 (drafts live client-side until Publish). *Optional* later: an `ai_workflow_draft` audit table (goal, generated JSON, accepted/edited/discarded) to build an eval set and measure edit-distance between generated and published.
+
+---
+
+## 10. Prompt design (sketch, not final)
+
+- **System:** role + the §7 constraints as hard rules + the output contract + "prefer parameterizing a template; only compose freeform if none fits; never invent an entity ID you weren't given — ask instead."
+- **Tools/context:** the grounding pack (§5) as structured JSON blocks (catalog, entities, templates, few-shot).
+- **User:** the goal, plus any prior clarifying answers.
+- **Response format:** forced JSON matching the §6 contract (use the model's structured-output / tool-call mode so parsing can't drift).
+
+Use the latest capable Claude model via the registry for generation quality; the classification step (template match) can use a cheaper tier.
+
+---
+
+## 11. Evaluation
+
+- **Golden set:** 30–50 NL goals → expected workflow skeletons (trigger type, node sequence, key params), spanning all major templates + a few genuinely novel goals. Score: `/validate` pass rate, node-sequence match, param correctness, lint-clean rate.
+- **Live-fire in staging:** publish a sample of generated drafts against a test institute and confirm they actually execute (watch `workflow_execution_log`) — because the Executions tab shows COMPLETED even on node failure, assert on per-node `SUCCESS`, not workflow status.
+- **Edit-distance metric (post-launch):** how much admins change the draft before publishing → the real quality signal.
+
+---
+
+## 12. Phasing
+
+| Phase | Scope | Rough effort |
+|---|---|---|
+| **0** | Reconcile + enrich catalog into the AI-grade schema; fix the `fetch_expiring_memberships` P0 in the same pass; expose `/internal/workflow/ai-catalog` | S–M |
+| **1 (spike)** | `POST /v1/workflow/ai-draft` (classify → template-first → validate/repair), "Describe your automation" box loading the draft into the builder, ≤2 clarifying questions | M |
+| **2** | Freeform composition for uncovered goals; full lint pass (§7); rationale/explanation panel; golden-set eval harness | M |
+| **3** | Conversational refinement ("make it 5 days", "also CC the parent") editing the draft in place; fold into the **Vacademy Assistant** initiative | M–L |
+
+---
+
+## 13. Open decisions
+
+- **Host surface:** standalone "Describe your automation" box now vs entry point inside the broader Vacademy Assistant. (Recommendation: standalone in the create page for Phase 1; converge into the Assistant at Phase 3.)
+- **Model:** single strong model for both classify + generate, or cheap-classify + strong-generate split. (Recommendation: split once volume justifies it.)
+- **Draft persistence/audit:** ship the `ai_workflow_draft` audit table in Phase 1 for the eval loop, or defer. (Recommendation: ship a minimal version — it's the only way to measure quality.)
+- **Freeform ceiling:** how far to let the model compose novel graphs vs. always requiring a human to wire routing for anything template-less.
+```

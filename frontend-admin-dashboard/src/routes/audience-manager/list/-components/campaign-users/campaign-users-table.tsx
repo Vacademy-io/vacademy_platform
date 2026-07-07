@@ -445,14 +445,15 @@ const CampaignUsersContent = ({
     const handleStatusUpdated = () =>
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
 
-    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
-    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    // ── Bulk assign / remove counsellor (multi-select, every view) ──
     const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
 
-    // Selection only applies to the Unassigned view; drop it on filter change.
+    // Selection works in every view (previously Unassigned-only, which made
+    // reassign/remove unreachable); drop it on filter change so stale ids
+    // can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
     }, [counsellorFilter]);
@@ -989,8 +990,8 @@ const CampaignUsersContent = ({
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
-                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
-                    {isUnassignedView && selectedLeads.size > 0 && (
+                    {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
+                    {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
                                 {selectedLeads.size} selected
@@ -1043,7 +1044,7 @@ const CampaignUsersContent = ({
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
-                            selectable={isUnassignedView}
+                            selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}

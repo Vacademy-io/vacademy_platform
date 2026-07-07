@@ -12,11 +12,13 @@ import {
     Flame,
     CheckCircle,
     UserPlus,
+    UserMinus,
     UploadSimple,
     DownloadSimple,
     PaperPlaneTilt,
     X,
     Clock,
+    CaretDown,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,7 +58,11 @@ import { SendMessageDialog } from './SendMessageDialog';
 import { CommunicationHistory } from './CommunicationHistory';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
-import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    BulkAssignCounsellorDialog,
+    type BulkAssignMode,
+} from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -451,6 +457,9 @@ const CampaignUsersContent = ({
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    // Which flow the "Bulk actions" menu opened: assign (round-robin default)
+    // or unassign (REMOVE).
+    const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
 
     // Selection works in every view (previously Unassigned-only, which made
     // reassign/remove unreachable); drop it on filter change so stale ids
@@ -1022,14 +1031,31 @@ const CampaignUsersContent = ({
                                 >
                                     Clear
                                 </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    scale="small"
-                                    onClick={() => setBulkAssignOpen(true)}
+                                <MyDropdown
+                                    dropdownList={[
+                                        {
+                                            label: 'Assign leads',
+                                            value: 'assign',
+                                            icon: <UserPlus className="size-4" />,
+                                        },
+                                        {
+                                            label: 'Unassign leads',
+                                            value: 'unassign',
+                                            icon: <UserMinus className="size-4" />,
+                                        },
+                                    ]}
+                                    onSelect={(value) => {
+                                        setBulkActionMode(
+                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
+                                        );
+                                        setBulkAssignOpen(true);
+                                    }}
                                 >
-                                    <UserPlus className="size-3.5" />
-                                    Assign counsellor
-                                </MyButton>
+                                    <MyButton buttonType="primary" scale="small">
+                                        Bulk actions
+                                        <CaretDown className="size-3.5" />
+                                    </MyButton>
+                                </MyDropdown>
                             </div>
                         </div>
                     )}
@@ -1085,6 +1111,7 @@ const CampaignUsersContent = ({
                     instituteId={instituteId ?? ''}
                     leads={Array.from(selectedLeads.values())}
                     counsellorOptions={assignableCounsellorOptions}
+                    initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
                 />
 

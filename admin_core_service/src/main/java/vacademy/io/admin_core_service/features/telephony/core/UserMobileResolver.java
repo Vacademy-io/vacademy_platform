@@ -56,6 +56,27 @@ public class UserMobileResolver {
     }
 
     /**
+     * The user's stored gender as {@code "MALE"}/{@code "FEMALE"} when set on the
+     * auth record, else empty. Used to tell the AI voice bot how to address the lead
+     * (honorific + Hindi second-person agreement). Form leads usually have no gender
+     * stored, so callers fall back to a name-based guess ({@link NameGender}).
+     */
+    public Optional<String> findGender(String userId) {
+        if (userId == null || userId.isBlank()) return Optional.empty();
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+            if (users == null || users.isEmpty()) return Optional.empty();
+            String g = users.get(0).getGender();
+            if (g == null) return Optional.empty();
+            g = g.trim().toUpperCase();
+            return (g.equals("MALE") || g.equals("FEMALE")) ? Optional.of(g) : Optional.empty();
+        } catch (Exception e) {
+            log.warn("auth_service gender lookup failed for userId {}", userId, e);
+            return Optional.empty();
+        }
+    }
+
+    /**
      * Display name for a user (full_name preferred, falls back to email then
      * username). Used by the timeline event "by X" line on call recordings.
      */

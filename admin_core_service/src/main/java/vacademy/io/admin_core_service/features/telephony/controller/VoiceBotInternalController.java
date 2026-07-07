@@ -68,6 +68,14 @@ public class VoiceBotInternalController {
         String leadName = row.getUserId() == null || "UNKNOWN".equals(row.getUserId())
                 ? null
                 : userMobileResolver.findDisplayName(row.getUserId()).orElse(null);
+        // Gender for how the bot addresses the lead (honorific + Hindi second-person):
+        // the stored record gender wins; else a conservative name guess (null when
+        // unknown, so the bot uses gender-neutral address instead of defaulting to "sir").
+        String leadGender = (row.getUserId() == null || "UNKNOWN".equals(row.getUserId()))
+                ? vacademy.io.admin_core_service.features.telephony.core.NameGender.of(leadName)
+                : userMobileResolver.findGender(row.getUserId())
+                        .orElseGet(() -> vacademy.io.admin_core_service.features.telephony.core
+                                .NameGender.of(leadName));
 
         AiCallingSettingsPojo settings = aiCallingSettingsService.get(instituteId);
 
@@ -106,6 +114,7 @@ public class VoiceBotInternalController {
                 ? (row.getFromNumber() != null ? row.getFromNumber() : row.getToNumber())
                 : (row.getToNumber() != null ? row.getToNumber() : row.getFromNumber()));
         out.put("leadName", leadName);
+        if (leadGender != null) out.put("leadGender", leadGender);
         out.put("responseId", row.getResponseId());
         out.put("userId", row.getUserId());
         out.put("agent", agent);

@@ -15,4 +15,10 @@ public class DocumentSlideDTO {
     private Integer totalPages;
     private String publishedData;
     private Integer publishedDocumentTotalPages;
+
+    /**
+     * When true, bypasses the publish-time shrink guard so an author can intentionally
+     * replace a large published document with a much smaller one (confirmed in the UI).
+     */
+    private boolean forcePublish;
 }

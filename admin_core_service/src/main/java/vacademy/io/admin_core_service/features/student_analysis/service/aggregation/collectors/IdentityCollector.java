@@ -30,6 +30,7 @@ public class IdentityCollector {
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
     private final PackageSessionRepository packageSessionRepository;
     private final InstituteRepository instituteRepository;
+    private final vacademy.io.admin_core_service.features.media_service.service.MediaService mediaService;
 
     /**
      * @param userId          the learner
@@ -123,9 +124,21 @@ public class IdentityCollector {
             if (opt.isPresent()) {
                 Institute inst = opt.get();
                 builder.name(inst.getInstituteName());
-                // logoFileId → construct a public CDN URL using the standard media path
-                if (inst.getLogoFileId() != null && !inst.getLogoFileId().isBlank()) {
-                    builder.logoUrl("https://media.vacademy.io/files/" + inst.getLogoFileId());
+                // logoFileId → resolve to a real permanent public URL via media_service.
+                // (The old "https://media.vacademy.io/files/{id}" path was fabricated and 404'd,
+                //  which is why the logo never rendered in the UI or the PDF.)
+                String logoFileId = inst.getLogoFileId();
+                if (logoFileId != null && !logoFileId.isBlank()) {
+                    if (logoFileId.startsWith("http://") || logoFileId.startsWith("https://")) {
+                        builder.logoUrl(logoFileId); // already a URL
+                    } else {
+                        try {
+                            String resolved = mediaService.getFilePublicUrlByIdWithoutExpiry(logoFileId);
+                            if (resolved != null && !resolved.isBlank()) builder.logoUrl(resolved.trim());
+                        } catch (Exception ex) {
+                            log.warn("[IdentityCollector] Could not resolve logo fileId={}: {}", logoFileId, ex.getMessage());
+                        }
+                    }
                 }
                 // instituteThemeCode used as brand color (may be a hex value)
                 builder.themeColor(inst.getInstituteThemeCode());

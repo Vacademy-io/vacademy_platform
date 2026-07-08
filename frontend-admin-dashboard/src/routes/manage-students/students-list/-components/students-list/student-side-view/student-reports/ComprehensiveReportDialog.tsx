@@ -50,6 +50,8 @@ import type {
     V2SubjectMarksItem,
 } from '@/types/student-analysis';
 import { ProfileSectionCard } from '../profile-ui';
+import { StudentReportCard } from './StudentReportCard';
+import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
 
 // ── V2 type alias for admin use ───────────────────────────────────────────────
 // V2AdminReportData is V2ReportData from student-analysis.ts
@@ -98,6 +100,24 @@ const fmtDate = (iso: string) => {
     } catch {
         return iso;
     }
+};
+
+// A subject label is only worth showing if it's a real subject — never a placeholder
+// catch-all bucket. The backend omits these now; this guards historical reports too.
+const SUBJECT_PLACEHOLDERS = new Set([
+    'unknown',
+    'other',
+    'others',
+    'n/a',
+    'na',
+    'general',
+    'misc',
+    'miscellaneous',
+    '-',
+]);
+const isRealSubject = (subject?: string | null): boolean => {
+    const s = subject?.trim().toLowerCase();
+    return !!s && !SUBJECT_PLACEHOLDERS.has(s);
 };
 
 const priorityTone = (priority: string) => {
@@ -857,8 +877,14 @@ function StudentReportCardAdmin({ data }: { data: V2AdminReportData }) {
     // Coalesce all arrays that the backend may return as null for sparse reports.
     const headlineMetrics = overview.headline_metrics ?? [];
     const academicAssessments = data.academics?.assessments ?? [];
-    const academicSubjectPerf = data.academics?.subject_performance ?? [];
-    const subjectMarksList = data.subject_marks?.subjects ?? [];
+    // Never surface a placeholder subject ("Unknown"/"Other"/…) to a parent. The backend already
+    // omits these, but historical reports may still carry them — filter defensively here too.
+    const academicSubjectPerf = (data.academics?.subject_performance ?? []).filter((sp) =>
+        isRealSubject(sp.subject),
+    );
+    const subjectMarksList = (data.subject_marks?.subjects ?? []).filter((sm) =>
+        isRealSubject(sm.subject),
+    );
     const courseProgressSubjects = data.course_progress?.subjects ?? [];
     const aiCrossDomainInsights = data.ai_insights?.cross_domain_insights ?? [];
     const aiRecommendations = data.ai_insights?.recommendations ?? [];
@@ -1394,6 +1420,7 @@ export const ComprehensiveReportDialog = ({
     reportName,
 }: ComprehensiveReportDialogProps) => {
     const [pdfLoading, setPdfLoading] = useState(false);
+    const instituteLogo = useInstituteLogoStore((s) => s.instituteLogo);
 
     const handleDownloadPdf = async () => {
         if (!processId) return;
@@ -1454,8 +1481,8 @@ export const ComprehensiveReportDialog = ({
                             </p>
                         </ProfileSectionCard>
                     ) : isV2AdminReport(report) ? (
-                        /* V2: single-scroll card */
-                        <StudentReportCardAdmin data={report as V2AdminReportData} />
+                        /* V2: unified parent-first "paper document" report */
+                        <StudentReportCard data={report} fallbackLogoUrl={instituteLogo} />
                     ) : (
                         /* V1: 9-tab layout */
                         <Tabs defaultValue="overview" className="w-full">

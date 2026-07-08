@@ -16,7 +16,9 @@ import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.NarrativeSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.SubjectMarksSection;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.SubjectResolver;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -48,15 +50,18 @@ public class ComprehensiveReportLLMService {
     private final ObjectMapper objectMapper;
     private final AIModelRegistryService aiModelRegistryService;
     private final AiTokenUsageService aiTokenUsageService;
+    private final SubjectResolver subjectResolver;
 
     public ComprehensiveReportLLMService(
             @Value("${openrouter.api.key}") String apiKey,
             ObjectMapper objectMapper,
             AIModelRegistryService aiModelRegistryService,
-            AiTokenUsageService aiTokenUsageService) {
+            AiTokenUsageService aiTokenUsageService,
+            SubjectResolver subjectResolver) {
         this.objectMapper = objectMapper;
         this.aiModelRegistryService = aiModelRegistryService;
         this.aiTokenUsageService = aiTokenUsageService;
+        this.subjectResolver = subjectResolver;
         this.webClient = WebClient.builder()
                 .baseUrl(API_URL)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
@@ -174,7 +179,9 @@ public class ComprehensiveReportLLMService {
             if (subjectsNode.isArray()) {
                 for (JsonNode s : subjectsNode) {
                     String subject = s.path("subject").asText(null);
-                    if (subject == null || subject.isBlank()) continue;
+                    // Drop null/blank AND placeholder subjects ("Other"/"Unknown"/…) — we never
+                    // surface a catch-all bucket to a parent.
+                    if (subject == null || subject.isBlank() || subjectResolver.isPlaceholder(subject)) continue;
                     Double obtained = s.has("marks_obtained") && !s.get("marks_obtained").isNull()
                             ? s.get("marks_obtained").asDouble() : null;
                     Double total = s.has("total_marks") && !s.get("total_marks").isNull()
@@ -219,9 +226,12 @@ public class ComprehensiveReportLLMService {
 
                     STRICT RULES:
                     1. Do NOT invent, estimate, or alter any marks. Only sum the exact numbers given per item.
-                    2. Every item must be assigned to exactly one subject.
-                    3. Use clean, human-readable subject names (e.g. "Physics", "Mathematics", "Chemistry",
-                       "Biology", "English"). Use "Other" only when a subject truly cannot be inferred.
+                    2. Use clean, human-readable subject names (e.g. "Physics", "Mathematics", "Chemistry",
+                       "Biology", "English", "Science", "Social Studies").
+                    3. If — and only if — you genuinely cannot infer a subject for an item from its title or
+                       hint, OMIT that item entirely. NEVER invent a catch-all bucket: do NOT output
+                       "Other", "Unknown", "General", "Misc", or similar. It is better to drop an item than
+                       to mislabel it. (Its marks still count elsewhere in the report.)
                     4. "topics" for each subject is the list of item titles clustered into it.
 
                     Return ONLY a valid JSON object with this exact structure (no extra keys):
@@ -318,6 +328,7 @@ public class ComprehensiveReportLLMService {
                     .sectionCommentary(parseSectionCommentary(parsed.path("section_commentary")))
                     .parentSummary(parsed.path("parent_summary").asText(null))
                     .overviewOneLine(parsed.path("overview_one_line").asText(null))
+                    .narrative(parseNarrative(parsed.path("narrative")))
                     .build();
 
             log.info("[ComprehensiveReportLLM] Successfully generated ai_insights with model={}", model);
@@ -348,7 +359,11 @@ public class ComprehensiveReportLLMService {
                     .liveClasses(facts.getLiveClasses())
                     .achievements(facts.getAchievements())
                     .assignments(facts.getAssignments())
+                    .subjectMarks(facts.getSubjectMarks())
                     .doubtsAndEngagement(facts.getDoubtsAndEngagement())
+                    // Learning insights (topic mastery / Bloom's / confidence / misconceptions)
+                    // parsed from processed_json — the rich texture that made v1's analysis deep.
+                    .learningInsights(facts.getLearningInsights())
                     .strengths(facts.getStrengths())
                     .areasToImprove(facts.getAreasToImprove())
                     .build();
@@ -356,19 +371,25 @@ public class ComprehensiveReportLLMService {
             String factsJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(factsOnly);
 
             return """
-                    You are given the verified, deterministic student report data below (Layer-1 facts).
+                    You are given the verified, deterministic student report data below (Layer-1 facts),
+                    including a "learning_insights" block (topic mastery, Bloom's thinking-skill levels,
+                    confidence, and specific misconceptions) parsed from the learner's recent attempts.
 
-                    YOUR TASK: generate ONLY the "ai_insights" JSON object (not the full report).
+                    YOUR TASK: generate ONE JSON object containing BOTH the "ai_insights" fields AND a rich
+                    "narrative" object (a deep, parent-readable written analysis). Use the learning_insights
+                    heavily — that is where the real texture is.
 
                     STRICT RULES:
                     1. You MUST NOT introduce any new numbers, percentages, dates, or counts not present in the facts.
-                    2. You ONLY interpret, correlate, and explain what you see — but you MUST use ALL of the data below.
+                    2. You ONLY interpret, correlate, and explain what you see — but you MUST use ALL of the data below,
+                       especially learning_insights (weak topics, confidently-wrong answers, and misconceptions).
                     3. STRENGTHS and WEAKNESSES — derive these from EVERY available domain, not just assessments:
+                       - learning_insights.topic_mastery (topic + accuracy + mastery_level): Expert/Proficient → strength, Developing/Beginner → weakness.
                        - course_progress.subjects (subject + completion_percentage): high completion → strength, low → weakness.
                        - academics.subject_performance (subject + score_percentage): high score → strength, low → weakness.
                        - Also consider assignments (submitted/on-time/avg score), attendance %, live-class attendance,
                          and study consistency as strengths/weaknesses where clearly good or poor.
-                       The map value is a 0-100 confidence: use the subject's own completion_percentage or score_percentage
+                       The map value is a 0-100 confidence: use the topic's own accuracy / completion_percentage / score_percentage
                        when available, otherwise your best qualitative rating consistent with the facts.
                        Classification: strength if the value is >= 60, weakness/area-to-improve if < 60.
                        Aim for 3-6 strengths and 2-6 areas to improve whenever the data supports it, and ALWAYS return at
@@ -377,11 +398,22 @@ public class ComprehensiveReportLLMService {
                     4. "summary" is a one-sentence AI summary shown inside the ai_insights card.
                     5. "parent_summary" is a jargon-free 2-4 sentence paragraph written for a parent — highlight achievements and one clear focus area.
                     6. "overview_one_line" is a ≤15-word headline shown under the student's name on the report cover.
-                    7. "cross_domain_insights" is an array of 2-5 observations that connect two or more sections (e.g., attendance vs marks, progress vs assignments).
+                    7. "cross_domain_insights" is an array of 2-5 observations that connect two or more sections (e.g., attendance vs marks, confidence vs accuracy, progress vs assignments).
                     8. "recommendations" is the IMPROVEMENT PATH: 3-5 concrete, actionable, prioritized (HIGH/MEDIUM/LOW) steps.
-                       Each must name the specific area it addresses (a weak subject, low attendance, pending assignments, etc.)
+                       Each must name the specific area it addresses (a weak topic/subject, a misconception, low attendance, pending assignments, etc.)
                        and a clear action the student/parent can take. Always produce at least 3 when any weakness or gap exists.
                     9. "section_commentary" is optional; include only for sections where you have a genuine observation.
+                    10. "narrative" is a deep written analysis in RICH MARKDOWN (the parent-facing detail view). Each field:
+                        - Use `###` sub-headers and put a blank line (\\n\\n) before every header, table, and list so it renders cleanly.
+                        - Use Markdown tables to compare data and **bold** for key metrics; keep it readable, not a wall of text.
+                        - Ground every claim in the facts above; do NOT invent numbers.
+                        Fields:
+                        - "learning_frequency": consistency & gaps in engagement (use study_habits / login facts).
+                        - "progress": overall trajectory; frame as previous-vs-current where trend data exists.
+                        - "student_efforts": effort vs output (time spent vs accuracy/completion). Include a small table.
+                        - "topics_of_improvement": topics trending up (from topic_mastery / subject_performance). Bullet list.
+                        - "topics_of_degradation": topics needing attention (weak mastery, misconceptions, confidently-wrong). Bullet list with ⚠️.
+                        - "remedial_points": a concrete `- [ ]` action checklist (5-10 items) tied to the weak areas and misconceptions.
 
                     Return ONLY a valid JSON object with this exact structure (no extra keys):
                     {
@@ -392,7 +424,15 @@ public class ComprehensiveReportLLMService {
                       "strengths": { "Subject/Topic": 85 },
                       "weaknesses": { "Subject/Topic": 40 },
                       "recommendations": [{ "priority": "HIGH", "area": "...", "suggestion": "..." }],
-                      "section_commentary": { "attendance": "...", "academics": "..." }
+                      "section_commentary": { "attendance": "...", "academics": "..." },
+                      "narrative": {
+                        "learning_frequency": "### ... rich markdown ...",
+                        "progress": "### ... rich markdown ...",
+                        "student_efforts": "### ... rich markdown ...",
+                        "topics_of_improvement": "### ... rich markdown ...",
+                        "topics_of_degradation": "### ... rich markdown ...",
+                        "remedial_points": "### ... rich markdown checklist ..."
+                      }
                     }
 
                     STUDENT REPORT FACTS:
@@ -442,5 +482,32 @@ public class ComprehensiveReportLLMService {
             node.fields().forEachRemaining(e -> map.put(e.getKey(), e.getValue().asText()));
         }
         return map;
+    }
+
+    /**
+     * Parses the v1-style rich-Markdown "narrative" object. Returns null when the model omitted it
+     * or every field is blank, so the processor/UI simply skip the "Detailed analysis" panel.
+     */
+    private NarrativeSection parseNarrative(JsonNode node) {
+        if (node == null || !node.isObject()) return null;
+        NarrativeSection narrative = NarrativeSection.builder()
+                .learningFrequency(textOrNull(node, "learning_frequency"))
+                .progress(textOrNull(node, "progress"))
+                .studentEfforts(textOrNull(node, "student_efforts"))
+                .topicsOfImprovement(textOrNull(node, "topics_of_improvement"))
+                .topicsOfDegradation(textOrNull(node, "topics_of_degradation"))
+                .remedialPoints(textOrNull(node, "remedial_points"))
+                .build();
+        boolean anyContent = narrative.getLearningFrequency() != null || narrative.getProgress() != null
+                || narrative.getStudentEfforts() != null || narrative.getTopicsOfImprovement() != null
+                || narrative.getTopicsOfDegradation() != null || narrative.getRemedialPoints() != null;
+        return anyContent ? narrative : null;
+    }
+
+    private String textOrNull(JsonNode node, String field) {
+        JsonNode v = node.path(field);
+        if (v.isMissingNode() || v.isNull()) return null;
+        String s = v.asText();
+        return (s == null || s.isBlank()) ? null : s;
     }
 }

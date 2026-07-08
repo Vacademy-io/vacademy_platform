@@ -216,6 +216,18 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- Inline-SVG rendering (Batik) for the student report PDF charts (radar/donut) -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-svg-support</artifactId>
+            <version>1.0.10</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
         <dependency>
             <groupId>com.itextpdf</groupId>

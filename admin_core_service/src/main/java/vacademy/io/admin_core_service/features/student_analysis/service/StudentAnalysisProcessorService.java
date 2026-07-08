@@ -58,6 +58,9 @@ public class StudentAnalysisProcessorService {
         // Transactional persistence — separate bean so @Transactional proxy applies
         private final StudentAnalysisPersistenceService persistenceService;
 
+        // Read-only access to prior reports for trend/change computation (B3).
+        private final vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository processRepository;
+
         // Learner notification (best-effort; never affects report generation)
         private final StudentReportNotificationService studentReportNotificationService;
 
@@ -142,6 +145,10 @@ public class StudentAnalysisProcessorService {
                                 process.getEndDateIso(),
                                 modules);
 
+                // Step 1.5: Enrich headline-metric trends from the most recent prior report (best-effort).
+                // Done before narration so the LLM also sees the trend context.
+                enrichTrends(report, process);
+
                 // Step 2: Layer-2 AI narrative (best-effort; failure → report without ai_insights)
                 log.info("[Student-Analysis-Processor] [v2] Generating AI narrative");
                 try {
@@ -158,6 +165,11 @@ public class StudentAnalysisProcessorService {
                                 }
                                 if (insights.getOverviewOneLine() != null && report.getOverview() != null) {
                                         report.getOverview().setOneLine(insights.getOverviewOneLine());
+                                }
+
+                                // Lift the v1-style deep Markdown narrative to the report top level.
+                                if (insights.getNarrative() != null) {
+                                        report.setNarrative(insights.getNarrative());
                                 }
 
                                 // Convert LLM strength/weakness maps (topic→confidence) to TopicConfidence lists
@@ -209,6 +221,82 @@ public class StudentAnalysisProcessorService {
         }
 
         /**
+         * B3: Enrich {@code overview.headline_metrics} with trend/change vs the most recent prior
+         * COMPLETED v2 report for the same user + package-session. Best-effort and READ-ONLY — any
+         * failure (no prior report, unparseable JSON) simply leaves trends null, exactly as before.
+         */
+        private void enrichTrends(ComprehensiveStudentReport report, StudentAnalysisProcess process) {
+                try {
+                        if (report.getOverview() == null || report.getOverview().getHeadlineMetrics() == null
+                                        || report.getOverview().getHeadlineMetrics().isEmpty()) {
+                                return;
+                        }
+                        String packageSessionId = process.getPackageSessionId() != null
+                                        ? process.getPackageSessionId()
+                                        : process.getBatchId();
+                        if (packageSessionId == null) {
+                                return; // can't scope a comparable prior report
+                        }
+
+                        var priorOpt = processRepository.findMostRecentPriorV2Report(
+                                        process.getUserId(), packageSessionId, process.getEndDateIso());
+                        if (priorOpt.isEmpty() || priorOpt.get().getReportJson() == null) {
+                                return;
+                        }
+
+                        ComprehensiveStudentReport prior = objectMapper.readValue(
+                                        priorOpt.get().getReportJson(), ComprehensiveStudentReport.class);
+                        if (prior.getOverview() == null || prior.getOverview().getHeadlineMetrics() == null) {
+                                return;
+                        }
+
+                        // Map prior metrics by key → numeric value (skip non-numeric like "3 / 5").
+                        java.util.Map<String, Double> priorByKey = new java.util.HashMap<>();
+                        prior.getOverview().getHeadlineMetrics().forEach(m -> {
+                                Double v = numericValue(m.getValue());
+                                if (m.getKey() != null && v != null) priorByKey.put(m.getKey(), v);
+                        });
+                        if (priorByKey.isEmpty()) return;
+
+                        for (var metric : report.getOverview().getHeadlineMetrics()) {
+                                Double cur = numericValue(metric.getValue());
+                                Double prev = metric.getKey() != null ? priorByKey.get(metric.getKey()) : null;
+                                if (cur == null || prev == null) continue;
+
+                                double delta = cur - prev;
+                                double rounded = Math.round(delta * 10.0) / 10.0;
+                                metric.setTrend(rounded > 0.5 ? "up" : (rounded < -0.5 ? "down" : "steady"));
+                                // Only set a change label when the metric doesn't already carry one
+                                // (e.g. study_time uses change for "~N min/day").
+                                if (metric.getChange() == null) {
+                                        String unit = metric.getUnit() != null ? metric.getUnit() : "";
+                                        String num = (rounded == Math.floor(rounded))
+                                                        ? String.valueOf((long) rounded) : String.valueOf(rounded);
+                                        metric.setChange((rounded >= 0 ? "+" : "") + num + unit + " vs last");
+                                }
+                        }
+                        log.info("[Student-Analysis-Processor] [v2] Enriched headline-metric trends from prior report {}",
+                                        priorOpt.get().getId());
+                } catch (Exception e) {
+                        log.warn("[Student-Analysis-Processor] [v2] Trend enrichment skipped (non-fatal): {}", e.getMessage());
+                }
+        }
+
+        /** Best-effort numeric coercion of a HeadlineMetric value (Number or numeric String). */
+        private Double numericValue(Object value) {
+                if (value == null) return null;
+                if (value instanceof Number n) return n.doubleValue();
+                try {
+                        String s = value.toString().trim();
+                        // Ignore composite values like "3 / 5" — not a single comparable number.
+                        if (s.contains("/")) return null;
+                        return Double.parseDouble(s.replaceAll("[^0-9.\\-]", ""));
+                } catch (Exception e) {
+                        return null;
+                }
+        }
+
+        /**
          * Deterministic safety net for the "insight" sections. The LLM is the primary author,
          * but if it returned empty strengths/areas (or timed out entirely), we derive them from
          * the Layer-1 facts so the report is never missing strengths, areas-to-improve, or an
@@ -221,6 +309,15 @@ public class StudentAnalysisProcessorService {
                         // Candidate (topic, score) pairs. Priority: assessment subject score %, then course
                         // completion %, then individual assessment names (last resort so we always have topics).
                         java.util.LinkedHashMap<String, Integer> topicScores = new java.util.LinkedHashMap<>();
+                        // Highest priority: per-topic mastery parsed from processed_json (real accuracy per topic).
+                        if (report.getLearningInsights() != null && report.getLearningInsights().isAvailable()
+                                        && report.getLearningInsights().getTopicMastery() != null) {
+                                report.getLearningInsights().getTopicMastery().forEach(tm -> {
+                                        if (tm.getTopic() != null && tm.getAccuracy() != null) {
+                                                topicScores.putIfAbsent(tm.getTopic(), (int) Math.round(tm.getAccuracy()));
+                                        }
+                                });
+                        }
                         if (report.getAcademics() != null && report.getAcademics().getSubjectPerformance() != null) {
                                 report.getAcademics().getSubjectPerformance().forEach(sp -> {
                                         if (sp.getSubject() != null && sp.getScorePercentage() != null) {

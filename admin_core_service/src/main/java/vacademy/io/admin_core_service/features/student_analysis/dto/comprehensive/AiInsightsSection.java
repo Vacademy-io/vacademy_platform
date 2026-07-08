@@ -74,6 +74,14 @@ public class AiInsightsSection {
     @JsonIgnore
     private Map<String, Integer> weaknessesMap;
 
+    /**
+     * v1-style deep Markdown narrative parsed from the SAME LLM response.
+     * After narration, the processor lifts this to {@code ComprehensiveStudentReport.narrative}.
+     * Not serialized inside {@code ai_insights}.
+     */
+    @JsonIgnore
+    private NarrativeSection narrative;
+
     @Data
     @Builder
     @AllArgsConstructor

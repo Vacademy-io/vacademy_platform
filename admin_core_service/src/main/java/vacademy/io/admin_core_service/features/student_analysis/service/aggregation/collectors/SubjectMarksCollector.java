@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.slide.repository.AssignmentSlideR
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AcademicsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.SubjectMarksSection;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.SubjectResolver;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -46,6 +47,7 @@ public class SubjectMarksCollector {
     private final AssignmentSlideRepository assignmentSlideRepository;
     private final QuestionSlideTrackedRepository questionSlideTrackedRepository;
     private final QuizSlideQuestionTrackedRepository quizSlideQuestionTrackedRepository;
+    private final SubjectResolver subjectResolver;
 
     /**
      * @param academics already-collected AcademicsSection (its assessments are reused here to
@@ -64,6 +66,13 @@ public class SubjectMarksCollector {
             // Keep only gradable items (both a score AND a positive total) so neither the
             // deterministic grouping nor the LLM can produce a >100% subject from a missing total.
             items.removeIf(i -> !isValidForAggregation(i));
+
+            // Resolve each item's subject (DB hint → keyword inference from the title). Unresolved
+            // items get a null subject so the grouping below OMITS them rather than bucketing them
+            // into "Other". The improved hint also flows into the LLM clustering prompt.
+            for (SubjectMarksSection.GradedItem item : items) {
+                item.setSubject(subjectResolver.resolve(item.getSubject(), item.getTitle()));
+            }
 
             if (items.isEmpty()) {
                 return SubjectMarksSection.builder().available(false).items(List.of()).subjects(List.of()).build();
@@ -84,14 +93,17 @@ public class SubjectMarksCollector {
     }
 
     /**
-     * Deterministic fallback: group items by subject hint (null → "Other"), sum
-     * obtained/total, percentage = obtained/total*100. Public so the processor can
-     * re-derive this if the LLM-clustered subjects come back empty.
+     * Deterministic fallback: group items by RESOLVED subject, sum obtained/total,
+     * percentage = obtained/total*100. Items whose subject cannot be resolved (null/blank/
+     * placeholder) are OMITTED — we never emit an "Other"/"Unknown" bucket to a parent. Public
+     * so the processor can re-derive this if the LLM-clustered subjects come back empty.
      */
     public List<SubjectMarksSection.SubjectMarks> deterministicGroup(List<SubjectMarksSection.GradedItem> items) {
         Map<String, List<SubjectMarksSection.GradedItem>> bySubject = new LinkedHashMap<>();
         for (SubjectMarksSection.GradedItem item : items) {
-            String subject = (item.getSubject() != null && !item.getSubject().isBlank()) ? item.getSubject() : "Other";
+            // Re-resolve defensively so this stays correct even if called with un-enriched items.
+            String subject = subjectResolver.resolve(item.getSubject(), item.getTitle());
+            if (subject == null) continue;   // unresolved → omit, never "Other"
             bySubject.computeIfAbsent(subject, k -> new ArrayList<>()).add(item);
         }
 

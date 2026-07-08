@@ -54,6 +54,7 @@ public class ComprehensiveReportAggregator {
     private final LoginCollector loginCollector;
     private final OverviewBuilder overviewBuilder;
     private final SubjectMarksCollector subjectMarksCollector;
+    private final LearningInsightsCollector learningInsightsCollector;
 
     /**
      * @param userId      learner ID
@@ -128,11 +129,15 @@ public class ComprehensiveReportAggregator {
                     ? CompletableFuture.supplyAsync(() -> loginCollector.collect(userId, startDate, endDate), executor)
                     : null;
 
+            CompletableFuture<LearningInsightsSection> learningInsightsFuture = has(mods, ReportModule.LEARNING_INSIGHTS)
+                    ? CompletableFuture.supplyAsync(() -> learningInsightsCollector.collect(userId, startDate, endDate), executor)
+                    : null;
+
             // Wait for all active futures
             List<CompletableFuture<?>> active = Stream.of(
                             identityFuture, instituteFuture, attendanceFuture, liveClassFuture,
                             academicsFuture, subjectMarksFuture, activityFuture, progressFuture, certFuture,
-                            assignmentFuture, doubtFuture, loginFuture)
+                            assignmentFuture, doubtFuture, loginFuture, learningInsightsFuture)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
@@ -157,6 +162,7 @@ public class ComprehensiveReportAggregator {
             AssignmentsSection assignments = section(assignmentFuture, AssignmentsSection.builder().available(false).build());
             DoubtsAndEngagementSection doubtsAndEngagement = section(doubtFuture, DoubtsAndEngagementSection.builder().available(false).build());
             LoginSection login = section(loginFuture, LoginSection.builder().available(false).build());
+            LearningInsightsSection learningInsights = section(learningInsightsFuture, LearningInsightsSection.builder().available(false).build());
 
             // Build the period section
             ReportPeriodSection period = buildPeriod(startDate, endDate);
@@ -186,6 +192,7 @@ public class ComprehensiveReportAggregator {
                     .assignments(assignments)
                     .doubtsAndEngagement(doubtsAndEngagement)
                     .login(login)
+                    .learningInsights(learningInsights)
                     .includedModules(new ArrayList<>(mods))
                     .dataNotes(buildDataNotes())
                     .build();
@@ -222,6 +229,7 @@ public class ComprehensiveReportAggregator {
                     .achievements(has(mods, ReportModule.CERTIFICATES) ? List.of() : null)
                     .assignments(has(mods, ReportModule.ASSIGNMENTS) ? AssignmentsSection.builder().available(false).build() : null)
                     .doubtsAndEngagement(has(mods, ReportModule.DOUBTS) ? DoubtsAndEngagementSection.builder().available(false).build() : null)
+                    .learningInsights(has(mods, ReportModule.LEARNING_INSIGHTS) ? LearningInsightsSection.builder().available(false).build() : null)
                     .includedModules(new ArrayList<>(mods))
                     .dataNotes(buildDataNotes())
                     .build();
@@ -318,6 +326,7 @@ public class ComprehensiveReportAggregator {
         return List.of(
                 "Trends compare against the previous report period when available.",
                 "Class rank and percentile are within this batch for the selected period.",
+                "Learning insights (topic mastery, thinking skills, confidence) are derived from AI analysis of the learner's recent attempts.",
                 "Sections the institute did not enable or had no data for are omitted."
         );
     }

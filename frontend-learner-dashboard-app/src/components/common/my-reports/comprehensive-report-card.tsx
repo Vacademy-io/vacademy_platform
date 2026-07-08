@@ -12,6 +12,24 @@ import type {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// A subject label is only worth showing if it's a real subject — never a placeholder catch-all.
+// The backend omits these now; this guards historical reports too.
+const SUBJECT_PLACEHOLDERS = new Set([
+  "unknown",
+  "other",
+  "others",
+  "n/a",
+  "na",
+  "general",
+  "misc",
+  "miscellaneous",
+  "-",
+]);
+function isRealSubject(subject?: string | null): boolean {
+  const s = subject?.trim().toLowerCase();
+  return !!s && !SUBJECT_PLACEHOLDERS.has(s);
+}
+
 function formatDate(iso: string): string {
   if (!iso) return "-";
   try {
@@ -162,7 +180,9 @@ function V2AttendanceCard({ att }: { att: NonNullable<V2ReportData["attendance"]
 
 function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> }) {
   const assessments = acs.assessments ?? [];
-  const subjectPerf = acs.subject_performance ?? [];
+  // Never surface a placeholder subject ("Unknown"/"Other"/…). Backend omits these; filter
+  // defensively for historical reports too.
+  const subjectPerf = (acs.subject_performance ?? []).filter((sp) => isRealSubject(sp.subject));
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
       <V2SectionHeading>Academic Performance</V2SectionHeading>
@@ -193,7 +213,7 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
                     <p className="font-medium text-neutral-800">{a.name}</p>
                     <p className="text-xs text-neutral-500">{formatDate(a.date)}</p>
                   </td>
-                  <td className="py-2.5 text-neutral-600">{a.subject}</td>
+                  <td className="py-2.5 text-neutral-600">{isRealSubject(a.subject) ? a.subject : "—"}</td>
                   <td className="py-2.5 text-right font-mono text-neutral-800">
                     {a.marks}/{a.total_marks} · {a.percentage}%
                   </td>
@@ -247,7 +267,8 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
 // ── V2 Marks by Subject ────────────────────────────────────────────────────────
 
 function V2SubjectMarksCard({ sm }: { sm: NonNullable<V2ReportData["subject_marks"]> }) {
-  const subjects = sm.subjects ?? [];
+  // Never surface a placeholder subject donut ("Other"/"Unknown"/…).
+  const subjects = (sm.subjects ?? []).filter((s) => isRealSubject(s.subject));
   if (subjects.length === 0) return null;
 
   return (

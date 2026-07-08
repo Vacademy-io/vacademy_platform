@@ -1910,6 +1910,23 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             @Param("endDate") java.sql.Timestamp endDate);
 
     /**
+     * Find ALL processed activity logs for a user within a date range (capped at 50, newest first).
+     * Used by the v2 comprehensive report's LearningInsightsCollector, which parses each row's
+     * processed_json into aggregated topic-mastery / Bloom's / confidence / misconception graphs.
+     * The cap bounds parsing cost while staying representative over a typical report window.
+     */
+    @Query(value = "SELECT * FROM activity_log " +
+            "WHERE user_id = :userId " +
+            "AND status = 'processed' " +
+            "AND created_at BETWEEN :startDate AND :endDate " +
+            "ORDER BY created_at DESC " +
+            "LIMIT 50", nativeQuery = true)
+    List<ActivityLog> findAllProcessedLogsForInsights(
+            @Param("userId") String userId,
+            @Param("startDate") java.sql.Timestamp startDate,
+            @Param("endDate") java.sql.Timestamp endDate);
+
+    /**
      * Find processed activity logs by user_id and slide_id
      * Used by LLM analytics API to fetch processed data for specific slide
      */

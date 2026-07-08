@@ -252,7 +252,57 @@ export interface V2ReportData {
     recommendations: V2Recommendation[];
     section_commentary: Record<string, string>;
   };
+  learning_insights?: V2LearningInsights;
+  narrative?: V2Narrative;
   data_notes?: string[];
+}
+
+export interface V2LearningInsights {
+  available: boolean;
+  attempts_analyzed?: number;
+  topic_mastery?: V2TopicMastery[];
+  blooms?: V2BloomLevel[];
+  confidence?: V2ConfidenceProfile;
+  misconceptions?: V2Misconception[];
+}
+
+export interface V2TopicMastery {
+  topic: string;
+  questions?: number;
+  correct?: number;
+  accuracy?: number;
+  avg_time_seconds?: number;
+  mastery_level?: string;
+}
+
+export interface V2BloomLevel {
+  level: string;
+  total?: number;
+  correct?: number;
+  accuracy?: number;
+}
+
+export interface V2ConfidenceProfile {
+  overall?: number;
+  knows?: number;
+  guesses?: number;
+  high_confidence_wrong?: number;
+}
+
+export interface V2Misconception {
+  topic?: string;
+  context?: string;
+  misconception?: string;
+  remediation?: string;
+}
+
+export interface V2Narrative {
+  learning_frequency?: string;
+  progress?: string;
+  student_efforts?: string;
+  topics_of_improvement?: string;
+  topics_of_degradation?: string;
+  remedial_points?: string;
 }
 
 // ── My Reports API types (new owner-scoped endpoints, covers v1 + v2) ─────────

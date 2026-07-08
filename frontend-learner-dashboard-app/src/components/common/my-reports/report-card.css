@@ -1,0 +1,247 @@
+/*
+ * Vacademy Student Report — shared "paper document" stylesheet.
+ * Scoped entirely under `.vsr` so it never leaks into (or inherits from) the app chrome.
+ * Light-only by design: the report is a document and must match the (always-light) PDF.
+ *
+ * NOTE: raw hex lives here intentionally. This is the single source of truth for the report's
+ * bespoke palette (a branded document surface, like an invoice/certificate). design-lint does not
+ * police .css files for hex; keep all report colors here, not in the .tsx.
+ */
+
+.vsr {
+  --ground: #FBFAF7;
+  --surface: #FFFFFF;
+  --surface-2: #F4F2EC;
+  --ink: #1C2433;
+  --ink-2: #4A5568;
+  --ink-3: #7C879B;
+  --line: #E7E3D9;
+  --accent: #2E7D6B;          /* overridden inline with the institute theme colour */
+  --accent-soft: #E3F0EC;
+  --good: #3F8F5B;
+  --good-soft: #E6F2EA;
+  --attn: #C6803A;
+  --attn-soft: #F7ECDD;
+  --risk: #B4483D;
+  --risk-soft: #F6E4E1;
+  --gold: #B08532;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(28, 36, 51, .04), 0 8px 24px -12px rgba(28, 36, 51, .14);
+  --serif: Georgia, 'Times New Roman', serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.vsr * { box-sizing: border-box; }
+.vsr .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+.vsr .tnum { font-variant-numeric: tabular-nums; }
+
+/* Header / verdict */
+.vsr .masthead {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; padding-bottom: 14px; margin-bottom: 22px; border-bottom: 1px solid var(--line);
+}
+.vsr .brand { display: flex; align-items: center; gap: 11px; }
+.vsr .brand-mark {
+  position: relative;
+  width: 34px; height: 34px; border-radius: 9px; background: var(--accent);
+  color: #fff; display: grid; place-items: center; font-family: var(--serif);
+  font-weight: 700; font-size: 18px; overflow: hidden; flex-shrink: 0;
+}
+.vsr .brand-mark-fallback { line-height: 1; }
+.vsr .brand-mark img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; background: var(--accent);
+}
+.vsr .brand-name { font-weight: 600; letter-spacing: .01em; }
+.vsr .brand-sub { font-size: 12px; color: var(--ink-3); }
+.vsr .period-pill {
+  font-size: 12.5px; color: var(--ink-2); background: var(--surface-2);
+  border: 1px solid var(--line); padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+}
+
+.vsr .verdict {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 26px 28px; margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.vsr .verdict::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 5px;
+  background: var(--status-color, var(--accent));
+}
+.vsr .verdict-top { display: flex; align-items: flex-start; gap: 20px; justify-content: space-between; }
+.vsr .student-name {
+  font-family: var(--serif); font-size: 30px; line-height: 1.1;
+  margin: 0 0 5px; text-wrap: balance; letter-spacing: -.01em; color: var(--ink);
+}
+.vsr .student-meta { color: var(--ink-3); font-size: 13.5px; }
+.vsr .status-badge {
+  display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+  padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px;
+  background: var(--status-soft); color: var(--status-color);
+}
+.vsr .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.vsr .grade-chip {
+  font-family: var(--serif); font-size: 15px; font-weight: 700;
+  width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--status-soft); color: var(--status-color); margin-left: 8px;
+}
+.vsr .oneliner { font-size: 17px; color: var(--ink); margin: 16px 0 0; max-width: 60ch; text-wrap: pretty; }
+.vsr .parent-summary {
+  margin: 14px 0 0; padding: 14px 16px; background: var(--accent-soft);
+  border-radius: 10px; font-size: 14.5px; color: var(--ink-2); max-width: 66ch;
+}
+.vsr .parent-summary strong { color: var(--ink); }
+
+/* KPI row */
+.vsr .kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 26px; }
+.vsr .kpi {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 14px 13px; box-shadow: var(--shadow);
+}
+.vsr .kpi-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.vsr .kpi-val { font-size: 25px; font-weight: 650; margin-top: 6px; letter-spacing: -.02em; color: var(--ink); }
+.vsr .kpi-val .u { font-size: 14px; font-weight: 500; color: var(--ink-3); margin-left: 1px; }
+.vsr .kpi-trend { font-size: 12px; margin-top: 5px; display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
+.vsr .t-up { color: var(--good); }
+.vsr .t-down { color: var(--risk); }
+.vsr .t-steady { color: var(--ink-3); }
+
+/* Section scaffolding */
+.vsr .section { margin-bottom: 24px; }
+.vsr .section-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 13px; flex-wrap: wrap; }
+.vsr .section-title { font-family: var(--serif); font-size: 20px; margin: 0; letter-spacing: -.01em; color: var(--ink); }
+.vsr .section-note { font-size: 12.5px; color: var(--ink-3); }
+.vsr .card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px 22px;
+}
+.vsr .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+/* When a grid-2 has a single child (e.g. only Study Habits, no achievements yet),
+   let it span the full width instead of sitting at half. */
+.vsr .grid-2 > :only-child { grid-column: 1 / -1; }
+.vsr .card-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+
+/* Charts / captions */
+.vsr .chart-cap { font-size: 12.5px; color: var(--ink-3); margin: 2px 0 0; }
+.vsr .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.vsr .conf-stats { display: flex; flex-direction: column; gap: 9px; margin-top: 6px; }
+.vsr .conf-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.vsr .conf-key { display: inline-flex; align-items: center; gap: 8px; flex: 1; color: var(--ink-2); }
+.vsr .conf-num { font-weight: 650; font-family: var(--mono); }
+
+/* Topic mastery */
+.vsr .topic { display: grid; grid-template-columns: 132px 1fr auto; align-items: center; gap: 12px; padding: 7px 0; }
+.vsr .topic + .topic { border-top: 1px solid var(--line); }
+.vsr .topic-name { font-size: 14px; font-weight: 500; color: var(--ink); }
+.vsr .topic-lvl { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.vsr .bar { height: 9px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.vsr .bar > i { display: block; height: 100%; border-radius: 999px; }
+.vsr .topic-pct { font-family: var(--mono); font-size: 13.5px; font-weight: 600; min-width: 42px; text-align: right; color: var(--ink); }
+
+/* Subjects */
+.vsr .subj-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.vsr .subj { text-align: center; padding: 8px 4px; }
+.vsr .subj-name { font-size: 13px; font-weight: 600; margin-top: 8px; color: var(--ink); }
+.vsr .subj-marks { font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); }
+.vsr .subj-vs { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 12px; padding: 6px 0; font-size: 13.5px; }
+.vsr .subj-vs + .subj-vs { border-top: 1px solid var(--line); }
+
+/* What to fix */
+.vsr .fix { display: flex; gap: 13px; padding: 14px 0; }
+.vsr .fix + .fix { border-top: 1px solid var(--line); }
+.vsr .fix-ico {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
+  background: var(--attn-soft); color: var(--attn); font-weight: 700; font-family: var(--serif);
+}
+.vsr .fix-body { font-size: 14px; }
+.vsr .fix-topic { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.vsr .fix-mis { font-weight: 600; margin: 2px 0 4px; color: var(--ink); }
+.vsr .fix-rem { color: var(--ink-2); }
+.vsr .fix-rem::before { content: "\2192 "; color: var(--good); font-weight: 700; }
+
+/* Habits */
+.vsr .habit-top { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 16px; }
+.vsr .habit-stat .n { font-size: 22px; font-weight: 650; color: var(--ink); }
+.vsr .habit-stat .l { font-size: 12px; color: var(--ink-3); }
+.vsr .spark { display: flex; align-items: flex-end; gap: 3px; height: 56px; }
+.vsr .spark > i { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .85; }
+.vsr .spark > i.zero { background: var(--line); }
+
+/* Achievements */
+.vsr .badges { display: flex; flex-wrap: wrap; gap: 10px; }
+.vsr .badge {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.vsr .badge svg { color: var(--gold); }
+
+/* Detailed analysis */
+.vsr details.deep { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.vsr details.deep > summary {
+  cursor: pointer; list-style: none; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--serif); font-size: 18px; color: var(--ink);
+}
+.vsr details.deep > summary::-webkit-details-marker { display: none; }
+.vsr details.deep > summary .chev { transition: transform .2s; color: var(--ink-3); }
+.vsr details.deep[open] > summary .chev { transform: rotate(90deg); }
+.vsr .deep-body { padding: 4px 22px 22px; border-top: 1px solid var(--line); }
+.vsr .deep-body h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); margin: 22px 0 8px; }
+.vsr .deep-body p { font-size: 14.5px; color: var(--ink-2); margin: 0 0 10px; max-width: 68ch; }
+.vsr .deep-body ul { margin: 0 0 10px; padding-left: 20px; }
+.vsr .deep-body li { font-size: 14.5px; color: var(--ink-2); margin-bottom: 5px; }
+.vsr .deep-body table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; font-size: 13.5px; }
+.vsr .deep-body th, .vsr .deep-body td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.vsr .deep-body th { color: var(--ink-3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Stat lists (attendance / live classes / assignments / doubts) */
+.vsr .statlist { width: 100%; }
+.vsr .stat { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 14px; }
+.vsr .stat + .stat { border-top: 1px dashed var(--line); }
+.vsr .stat-k { color: var(--ink-2); }
+.vsr .stat-v { font-weight: 650; font-family: var(--mono); color: var(--ink); }
+.vsr .stat-v.good { color: var(--good); }
+.vsr .stat-v.attn { color: var(--attn); }
+.vsr .stat-v.risk { color: var(--risk); }
+
+/* Overall bar row (attendance / progress) */
+.vsr .bar-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; margin-bottom: 12px; }
+.vsr .bar.lg { height: 12px; }
+.vsr .bar-val { font-family: var(--mono); font-weight: 650; font-size: 14px; color: var(--ink); white-space: nowrap; }
+.vsr .stat-mini { display: flex; gap: 22px; flex-wrap: wrap; }
+.vsr .stat-mini .n { font-size: 20px; font-weight: 650; }
+.vsr .stat-mini .l { font-size: 12px; color: var(--ink-3); }
+
+/* Recommendations */
+.vsr .rec { display: flex; gap: 12px; padding: 12px 0; align-items: flex-start; }
+.vsr .rec + .rec { border-top: 1px solid var(--line); }
+.vsr .pri { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.vsr .pri.high { background: var(--risk-soft); color: var(--risk); }
+.vsr .pri.medium { background: var(--attn-soft); color: var(--attn); }
+.vsr .pri.low { background: var(--accent-soft); color: var(--accent); }
+.vsr .rec-area { font-weight: 600; color: var(--ink); font-size: 14px; }
+.vsr .rec-sug { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
+
+/* Bulleted insights + AI summary */
+.vsr .insights { margin: 0; padding-left: 20px; }
+.vsr .insights li { font-size: 14.5px; color: var(--ink-2); margin-bottom: 7px; }
+.vsr .ai-summary { font-size: 14.5px; color: var(--ink-2); max-width: 68ch; }
+.vsr .mini-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 10px; }
+
+.vsr .footnote { margin-top: 26px; font-size: 12px; color: var(--ink-3); text-align: center; line-height: 1.7; }
+
+.vsr .empty { color: var(--ink-3); font-size: 13.5px; }
+
+@media (max-width: 720px) {
+  .vsr .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .vsr .grid-2 { grid-template-columns: 1fr; }
+  .vsr .subj-grid { grid-template-columns: repeat(2, 1fr); }
+  .vsr .verdict-top { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) { .vsr * { transition: none !important; } }

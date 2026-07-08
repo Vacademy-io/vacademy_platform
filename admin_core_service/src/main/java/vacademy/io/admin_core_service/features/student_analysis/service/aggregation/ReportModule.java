@@ -28,7 +28,13 @@ public enum ReportModule {
     CERTIFICATES("certificates"),
     ASSIGNMENTS("assignments"),
     DOUBTS("doubts"),
-    LOGIN("login");
+    LOGIN("login"),
+    /**
+     * Learning insights derived from per-attempt {@code activity_log.processed_json}
+     * (topic mastery, Bloom's taxonomy, confidence, misconceptions). Its collector parses
+     * and aggregates the AI-analysis output the LLM-analytics pipeline already produced.
+     */
+    LEARNING_INSIGHTS("learning_insights");
 
     private final String key;
 

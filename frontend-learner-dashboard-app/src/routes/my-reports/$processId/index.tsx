@@ -4,16 +4,18 @@ import { useEffect, useState } from "react";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import ReportDetailsPage from "@/components/common/my-reports/report-details-page";
-import { ComprehensiveReportCard } from "@/components/common/my-reports/comprehensive-report-card";
+import { StudentReportCard } from "@/components/common/my-reports/StudentReportCard";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useReportStore } from "@/stores/report-store";
 import {
   fetchMyReport,
+  downloadReportPdf,
   type MyReportDetailResponse,
   type StudentReport,
 } from "@/services/student-reports-api";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowCounterClockwise } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, DownloadSimple } from "@phosphor-icons/react";
+import { getCachedInstituteBranding } from "@/services/domain-routing";
 
 export const Route = createFileRoute("/my-reports/$processId/")({
   component: RouteComponent,
@@ -137,7 +139,20 @@ function RouteComponent() {
   if (detail.report_version === "v2" && detail.comprehensive_report) {
     return (
       <LayoutContainer className="!m-0 !p-0 max-w-none">
-        <ComprehensiveReportCard data={detail.comprehensive_report} processId={detail.process_id} />
+        <div className="relative">
+          <div className="absolute right-4 top-4 z-10">
+            <button
+              onClick={() => downloadReportPdf(detail.process_id)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+            >
+              <DownloadSimple size={16} /> Download PDF
+            </button>
+          </div>
+          <StudentReportCard
+            data={detail.comprehensive_report}
+            fallbackLogoUrl={getCachedInstituteBranding()?.instituteLogoUrl ?? undefined}
+          />
+        </div>
       </LayoutContainer>
     );
   }

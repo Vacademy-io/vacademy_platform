@@ -225,6 +225,7 @@ function repairSlateChildren(children: any): any {
 import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
+import { SlideHistoryDialog } from './slide-history-dialog';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -434,6 +435,10 @@ export const SlideMaterial = ({
         searchParams;
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+    // Bumped after a version-history restore to force loadContent to re-run (and
+    // re-deserialize) even when the slide's id/status didn't change — the effect's
+    // deps intentionally exclude document_slide.data for DOC slides.
+    const [historyRestoreNonce, setHistoryRestoreNonce] = useState(0);
 
     // ---- Explicit-save lifecycle: local (unsaved) draft persistence ----
     // Autosave to the DB is gone. Unsaved editor edits are stashed in localStorage
@@ -3260,7 +3265,27 @@ export const SlideMaterial = ({
         // Re-render the video preview when an external link is edited in place.
         activeItem?.video_slide?.url,
         activeItem?.video_slide?.published_url,
+        // Reload the editor with the restored content after a history restore.
+        historyRestoreNonce,
     ]);
+
+    // A version-history snapshot was copied into this slide's draft on the
+    // backend. Mirror it into the store and force a full editor reload: clear
+    // the local (unsaved) draft so it can't shadow the restored content, and
+    // reset the same-slide guard so the DOC branch re-deserializes.
+    const handleHistoryRestored = (restoredValue: string, slideStatus: string) => {
+        if (!activeItem) return;
+        clearLocalDraft(activeItem.id);
+        lastLoadContentSlideIdRef.current = null;
+        setActiveItem({
+            ...activeItem,
+            status: slideStatus || activeItem.status,
+            document_slide: activeItem.document_slide
+                ? { ...activeItem.document_slide, data: restoredValue }
+                : activeItem.document_slide,
+        } as Slide);
+        setHistoryRestoreNonce((n) => n + 1);
+    };
 
     // Update the refs whenever these functions change
     useEffect(() => {
@@ -3431,6 +3456,18 @@ export const SlideMaterial = ({
                                     )}
 
                                 <ActivityStatsSidebar />
+
+                                {/* Version history + restore — content snapshots are
+                                    trigger-written for document slides (V363). */}
+                                {activeItem.source_type === 'DOCUMENT' &&
+                                    activeItem?.document_slide?.type !== 'PRESENTATION' && (
+                                        <SlideHistoryDialog
+                                            key={activeItem.id}
+                                            activeItem={activeItem}
+                                            chapterId={chapterId || ''}
+                                            onRestored={handleHistoryRestored}
+                                        />
+                                    )}
 
                                 {isExternalVideoLink && (
                                     <MyButton

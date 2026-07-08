@@ -6,7 +6,11 @@ import { StudentListTab } from './StudentListTab';
 import testAccessSchema from '../-utils/add-participants-schema';
 import { z } from 'zod';
 import { UseFormReturn } from 'react-hook-form';
-import { UsersThree, User, Stack } from '@phosphor-icons/react';
+import { UsersThree, User, Stack, MagnifyingGlass, X } from '@phosphor-icons/react';
+import { Input } from '@/components/ui/input';
+import { MyPagination } from '@/components/design-system/pagination';
+
+const BATCHES_PER_PAGE = 9;
 import { Route } from '..';
 import {
     Select,
@@ -144,6 +148,8 @@ const Step3BatchList = ({
     const params = Route.useParams();
     const assessmentId = params.assessmentId ?? '';
     const { setValue, watch } = form;
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentPage, setCurrentPage] = useState(0);
 
     // Ensure batchDetails is initialized before using it
     const transformedBatches: Record<string, string[]> = Object.fromEntries(
@@ -192,25 +198,103 @@ const Step3BatchList = ({
         setValue('select_batch.batch_details', checkedState);
     }, [checkedState, setValue, selectedSection]);
 
+    // Filter batches by course name or level name. When a course name matches, all
+    // of its levels are shown; otherwise only the matching levels are kept.
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const filteredEntries = Object.entries(totalBatches).reduce<[string, BatchItem[]][]>(
+        (acc, [batchName, packages]) => {
+            if (!normalizedQuery) {
+                acc.push([batchName, packages]);
+                return acc;
+            }
+            const courseMatches = batchName.toLowerCase().includes(normalizedQuery);
+            if (courseMatches) {
+                acc.push([batchName, packages]);
+                return acc;
+            }
+            const matchingPackages = packages.filter((pkg) =>
+                pkg.name.toLowerCase().includes(normalizedQuery)
+            );
+            if (matchingPackages.length > 0) {
+                acc.push([batchName, matchingPackages]);
+            }
+            return acc;
+        },
+        []
+    );
+
+    // Paginate the filtered list — search spans all batches, pagination only
+    // affects how many of the matching results are shown at once.
+    const totalPages = Math.max(1, Math.ceil(filteredEntries.length / BATCHES_PER_PAGE));
+    const safePage = Math.min(currentPage, totalPages - 1);
+    const paginatedEntries = filteredEntries.slice(
+        safePage * BATCHES_PER_PAGE,
+        safePage * BATCHES_PER_PAGE + BATCHES_PER_PAGE
+    );
+
+    // Reset to the first page whenever the search query changes.
+    useEffect(() => {
+        setCurrentPage(0);
+    }, [normalizedQuery]);
+
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-                <span>{getTerminology(ContentTerms.Session, SystemTerms.Session)}</span>
-                <Select value={selectedSection} onValueChange={setSelectedSection}>
-                    <SelectTrigger className="h-9 w-[200px] rounded-lg border-neutral-200 bg-white text-sm font-medium shadow-sm">
-                        <SelectValue placeholder="Select Section" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {sectionsInfo?.map((section) => (
-                            <SelectItem key={section.id} value={section.id}>
-                                {convertCapitalToTitleCase(section.name)}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <span>{getTerminology(ContentTerms.Session, SystemTerms.Session)}</span>
+                    <Select value={selectedSection} onValueChange={setSelectedSection}>
+                        <SelectTrigger className="h-9 w-[200px] rounded-lg border-neutral-200 bg-white text-sm font-medium shadow-sm">
+                            <SelectValue placeholder="Select Section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {sectionsInfo?.map((section) => (
+                                <SelectItem key={section.id} value={section.id}>
+                                    {convertCapitalToTitleCase(section.name)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="relative w-full sm:w-72">
+                    <MagnifyingGlass
+                        size={16}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                    />
+                    <Input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by course or level"
+                        className="h-9 rounded-lg border-neutral-200 bg-white px-9 text-sm shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500 focus-visible:ring-0"
+                    />
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 focus:outline-none"
+                            aria-label="Clear search"
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                </div>
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(totalBatches).map(([batchName, packages]) => {
+            {filteredEntries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 py-10 text-center">
+                    <span className="text-sm font-medium text-neutral-600">
+                        No courses or levels match &ldquo;{searchQuery}&rdquo;
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="text-sm font-semibold text-primary-500 hover:text-primary-600 focus:outline-none"
+                    >
+                        Clear search
+                    </button>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {paginatedEntries.map(([batchName, packages]) => {
                     const selectedCount = getSelectedCount(batchName);
                     const totalCount = packages.length;
                     const allSelected = isAllChildrenSelected(batchName);
@@ -284,8 +368,16 @@ const Step3BatchList = ({
                             )}
                         </div>
                     );
-                })}
-            </div>
+                    })}
+                </div>
+            )}
+            {totalPages > 1 && (
+                <MyPagination
+                    currentPage={safePage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                />
+            )}
         </div>
     );
 };

@@ -53,6 +53,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {"image_unit_credits": "0.5"},
     },
+    "coding_question": {
+        # One AI-authored coding question (problem + test cases + starter code
+        # per language + a reference solution). A single LLM call — priced flat
+        # for predictable, FE/BE-identical estimates. Tunable via ai_tool_pricing.
+        "request_type": "coding_question",
+        "flat_base_credits": Decimal("4"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     "transcription": {
         "request_type": "transcription",
         "flat_base_credits": Decimal("0"),

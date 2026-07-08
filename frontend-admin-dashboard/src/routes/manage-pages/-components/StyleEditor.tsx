@@ -1,11 +1,24 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
-import type { ComponentStyle, TypographyStyle, AnimationConfig, AnimationEntrance, Component } from '../-types/editor-types';
+import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
+import type {
+    ComponentStyle,
+    TypographyStyle,
+    AnimationConfig,
+    AnimationEntrance,
+    Component,
+    SectionLayoutStyle,
+    GlassConfig,
+    GlowConfig,
+    BorderGradientConfig,
+    BackgroundLayer,
+    OverlayPreset,
+} from '../-types/editor-types';
 
 interface StyleEditorProps {
     style: ComponentStyle;
@@ -22,7 +35,7 @@ const Section = ({ title, children, defaultOpen = false }: { title: string; chil
                 onClick={() => setOpen(!open)}
                 className="flex w-full items-center gap-1.5 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-700"
             >
-                {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                {open ? <CaretDown className="size-3.5" /> : <CaretRight className="size-3.5" />}
                 {title}
             </button>
             {open && <div className="flex flex-col gap-3 pl-1 pt-1">{children}</div>}
@@ -40,7 +53,7 @@ const PresetRow = ({ options, value, onChange, label }: { options: { label: stri
                 <button
                     key={o.value}
                     onClick={() => onChange(o.value)}
-                    className={`rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+                    className={`rounded px-2 py-1 text-caption font-medium transition-colors ${
                         value === o.value
                             ? 'bg-blue-100 text-blue-700'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -94,15 +107,15 @@ const FONT_WEIGHT_PRESETS = [
     { label: 'Extra', value: '800' },
 ];
 
+// Derived from the shared registry (catalogue-fonts.ts, byte-synced with the
+// learner app) so every option here is a face the learner ACTUALLY loads —
+// previously choices like Playfair silently fell back to system fonts.
 const FONT_FAMILIES = [
     { label: 'Default', value: '' },
-    { label: 'Inter', value: 'Inter, sans-serif' },
-    { label: 'Roboto', value: 'Roboto, sans-serif' },
-    { label: 'Open Sans', value: '"Open Sans", sans-serif' },
-    { label: 'Poppins', value: 'Poppins, sans-serif' },
-    { label: 'Lato', value: 'Lato, sans-serif' },
-    { label: 'Montserrat', value: 'Montserrat, sans-serif' },
-    { label: 'Playfair', value: '"Playfair Display", serif' },
+    ...CATALOGUE_FONTS.map((f) => ({
+        label: f.serif ? `${f.label} (serif)` : f.label,
+        value: f.stack,
+    })),
 ];
 
 const ENTRANCE_TYPES = [
@@ -124,6 +137,73 @@ const HOVER_TYPES = [
     { label: 'Brighten', value: 'brighten' },
 ];
 
+/* ─── Premium-effect presets (curated, token-driven — theme-safe) ────── */
+
+const BORDER_GRADIENT_PRESETS: Array<{ id: string; label: string; value?: BorderGradientConfig }> = [
+    { id: '', label: 'Off' },
+    {
+        id: 'primary',
+        label: 'Primary',
+        value: { from: 'hsl(var(--primary-400))', to: 'hsl(var(--primary-200))', angle: 135 },
+    },
+    {
+        id: 'primary-bold',
+        label: 'Bold',
+        value: { from: 'hsl(var(--primary-500))', to: 'hsl(var(--primary-200))', angle: 135, width: '2px' },
+    },
+    {
+        id: 'aurora',
+        label: 'Aurora',
+        value: { from: 'hsl(var(--primary-400))', to: 'hsl(258 90% 66%)', angle: 120 },
+    },
+];
+
+const MESH_PRESETS: Array<{ id: string; label: string; layers?: BackgroundLayer[] }> = [
+    { id: '', label: 'Off' },
+    {
+        id: 'mesh-soft',
+        label: 'Soft',
+        layers: [
+            { type: 'radial', color: 'hsl(var(--primary-200) / 0.45)', posX: '85%', posY: '0%', size: '60%' },
+            { type: 'radial', color: 'hsl(var(--primary-100) / 0.5)', posX: '0%', posY: '100%', size: '55%' },
+        ],
+    },
+    {
+        id: 'mesh-bold',
+        label: 'Bold',
+        layers: [
+            { type: 'radial', color: 'hsl(var(--primary-400) / 0.35)', posX: '80%', posY: '10%', size: '55%' },
+            { type: 'radial', color: 'hsl(var(--primary-200) / 0.45)', posX: '10%', posY: '90%', size: '60%' },
+        ],
+    },
+    {
+        id: 'aurora',
+        label: 'Aurora',
+        layers: [
+            { type: 'radial', color: 'hsl(var(--primary-400) / 0.3)', posX: '20%', posY: '0%', size: '50%' },
+            { type: 'radial', color: 'hsl(258 90% 66% / 0.22)', posX: '80%', posY: '20%', size: '55%' },
+            { type: 'radial', color: 'hsl(199 89% 48% / 0.18)', posX: '50%', posY: '100%', size: '60%' },
+        ],
+    },
+];
+
+/** Which curated preset (if any) the stored value corresponds to. */
+const activeBorderGradientId = (value?: BorderGradientConfig): string => {
+    if (!value) return '';
+    const match = BORDER_GRADIENT_PRESETS.find(
+        (p) => p.value && JSON.stringify(p.value) === JSON.stringify(value),
+    );
+    return match?.id ?? 'custom';
+};
+
+const activeMeshId = (layers?: BackgroundLayer[]): string => {
+    if (!layers?.length) return '';
+    const match = MESH_PRESETS.find(
+        (p) => p.layers && JSON.stringify(p.layers) === JSON.stringify(layers),
+    );
+    return match?.id ?? 'custom';
+};
+
 /* ─── Main StyleEditor ────────────────────────────────────────────────── */
 
 export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
@@ -137,6 +217,16 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
 
     const updateAnimation = (partial: Partial<AnimationConfig>) => {
         onChange({ ...style, animation: { ...style.animation, ...partial } });
+    };
+
+    const updateLayout = (partial: Partial<SectionLayoutStyle>) => {
+        const merged = { ...style.layout, ...partial };
+        // Dropping every value returns the component to legacy single-node
+        // rendering — important for back-compat, so scrub empty objects.
+        const cleaned = Object.fromEntries(
+            Object.entries(merged).filter(([, v]) => v !== undefined && v !== '' && v !== null),
+        );
+        onChange({ ...style, layout: Object.keys(cleaned).length ? (cleaned as SectionLayoutStyle) : undefined });
     };
 
     return (
@@ -185,11 +275,75 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                 />
             </Section>
 
+            {/* ─── Layout & Width (section shell) ──────────────────── */}
+            <Section title="Layout & Width">
+                <p className="text-caption text-gray-500">
+                    Section shell: the background spans the full page width while the
+                    content stays in a centered column. Leave everything off for the
+                    classic single-block layout.
+                </p>
+                <PresetRow
+                    label="Content Width"
+                    options={[
+                        { label: 'Off', value: '' },
+                        { label: 'Text', value: 'text' },
+                        { label: 'Narrow', value: 'narrow' },
+                        { label: 'Default', value: 'default' },
+                        { label: 'Wide', value: 'wide' },
+                        { label: 'Full', value: 'full' },
+                    ]}
+                    value={style.layout?.width ?? (style.layout ? 'default' : '')}
+                    onChange={(v) =>
+                        v === ''
+                            ? onChange({ ...style, layout: undefined })
+                            : updateLayout({ width: v as SectionLayoutStyle['width'] })
+                    }
+                />
+                {style.layout && (
+                    <>
+                        <div>
+                            <Label className="mb-1 text-xs">Custom Max Width</Label>
+                            <Input
+                                value={style.layout?.contentMaxWidth ?? ''}
+                                placeholder="e.g. 820px (overrides preset)"
+                                onChange={(e) => updateLayout({ contentMaxWidth: e.target.value || undefined })}
+                                className="h-8 text-xs"
+                            />
+                        </div>
+                        <PresetRow
+                            label="Overlap Previous Section"
+                            options={[
+                                { label: 'None', value: '' },
+                                { label: '-40px', value: '-40px' },
+                                { label: '-80px', value: '-80px' },
+                                { label: '-120px', value: '-120px' },
+                            ]}
+                            value={style.layout?.overlapTop ?? ''}
+                            onChange={(v) => updateLayout({ overlapTop: v || undefined })}
+                        />
+                        <PresetRow
+                            label="Stack Order (z-index)"
+                            options={[
+                                { label: 'Auto', value: '' },
+                                { label: '1', value: '1' },
+                                { label: '2', value: '2' },
+                                { label: '3', value: '3' },
+                            ]}
+                            value={style.layout?.zIndex !== undefined ? String(style.layout.zIndex) : ''}
+                            onChange={(v) => updateLayout({ zIndex: v === '' ? undefined : Number(v) })}
+                        />
+                        <p className="text-caption text-gray-400">
+                            Overlaps flatten automatically on mobile.
+                        </p>
+                    </>
+                )}
+            </Section>
+
             {/* ─── Background ──────────────────────────────────────── */}
             <Section title="Background">
                 <ColorPickerField
                     label="Background Color"
-                    value={style.backgroundColor || '#ffffff'}
+                    value={style.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor default seed
                     onChange={(c) => update({ backgroundColor: c })}
                 />
                 <ImageUploadField
@@ -213,7 +367,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                         <ColorPickerField
                             label="Overlay Color"
                             value={style.backgroundOverlay || 'rgba(0,0,0,0)'}
-                            onChange={(c) => update({ backgroundOverlay: c })}
+                            onChange={(c) => update({ backgroundOverlay: c, overlayPreset: undefined })}
                         />
                     </>
                 )}
@@ -231,14 +385,14 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                                             type: 'linear',
                                             angle: 180,
                                             stops: [
-                                                { color: '#3B82F6', position: 0 },
-                                                { color: '#8B5CF6', position: 100 },
+                                                { color: '#3B82F6', position: 0 }, // design-lint-ignore: gradient preset seed
+                                                { color: '#8B5CF6', position: 100 }, // design-lint-ignore: gradient preset seed
                                             ],
                                         },
                                     });
                                 }
                             }}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${
+                            className={`rounded px-2 py-1 text-caption font-medium ${
                                 style.gradient ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                             }`}
                         >
@@ -306,7 +460,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                                 size="sm"
                                 className="text-xs"
                                 onClick={() => {
-                                    const newStops = [...style.gradient!.stops, { color: '#10B981', position: 50 }];
+                                    const newStops = [...style.gradient!.stops, { color: '#10B981', position: 50 }]; // design-lint-ignore: gradient preset seed
                                     update({ gradient: { ...style.gradient!, stops: newStops } });
                                 }}
                             >
@@ -326,7 +480,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                             <button
                                 key={v}
                                 onClick={() => update({ borderWidth: v })}
-                                className={`rounded px-2 py-1 text-[11px] font-medium ${
+                                className={`rounded px-2 py-1 text-caption font-medium ${
                                     (style.borderWidth || '0') === v
                                         ? 'bg-blue-100 text-blue-700'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -341,7 +495,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                     <>
                         <ColorPickerField
                             label="Border Color"
-                            value={style.borderColor || '#E5E7EB'}
+                            value={style.borderColor || '#E5E7EB'} // design-lint-ignore: color-editor default seed
                             onChange={(c) => update({ borderColor: c })}
                         />
                         <PresetRow
@@ -371,7 +525,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                             <button
                                 key={o.value}
                                 onClick={() => update({ borderRadius: o.value })}
-                                className={`rounded px-2 py-1 text-[11px] font-medium ${
+                                className={`rounded px-2 py-1 text-caption font-medium ${
                                     style.borderRadius === o.value
                                         ? 'bg-blue-100 text-blue-700'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -391,6 +545,81 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
             </Section>
 
             {/* ─── Effects ─────────────────────────────────────────── */}
+            {/* ─── Premium Effects (engine: glass/glow/borderGradient/layers) ── */}
+            <Section title="Premium Effects">
+                <PresetRow
+                    label="Glass Surface"
+                    options={[
+                        { label: 'Off', value: '' },
+                        { label: 'Subtle', value: 'sm' },
+                        { label: 'Medium', value: 'md' },
+                        { label: 'Strong', value: 'lg' },
+                    ]}
+                    value={style.glass?.blur ?? ''}
+                    onChange={(v) =>
+                        update({ glass: v ? { ...style.glass, blur: v as GlassConfig['blur'] } : undefined })
+                    }
+                />
+                <PresetRow
+                    label="Glow"
+                    options={[
+                        { label: 'Off', value: '' },
+                        { label: 'Soft', value: 'sm' },
+                        { label: 'Medium', value: 'md' },
+                        { label: 'Bold', value: 'lg' },
+                    ]}
+                    value={style.glow?.intensity ?? ''}
+                    onChange={(v) =>
+                        update({ glow: v ? { ...style.glow, intensity: v as GlowConfig['intensity'] } : undefined })
+                    }
+                />
+                <PresetRow
+                    label="Border Gradient"
+                    options={BORDER_GRADIENT_PRESETS.map((p) => ({ label: p.label, value: p.id }))}
+                    value={activeBorderGradientId(style.borderGradient)}
+                    onChange={(v) => {
+                        const preset = BORDER_GRADIENT_PRESETS.find((p) => p.id === v);
+                        update({ borderGradient: preset?.value ?? undefined });
+                    }}
+                />
+                {style.borderGradient && (
+                    <p className="text-caption text-gray-400">
+                        The gradient border owns the surface — background layers and
+                        images are ignored while it is on.
+                    </p>
+                )}
+                <PresetRow
+                    label="Mesh Background"
+                    options={MESH_PRESETS.map((p) => ({ label: p.label, value: p.id }))}
+                    value={activeMeshId(style.backgroundLayers)}
+                    onChange={(v) => {
+                        const preset = MESH_PRESETS.find((p) => p.id === v);
+                        update({ backgroundLayers: preset?.layers ?? undefined });
+                    }}
+                />
+                {!!style.backgroundImage && !style.backgroundLayers?.length && !style.gradient && !style.borderGradient && (
+                    <PresetRow
+                        label="Image Overlay"
+                        options={[
+                            { label: 'Off', value: '' },
+                            { label: 'Scrim', value: 'scrim-dark' },
+                            { label: 'Bottom', value: 'scrim-bottom' },
+                            { label: 'Light', value: 'scrim-light' },
+                            { label: 'Brand', value: 'brand-tint' },
+                        ]}
+                        value={style.overlayPreset ?? ''}
+                        onChange={(v) =>
+                            // Mutually exclusive with the legacy Overlay Color
+                            // (both together would double-darken the image).
+                            update({
+                                overlayPreset: v ? (v as OverlayPreset) : undefined,
+                                backgroundOverlay: v ? undefined : style.backgroundOverlay,
+                            })
+                        }
+                    />
+                )}
+            </Section>
+
             <Section title="Effects">
                 <div>
                     <Label className="mb-1 text-xs">Opacity ({Math.round((style.opacity ?? 1) * 100)}%)</Label>
@@ -405,28 +634,35 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                 </div>
                 <div>
                     <Label className="mb-1 text-xs">Max Width</Label>
-                    <div className="flex flex-wrap gap-1">
-                        {[
-                            { label: 'None', value: '' },
-                            { label: '800px', value: '800px' },
-                            { label: '1024px', value: '1024px' },
-                            { label: '1200px', value: '1200px' },
-                            { label: '1400px', value: '1400px' },
-                            { label: '100%', value: '100%' },
-                        ].map((o) => (
-                            <button
-                                key={o.value}
-                                onClick={() => update({ maxWidth: o.value || undefined })}
-                                className={`rounded px-2 py-1 text-[11px] font-medium ${
-                                    (style.maxWidth || '') === o.value
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                }`}
-                            >
-                                {o.label}
-                            </button>
-                        ))}
-                    </div>
+                    {style.layout ? (
+                        <p className="text-caption text-gray-500">
+                            Width is controlled by Layout &amp; Width while the section
+                            shell is on (use its Custom Max Width there).
+                        </p>
+                    ) : (
+                        <div className="flex flex-wrap gap-1">
+                            {[
+                                { label: 'None', value: '' },
+                                { label: '800px', value: '800px' },
+                                { label: '1024px', value: '1024px' },
+                                { label: '1200px', value: '1200px' },
+                                { label: '1400px', value: '1400px' },
+                                { label: '100%', value: '100%' },
+                            ].map((o) => (
+                                <button
+                                    key={o.value}
+                                    onClick={() => update({ maxWidth: o.value || undefined })}
+                                    className={`rounded px-2 py-1 text-caption font-medium ${
+                                        (style.maxWidth || '') === o.value
+                                            ? 'bg-blue-100 text-blue-700'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }`}
+                                >
+                                    {o.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div>
                     <Label className="mb-1 text-xs">Min Height</Label>
@@ -498,7 +734,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                             <button
                                 key={o.value}
                                 onClick={() => updateTypography({ letterSpacing: o.value })}
-                                className={`rounded px-2 py-1 text-[11px] font-medium ${
+                                className={`rounded px-2 py-1 text-caption font-medium ${
                                     (style.typography?.letterSpacing || '0') === o.value
                                         ? 'bg-blue-100 text-blue-700'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -511,7 +747,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                 </div>
                 <ColorPickerField
                     label="Text Color"
-                    value={style.typography?.textColor || '#000000'}
+                    value={style.typography?.textColor || '#000000'} // design-lint-ignore: color-editor default seed
                     onChange={(c) => updateTypography({ textColor: c })}
                 />
                 <PresetRow
@@ -560,6 +796,24 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                 </div>
                 {style.animation?.entrance?.type && style.animation.entrance.type !== 'none' && (
                     <>
+                        <PresetRow
+                            label="Stagger Children (cards/items cascade in)"
+                            options={[
+                                { label: 'Off', value: '' },
+                                { label: 'Fast', value: '60' },
+                                { label: 'Normal', value: '100' },
+                                { label: 'Slow', value: '160' },
+                            ]}
+                            value={String(style.animation.entrance.stagger?.interval ?? '')}
+                            onChange={(v) =>
+                                updateAnimation({
+                                    entrance: {
+                                        ...style.animation!.entrance!,
+                                        stagger: v ? { interval: Number(v) } : undefined,
+                                    },
+                                })
+                            }
+                        />
                         <div>
                             <Label className="mb-1 text-xs">
                                 Duration ({style.animation.entrance.duration ?? 600}ms)

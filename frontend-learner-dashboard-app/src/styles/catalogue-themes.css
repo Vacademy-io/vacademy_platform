@@ -41,6 +41,94 @@
 }
 
 /* =============================================
+   ATMOSPHERE AXIS — data-catalogue-atmosphere / -intensity
+   Page-level canvas personality set in GlobalSettings.theme.atmosphere.
+   Drives the hero-surface tokens (and, for soft, the section-subtle tone)
+   for EVERY preset — each preset's own primary scale colors the result.
+   ============================================= */
+
+[data-catalogue-atmosphere="soft"] {
+  --catalogue-hero-to: var(--catalogue-bg-muted);
+}
+
+[data-catalogue-atmosphere="mesh"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-200) / 0.45);
+  --catalogue-hero-mesh-2: hsl(var(--primary-100) / 0.5);
+}
+
+[data-catalogue-atmosphere="mesh"][data-catalogue-intensity="medium"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-200) / 0.6);
+  --catalogue-hero-mesh-2: hsl(var(--primary-400) / 0.25);
+}
+
+[data-catalogue-atmosphere="mesh"][data-catalogue-intensity="bold"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.45);
+  --catalogue-hero-mesh-2: hsl(var(--primary-200) / 0.6);
+}
+
+[data-catalogue-atmosphere="aurora"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.3);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.22);
+}
+
+[data-catalogue-atmosphere="aurora"][data-catalogue-intensity="medium"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.4);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.3);
+}
+
+[data-catalogue-atmosphere="aurora"][data-catalogue-intensity="bold"] {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.5);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.4);
+}
+
+/* Dark canvas: halve atmosphere strength so it glows rather than blinds. */
+.dark [data-catalogue-atmosphere="mesh"],
+[data-catalogue-atmosphere="mesh"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.2);
+  --catalogue-hero-mesh-2: hsl(var(--primary-500) / 0.15);
+}
+
+.dark [data-catalogue-atmosphere="aurora"],
+[data-catalogue-atmosphere="aurora"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.22);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.16);
+}
+
+/* Dark × intensity: higher-specificity attached forms so Intensity remains a
+   live control on the dark canvas (the base dark blocks above would otherwise
+   flatten medium/bold back to the dark default by document order). */
+.dark [data-catalogue-atmosphere="mesh"][data-catalogue-intensity="medium"],
+[data-catalogue-atmosphere="mesh"][data-catalogue-intensity="medium"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.28);
+  --catalogue-hero-mesh-2: hsl(var(--primary-500) / 0.2);
+}
+
+.dark [data-catalogue-atmosphere="mesh"][data-catalogue-intensity="bold"],
+[data-catalogue-atmosphere="mesh"][data-catalogue-intensity="bold"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.38);
+  --catalogue-hero-mesh-2: hsl(var(--primary-500) / 0.28);
+}
+
+.dark [data-catalogue-atmosphere="aurora"][data-catalogue-intensity="medium"],
+[data-catalogue-atmosphere="aurora"][data-catalogue-intensity="medium"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.3);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.22);
+}
+
+.dark [data-catalogue-atmosphere="aurora"][data-catalogue-intensity="bold"],
+[data-catalogue-atmosphere="aurora"][data-catalogue-intensity="bold"].dark {
+  --catalogue-hero-mesh-1: hsl(var(--primary-400) / 0.4);
+  --catalogue-hero-mesh-2: hsl(258 90% 66% / 0.3);
+}
+
+/* Soft needs a dark-tuned "to" stop (bg-muted is already dark-aware, but be
+   explicit so soft ≠ flat on dark default-theme heroes). */
+.dark [data-catalogue-atmosphere="soft"],
+[data-catalogue-atmosphere="soft"].dark {
+  --catalogue-hero-to: var(--catalogue-bg-muted);
+}
+
+/* =============================================
    THEME: ocean (Sky Blue)
    ============================================= */
 [data-catalogue-theme="ocean"] {

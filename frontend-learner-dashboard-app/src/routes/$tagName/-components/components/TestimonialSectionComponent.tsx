@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, Star } from "@phosphor-icons/react";
 
 interface Testimonial {
   name: string;
@@ -9,6 +9,10 @@ interface Testimonial {
   text?: string;
   quote?: string;
   avatar: string;
+  /** 1–5 star rating rendered above the quote. */
+  rating?: number;
+  /** Featured card treatment (primary ring). */
+  highlight?: boolean;
 }
 
 interface TestimonialSectionProps {
@@ -68,10 +72,28 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
     hoverEffect === "scale" ? "hover:scale-[1.02] hover:shadow-lg" :
     hoverEffect === "shadow" ? "hover:shadow-lg" : "";
 
+  const stars = testimonial.rating ? Math.max(0, Math.min(5, Math.round(testimonial.rating))) : 0;
+
   return (
-    <div className={`bg-white border border-gray-100 rounded-xl p-6 sm:p-7 transition-all duration-200 ${hoverClass}`}>
+    <div className={`bg-catalogue-bg border rounded-xl p-6 sm:p-7 transition-all duration-200 ${hoverClass} ${
+      testimonial.highlight ? 'border-primary-200 shadow-md ring-1 ring-primary-200' : 'border-catalogue-border-subtle'
+    }`}>
+      {/* Rating */}
+      {stars > 0 && (
+        <div className="mb-3 flex items-center gap-0.5" aria-label={`Rated ${stars} out of 5`}>
+          {Array.from({ length: 5 }, (_, i) => (
+            <Star
+              key={i}
+              size={14}
+              weight={i < stars ? 'fill' : 'regular'}
+              className={i < stars ? 'text-warning-500' : 'text-catalogue-text-muted'}
+              aria-hidden="true"
+            />
+          ))}
+        </div>
+      )}
       {/* Quote */}
-      <blockquote className="text-sm sm:text-base text-gray-600 leading-relaxed mb-5">
+      <blockquote className="text-sm sm:text-base text-catalogue-text-secondary leading-relaxed mb-5">
         &ldquo;{feedbackText}&rdquo;
       </blockquote>
 
@@ -86,15 +108,15 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
           />
         ) : (
           <div className="w-11 h-11 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-            <span className="text-sm font-semibold text-primary-700">
+            <span className="text-sm font-semibold text-primary-500">
               {getInitials(testimonial.name)}
             </span>
           </div>
         )}
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-gray-900">{testimonial.name}</div>
+          <div className="text-sm font-semibold text-catalogue-text-primary">{testimonial.name}</div>
           {testimonial.role && (
-            <div className="text-xs text-gray-500 whitespace-pre-line">{testimonial.role}</div>
+            <div className="text-xs text-catalogue-text-muted whitespace-pre-line">{testimonial.role}</div>
           )}
         </div>
       </div>

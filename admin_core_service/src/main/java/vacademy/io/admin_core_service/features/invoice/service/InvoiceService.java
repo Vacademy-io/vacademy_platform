@@ -77,6 +77,9 @@ public class InvoiceService {
     private InvoiceLineItemRepository invoiceLineItemRepository;
 
     @Autowired
+    private InvoiceBillingProfileService invoiceBillingProfileService;
+
+    @Autowired
     private TemplateService templateService;
 
     @Autowired
@@ -3211,6 +3214,21 @@ public class InvoiceService {
                 invoiceLineItemRepository.save(lineItem);
             }
 
+            // Remember the user-linked Bill-To details for next time (single-user only; for bulk
+            // the user-scoped keys were stripped, so there is nothing per-user to save). Only
+            // fields the admin actually CHANGED from the live user record are persisted, so an
+            // unchanged field keeps tracking the record. Runs in its own transaction (REQUIRES_NEW);
+            // catch so a profile failure never breaks invoice creation.
+            if (singleUser) {
+                try {
+                    invoiceBillingProfileService.upsert(userId, request.getInstituteId(),
+                            billingEditsFromOverrides(renderOverrides, user));
+                } catch (Exception e) {
+                    log.warn("Failed to persist invoice billing profile for user {}: {}",
+                            userId, e.getMessage());
+                }
+            }
+
             // Generate PDF immediately so the admin can share it
             String pdfFileId = null;
             try {
@@ -3665,6 +3683,45 @@ public class InvoiceService {
         return s != null ? s : "";
     }
 
+    /** First non-blank value, or "" if all are blank. */
+    private String firstNonBlank(String... values) {
+        if (values != null) {
+            for (String v : values) {
+                if (StringUtils.hasText(v)) return v;
+            }
+        }
+        return "";
+    }
+
+    /**
+     * From the submitted overrides, keep only the user-linked Bill-To fields that GENUINELY
+     * DEVIATE from the live user record. This is what makes the "remember" feature correct: the
+     * FE always sends the fully-seeded override map (edited or not), so persisting it verbatim
+     * would snapshot the raw user record and then permanently shadow later user-record updates.
+     * By comparing against the record, an unchanged field is omitted (→ profile untouched → future
+     * invoices track the live record) or, if it merely matches the record, emitted as "" so any
+     * previously-pinned value is cleared. Fields the template didn't surface stay untouched.
+     */
+    private Map<String, String> billingEditsFromOverrides(Map<String, String> overrides, UserDTO user) {
+        Map<String, String> edits = new HashMap<>();
+        if (overrides == null || user == null) return edits;
+        addBillingEdit(edits, overrides, "user_name", user.getFullName());
+        addBillingEdit(edits, overrides, "user_email", user.getEmail());
+        addBillingEdit(edits, overrides, "user_address", user.getAddressLine());
+        addBillingEdit(edits, overrides, "user_tax_info", ""); // no user-record source
+        addBillingEdit(edits, overrides, "place_of_supply", user.getRegion());
+        return edits;
+    }
+
+    private void addBillingEdit(Map<String, String> edits, Map<String, String> overrides,
+            String key, String baseline) {
+        if (!overrides.containsKey(key)) return; // template didn't surface it → leave saved value
+        String submitted = overrides.get(key);
+        // Matches the live record → store "" (clears any pin); differs → remember the admin's value.
+        edits.put(key, nz(submitted).trim().equals(nz(baseline).trim()) ? "" : submitted);
+    }
+
+
     /**
      * Renders a non-persisting preview of an admin invoice: fills the institute's
      * template with the request's line items + any overrides, and returns the rendered
@@ -3684,6 +3741,14 @@ public class InvoiceService {
             if (!users.isEmpty()) user = users.get(0);
         }
         if (user == null) user = UserDTO.builder().build();
+
+        // Prefill the user-linked Bill-To fields from the remembered billing profile (if any),
+        // so the admin doesn't re-type them for a returning customer.
+        String billedUserId = (request.getUserIds() != null && !request.getUserIds().isEmpty())
+                ? request.getUserIds().get(0) : null;
+        Map<String, String> billingProfile = billedUserId != null
+                ? invoiceBillingProfileService.loadAsMap(billedUserId, request.getInstituteId())
+                : Collections.emptyMap();
 
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
         Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
@@ -3740,6 +3805,7 @@ public class InvoiceService {
                 .paymentDate(LocalDateTime.now())
                 .lineItems(buildAdminLineItemData(request.getLineItems(), taxAmount, taxIncluded, taxRate, taxLabel))
                 .notes(effectiveNotes)
+                .billingProfile(billingProfile)
                 .build();
 
         // Render EVERY editable placeholder through the escaping override path (defaults merged
@@ -3808,6 +3874,10 @@ public class InvoiceService {
         Map<String, String> d = new HashMap<>();
         UserDTO user = invoiceData.getUser();
         Institute institute = invoiceData.getInstitute();
+        // Remembered billing details (if any) win over the raw user record for the
+        // user-linked fields, so a previously-entered Bill-To prefills next time.
+        Map<String, String> bp = invoiceData.getBillingProfile() != null
+                ? invoiceData.getBillingProfile() : Collections.emptyMap();
 
         d.put("invoice_number", nz(invoiceData.getInvoiceNumber()));
         d.put("invoice_date", invoiceData.getInvoiceDate() != null
@@ -3815,13 +3885,11 @@ public class InvoiceService {
         d.put("due_date", invoiceData.getDueDate() != null
                 ? invoiceData.getDueDate().toLocalDate().toString() : "");
 
-        if (user != null) {
-            d.put("user_name", nz(user.getFullName()));
-            d.put("user_email", nz(user.getEmail()));
-            d.put("user_address", nz(user.getAddressLine()));
-            d.put("place_of_supply", nz(user.getRegion()));
-        }
-        d.put("user_tax_info", "");
+        d.put("user_name", firstNonBlank(bp.get("user_name"), user != null ? user.getFullName() : null));
+        d.put("user_email", firstNonBlank(bp.get("user_email"), user != null ? user.getEmail() : null));
+        d.put("user_address", firstNonBlank(bp.get("user_address"), user != null ? user.getAddressLine() : null));
+        d.put("place_of_supply", firstNonBlank(bp.get("place_of_supply"), user != null ? user.getRegion() : null));
+        d.put("user_tax_info", nz(bp.get("user_tax_info")));
 
         if (institute != null) {
             d.put("institute_name", nz(institute.getInstituteName()));

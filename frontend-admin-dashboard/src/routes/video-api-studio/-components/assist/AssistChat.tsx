@@ -32,6 +32,7 @@ import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
 import { ContactSheetDecision } from './gates/ContactSheetDecision';
 import { AssetRequestDecision } from './gates/AssetRequestDecision';
 import { CastDecision } from './gates/CastDecision';
+import { StyleframeDecision } from './gates/StyleframeDecision';
 
 interface AssistChatProps {
     /** The original prompt — rendered as the opening user message. */
@@ -316,6 +317,14 @@ function DecisionCard({
             );
         case 'shot_plan':
             return <ShotPlanDecision decision={decision} isSubmitting={isSubmitting} onSubmit={onSubmit} />;
+        case 'styleframe':
+            return (
+                <StyleframeDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
         case 'visual_casting':
             return (
                 <VisualCastingDecision

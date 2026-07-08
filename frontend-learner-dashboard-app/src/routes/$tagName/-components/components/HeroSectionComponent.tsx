@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CaretLeft, CaretRight, Clock, ChalkboardTeacher } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, Clock, ChalkboardTeacher, Star } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,19 @@ interface HeroSectionProps {
   layout: "split" | "centered";
   backgroundImage?: string;
   backgroundColor?: string;
+  /** Small accent label above the title (e.g. "COHORT 4 · STARTS JULY"). */
+  eyebrow?: {
+    text: string;
+    style?: "badge" | "plain";
+  };
+  /** Stat chip row under the CTAs (e.g. 20,000+ / Engineers taught). */
+  statChips?: Array<{ value: string; label: string }>;
+  /** Avatar-stack trust chip (avatars optional; rating 1–5 optional). */
+  trust?: {
+    avatars?: string[];
+    rating?: number;
+    text?: string;
+  };
   left?: {
     title?: string;
     description?: string;
@@ -18,6 +31,13 @@ interface HeroSectionProps {
       enabled?: boolean;
       backgroundColor?: string;
     };
+    /** Multi-CTA row; when present it supersedes the single `button`. */
+    buttons?: Array<{
+      text: string;
+      action?: string;
+      target?: string;
+      variant?: "primary" | "secondary";
+    }>;
   };
   right?: {
     image?: string;
@@ -136,6 +156,128 @@ const HeroMeta: React.FC<{ duration?: string; instructor?: string }> = ({
   );
 };
 
+// Eyebrow — accent label above the title. "badge" = pill with live dot.
+const HeroEyebrow: React.FC<{
+  eyebrow?: HeroSectionProps["eyebrow"];
+  textAlign: "left" | "center" | "right";
+}> = ({ eyebrow, textAlign }) => {
+  if (!eyebrow?.text) return null;
+  const justify =
+    textAlign === "center" ? "justify-center" : textAlign === "right" ? "justify-end" : "justify-start";
+  if (eyebrow.style === "plain") {
+    return (
+      <div className={`flex ${justify}`}>
+        <span className="catalogue-eyebrow">{eyebrow.text}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`flex ${justify}`}>
+      <span className="inline-flex items-center gap-2 rounded-full border border-catalogue-border bg-catalogue-bg-subtle px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-catalogue-text-secondary">
+        <span className="h-1.5 w-1.5 rounded-full bg-primary-500" aria-hidden="true" />
+        {eyebrow.text}
+      </span>
+    </div>
+  );
+};
+
+// Multi-CTA row. Falls back to nothing — callers keep the legacy single
+// button path when `buttons` is absent.
+const HeroButtons: React.FC<{
+  buttons?: NonNullable<HeroSectionProps["left"]>["buttons"];
+  textAlign: "left" | "center" | "right";
+  onAction: (b: { action?: string; target?: string }) => void;
+}> = ({ buttons, textAlign, onAction }) => {
+  const visible = (buttons || []).filter((b) => b.text?.trim());
+  if (!visible.length) return null;
+  const justify =
+    textAlign === "center" ? "justify-center" : textAlign === "right" ? "justify-end" : "justify-start";
+  return (
+    <div className={`flex flex-wrap items-center gap-3 pt-2 ${justify}`}>
+      {visible.slice(0, 3).map((b, i) => (
+        <button
+          key={`${b.text}-${i}`}
+          type="button"
+          onClick={() => onAction(b)}
+          className={
+            (b.variant ?? (i === 0 ? "primary" : "secondary")) === "primary"
+              ? "catalogue-btn catalogue-btn-primary catalogue-btn-lg shadow-md"
+              : "catalogue-btn catalogue-btn-secondary catalogue-btn-lg"
+          }
+        >
+          {b.text}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// Stat chip row (value + label pairs) under the CTAs.
+const HeroStatChips: React.FC<{
+  chips?: HeroSectionProps["statChips"];
+  textAlign: "left" | "center" | "right";
+}> = ({ chips, textAlign }) => {
+  const visibleChips = (chips || []).filter((c) => c.value?.trim() || c.label?.trim());
+  if (!visibleChips.length) return null;
+  const justify =
+    textAlign === "center" ? "justify-center" : textAlign === "right" ? "justify-end" : "justify-start";
+  return (
+    <div className={`flex flex-wrap gap-3 pt-3 ${justify}`}>
+      {visibleChips.slice(0, 4).map((c, i) => (
+        <div
+          key={`${c.label}-${i}`}
+          className="rounded-xl border border-catalogue-border-subtle bg-catalogue-bg px-4 py-2.5 text-center shadow-sm"
+        >
+          <div className="text-lg font-bold leading-tight text-catalogue-text-primary">{c.value}</div>
+          <div className="text-xs text-catalogue-text-secondary">{c.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Avatar-stack trust chip (avatars + star rating + text), all parts optional.
+const HeroTrust: React.FC<{
+  trust?: HeroSectionProps["trust"];
+  textAlign: "left" | "center" | "right";
+}> = ({ trust, textAlign }) => {
+  if (!trust || (!trust.text && !trust.rating && !trust.avatars?.length)) return null;
+  const justify =
+    textAlign === "center" ? "justify-center" : textAlign === "right" ? "justify-end" : "justify-start";
+  const rating = trust.rating ? Math.max(0, Math.min(5, trust.rating)) : 0;
+  return (
+    <div className={`flex ${justify} pt-3`}>
+      <div className="inline-flex items-center gap-3 rounded-full border border-catalogue-border-subtle bg-catalogue-bg-subtle py-1.5 pl-2 pr-4">
+        {!!trust.avatars?.length && (
+          <div className="flex -space-x-2">
+            {trust.avatars.slice(0, 4).map((src, i) => (
+              <img
+                key={`${src}-${i}`}
+                src={src}
+                alt=""
+                aria-hidden="true"
+                className="h-7 w-7 rounded-full border-2 border-catalogue-bg object-cover"
+              />
+            ))}
+          </div>
+        )}
+        {rating > 0 && (
+          <span className="flex items-center gap-1 text-sm font-semibold text-catalogue-text-primary">
+            <Star size={14} weight="fill" className="text-warning-500" aria-hidden="true" />
+            {rating.toFixed(1)}
+          </span>
+        )}
+        {trust.text && <span className="text-sm text-catalogue-text-secondary">{trust.text}</span>}
+      </div>
+    </div>
+  );
+};
+
+// True when the multi-CTA row has at least one non-blank button — a freshly
+// added empty repeater row must NOT suppress the legacy single button.
+const hasVisibleHeroButtons = (left?: HeroSectionProps["left"]) =>
+  !!(left?.buttons || []).some((b) => b.text?.trim());
+
 // Centralized enabled check - defaults to false if not provided
 const isHeroButtonEnabled = (button?: { enabled?: boolean | string | number }) => {
   if (!button) return false;
@@ -192,6 +334,9 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
   layout,
   backgroundImage,
   backgroundColor,
+  eyebrow,
+  statChips,
+  trust,
   left,
   right,
   styles = {},
@@ -228,6 +373,9 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
       roundedEdges,
       textAlign,
       backgroundColor,
+      eyebrow,
+      statChips,
+      trust,
     };
 
     if (isHeroImagePlaceholder && !hasCarouselImages) {
@@ -243,7 +391,7 @@ export const HeroSectionComponent: React.FC<HeroSectionProps> = ({
         isBackgroundImagePlaceholder={isBackgroundImagePlaceholder}
       />
     );
-  }, [layout, backgroundImage, left, right, courseData, roundedEdges, textAlign]);
+  }, [layout, backgroundImage, left, right, courseData, roundedEdges, textAlign, eyebrow, statChips, trust]);
 };
 
 // Placeholder component - no state management
@@ -258,10 +406,16 @@ const HeroSectionPlaceholder: React.FC<{
   right?: HeroSectionProps['right'];
   courseData?: HeroSectionProps['courseData'];
   backgroundColor?: string;
+  eyebrow?: HeroSectionProps['eyebrow'];
+  statChips?: HeroSectionProps['statChips'];
+  trust?: HeroSectionProps['trust'];
 }> = ({
   layout,
   left,
   courseData,
+  eyebrow,
+  statChips,
+  trust,
   heroTitle,
   heroDescription,
   roundedEdges,
@@ -270,7 +424,7 @@ const HeroSectionPlaceholder: React.FC<{
 }) => {
   const navigate = useNavigate();
 
-  const handleButtonClick = (button: { action: string; target: string }) => {
+  const handleButtonClick = (button: { action?: string; target?: string }) => {
     if (button.action === "navigate" && button.target) {
       navigate({ to: button.target });
     } else if (button.action === "openLeadCollection") {
@@ -280,8 +434,10 @@ const HeroSectionPlaceholder: React.FC<{
 
   return (
     <section
-      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
-      style={{ textAlign, backgroundColor: backgroundColor || undefined }} // design-lint-ignore: page-builder background color
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      // Author-painted color must beat the token hero surface: the class's
+      // opaque gradient stack would otherwise cover the inline color.
+      style={{ textAlign, backgroundColor: backgroundColor || undefined, ...(backgroundColor ? { backgroundImage: 'none' } : {}) }} // design-lint-ignore: page-builder background color
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
@@ -289,23 +445,30 @@ const HeroSectionPlaceholder: React.FC<{
           <div className="mx-auto max-w-3xl space-y-4">
             {(left || courseData) && (
               <>
+                <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
+                  <h1 className="catalogue-h1 text-foreground">
                     {heroTitle}
                   </h1>
                 )}
                 <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
-                  >
-                    {left.button.text}
-                  </button>
+                {hasVisibleHeroButtons(left) ? (
+                  <HeroButtons buttons={left.buttons} textAlign={textAlign} onAction={handleButtonClick} />
+                ) : (
+                  isHeroButtonEnabled(left?.button) && left?.button && (
+                    <button
+                      onClick={() => handleButtonClick(left.button!)}
+                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                    >
+                      {left.button.text}
+                    </button>
+                  )
                 )}
+                <HeroStatChips chips={statChips} textAlign={textAlign} />
+                <HeroTrust trust={trust} textAlign={textAlign} />
               </>
             )}
           </div>
@@ -314,23 +477,30 @@ const HeroSectionPlaceholder: React.FC<{
           <div className="text-center space-y-4 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
+                <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
+                  <h1 className="catalogue-h1 text-foreground">
                     {heroTitle}
                   </h1>
                 )}
                 <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
-                  >
-                    {left.button.text}
-                  </button>
+                {hasVisibleHeroButtons(left) ? (
+                  <HeroButtons buttons={left.buttons} textAlign={textAlign} onAction={handleButtonClick} />
+                ) : (
+                  isHeroButtonEnabled(left?.button) && left?.button && (
+                    <button
+                      onClick={() => handleButtonClick(left.button!)}
+                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                    >
+                      {left.button.text}
+                    </button>
+                  )
                 )}
+                <HeroStatChips chips={statChips} textAlign={textAlign} />
+                <HeroTrust trust={trust} textAlign={textAlign} />
               </>
             )}
           </div>
@@ -456,6 +626,9 @@ const HeroCarousel: React.FC<{
 // State management component - for valid images
 const HeroSectionWithState: React.FC<{
   layout: "split" | "centered";
+  eyebrow?: HeroSectionProps['eyebrow'];
+  statChips?: HeroSectionProps['statChips'];
+  trust?: HeroSectionProps['trust'];
   left?: HeroSectionProps['left'];
   right?: HeroSectionProps['right'];
   courseData?: HeroSectionProps['courseData'];
@@ -484,6 +657,9 @@ const HeroSectionWithState: React.FC<{
   heroTitle,
   heroDescription,
   backgroundColor,
+  eyebrow,
+  statChips,
+  trust,
 }) => {
   const navigate = useNavigate();
   const [resolvedImageUrl, setResolvedImageUrl] = useState<string>(heroImage);
@@ -522,7 +698,7 @@ const HeroSectionWithState: React.FC<{
     return () => { isMounted = false; };
   }, [heroImage, heroBackgroundImage, isHeroImagePlaceholder, isBackgroundImagePlaceholder]);
 
-  const handleButtonClick = (button: { action: string; target: string }) => {
+  const handleButtonClick = (button: { action?: string; target?: string }) => {
     if (button.action === "navigate" && button.target) {
       navigate({ to: button.target });
     } else if (button.action === "openLeadCollection") {
@@ -549,15 +725,17 @@ const HeroSectionWithState: React.FC<{
   // original 50/50 split and title.
   const isCourseDetail = !!courseData;
   const titleClass = isCourseDetail
-    ? "text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight"
-    : "text-h1 font-bold text-gray-900 leading-tight tracking-tight";
+    ? "catalogue-h1 text-foreground"
+    : "catalogue-h1 text-catalogue-text-primary";
 
   return (
     <section
-      className={cn("w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
+      className={cn("catalogue-hero-surface w-full pt-8 pb-10 md:pt-12 md:pb-14 overflow-hidden", roundedEdges && "rounded-xl")}
       style={{
         textAlign,
         backgroundColor: hasBgImage ? undefined : (backgroundColor || undefined), // design-lint-ignore: page-builder background color
+        // Author color beats the token hero-surface gradient stack.
+        ...(!hasBgImage && backgroundColor ? { backgroundImage: 'none' } : {}),
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -577,6 +755,7 @@ const HeroSectionWithState: React.FC<{
             {/* Left Content — 5/12 on desktop */}
             {(left || courseData) && (
               <div className={cn("space-y-4", isCourseDetail ? (heroMedia.length > 0 ? "lg:col-span-5" : "lg:col-span-12") : "")}>
+                <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
                   <h1 className={titleClass}>
@@ -585,15 +764,21 @@ const HeroSectionWithState: React.FC<{
                 )}
                 <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
-                  >
-                    {left.button.text}
-                  </button>
+                {hasVisibleHeroButtons(left) ? (
+                  <HeroButtons buttons={left.buttons} textAlign={textAlign} onAction={handleButtonClick} />
+                ) : (
+                  isHeroButtonEnabled(left?.button) && left?.button && (
+                    <button
+                      onClick={() => handleButtonClick(left.button!)}
+                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                    >
+                      {left.button.text}
+                    </button>
+                  )
                 )}
+                <HeroStatChips chips={statChips} textAlign={textAlign} />
+                <HeroTrust trust={trust} textAlign={textAlign} />
               </div>
             )}
 
@@ -609,23 +794,30 @@ const HeroSectionWithState: React.FC<{
           <div className="text-center space-y-4 max-w-3xl mx-auto">
             {(left || courseData) && (
               <>
+                <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
-                  <h1 className="text-4xl sm:text-5xl font-bold text-foreground leading-tight tracking-tight">
+                  <h1 className="catalogue-h1 text-foreground">
                     {heroTitle}
                   </h1>
                 )}
                 <HeroMeta duration={courseData?.duration} instructor={courseData?.instructor} />
                 <HeroDescription html={heroDescription} />
-                {isHeroButtonEnabled(left?.button) && left?.button && (
-                  <button
-                    onClick={() => handleButtonClick(left.button!)}
-                    className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
-                    style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
-                  >
-                    {left.button.text}
-                  </button>
+                {hasVisibleHeroButtons(left) ? (
+                  <HeroButtons buttons={left.buttons} textAlign={textAlign} onAction={handleButtonClick} />
+                ) : (
+                  isHeroButtonEnabled(left?.button) && left?.button && (
+                    <button
+                      onClick={() => handleButtonClick(left.button!)}
+                      className="mt-2 px-8 py-3 rounded-lg text-base font-semibold text-white transition-all duration-200 hover:opacity-90 active:scale-[0.98] shadow-md"
+                      style={{ backgroundColor: left.button.backgroundColor }} // design-lint-ignore: page-builder dynamic button color
+                    >
+                      {left.button.text}
+                    </button>
+                  )
                 )}
+                <HeroStatChips chips={statChips} textAlign={textAlign} />
+                <HeroTrust trust={trust} textAlign={textAlign} />
               </>
             )}
             {/* Centered media — image or carousel below the text */}

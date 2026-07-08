@@ -27,6 +27,7 @@ import { NodeConfigPanel } from './node-config-panel';
 import { TemplateGallery } from './template-gallery';
 import { NodeSuggestions } from './node-suggestions';
 import { WorkflowWizard } from './workflow-wizard';
+import { AiDraftPanel } from './ai-draft-panel';
 import { EventEntityPicker } from './event-entity-picker';
 import { UseCaseWizardStep } from './use-case-wizard-step';
 
@@ -546,6 +547,12 @@ function WorkflowSetupStep({ onComplete, triggerEventsCatalog, instituteId }: {
                     {/* ─── STEP 1: Name ─── */}
                     {currentStep === 1 && (
                         <div className="space-y-6">
+                            <AiDraftPanel instituteId={instituteId} onComplete={onComplete} />
+                            <div className="flex items-center gap-3">
+                                <div className="h-px flex-1 bg-gray-200" />
+                                <span className="text-xs uppercase tracking-wide text-gray-400">or set it up manually</span>
+                                <div className="h-px flex-1 bg-gray-200" />
+                            </div>
                             <div>
                                 <h2 className="text-xl font-semibold text-gray-800">What should we call this workflow?</h2>
                                 <p className="mt-1 text-sm text-gray-500">Give it a name that describes its purpose.</p>

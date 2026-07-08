@@ -8,8 +8,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             logo: '',
             title: 'My Platform',
-            backgroundColor: '#4F46E5',
-            textColor: '#FFFFFF',
+            backgroundColor: '#4F46E5', // design-lint-ignore: page-builder template default color
+            textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             navigation: [
                 { label: 'Home', url: '/', openInSameTab: true },
                 { label: 'Courses', url: '#courses', openInSameTab: true },
@@ -23,8 +23,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             layout: 'split',
-            backgroundColor: '#F8FAFC',
-            textColor: '#111827',
+            backgroundColor: '#F8FAFC', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
+            eyebrow: { text: 'New batch enrolling now', style: 'badge' },
             left: {
                 title: 'Welcome to Our Platform',
                 subheading: 'Your path to mastery starts here',
@@ -36,7 +37,15 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
                     action: 'navigate',
                     target: '#courses',
                 },
+                buttons: [
+                    { text: 'Explore Courses', action: 'navigate', target: '#courses', variant: 'primary' },
+                    { text: 'Talk to Us', action: 'openLeadCollection', variant: 'secondary' },
+                ],
             },
+            statChips: [
+                { value: '10,000+', label: 'Learners' },
+                { value: '4.8/5', label: 'Average rating' },
+            ],
             right: { image: '', alt: 'Hero image', imageCollage: [] },
             styles: { padding: '40px', roundedEdges: true, textAlign: 'left' },
         },
@@ -55,7 +64,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
                 styles: {
                     hoverEffect: 'shadow',
                     roundedEdges: true,
-                    backgroundColor: '#FFFFFF',
+                    backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
                 },
             },
         },
@@ -66,8 +75,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             layout: 'two-column',
-            backgroundColor: '#F9FAFB',
-            textColor: '#374151',
+            backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
+            textColor: '#374151', // design-lint-ignore: page-builder template default color
             leftSection: {
                 title: 'My Platform',
                 text: 'Welcome to our platform.',
@@ -137,7 +146,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             description: 'Hear directly from our learners.',
             media: [],
             layout: 'carousel',
-            styles: { backgroundColor: '#F0F9FF', roundedEdges: true },
+            styles: { backgroundColor: '#F0F9FF', roundedEdges: true }, // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -149,9 +158,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             description: 'Numbers that speak about our growth.',
             stats: [{ label: 'Students', value: '100+' }],
             style: 'circle',
-            backgroundColor: '#FFFFFF',
-            textColor: '#111827',
-            styles: { backgroundColor: '#FFFFFF', textColor: '#111827', hoverEffect: 'scale' },
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
+            styles: { backgroundColor: '#FFFFFF', textColor: '#111827', hoverEffect: 'scale' }, // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -163,10 +172,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             description: 'Real feedback from our learners.',
             layout: 'grid-scroll',
             testimonials: [],
-            backgroundColor: '#F9FAFB',
-            textColor: '#111827',
+            backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
             styles: {
-                backgroundColor: '#F9FAFB',
+                backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
                 roundedEdges: true,
                 cardHoverEffect: 'lift',
                 scrollEnabled: true,
@@ -253,8 +262,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
                 { question: 'How do I enroll?', answer: 'Simply sign up, browse our catalogue, and click enroll on any course.' },
                 { question: 'Is there a free trial?', answer: 'Yes! Many of our courses offer a free preview.' },
             ],
-            backgroundColor: '#F9FAFB',
-            textColor: '#111827',
+            backgroundColor: '#F9FAFB', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -267,7 +276,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             caption: '',
             aspectRatio: '16:9',
             autoplay: false,
-            backgroundColor: '#000000',
+            backgroundColor: '#000000', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -277,8 +286,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             heading: 'Ready to Get Started?',
             subheading: 'Join thousands of learners and start your journey today.',
-            backgroundColor: '#3B82F6',
-            textColor: '#FFFFFF',
+            backgroundColor: '#3B82F6', // design-lint-ignore: page-builder template default color
+            textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             layout: 'centered',
             button: {
                 enabled: true,
@@ -335,7 +344,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             ],
             submitLabel: 'Send Message',
             successMessage: "Thank you! We'll be in touch soon.",
-            backgroundColor: '#FFFFFF',
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -389,7 +398,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             layout: 'list',
             showDate: true,
             showTag: true,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -416,7 +425,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             height: '48px',
             showDivider: false,
             dividerStyle: 'solid',
-            dividerColor: '#E5E7EB',
+            dividerColor: '#E5E7EB', // design-lint-ignore: page-builder template default color
             dividerWidth: '1px',
             maxWidth: '100%',
         },
@@ -434,7 +443,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             ],
             defaultOpen: 0,
             allowMultiple: false,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -448,6 +457,21 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             layout: 'grid',
             grayscale: true,
             columns: 5,
+            display: 'logo',
+            tile: 'none',
+            marqueeSpeed: 'medium',
+            logoHeight: 'md',
+        },
+    },
+
+    trustChip: {
+        type: 'trustChip',
+        enabled: true,
+        props: {
+            text: 'Trusted by 10,000+ learners',
+            rating: 4.8,
+            avatars: [],
+            alignment: 'center',
         },
     },
 
@@ -469,8 +493,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             targetDate: '',
             heading: 'Event Starts In',
             expiredMessage: 'The event has started!',
-            backgroundColor: '#1E293B',
-            textColor: '#FFFFFF',
+            backgroundColor: '#1E293B', // design-lint-ignore: page-builder template default color
+            textColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
             style: 'cards',
         },
     },
@@ -501,8 +525,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             ],
             style: 'cards',
             iconSize: 'large',
-            backgroundColor: '#FFFFFF',
-            textColor: '#111827',
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
         },
     },
 
@@ -548,7 +572,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             placeholder: 'Enter your email',
             buttonText: 'Subscribe',
             layout: 'inline',
-            backgroundColor: '#F8FAFC',
+            backgroundColor: '#F8FAFC', // design-lint-ignore: page-builder template default color
             successMessage: 'Thank you for subscribing!',
         },
     },
@@ -566,8 +590,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
                 { number: '3', title: 'Start Learning', description: 'Access your course materials and begin.' },
             ],
             connectorStyle: 'line',
-            backgroundColor: '#FFFFFF',
-            textColor: '#111827',
+            backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            textColor: '#111827', // design-lint-ignore: page-builder template default color
             accentColor: '',
         },
     },
@@ -586,9 +610,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             speed: 'medium',
             direction: 'left',
             pauseOnHover: true,
-            backgroundColor: '#1e1b4b',
-            textColor: '#ffffff',
-            iconColor: '#facc15',
+            backgroundColor: '#1e1b4b', // design-lint-ignore: page-builder template default color
+            textColor: '#ffffff', // design-lint-ignore: page-builder template default color
+            iconColor: '#facc15', // design-lint-ignore: page-builder template default color
             fontSize: 'sm',
         },
     },

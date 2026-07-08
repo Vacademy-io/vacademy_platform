@@ -134,6 +134,35 @@ export interface ValidationError {
     severity: 'ERROR' | 'WARNING';
 }
 
+// --- AI-assisted workflow drafting (see WORKFLOW_AI_ASSIST_DESIGN.md) ---
+
+export interface AiDraftRequest {
+    goal: string;
+    instituteId: string;
+    answers?: Array<Record<string, unknown>>;
+}
+
+export interface AiDraftClarifyingQuestion {
+    id: string;
+    question: string;
+    entityType?: string;
+}
+
+export interface AiDraftRationale {
+    nodeId?: string;
+    explains?: string;
+}
+
+export interface AiDraftResponse {
+    workflow?: WorkflowBuilderDTO;
+    rationale?: AiDraftRationale[];
+    clarifyingQuestions?: AiDraftClarifyingQuestion[];
+    templateUsed?: string;
+    validationErrors?: ValidationError[];
+    warnings?: string[];
+    error?: string;
+}
+
 export const WORKFLOW_NODE_TYPES = [
     { type: 'TRIGGER', label: 'Trigger', icon: '⚡', color: 'green', category: 'Triggers' },
     { type: 'QUERY', label: 'Query', icon: '🔍', color: 'cyan', category: 'Data' },

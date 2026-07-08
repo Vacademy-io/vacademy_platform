@@ -1,7 +1,12 @@
 /* Compact Mode Styles - must be imported before @tailwind */
 @import './styles/compact-mode.css';
-/* Catalogue theme overrides for admin canvas preview */
+/* Catalogue tokens + themes + animations for the page-builder canvas —
+   byte-synced with the learner app (scripts/check-style-engine-sync.mjs)
+   so the canvas renders with the SAME variables/utilities as the live site.
+   Selectors are catalogue-prefixed / data-attr scoped; safe to load globally. */
+@import './styles/catalogue-tokens.css';
 @import './styles/catalogue-themes.css';
+@import './styles/catalogue-animations.css';
 
 @tailwind base;
 @tailwind components;

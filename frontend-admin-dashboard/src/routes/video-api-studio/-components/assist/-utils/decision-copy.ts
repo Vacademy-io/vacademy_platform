@@ -25,6 +25,10 @@ export const GATE_META: Record<GateType, GateMeta> = {
         title: 'Shot plan',
         blurb: 'The list of shots — types, order, pacing, and what each beat covers.',
     },
+    styleframe: {
+        title: 'Design identity',
+        blurb: 'The visual signature for this video — fonts, motion, finishing.',
+    },
     narration: {
         title: 'Narration script',
         blurb: 'The exact words spoken before audio is generated.',
@@ -62,6 +66,7 @@ export function gateTitle(gate: GateType): string {
 const GATE_PROMPT: Record<GateType, string> = {
     creative_concept: "Here's the creative direction — approve or refine it.",
     shot_plan: "Here's the shot plan — approve it, edit any shot, or let me decide.",
+    styleframe: 'Approve the design identity or adjust the look.',
     narration: "Here's the narration script — edit it, approve it, or let me decide.",
     visual_casting: 'Which visual should we use for this shot?',
     shot_look: 'Which look should we use for this shot?',
@@ -87,6 +92,7 @@ function summarizeLedger(gate: GateType, mode: string, answer: Record<string, un
             return `Asked: “${String((answer as { text?: string })?.text ?? '').slice(0, 80)}”`;
         case 'edit':
             if (gate === 'shot_plan') return 'Edited the shot plan';
+            if (gate === 'styleframe') return 'Adjusted the design identity';
             if (gate === 'narration') return 'Edited the narration script';
             if (gate === 'contact_sheet') {
                 const n = ((answer as { regens?: unknown[] })?.regens ?? []).length;
@@ -152,6 +158,7 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
             return `Let AI handle all remaining ${label.toLowerCase()} choices`;
         case 'edit':
             if (answer.gate_type === 'shot_plan') return `Edited the shot plan (${answer.shots.length} shots)`;
+            if (answer.gate_type === 'styleframe') return 'Adjusted design identity';
             if (answer.gate_type === 'narration') return 'Edited the narration script';
             if (answer.gate_type === 'creative_concept') return 'Edited the creative direction';
             if (answer.gate_type === 'contact_sheet')

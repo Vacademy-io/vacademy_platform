@@ -5,6 +5,8 @@ into an agent's context window — answers concrete questions about runtime beha
 shapes, file locations, and common debugging paths without needing to read other files
 first.
 
+> **Verified & corrected against live code 2026-07-07.**
+
 > **Related docs (cross-reference, don't duplicate):**
 > - [WORKFLOW_ENHANCEMENT.md](WORKFLOW_ENHANCEMENT.md) — chronological change log of past enhancements
 > - [WORKFLOW_CREATION_GUIDE.md](WORKFLOW_CREATION_GUIDE.md) — admin-facing "build your first workflow" walkthrough
@@ -235,12 +237,16 @@ Calls a prebuilt query, merges the returned map into the context.
       "from": "#ctx['windowStart']",            // optional
       "to":   "#ctx['windowEnd']"
     },
-    "resultKey": "students"   // optional: nest result under this key. Omitted = top-level merge.
+    "resultKey": "students"   // ⚠️ IGNORED — see below
   }
 }
 ```
 
+**`resultKey` is IGNORED for QUERY.** Despite being accepted (and advertised by `WorkflowContextSchemaService`), `QueryNodeHandler` never nests under it — query results are ALWAYS flat-merged via `ctx.putAll()` under the query's own output keys (e.g. `students`, `leads`, `ssigm_list`). Reference those real keys downstream, not a made-up `resultKey`. Consequence: two queries that emit the same key (e.g. both `students`) clobber each other in context.
+
 **Auto-injection.** [`QueryNodeHandler:86`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/workflow/engine/QueryNodeHandler.java#L86) auto-adds `instituteId` from context if the params don't already include it. So most queries don't need to specify it.
+
+**No dry-run gate.** `QueryNodeHandler` does NOT check `dryRun`, and several prebuilt keys mutate data (`createLiveSession`, `createSessionSchedule`, `createSessionParticipent`, `upsertUserCustomField`, `updateSSIGMRemaingDaysByOne`). A "Test Run" executes them for real.
 
 **Param evaluation.** Each value in `params`:
 - If `String` starting with `#` → SpEL evaluation against context
@@ -307,7 +313,7 @@ Response stored at `#ctx['createUserHttpResponse']` for downstream nodes to read
 
 ### SEND_PUSH_NOTIFICATION
 
-FCM push notifications.
+⚠️ **STUB — does not send.** The handler logs the would-be push and returns `status: "dispatched"` but the FCM/APNs dispatch is a TODO. Do not use in a real workflow expecting a notification to arrive.
 
 ```jsonc
 {
@@ -323,14 +329,18 @@ FCM push notifications.
 
 ### DELAY
 
-Pauses execution. **Currently uses in-process `Thread.sleep`** — a JVM restart loses scheduled continuations. Persistent (Quartz-resume) version is staged but disabled.
+Pauses execution. **Delays ≤60s use inline `Thread.sleep`; delays >60s use the LIVE persistent path** (updated 2026-07-07): `DelayNodeHandler` writes a `workflow_execution_state` row (`status=WAITING`, `resume_at`, full JSONB context, `pause_reason=DELAY`), marks the execution `PAUSED`, and returns `__workflow_paused`. [`WorkflowResumeJob`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/workflow/scheduler/WorkflowResumeJob.java) (registered in `QuartzConfig`, runs every ~2 min, cron `0 0/2 * * * ?`) picks up due rows via an atomic `claimForResume()` (multi-pod safe) and resumes from the paused node. So multi-day delays now survive JVM restarts. The same pause/resume machinery powers the `CALL_AI` node's re-dial loop (`pause_reason` `AI_CALL_RETRY` / `AI_CALL_RECHECK`).
+
+Config is nested under `delay` — reads `delay.value` / `delay.unit`. A legacy flat `delayValue`/`delayUnit` shape is NOT read and executes as a 0-delay.
 
 ```jsonc
 {
   "nodeType": "DELAY",
   "config": {
-    "amount": 5,
-    "unit": "MINUTES"   // SECONDS, MINUTES, HOURS, DAYS
+    "delay": {
+      "value": 5,
+      "unit": "MINUTES"   // SECONDS, MINUTES, HOURS, DAYS
+    }
   }
 }
 ```
@@ -429,6 +439,32 @@ Schedules a one-shot future execution via Quartz. Survives JVM restart (unlike D
 }
 ```
 
+### SEND_WHATSAPP
+
+WhatsApp send, list-iterated like SEND_EMAIL (`on` must resolve to a List; wrap singletons `{#ctx['user']}`). Mobile extracted from `mobileNumber`/`mobile_number`/`mobile`/`phoneNumber`/`phone_number`/`phone`/`to` (digits-sanitized). Supports named `templateVars` OR COMBOT-style positional `params` (presence of `params` skips template validation). WHATSAPP channel is rate-limited; single batch (no chunk/throttle/timeout knobs like email). `dryRun` suppresses the send. Result keys are snake_case (`processed_count`, …).
+
+### COMBOT
+
+Meta Cloud-API WhatsApp via `notification-service /v1/combot/send-template` (its own `RestTemplate`). ⚠️ **No `dryRun` gate, no rate limit, no execution logging, no dedup** — sends real messages even in a Test Run.
+
+### TRANSFORM
+
+Pure context shaping. `outputDataPoints[]` each compute a `fieldName` from a SpEL `compute` (or literal `value`); returns only the diff, which is `putAll`-merged. Common for building a WhatsApp/email payload list before an iterator node.
+
+### ACTION
+
+Dispatches to a `DataProcessorStrategyRegistry` strategy named by `dataProcessor`. Catalog processors: `ITERATOR` (per-item sub-operation, e.g. a QUERY per element of a list), `ACTIVATE_ENROLLMENT`, `SWITCH`. Unknown/missing `dataProcessor` → node FAILED ("Missing dataProcessor").
+
+### SET_LEAD_STATUS
+
+Resolves a lead by `responseId`/`leadId` (never `eventId`) and calls `changeLeadStatus(..., "AI_WORKFLOW")`. All misses are warn+no-op. ⚠️ **No `dryRun` gate — mutates lead status even in a Test Run.**
+
+### CALL_AI
+
+Places an AI voice call and drives a re-dial loop using the DELAY pause/resume machinery (`pause_reason` `AI_CALL_RETRY`/`AI_CALL_RECHECK`). Downstream nodes branch on `#ctx['callOutcome']`. This is the highest-volume node in production (Shiksha Nation "AI-call new leads").
+
+> **Dead / stub node types:** `ROUTER` is in the `NodeType` enum and the FE palette but has **no handler** — a workflow containing it can't execute that node. `SEND_PUSH_NOTIFICATION` is a stub (see above). Don't author either.
+
 ---
 
 ## Trigger catalog
@@ -437,20 +473,40 @@ Schedules a one-shot future execution via Quartz. Survives JVM restart (unlike D
 
 Defined in [`WorkflowTriggerEvent`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/workflow/enums/WorkflowTriggerEvent.java).
 
+The enum has **38 values; 34 are actually emitted.** Key ones (verified 2026-07-07):
+
 | Event name | Emitted from | Context keys produced | Status |
 |---|---|---|---|
 | `LEARNER_BATCH_ENROLLMENT` | `StudentRegistrationManager.triggerEnrollmentWorkflow` | `user` (UserDTO), `packageSessionIds`, `packageId`, `subOrg` | ✅ wired |
-| `SUB_ORG_MEMBER_ENROLLMENT` | `SubOrgLearnerService.triggerEnrollmentWorkflow` | `user`, `subOrg`, `instituteId` | ✅ wired |
-| `AUDIENCE_LEAD_SUBMISSION` | `AudienceService` (lead submit handlers) | `lead`, `customFields`, `respondentEmailRequests`, `instituteName`, `campaignName` | ✅ wired |
-| `LIVE_SESSION_CREATE` | `Step1Service` (after session creation) | `liveSession`, `instituteId` | ✅ wired |
-| `LIVE_SESSION_END` | `LiveSessionProviderController` (BBB analytics callback path) | `sessionId`, `scheduleId`, `instituteId` | ✅ wired |
-| `LIVE_SESSION_START` | — | — | ⚠️ catalog-only, NOT emitted from anywhere |
-| `INSTALLMENT_DUE_REMINDER` | Fee reminder service | `installment`, `learner`, `instituteId` | ✅ wired |
+| `SUB_ORG_MEMBER_ENROLLMENT` / `_TERMINATION` | `SubOrgLearnerService` (@Async) | `user`, `subOrg`, `instituteId` | ✅ wired |
+| `AUDIENCE_LEAD_SUBMISSION` | `AudienceService` (submitLead v1/v2 + form webhook) | `lead`, `customFields`, `respondentEmailRequests`, `adminEmailRequests`, `instituteName`, `campaignName` | ✅ wired |
+| `AUDIENCE_OPT_OUT` | `AudienceService` | lead ctx | ✅ wired (⚠️ missing from catalog metadata) |
+| `LEAD_ASSIGNED_TO_COUNSELOR` | `UserLeadProfileService`, `EnquiryService`, `AudienceService` | lead + counselor ctx | ✅ wired |
+| `LEAD_STATUS_CHANGED` | `LeadStatusService`, `UserLeadProfileService`, `EnquiryService` | lead, `changeType` (LEAD_STATUS/CONVERSION_STATUS/TIER/ENQUIRY_STATUS) | ✅ wired |
+| `LEAD_TAT_REMINDER_BEFORE` / `LEAD_TAT_OVERDUE` / `FOLLOW_UP_DUE` / `FOLLOW_UP_OVERDUE` | `LeadAutomationScheduler` (30-min cron) | lead ctx (triggerKey config-overridable) | ✅ wired |
+| `LEAD_CALLED_BACK` | `AiCallOutcomeProcessor` | lead ctx | ✅ wired (⚠️ missing from catalog metadata; fires with `lead.instituteId()` — null-institute leads match nothing) |
+| `LIVE_SESSION_CREATE` | `Step1Service` (+ bulk async helper) | `liveSession`, `instituteId` | ✅ wired |
+| `LIVE_SESSION_START` | `LiveSessionNotificationProcessor` (~L242, 5-min Quartz scan) | `sessionId`, `scheduleId`, `instituteId` | ✅ wired |
+| `LIVE_SESSION_END` | `LiveSessionNotificationProcessor` (~L292, 5-min Quartz scan — **NOT** the BBB callback) | `sessionId`, `scheduleId`, `eventId`, `instituteId` | ✅ wired |
+| `PAYMENT_SUCCESS` / `PAYMENT_FAILED` | `PaymentLogService` | `paymentLog`, `user`, `userPlanId`, `packageSessionIds`, `enrollInviteId` (eventId=enrollInviteId, fallback instituteId) | ✅ wired |
+| `ABANDONED_CART` | `LearnerEnrollmentEntryService` | `user`, `userPlanId`, `packageSessionId`, `packageId` | ✅ wired |
+| `SUBSCRIPTION_CANCELLED` / `_TERMINATED` / `LEARNER_RE_ENROLLMENT` | `UserPlanService` | plan/user ctx | ✅ wired |
+| `LEARNER_TERMINATION` | `LearnerTerminationWorkflowHelper` (@Async afterCommit) | learner ctx | ✅ wired |
+| `MEMBERSHIP_EXPIRY` | `PackageSessionScheduler` (daily 09:00 cron) | expiring plan ctx | ✅ wired |
+| `INVITE_CREATE` | `EnrollInviteService` | `invite` | ✅ wired |
+| `INVITE_FORM_FILL` | `LearnerEnrollInviteService` | `invite`, `instituteId`, `inviteCode` | ⚠️ wired but fires on invite-page **VIEW**, not form submit |
+| `COURSE_CREATED`, `DOUBT_RAISED`, `ASSIGNMENT_SUBMITTED` | respective services | domain ctx | ✅ wired |
+| `ASSESSMENT_CREATE` / `_START` / `_END` | `assessment_service` → `WorkflowTriggerClient` → `InternalWorkflowController` (cross-service HTTP) | assessment ctx | ✅ wired |
+| `INSTALLMENT_DUE_REMINDER` | `ManualReminderService` only (manual admin path; eventId=null → global triggers only) | `installment`, `learner`, `instituteId` | ✅ wired (no cron emitter) |
+| `GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL` / `SEND_LEARNER_CREDENTIALS` | `LearnerPortalAccessService` (SYNCHRONOUS — read result keys back from returned ctx) | portal ctx (eventId=instituteId) | ✅ wired |
+| `LIVE_SESSION_FORM_SUBMISSION`, `ENROLLMENT_REPORTS`, `ASSESSMENT_FORM_SUBMISSION` | — | — | ⚠️ catalog-only, NOT emitted from anywhere |
 
-**Priority matching.** Multiple triggers can match one event. Resolution order:
-1. Exact match on `(eventName, eventAppliedType, eventId)` — most specific
-2. Match on `(eventName, eventAppliedType, NULL)` — "all entities of this type"
-3. Match on `(eventName, NULL, NULL)` — "all events of this name"
+**Priority matching.** When an event fires, resolution is by **`eventId` only** — `event_applied_type` plays NO role in matching (it is descriptive metadata copied into ctx). Order:
+1. `findSpecificTriggers(instituteId, eventId, eventName)` — if ≥1 found, globals are SKIPPED.
+2. Else `findGlobalTriggers(instituteId, eventName)` where `event_id IS NULL`.
+3. **Additionally**, if ctx carries a `poolId`, pool-scoped triggers (eventId=poolId) are UNIONED on top of whichever result above — they always fire in addition, breaking the pure specific-else-global model.
+
+Both queries also gate on parent `workflow.status = 'ACTIVE'` (so DRAFT/INACTIVE workflows never fire).
 
 ### Scheduled triggers
 
@@ -539,8 +595,10 @@ Full list in [`QueryServiceImpl.execute()`](../admin_core_service/src/main/java/
 | `fetch_audience_responses_filtered` | `instituteId` | `audienceId` (CSV), `daysAgo`, `startDate`, `endDate` | `leads[]` (Maps with `email`, `parentEmail`, `parentName`, `mobileNumber`, `userId`, `instituteName`, plus all `customFields`) |
 | `fetch_audience_responses_by_day_difference` | `instituteId`, `audienceId` (CSV), `daysAgo` | — | `leads[]` (responses with `workflowActivateDayAt` matching exactly N days ago) |
 | `fetch_enroll_invites` | `instituteId` | filters | Invite link stats |
-| `fetch_expiring_memberships` | `instituteId` | `daysAhead` | Memberships expiring in window |
-| `fetch_upcoming_fee_installments` | `instituteId` | `daysAhead` | `feePaymentList[]` |
+| `fetch_expiring_memberships` | `instituteId` | `daysAhead` | ⚠️ **BROKEN / cross-tenant.** Does `userPlanRepository.findAll()` with NO institute filter and NO expiry filter ([`QueryServiceImpl.java:1616-1676`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/workflow/service/QueryServiceImpl.java#L1616)); `daysAhead` is only echoed back, `instituteId` is only null-checked. Returns EVERY institute's ACTIVE plans → a workflow emailing `#ctx['expiringMemberships']` would message all tenants' plan holders. Do not use until scoped. |
+| `fetch_upcoming_fee_installments` | `instituteId` | `daysAhead` | `feePaymentList[]` (⚠️ DB query not institute-scoped; `instituteId` applied as an in-memory post-filter, so all tenants' pending installments in the window are loaded per run) |
+
+> This table is a subset. `QueryServiceImpl.execute()` actually dispatches **23 keys** — including mutating ones (`createLiveSession`, `createSessionSchedule`, `createSessionParticipent`, `upsertUserCustomField`, `updateSSIGMRemaingDaysByOne`) and lead/CRM helpers. The catalog (`/query-keys`) lists only 21 and has ~12 param-name mismatches vs the code (e.g. catalog `statuses` → code `statusList`; `fieldId` → `customFieldId`; `studentId` → `userId`) plus 2 implemented keys it omits (`fetch_live_session_attendance`, `fetch_enrollment_details`). Treat `QueryServiceImpl` as the source of truth, not the catalog. Also note list-item field-name **casing differs per query** — `fetch_ssigm_by_package` returns snake_case (`full_name`, `mobile_number`), while `fetch_batch_attendance_report`/`fetch_students_by_batch` return camelCase (`fullName`, `mobileNumber`); `fetch_audience_responses_filtered` keeps custom-field keys in RAW case but `fetch_audience_responses_by_day_difference` LOWERCASES them.
 | `fetch_package_lms_setting` | `packageId`, `settingKey` (typically `"LMS_SETTING"`) | — | `{ lmsConfig: { apiUrl, apiKey, apiSecret, activeLms, ... } }` or `{ lmsConfig: null }` if not configured |
 | `fetch_institute_setting` | `instituteId`, `settingKey` | — | `{ lmsConfig: <object> }` |
 | `fetch_student_attendance_report` | `userId`, `batchId` | `daysBack` (default 7) | Per-student attendance + engagement |
@@ -554,8 +612,10 @@ Full list in [`QueryServiceImpl.execute()`](../admin_core_service/src/main/java/
 ### Idempotency & multi-pod
 
 Every execution attempt INSERTs into `workflow_execution` with `idempotency_key`:
-- Scheduled: `workflow_schedule_{scheduleId}_{epochMillisOfFireTime}`
-- Event: `workflow_trigger_{triggerId}_{eventId}_{epochMillis}`
+- **Scheduled:** `workflow_schedule_{scheduleId}_{nextRunAtMillis}` (the slot time doubles as the cross-pod race lock). ✅ real.
+- **Event/trigger:** there is **NO fixed format.** The key comes from a pluggable per-trigger strategy read from `workflow_trigger.idempotency_generation_setting` (JSON) via `IdempotencyStrategyFactory`. **The default, when unset or unparseable, is a random UUID = effectively NO dedup.** Strategies: `UUID`, `NONE` (also random UUID), `TIME_WINDOW`, `CONTEXT_BASED`, `CONTEXT_TIME_WINDOW`, `EVENT_BASED` (format `trigger_{triggerId}_eventType_{name}_eventId_{id}`, segments toggleable), `CUSTOM_EXPRESSION` (SpEL). The builder defaults to `{"strategy":"UUID"}` except `LIVE_SESSION_START`/`END` and `MEMBERSHIP_EXPIRY`, which use `EVENT_BASED` for cross-replica exactly-once. **Set `EVENT_BASED` for any at-least-once emitter you don't want double-firing.**
+- **Webhook:** `webhook-{slug}-{millis}` (no dedup).
+- **Manual (`/{id}/trigger-now`):** runs synchronously with NO idempotency key and creates NO `workflow_execution` row at all — invisible to history + dedup.
 
 UNIQUE constraint on the column means only one pod's INSERT wins. The others get `DataIntegrityViolationException`, caught at [`WorkflowExecutionJob:111-120`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/workflow/scheduler/WorkflowExecutionJob.java#L111) and logged as a friendly WARN.
 
@@ -617,15 +677,14 @@ For 2000 emails at defaults: ~40 chunks × 200ms throttle = 8s of throttling + p
 
 ### Recipient extraction (`extractEmailAddress`)
 
-Looks for the recipient address in this order (lines 1051+ of `SendEmailNodeHandler`):
+Looks for the recipient address in this order (`SendEmailNodeHandler` ~1080-1136):
 
 1. If node config has `recipientField` set: `item[recipientField]`
-2. `item["email"]`
-3. `item["parentEmail"]`
-4. `item["to"]`
-5. **Fallback scan**: walks every value in the item map and picks the first one that looks email-shaped (contains `@`, no spaces). This is the safety net for audience custom fields named "Email" (capital E) instead of `email`.
+2. `item` itself, if it's an email-shaped string
+3. `to` → `email` → `emailAddress` → `email_address` → `userEmail` → `user_email` → `mail` → `channelId` → `recipientEmail` → `recipient_email` → `parentsEmail` → `guardianEmail` → `motherEmail`
+4. **Fallback scan**: walks every value in the item map and picks the first one that looks email-shaped (contains `@`, no spaces). Safety net for audience custom fields named "Email" (capital E).
 
-If no email found → request is skipped (counted in `skippedCount`).
+Note `to` **outranks** `email`, and there is no `parentEmail` field — it's `parentsEmail`, near the end. If no email found → request is skipped (counted in `skippedCount`).
 
 ### Variable substitution pipeline
 
@@ -871,9 +930,13 @@ To silence the noise: `logging.level.org.hibernate.engine.jdbc.spi.SqlExceptionH
 
 ## Gotchas — current behavior to know
 
-- **`LIVE_SESSION_START` is catalog-only.** Workflows targeting it never fire. Use `LIVE_SESSION_CREATE` (fires at meeting creation) or `LIVE_SESSION_END` (fires at BBB analytics callback) instead.
-- **DELAY uses `Thread.sleep`.** JVM restart loses scheduled continuations. Don't use for multi-day delays — use a scheduled trigger or `SCHEDULE_TASK` instead.
-- **Engine doesn't propagate node FAILED to workflow status.** A workflow with a FAILED QUERY node still shows as COMPLETED. Drill into per-node logs to see real failures.
+- **`LIVE_SESSION_START` / `LIVE_SESSION_END` fire from a 5-min Quartz scan** (`LiveSessionNotificationProcessor` ~L242/L292), NOT the BBB callback. They're periodic-scan approximations, not instantaneous. (Older docs called START catalog-only and END a BBB-callback — both wrong.)
+- **DELAY's persistent path is LIVE.** Delays >60s pause to `workflow_execution_state` and resume via `WorkflowResumeJob` (every 2 min), surviving JVM restarts. (Older docs said this was disabled.) The ≤60s inline path still uses `Thread.sleep`.
+- **Engine never throws; node FAILED never propagates.** `WorkflowEngineService.run` swallows all node exceptions AND keeps routing past the failed node, so trigger-path executions are ALWAYS marked COMPLETED even if every node failed. In prod there have been **0 FAILED `workflow_execution` rows since January** despite ongoing node-level failures. The Executions tab is unreliable for detecting node errors — assert on per-node `SUCCESS` in `workflow_execution_log`, not workflow status.
+- **`/{id}/trigger-now` creates no `workflow_execution` row.** Manual production runs are invisible to history and to dedup.
+- **INTERVAL schedules silently degrade.** The dispatcher only reads `cron_expr`; a cron-less (INTERVAL/day_of_month) schedule falls back to the every-minute default `0 * * * * ?` and becomes due on every 15-min tick.
+- **`INVITE_FORM_FILL` fires on invite-page VIEW, not form submission** — workflows keyed on it will fire per page view.
+- **Dry-run is not fully safe.** QUERY (incl. mutating keys), `SET_LEAD_STATUS`, and `COMBOT` have no `dryRun` gate and execute for real during a Test Run.
 - **BBB `providerJoinTime` is overwritten on rejoin** ([LiveSessionProviderController.markBbbAttendance:659](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/live_session/provider/controller/LiveSessionProviderController.java#L659)). For students with unstable connections, the recorded join time is the latest reconnect, not the original.
 - **Zoho's `providerJoinTime` may not be set when the analytics callback hasn't fired yet.** The `attendanceBlockHtml` snippet handles this — empty block when null.
 - **`SessionSchedule.lastEntryTime` is the late-entry cutoff, not the session end time.** There's no stored `durationMinutes`. The `fetchLiveSessionAttendance` query derives session length as `max(providerTotalDurationMinutes)` across present attendees.

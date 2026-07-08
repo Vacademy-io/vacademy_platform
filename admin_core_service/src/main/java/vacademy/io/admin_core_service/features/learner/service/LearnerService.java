@@ -27,12 +27,19 @@ public class LearnerService {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private LearnerLmsUserSyncService learnerLmsUserSyncService;
+
     public String editLearnerDetails(LearnerDetailsEditDTO learnerDetailsEditDTO, CustomUserDetails user) {
         if (Objects.isNull(learnerDetailsEditDTO)) {
             throw new VacademyException("Invalid request");
         }
         Student student = instituteStudentRepository.findTopByUserId(learnerDetailsEditDTO.getUserId())
                 .orElseThrow(() -> new VacademyException("User not found"));
+        // Captured before mutation: the LMS sync looks the user up by their
+        // CURRENT email on the LMS, and only fires when name/email changed.
+        String previousEmail = student.getEmail();
+        String previousFullName = student.getFullName();
         if (StringUtils.hasText(learnerDetailsEditDTO.getEmail()))
             student.setEmail(learnerDetailsEditDTO.getEmail());
         if (StringUtils.hasText(learnerDetailsEditDTO.getFullName()))
@@ -70,6 +77,25 @@ public class LearnerService {
         userDTO.setProfilePicFileId(learnerDetailsEditDTO.getFaceFileId());
         userDTO.setUsername(learnerDetailsEditDTO.getUserName());
         authService.updateUser(userDTO, learnerDetailsEditDTO.getUserId());
+
+        // Mirror name/email changes to any WordPress LMS the learner's
+        // courses are connected to (async, best-effort — never blocks or
+        // fails the profile edit).
+        String effectiveEmail = StringUtils.hasText(learnerDetailsEditDTO.getEmail())
+                ? learnerDetailsEditDTO.getEmail()
+                : previousEmail;
+        String effectiveFullName = StringUtils.hasText(learnerDetailsEditDTO.getFullName())
+                ? learnerDetailsEditDTO.getFullName()
+                : previousFullName;
+        boolean emailChanged = StringUtils.hasText(previousEmail)
+                && !previousEmail.trim().equalsIgnoreCase(effectiveEmail != null ? effectiveEmail.trim() : "");
+        boolean nameChanged = !Objects.equals(
+                previousFullName != null ? previousFullName.trim() : null,
+                effectiveFullName != null ? effectiveFullName.trim() : null);
+        if (emailChanged || nameChanged) {
+            learnerLmsUserSyncService.syncProfileUpdate(
+                    learnerDetailsEditDTO.getUserId(), previousEmail, effectiveEmail, effectiveFullName);
+        }
         return "success";
     }
 

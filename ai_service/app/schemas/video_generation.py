@@ -476,9 +476,9 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description=(
             "Which decision gates to enable when assist_mode is True. Subset of "
-            "['creative_concept','shot_plan','narration','visual_casting','shot_look',"
-            "'voice','music','avatar']. None → the default gate set (shot_plan, "
-            "narration, visual_casting, shot_look)."
+            "['creative_concept','shot_plan','styleframe','asset_request','narration',"
+            "'cast','visual_casting','shot_look','contact_sheet','voice','music','avatar']. "
+            "None → the default gate set (see decision_gates.DEFAULT_ASSIST_GATES)."
         ),
     )
     assist_granularity: str = Field(

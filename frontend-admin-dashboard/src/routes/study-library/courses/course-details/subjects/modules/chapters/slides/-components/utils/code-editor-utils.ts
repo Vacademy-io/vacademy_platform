@@ -311,7 +311,9 @@ export const executeCode = async (
     const def = LANGUAGE_REGISTRY[language as LangId] ?? LANGUAGE_REGISTRY.python;
 
     if (def.executor === 'pyodide') {
-        return await executePythonWithPyodide(code);
+        // Pass stdin through so graded/test-case runs (e.g. AI self-verify,
+        // starter-code preview against inputs) feed the program's input().
+        return await executePythonWithPyodide(code, options.stdin);
     }
 
     if (def.executor === 'browser') {

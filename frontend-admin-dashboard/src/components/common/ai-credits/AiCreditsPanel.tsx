@@ -7,6 +7,7 @@ import {
     useUserAiUsageQuery,
 } from '@/services/ai-credits/get-ai-credits';
 import { getUserId } from '@/utils/userDetails';
+import { isIOS } from '@/native';
 import { TopUpModal } from './TopUpModal';
 import type {
     CreditTransaction,
@@ -569,8 +570,11 @@ export function AiCreditsPanel({
     popoverAlign = 'end',
     popoverSideOffset = 8,
     footerAction,
-    hideTopUp = false,
+    hideTopUp: hideTopUpProp = false,
 }: AiCreditsPanelProps) {
+    // Apple Guideline 3.1.1: digital credit purchases are not allowed outside of
+    // In-App Purchase, so we hide the Top Up entry points entirely on native iOS.
+    const hideTopUp = hideTopUpProp || isIOS();
     const { data: credits, isError } = useAiCreditsQuery(true);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
     const [isOpen, setIsOpen] = useState(false);

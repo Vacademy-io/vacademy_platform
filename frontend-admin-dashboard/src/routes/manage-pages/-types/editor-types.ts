@@ -28,6 +28,11 @@ export interface GlobalSettings {
         headingScale?: 'compact' | 'default' | 'large' | 'display';
         /** Body font size override */
         bodyFontSize?: string;
+        /** Page atmosphere: canvas treatment + strength (data-catalogue-atmosphere) */
+        atmosphere?: {
+            canvas: 'flat' | 'soft' | 'mesh' | 'aurora';
+            intensity?: 'subtle' | 'medium' | 'bold';
+        };
     };
     fonts?: {
         enabled: boolean;
@@ -64,84 +69,31 @@ export interface GlobalSettings {
     stickyHeader?: boolean;
     /** Show back-to-top floating button */
     backToTop?: boolean;
-}
-
-export interface GradientStop {
-    color: string;
-    position: number;
-}
-
-export interface GradientConfig {
-    type: 'linear' | 'radial';
-    angle?: number;
-    stops: GradientStop[];
-}
-
-export interface TypographyStyle {
-    fontFamily?: string;
-    fontSize?: string;
-    fontWeight?: '400' | '500' | '600' | '700' | '800';
-    lineHeight?: string;
-    letterSpacing?: string;
-    textColor?: string;
-    textAlign?: 'left' | 'center' | 'right';
-    textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
-}
-
-export interface AnimationEntrance {
-    type: 'none' | 'fadeIn' | 'fadeInUp' | 'fadeInDown' | 'fadeInLeft' | 'fadeInRight' | 'scaleUp' | 'slideUp';
-    duration?: number;
-    delay?: number;
-    easing?: 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out';
-}
-
-export interface AnimationConfig {
-    entrance?: AnimationEntrance;
-    hover?: { type: 'none' | 'lift' | 'glow' | 'scale' | 'brighten' };
-    scroll?: { parallax?: boolean; parallaxSpeed?: number };
-}
-
-export interface ComponentStyle {
-    // Spacing
-    paddingTop?: string;
-    paddingBottom?: string;
-    paddingLeft?: string;
-    paddingRight?: string;
-    marginTop?: string;
-    marginBottom?: string;
-    // Background
-    backgroundColor?: string;
-    backgroundImage?: string;
-    backgroundSize?: 'cover' | 'contain' | 'auto';
-    backgroundPosition?: string;
-    backgroundOverlay?: string;
-    gradient?: GradientConfig;
-    // Border
-    borderWidth?: string;
-    borderColor?: string;
-    borderStyle?: 'solid' | 'dashed' | 'dotted' | 'none';
-    borderRadius?: string;
-    // Shadow & Effects
-    boxShadow?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
-    opacity?: number;
-    maxWidth?: string;
-    minHeight?: string;
-    customClass?: string;
-    // Typography
-    typography?: TypographyStyle;
-    // Animation
-    animation?: AnimationConfig;
-    // Responsive overrides
-    responsive?: {
-        tablet?: Partial<ComponentStyle>;
-        mobile?: Partial<ComponentStyle>;
-    };
-    visibility?: {
-        desktop?: boolean;
-        tablet?: boolean;
-        mobile?: boolean;
+    /** Motion personality — scales entrance durations/easing site-wide */
+    motion?: {
+        personality: 'none' | 'calm' | 'balanced' | 'dynamic';
     };
 }
+
+// Style schema now lives in the SHARED catalogue style engine (byte-synced
+// with the learner renderer via scripts/check-style-engine-sync.mjs) so the
+// editor and the live site can never disagree about what a style means.
+export type {
+    GradientStop,
+    GradientConfig,
+    TypographyStyle,
+    AnimationEntrance,
+    AnimationConfig,
+    ComponentStyle,
+    SectionLayoutStyle,
+    SectionWidth,
+    GlassConfig,
+    GlowConfig,
+    BorderGradientConfig,
+    BackgroundLayer,
+    OverlayPreset,
+} from '../-utils/style-engine';
+import type { ComponentStyle } from '../-utils/style-engine';
 
 export interface Component {
     id: string;

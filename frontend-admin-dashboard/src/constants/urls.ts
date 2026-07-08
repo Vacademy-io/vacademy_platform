@@ -36,6 +36,11 @@ export const ASSISTANT_ACTION_CANCEL = (sessionId: string, actionId: string) =>
     `${AI_SERVICE_BASE_URL}/assistant/session/${sessionId}/action/${actionId}/cancel`;
 export const ASSISTANT_CAPABILITIES = `${AI_SERVICE_BASE_URL}/assistant/capabilities`;
 
+// AI coding-question generation. POST an idea + options, returns a full
+// coding-question config (problem + tests + starter code + reference solution).
+// See ai_service app/routers/coding_question_gen.py.
+export const GENERATE_CODING_QUESTION = `${AI_SERVICE_BASE_URL}/coding-question/generate`;
+
 // PPTX -> animated slideshow (build-step snapshots + manifest). POST returns
 // {job_id}; GET `${ANIMATE_PPTX_URL}/${jobId}` polls until status === 'completed'.
 export const ANIMATE_PPTX_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/animate-pptx`;

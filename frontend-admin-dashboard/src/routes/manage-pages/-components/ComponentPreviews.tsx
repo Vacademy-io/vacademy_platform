@@ -4,8 +4,20 @@
  * and NO interactive side-effects. They are used inside the CanvasRenderer.
  */
 import React from 'react';
+import {
+    BookOpen, Brain, Briefcase, Certificate, ChartLineUp, ChatsCircle, Check,
+    Clock, Code, Globe, GraduationCap, Lightbulb, Medal, Rocket, ShieldCheck,
+    Sparkle, Star, Target, Trophy, UsersThree, Wrench,
+} from '@phosphor-icons/react';
 
 interface P { props: any }
+
+// Mirrors the learner JsonRenderer FEATURE_ICON_MAP so iconName renders on canvas
+const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
+    GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb,
+    ShieldCheck, ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle,
+    Wrench, Sparkle, Medal, Briefcase, Globe,
+};
 
 /** Maps a columnLayout width fraction string to a CSS fr value */
 const widthToFr = (w?: string): string => {
@@ -59,18 +71,35 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
     const hasCollage = collage.length > 0;
     const tags: string[] = (props.left?.tags ?? []).filter(Boolean);
 
+    const visibleButtons = (props.left?.buttons ?? []).filter((b: any) => b?.text?.trim());
+    const visibleChips = (props.statChips ?? []).filter(
+        (c: any) => c?.value?.trim() || c?.label?.trim(),
+    );
+
     const textBlock = (
         <div className="space-y-3">
+            {props.eyebrow?.text && (
+                props.eyebrow.style === 'plain' ? (
+                    <span className="text-caption font-semibold uppercase tracking-wider text-blue-600">
+                        {props.eyebrow.text}
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-caption font-semibold uppercase tracking-wider text-gray-600">
+                        <span className="size-1.5 rounded-full bg-blue-500" />
+                        {props.eyebrow.text}
+                    </span>
+                )
+            )}
             {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                     {tags.map((tag, i) => (
-                        <span key={i} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-600">
+                        <span key={i} className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-caption font-semibold uppercase tracking-wider text-blue-600">
                             {tag}
                         </span>
                     ))}
                 </div>
             )}
-            <h1 className="text-3xl font-bold leading-tight text-gray-900">
+            <h1 className="catalogue-h1 leading-tight text-gray-900">
                 {props.left?.title || 'Hero Title'}
             </h1>
             {props.left?.subheading && (
@@ -82,10 +111,44 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                     dangerouslySetInnerHTML={{ __html: props.left.description }}
                 />
             )}
-            {props.left?.button?.enabled && (
-                <span className="inline-block rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm">
-                    {props.left.button.text || 'Get Started'}
-                </span>
+            {/* Multi-CTA mirrors the learner contract: non-blank buttons[] replace the legacy single button */}
+            {visibleButtons.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                    {visibleButtons.slice(0, 3).map((b: any, i: number) => (
+                        <span
+                            key={i}
+                            className={
+                                (b.variant ?? (i === 0 ? 'primary' : 'secondary')) === 'primary'
+                                    ? 'inline-block rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm'
+                                    : 'inline-block rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700'
+                            }
+                        >
+                            {b.text}
+                        </span>
+                    ))}
+                </div>
+            ) : (
+                props.left?.button?.enabled && (
+                    <span className="inline-block rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm">
+                        {props.left.button.text || 'Get Started'}
+                    </span>
+                )
+            )}
+            {visibleChips.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                    {visibleChips.slice(0, 4).map((c: any, i: number) => (
+                        <span key={i} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-center shadow-sm">
+                            <span className="block text-sm font-bold text-gray-900">{c.value}</span>
+                            <span className="block text-caption text-gray-500">{c.label}</span>
+                        </span>
+                    ))}
+                </div>
+            )}
+            {(props.trust?.text || props.trust?.rating) && (
+                <div className="pt-1 text-caption text-gray-500">
+                    {props.trust?.rating ? `★ ${Number(props.trust.rating).toFixed(1)} · ` : ''}
+                    {props.trust?.text || ''}
+                </div>
             )}
         </div>
     );
@@ -213,7 +276,7 @@ const StatsPreview: React.FC<P> = ({ props }) => {
     return (
         <section className="py-12 px-8" style={{ backgroundColor: bg }}>
             {props.headerText && (
-                <h2 className="mb-6 text-center text-2xl font-bold" style={{ color: fg }}>{props.headerText}</h2>
+                <h2 className="mb-6 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>
             )}
             {props.description && (
                 <p className="mb-6 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.description}</p>
@@ -258,7 +321,7 @@ const TestimonialPreview: React.FC<P> = ({ props }) => {
     return (
         <section className="py-12 px-8" style={{ backgroundColor: bg }}>
             {props.headerText && (
-                <h2 className="mb-6 text-center text-2xl font-bold" style={{ color: fg }}>{props.headerText}</h2>
+                <h2 className="mb-6 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>
             )}
             <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4">
                 {(props.testimonials || []).length > 0 ? (
@@ -293,7 +356,7 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
             style={{ backgroundColor: props.styles?.backgroundColor || '#F0F9FF' }}
         >
             {props.headerText && (
-                <h2 className="mb-2 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>
+                <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
             )}
             {props.description && (
                 <p className="mb-6 text-center text-sm text-gray-500">{props.description}</p>
@@ -375,7 +438,7 @@ const FaqPreview: React.FC<P> = ({ props }) => {
     return (
         <section className="py-12 px-8" style={{ backgroundColor: bg }}>
             {props.headerText && (
-                <h2 className="mb-2 text-center text-2xl font-bold" style={{ color: fg }}>{props.headerText}</h2>
+                <h2 className="mb-2 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>
             )}
             {props.subheading && (
                 <p className="mb-6 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.subheading}</p>
@@ -395,7 +458,7 @@ const FaqPreview: React.FC<P> = ({ props }) => {
 const VideoPreview: React.FC<P> = ({ props }) => (
     <section className="py-10 px-8">
         {props.title && (
-            <h2 className="mb-4 text-center text-2xl font-bold text-gray-900">{props.title}</h2>
+            <h2 className="mb-4 text-center catalogue-h2 text-gray-900">{props.title}</h2>
         )}
         <div className="mx-auto max-w-3xl">
             <div
@@ -423,7 +486,7 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => (
         className="py-14 px-8 text-center"
         style={{ backgroundColor: props.backgroundColor || '#3B82F6' }}
     >
-        <h2 className="text-2xl font-bold" style={{ color: props.textColor || '#fff' }}>
+        <h2 className="catalogue-h2" style={{ color: props.textColor || '#fff' }}>
             {props.heading || 'Call to Action'}
         </h2>
         {props.subheading && (
@@ -445,7 +508,7 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => (
 const PricingPreview: React.FC<P> = ({ props }) => (
     <section className="bg-white py-12 px-8">
         {props.headerText && (
-            <h2 className="mb-2 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
         )}
         {props.subheading && (
             <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>
@@ -474,7 +537,7 @@ const PricingPreview: React.FC<P> = ({ props }) => (
 const ContactFormPreview: React.FC<P> = ({ props }) => (
     <section className="py-12 px-8" style={{ backgroundColor: props.backgroundColor || '#fff' }}>
         {props.heading && (
-            <h2 className="mb-2 text-center text-2xl font-bold text-gray-900">{props.heading}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.heading}</h2>
         )}
         {props.subheading && (
             <p className="mb-6 text-center text-sm text-gray-500">{props.subheading}</p>
@@ -498,7 +561,7 @@ const ContactFormPreview: React.FC<P> = ({ props }) => (
 const TeamPreview: React.FC<P> = ({ props }) => (
     <section className="bg-white py-12 px-8">
         {props.headerText && (
-            <h2 className="mb-2 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
         )}
         {props.subheading && (
             <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>
@@ -524,7 +587,7 @@ const TeamPreview: React.FC<P> = ({ props }) => (
 const AnnouncementPreview: React.FC<P> = ({ props }) => (
     <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#fff' }}>
         {props.headerText && (
-            <h2 className="mb-6 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-6 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
         )}
         <div className="mx-auto max-w-3xl space-y-3">
             {(props.announcements || []).slice(0, 3).map((a: any, i: number) => (
@@ -547,7 +610,7 @@ const AnnouncementPreview: React.FC<P> = ({ props }) => (
 const GalleryPreview: React.FC<P> = ({ props }) => (
     <section className="bg-white py-10 px-8">
         {props.headerText && (
-            <h2 className="mb-6 text-center text-2xl font-bold text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-6 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
         )}
         <div className="mx-auto grid max-w-4xl grid-cols-3 gap-3">
             {(props.images || []).slice(0, 6).map((img: any, i: number) => (
@@ -643,7 +706,7 @@ export const renderComponentPreview = (
         case 'buyRentSection':
             return (
                 <section className="py-10 px-8 text-center">
-                    <h2 className="mb-5 text-2xl font-bold text-gray-900">
+                    <h2 className="mb-5 catalogue-h2 text-gray-900">
                         {props.heading || 'Choose Your Path'}
                     </h2>
                     <div className="flex justify-center gap-4">
@@ -668,6 +731,28 @@ export const renderComponentPreview = (
             return <DataPlaceholder label="Book Details" description="Renders the current book's detail data" />;
         case 'policyRenderer':
             return <DataPlaceholder label="Policy Page" description="Renders policy / terms content" />;
+        case 'trustChip': {
+            const trustAvatars: string[] = (props.avatars || []).filter(Boolean);
+            const trustAlign = props.alignment === 'left' ? 'justify-start' : props.alignment === 'right' ? 'justify-end' : 'justify-center';
+            return (
+                <div className={`flex px-4 py-6 ${trustAlign}`}>
+                    <span className="inline-flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50 py-2 pl-2.5 pr-5">
+                        {trustAvatars.length > 0 && (
+                            <span className="flex -space-x-2">
+                                {trustAvatars.slice(0, 4).map((src, i) => (
+                                    <img key={i} src={src} alt="" className="size-8 rounded-full border-2 border-white object-cover" />
+                                ))}
+                            </span>
+                        )}
+                        {props.rating ? (
+                            // Clamp like the live renderer so canvas and page agree on stored out-of-range values
+                            <span className="text-sm font-semibold text-gray-900">★ {Math.min(5, Math.max(0, Number(props.rating))).toFixed(1)}</span>
+                        ) : null}
+                        {props.text && <span className="text-sm text-gray-600">{props.text}</span>}
+                    </span>
+                </div>
+            );
+        }
         case 'spacer': {
             const dividerStyle = props.showDivider ? {
                 borderTop: `${props.dividerWidth || '1px'} ${props.dividerStyle || 'solid'} ${props.dividerColor || '#E5E7EB'}`,
@@ -771,18 +856,62 @@ export const renderComponentPreview = (
             const features = props.features || [];
             const cols = props.columns || 3;
             const fg = props.textColor || '#111827';
+            // Card skins mirror the learner FeatureGridRenderer so the new
+            // Style buttons (glass / gradient-border / tinted) show on canvas
+            const fgStyle = props.style || 'cards';
+            const cardClass =
+                fgStyle === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-5 shadow-sm' :
+                fgStyle === 'bordered' ? 'rounded-xl border-2 border-gray-200 p-5' :
+                fgStyle === 'glass' ? 'catalogue-card-glass p-5' :
+                fgStyle === 'gradient-border' ? 'catalogue-card-gradient-border p-5' :
+                fgStyle === 'tinted' ? 'catalogue-card-tinted p-5' :
+                'p-4';
+            const fgLeft = props.align === 'left';
             return (
                 <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
-                    {props.headerText && <h2 className="mb-1 text-center text-2xl font-bold" style={{ color: fg }}>{props.headerText}</h2>}
+                    {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
                     {props.subheading && <p className="mb-8 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.subheading}</p>}
                     <div className="mx-auto max-w-5xl" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 20 }}>
-                        {features.map((f: any, i: number) => (
-                            <div key={i} className={`text-center ${props.style === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-5 shadow-sm' : 'p-4'}`}>
-                                <div className={`mb-3 ${props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}`}>{f.icon || '⭐'}</div>
-                                <h4 className="mb-1 text-sm font-semibold" style={{ color: fg }}>{f.title}</h4>
-                                <p className="text-xs" style={{ color: fg, opacity: 0.6 }}>{f.description}</p>
-                            </div>
-                        ))}
+                        {features.map((f: any, i: number) => {
+                            const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+                            const chips: string[] = (f.chips || []).filter(Boolean);
+                            const bullets: string[] = (f.bullets || []).filter(Boolean);
+                            return (
+                                <div key={i} className={`${fgLeft ? 'text-left' : 'text-center'} ${cardClass}`}>
+                                    <div className="mb-3">
+                                        {IconComp ? (
+                                            <span className="inline-flex items-center justify-center rounded-xl bg-primary-50 p-2.5 text-primary-500">
+                                                <IconComp size={props.iconSize === 'small' ? 18 : props.iconSize === 'medium' ? 24 : 28} weight="duotone" aria-hidden="true" />
+                                            </span>
+                                        ) : (
+                                            <span className={props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}>{f.icon || '⭐'}</span>
+                                        )}
+                                    </div>
+                                    {chips.length > 0 && (
+                                        <div className={`mb-2 flex flex-wrap gap-1.5 ${fgLeft ? '' : 'justify-center'}`}>
+                                            {chips.map((c, j) => (
+                                                <span key={j} className="catalogue-badge catalogue-badge-primary rounded-full">{c}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <h4 className="mb-1 text-sm font-semibold" style={{ color: fg }}>{f.title}</h4>
+                                    <p className="text-xs" style={{ color: fg, opacity: 0.6 }}>{f.description}</p>
+                                    {bullets.length > 0 && (
+                                        <ul className={`mt-2 space-y-1 text-xs ${fgLeft ? '' : 'inline-block text-left'}`} style={{ color: fg, opacity: 0.8 }}>
+                                            {bullets.map((b, j) => (
+                                                <li key={j} className="flex items-start gap-1.5">
+                                                    <Check size={12} weight="bold" className="mt-0.5 shrink-0 text-primary-500" aria-hidden="true" />
+                                                    <span>{b}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                    {f.link?.text && (
+                                        <div className="mt-2 text-xs font-semibold text-primary-500">{f.link.text} →</div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
             );
@@ -850,7 +979,7 @@ export const renderComponentPreview = (
             const fg = props.textColor || '#111827';
             return (
                 <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
-                    {props.headerText && <h2 className="mb-1 text-center text-2xl font-bold" style={{ color: fg }}>{props.headerText}</h2>}
+                    {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
                     {props.subheading && <p className="mb-8 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.subheading}</p>}
                     <div className={`mx-auto max-w-4xl ${isHorizontal ? 'flex items-start justify-center gap-4' : 'flex flex-col gap-6'}`}>
                         {steps.map((step: any, i: number) => (

@@ -175,7 +175,13 @@ function mapVideoStatusToRow(status: string): HistoryItem['status'] {
 type ConsoleState = 'idle' | 'generating' | 'reviewing' | 'assisting' | 'complete';
 
 /** Gates enabled by default when assist mode is on (mirrors the BE default). */
-const DEFAULT_ASSIST_GATES: GateType[] = ['shot_plan', 'narration', 'visual_casting', 'shot_look'];
+const DEFAULT_ASSIST_GATES: GateType[] = [
+    'shot_plan',
+    'styleframe',
+    'narration',
+    'visual_casting',
+    'shot_look',
+];
 
 interface CurrentGeneration {
     videoId: string;

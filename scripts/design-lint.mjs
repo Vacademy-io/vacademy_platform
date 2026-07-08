@@ -64,6 +64,16 @@ const RULES = [
     appliesTo: /\.(tsx|ts)$/,
     msg: "Banned icon library — use '@phosphor-icons/react' only (see docs/design-system/06-governance.md).",
   },
+  {
+    id: 'catalogue-raw-gray',
+    severity: 'warn',
+    // Raw gray/white chrome in catalogue renderers blocks themes + dark mode
+    // from reaching the content. Intentional whites (over author-colored
+    // surfaces) can stay — annotate the line with design-lint-ignore.
+    test: /(?<![\w/-])(?:text|bg|border|divide)-gray-\d{2,3}\b|(?<![\w/-])bg-white(?![/\w-])/g,
+    appliesTo: /frontend-learner-dashboard-app[\\/]src[\\/]routes[\\/]\$tagName[\\/].*\.tsx$/,
+    msg: 'Catalogue renderer: prefer catalogue tokens (text-catalogue-text-*, bg-catalogue-bg*, border-catalogue-border*) so institute themes & dark mode apply.',
+  },
 ];
 
 // Lines we never flag for hex (token definitions / dynamic editor values opt-out).

@@ -8,12 +8,13 @@
  */
 import React, { useEffect } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Monitor, Tablet, Smartphone, ExternalLink } from 'lucide-react';
+import { Monitor, DeviceTablet, DeviceMobile, ArrowSquareOut } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { useEditorStore } from '../-stores/editor-store';
 import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
-import { buildComponentStyle } from '../-utils/style-utils';
+import { buildComponentStyle, hasSectionShell, buildSectionShellStyles } from '../-utils/style-utils';
+import { ensureFontsLoaded, collectConfigFontFamilies } from '../-utils/catalogue-fonts';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
 
@@ -36,15 +37,15 @@ const SlotDropZone = ({
     return (
         <div
             ref={setNodeRef}
-            className={`relative flex-1 min-h-[80px] border border-dashed rounded transition-colors ${
+            className={`relative flex-1 min-h-20 border border-dashed rounded transition-colors ${
                 isOver ? 'border-teal-400 bg-teal-50' : 'border-teal-200 bg-white'
             }`}
         >
-            <div className="absolute left-1 top-0.5 z-10 text-[9px] font-semibold uppercase text-teal-400 select-none">
+            <div className="absolute left-1 top-0.5 z-10 text-caption font-semibold uppercase text-teal-400 select-none">
                 Slot {slotIndex + 1}
             </div>
             {slotComponents.length === 0 && !isOver && (
-                <div className="flex h-full min-h-[80px] items-center justify-center text-[11px] text-teal-300">
+                <div className="flex h-full min-h-20 items-center justify-center text-caption text-teal-300">
                     Drop here
                 </div>
             )}
@@ -70,7 +71,7 @@ const SlotDropZone = ({
                             </div>
                         )}
                         {isDisabled && (
-                            <div className="absolute right-2 top-2 z-40 rounded bg-gray-400 px-1.5 py-0.5 text-[10px] text-white">
+                            <div className="absolute right-2 top-2 z-40 rounded bg-gray-400 px-1.5 py-0.5 text-caption text-white">
                                 hidden
                             </div>
                         )}
@@ -112,7 +113,7 @@ const ColumnLayoutCanvas = ({
             }`}
             style={layoutStyle}
         >
-            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-teal-500 px-2 py-0.5 text-[10px] font-medium text-white">
+            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-teal-500 px-2 py-0.5 text-caption font-medium text-white">
                 {slots.length} Columns
             </div>
             <div
@@ -162,6 +163,12 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
         }
     }, [instituteDetails, setInstituteDetails]);
 
+    // Canvas parity: load every font face the config references so the canvas
+    // shows real typography while editing (same loader as the learner app).
+    useEffect(() => {
+        ensureFontsLoaded(collectConfigFontFamilies(config));
+    }, [config]);
+
     const viewportSizes = CATALOGUE_EDITOR_CONFIG.VIEWPORTS;
     const currentSize = viewportSizes[previewViewport];
 
@@ -201,7 +208,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             onClick={() => setViewport('tablet')}
                             title="Tablet (768px)"
                         >
-                            <Tablet className="size-4" />
+                            <DeviceTablet className="size-4" />
                         </Button>
                         <Button
                             variant={previewViewport === 'mobile' ? 'default' : 'ghost'}
@@ -210,7 +217,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             onClick={() => setViewport('mobile')}
                             title="Mobile (375px)"
                         >
-                            <Smartphone className="size-4" />
+                            <DeviceMobile className="size-4" />
                         </Button>
                     </div>
 
@@ -231,7 +238,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     className={isPageUnpublished ? 'text-yellow-600 hover:text-yellow-700' : ''}
                 >
                     <a href={previewUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-1 size-4" />
+                        <ArrowSquareOut className="mr-1 size-4" />
                         {isPageUnpublished ? 'View live (draft)' : 'View live'}
                     </a>
                 </Button>
@@ -245,17 +252,27 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                 }`}
                 onClick={() => selectComponent(null)}
             >
-                {/* Width-constrained canvas */}
+                {/* Width-constrained canvas — carries the SAME theme attributes
+                    as the learner page wrapper so tokens (type scale, radius,
+                    theme colors, fonts) render truthfully while editing. */}
                 <div
                     className={`relative bg-white shadow-lg transition-all duration-300${config?.globalSettings?.mode === 'dark' ? ' dark' : ''} ${
                         isOver ? 'ring-2 ring-blue-400' : ''
                     }`}
                     data-catalogue-theme={config?.globalSettings?.theme?.preset || 'default'}
                     data-catalogue-radius={config?.globalSettings?.theme?.borderRadius || 'rounded'}
+                    data-heading-scale={config?.globalSettings?.theme?.headingScale || 'default'}
+                    data-catalogue-atmosphere={config?.globalSettings?.theme?.atmosphere?.canvas || 'flat'}
+                    data-catalogue-motion={config?.globalSettings?.motion?.personality}
+                    data-catalogue-intensity={config?.globalSettings?.theme?.atmosphere?.intensity || 'subtle'}
                     style={{
                         width: canvasWidth,
                         maxWidth: '100%',
                         minHeight: '100%',
+                        fontFamily:
+                            config?.globalSettings?.fonts?.enabled && config?.globalSettings?.fonts?.family
+                                ? config.globalSettings.fonts.family
+                                : undefined,
                     }}
                 >
                     {/* Global Header — appears on every page */}
@@ -272,7 +289,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             }`}
                             title="Global Header (appears on all pages)"
                         >
-                            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-purple-500 px-2 py-0.5 text-[10px] font-medium text-white">
+                            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-purple-500 px-2 py-0.5 text-caption font-medium text-white">
                                 Global Header
                             </div>
                             <div style={{ pointerEvents: 'none' }}>
@@ -283,11 +300,11 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
 
                     {/* Page components */}
                     {!config || !selectedPageId ? (
-                        <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-gray-400">
+                        <div className="flex h-full min-h-72 items-center justify-center text-sm text-gray-400">
                             Select a page from the bottom bar to start editing
                         </div>
                     ) : !page ? null : page.components.length === 0 ? (
-                        <div className="flex h-full min-h-[400px] flex-col items-center justify-center">
+                        <div className="flex h-full min-h-96 flex-col items-center justify-center">
                             <div className="rounded-xl border-2 border-dashed border-gray-200 px-12 py-16 text-center">
                                 <div className="mb-2 text-base font-medium text-gray-400">
                                     This page is empty
@@ -313,7 +330,11 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
 
                             const isSelected = component.id === selectedComponentId;
                             const isDisabled = component.enabled === false;
-                            const componentStyle = buildComponentStyle(component.style);
+                            const shell = hasSectionShell(component.style);
+                            const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
+                            const componentStyle = shellStyles
+                                ? shellStyles.canvasStyle
+                                : buildComponentStyle(component.style);
                             const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
                             return (
                                 <div
@@ -352,12 +373,19 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                     )}
                                     {/* Disabled overlay badge */}
                                     {isDisabled && (
-                                        <div className="absolute right-2 top-2 z-40 rounded bg-gray-400 px-1.5 py-0.5 text-[10px] text-white">
+                                        <div className="absolute right-2 top-2 z-40 rounded bg-gray-400 px-1.5 py-0.5 text-caption text-white">
                                             hidden
                                         </div>
                                     )}
-                                    {/* Disable pointer events so child links/buttons don't interfere */}
-                                    <div style={{ pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }}>
+                                    {/* Disable pointer events so child links/buttons don't interfere.
+                                        Section shell: content renders in a centered, width-capped column. */}
+                                    <div
+                                        style={
+                                            shellStyles
+                                                ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
+                                                : { pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }
+                                        }
+                                    >
                                         {renderComponentPreview(component)}
                                     </div>
                                 </div>
@@ -379,7 +407,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             }`}
                             title="Global Footer (appears on all pages)"
                         >
-                            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-purple-500 px-2 py-0.5 text-[10px] font-medium text-white">
+                            <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-purple-500 px-2 py-0.5 text-caption font-medium text-white">
                                 Global Footer
                             </div>
                             <div style={{ pointerEvents: 'none' }}>

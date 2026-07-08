@@ -1057,7 +1057,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
           <div className="mb-3 h-1 w-12 rounded-full bg-primary-400" />
-          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-catalogue-text-primary">
+          <h2 className="catalogue-h2 text-catalogue-text-primary">
             {title}
           </h2>
           {(render as { subtitle?: string } | undefined)?.subtitle && (
@@ -1317,10 +1317,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {paginatedCourses.map((course, index) => {
                 // Compute category label: first tag > non-General type > level
+                // (level goes through displayLevelName so backend sentinels
+                // like "default" never surface as a category chip)
                 const category =
                   course.tags?.[0] ||
                   (course.type && course.type !== "General" ? course.type : "") ||
-                  course.level ||
+                  displayLevelName(course.level) ||
                   "";
                 const categoryStyle = getCategoryStyle(category);
                 const courseTerm = getTerminology(

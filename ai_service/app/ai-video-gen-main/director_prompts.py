@@ -1140,24 +1140,46 @@ _BOLD_EXTRA = (
     "feel. Stay tasteful: one loud move per shot, not chaos.\n"
 )
 
+# Slim recency tail used when the base system prompt is already COMPILED for
+# marketing (shot_type_cards.build_per_shot_system_prompt(mode="marketing")).
+# The compiled base carries the full design language (persona, depth, motion,
+# exemplars), so re-appending _PREMIUM_AESTHETIC would just duplicate ~1.4k
+# tokens and reintroduce "overrides the rules above" framing against a base
+# that no longer says whiteboard. Only the two #1 failure modes are worth
+# restating at the tail for recency.
+_COMPILED_AESTHETIC_TAIL = (
+    "## 🎬 FINAL CHECK (the two most common failures)\n"
+    "1. **KEYWORDS, NEVER THE NARRATION** — on-screen text must be a punchy "
+    "headline (≤5 words), stat, or label; never the spoken sentence.\n"
+    "2. **NO BARE TEXT CARDS** — every feature/step/stat carries an icon in a "
+    "brand-tinted chip, an image, or a mockup; every shot has at least one "
+    "non-text visual element, or it is REJECTED.\n"
+)
 
-def build_aesthetic_directive(mode: str) -> str:
-    """Return the per-shot aesthetic override block for the resolved visual mode.
+
+def build_aesthetic_directive(mode: str, *, compiled: bool = False) -> str:
+    """Return the per-shot aesthetic block for the resolved visual mode.
 
     - "educational" → "" (keep the base flat/whiteboard aesthetic untouched).
     - "marketing"   → premium-modern override (depth, motion, finishing, less text).
     - "bold"        → premium + extra energy.
 
-    Appended LAST to the per-shot HTML system prompt, after the brand block, so
-    it authoritatively overrides the earlier whiteboard rules without rewriting
-    the base shot-type cards. Educational runs see no change.
+    `compiled=True` means the caller built the base system prompt with
+    shot_type_cards.build_per_shot_system_prompt(mode=...) — the design
+    language is already IN the base (persona, principles, exemplars), so this
+    returns only a slim final-check tail instead of the full override block.
+    Legacy paths whose base is still the whiteboard doctrine (v2 segment path)
+    keep compiled=False and get the full authoritative override.
     """
     m = (mode or "educational").strip().lower()
-    if m == "marketing":
-        return "\n\n" + _PREMIUM_AESTHETIC
+    if m not in ("marketing", "bold"):
+        return ""
+    if compiled:
+        tail = "\n\n" + _COMPILED_AESTHETIC_TAIL
+        return tail + _BOLD_EXTRA if m == "bold" else tail
     if m == "bold":
         return "\n\n" + _PREMIUM_AESTHETIC + _BOLD_EXTRA
-    return ""
+    return "\n\n" + _PREMIUM_AESTHETIC
 
 
 def build_ai_video_director_block(

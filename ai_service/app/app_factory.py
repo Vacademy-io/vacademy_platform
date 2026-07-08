@@ -34,6 +34,7 @@ from .routers.reels import router as reels_router
 from .routers.studio_projects import router as studio_router
 from .routers.transcription import router as transcription_router
 from .routers.assessment_generation import router as assessment_generation_router
+from .routers.coding_question_gen import router as coding_question_gen_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
 from .routers.copy_check import router as copy_check_router
@@ -226,6 +227,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(transcription_router, prefix=settings.api_base_path)
     app.include_router(assessment_generation_router, prefix=settings.api_base_path)
+    app.include_router(coding_question_gen_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
     app.include_router(copy_check_router, prefix=settings.api_base_path)

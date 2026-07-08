@@ -91,6 +91,10 @@ def _normalize_stage_to_taxonomy(stage: str) -> Optional[str]:
         or s.startswith("bbox_regen")
         or s.startswith("html_repair")
         or s.startswith("animation_validator_regen")
+        # The call site sets "anim_validator_regen_shot_N" — the prefix below
+        # never matched it, so the density-regen was silently NOT routed to
+        # the configured regen_html model (fell to the client default chain).
+        or s.startswith("anim_validator_regen")
         or s.startswith("anim_density_regen")
     ):
         return "regen_html"
@@ -663,6 +667,55 @@ def _select_best_of_n_shots(shots: List[Dict[str, Any]], max_shots: int, total_s
     return set(ranked[:max_shots])
 
 
+# Phase C — best-of-N composition ANGLES. Each extra candidate commits to one
+# distinct angle instead of re-rolling the identical prompt (identical prompts
+# at near-identical temperature only ever produced sampling-noise "diversity").
+# Angles are picked DETERMINISTICALLY (rotated by shot_index) so resume legs
+# regenerate the same candidate set — no RNG in the pipeline.
+_BEST_OF_N_ANGLES: Tuple[Dict[str, str], ...] = (
+    {
+        "key": "typographic-monolith",
+        "directive": (
+            "NO imagery at all — one massive, confident type treatment carries the "
+            "whole frame. The headline IS the composition: extreme scale, tight "
+            "crop, one accent word, choreographed word-by-word reveal."
+        ),
+    },
+    {
+        "key": "imagery-led",
+        "directive": (
+            "Imagery carries the frame — a full-bleed photograph/visual with a slow "
+            "cinematic move and at most 3 words of text riding it. Depth via scrim "
+            "and light, not panels."
+        ),
+    },
+    {
+        "key": "spatial-diagram",
+        "directive": (
+            "Show the RELATIONSHIP spatially — arrange the elements so geometry "
+            "explains the idea (contrast, flow, growth). Animated shapes/lines lead; "
+            "labels are minimal chips."
+        ),
+    },
+    {
+        "key": "single-object-stage",
+        "directive": (
+            "One hero object on a lit stage — everything orbits a single centered "
+            "subject (product, icon, number). Background layers give depth; the "
+            "camera-feel comes from scale and parallax on the object itself."
+        ),
+    },
+    {
+        "key": "asymmetric-editorial",
+        "directive": (
+            "Break the centered-layout habit: hard asymmetric grid, dramatic "
+            "negative space on one side, content anchored to an edge. Editorial "
+            "magazine energy, off-axis reveals."
+        ),
+    },
+)
+
+
 def _summarize_shot_html_for_judge(html: str, max_text: int = 240) -> str:
     """Compact regex digest of a candidate shot's HTML for the best-of-N judge —
     keeps the judge prompt small (never dump full HTML for N candidates). Pure."""
@@ -837,6 +890,15 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "concept_temperature": 0.8,                      # hot ideation temp for the plan call
         "shot_planner_verbalized_sampling": True,        # internal 3-option concept divergence (prompt-only)
         "shot_denial_prompting": True,                   # per-shot anti-repetition (prompt-only)
+        # Phase C "choose, don't accept" — a lighter slice of the ultra kit:
+        # 2 candidates on the top 2 hero shots (angle-diversified), and stock
+        # photos ranked by a cheap TEXT pass instead of taking photos[0].
+        "best_of_n_enabled": True,
+        "best_of_n_count": 2,
+        "best_of_n_max_shots": 2,
+        "best_of_n_run_cost_cap_usd": 0.15,
+        "best_of_n_temperature": 0.85,
+        "stock_photo_llm_ranking": "text",
         "script_temperature": 0.6,
         "script_max_tokens": 24000,
         "html_temperature": 0.7,
@@ -888,7 +950,13 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "best_of_n_count": 3,
         "best_of_n_max_shots": 3,
         "best_of_n_run_cost_cap_usd": 0.30,
-        "best_of_n_temperature": 0.7,                    # cool execution temp for candidates
+        # Phase C: candidates run HOTTER than baseline (0.7) — identical-temp
+        # clones only differed by sampling noise; each extra also gets a
+        # distinct composition ANGLE appended to its prompt.
+        "best_of_n_temperature": 0.85,
+        "best_of_n_visual_judge": True,                  # judge compares rendered mid-frames, not regex digests
+        "hero_shot_model": "google/gemini-2.5-pro",      # hook/CTA/hero shots escalate off the flash executor
+        "stock_photo_llm_ranking": "visual",             # top-5 thumbnails → vision pick (was photos[0])
         "shot_creativity_critic": True,                  # director's-eye elevation gate (hero shots)
         "creativity_critic_run_cost_cap_usd": 0.40,
         "creativity_critic_min_score": 3,
@@ -997,7 +1065,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "best_of_n_count": 3,
         "best_of_n_max_shots": 4,
         "best_of_n_run_cost_cap_usd": 0.45,
-        "best_of_n_temperature": 0.7,
+        "best_of_n_temperature": 0.9,                    # Phase C: hotter than the 0.82 baseline
+        "best_of_n_visual_judge": True,
+        "hero_shot_model": "anthropic/claude-opus-4-8",  # top tier: frontier executor on hero shots
+        "stock_photo_llm_ranking": "visual",
         "shot_creativity_critic": True,
         "creativity_critic_run_cost_cap_usd": 0.60,
         "creativity_critic_min_score": 3,
@@ -2540,15 +2611,19 @@ class VideoGenerationPipeline:
             self._visual_style_mode = mode
         return mode
 
-    def _append_aesthetic_directive(self, system_prompt: str) -> str:
-        """Append the content-aware aesthetic override to a per-shot HTML system
+    def _append_aesthetic_directive(self, system_prompt: str, *, compiled: bool = False) -> str:
+        """Append the content-aware aesthetic block to a per-shot HTML system
         prompt. No-op (returns the prompt unchanged) for educational mode, so
         the base flat/whiteboard aesthetic is preserved for lecture content.
+
+        `compiled=True` → the base prompt was built mode-aware
+        (build_per_shot_system_prompt(mode=...)), so only a slim final-check
+        tail is appended instead of the full premium override.
         """
         try:
             from director_prompts import build_aesthetic_directive
             mode = self._resolve_visual_style_mode()
-            block = build_aesthetic_directive(mode)
+            block = build_aesthetic_directive(mode, compiled=compiled)
             if block:
                 if not getattr(self, "_logged_visual_mode", False):
                     print(f"🎨 Visual aesthetic mode: {mode}")
@@ -3034,6 +3109,10 @@ class VideoGenerationPipeline:
         # run_dir is resolved). Both default to "off" so non-assist runs are
         # byte-for-byte unchanged.
         self._assist_state = assist_state or None
+        # Phase B: per-run design identity (set by the plan seam on fresh
+        # runs, adopted from shot_plan.json on resume legs). None = default
+        # look everywhere it is consumed.
+        self._design_identity = None
         self._forced_casting: Dict[str, Any] = {}
 
         # Pillar 1 — reset per-run cost-event log so successive run() calls on
@@ -4459,6 +4538,10 @@ class VideoGenerationPipeline:
                     ):
                         self._v3_shot_plan = _v3_resume_plan
                         script_plan["_v3"] = True
+                        # Phase B: adopt the plan's design identity (see the
+                        # html-stage resume load for rationale).
+                        if isinstance(_v3_resume_plan.get("design_identity"), dict):
+                            self._design_identity = _v3_resume_plan["design_identity"]
                         print(
                             f"♻️  v3 resume — loaded shot_plan.json "
                             f"({len(_v3_resume_plan['shots'])} shots) from disk; "
@@ -4728,6 +4811,13 @@ class VideoGenerationPipeline:
                     _sg_cached = json.loads(_sg_ckpt.read_text())
                     if _sg_cached and _sg_cached.get("palette"):
                         style_guide = _sg_cached
+                        # Restore the attr too — _ensure_fonts CSS vars, the
+                        # vision-review palette, and screenshot/bbox
+                        # backgrounds all read self._current_style_guide,
+                        # which only _generate_style_guide used to set; on a
+                        # checkpoint-load resume leg they silently reverted to
+                        # raw presets (brand overrides dropped).
+                        self._current_style_guide = _sg_cached
                         print("♻️  Loaded style guide from checkpoint")
                 except Exception:
                     pass
@@ -4783,6 +4873,21 @@ class VideoGenerationPipeline:
                 # "flat vector illustration", etc.). Shot style (cream infographic vs
                 # dark stage vs product hero) is now chosen per-shot by the Director.
                 self._current_image_style = plan_data.get("visual_style", "realistic cinematic photograph")
+                # Phase B: the design identity's image art direction extends
+                # the run-wide style prefix so EVERY generated image shares
+                # lighting/palette/lens (cross-shot consistency). Applied at
+                # generation time (prefix mechanism), never written into the
+                # data-img-prompt attributes — mutating those breaks the
+                # assist forced-casting keys and shot-cache resume.
+                _di_art = ""
+                try:
+                    _di_art = str(
+                        (getattr(self, "_design_identity", None) or {}).get("image_art_direction") or ""
+                    ).strip()
+                except Exception:
+                    _di_art = ""
+                if _di_art and _di_art.lower() not in self._current_image_style.lower():
+                    self._current_image_style = f"{self._current_image_style}, {_di_art}"
                 print(f"📘 Subject domain: {subject_domain} ({TOPIC_SHOT_PROFILES[subject_domain]['description']})")
                 print(f"🎨 Image style: {self._current_image_style}")
                 
@@ -5026,6 +5131,13 @@ class VideoGenerationPipeline:
                         print(f"   ⚠️ AudioPolicyPlanner normalize failed on v3 plan ({_ap_err})")
                     # Cache back for any later html-stage reads.
                     self._v3_shot_plan = _director_plan
+                    # Phase B: adopt the plan's design identity on resume —
+                    # fonts/motion/finishing/image art direction consumers all
+                    # read self._design_identity, which only the fresh plan
+                    # seam sets. A styleframe-gate edit rewrites the plan file
+                    # between legs, so the file is the source of truth here.
+                    if isinstance(_director_plan.get("design_identity"), dict):
+                        self._design_identity = _director_plan["design_identity"]
                     _src = "memory" if _v3_plan_in_memory else "shot_plan.json checkpoint"
                     print(f"♻️  Using v3 shot plan from {_src} ({len(_director_plan['shots'])} shots) — Director skipped")
                     self._emit_progress({
@@ -5612,6 +5724,12 @@ class VideoGenerationPipeline:
                     if _res:
                         _early_image_results.append(_res)
                         _early_image_usage["image_count"] += 1
+                        # Phase C: stock-photo ranking tokens ride the task
+                        # result's usage (snake_case) — merge them or the
+                        # ranking LLM spend is never billed on this path.
+                        _ru = _res.get("usage") or {}
+                        for _uk in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                            _early_image_usage[_uk] = _early_image_usage.get(_uk, 0) + (_ru.get(_uk, 0) or 0)
 
                 # Retry any 429-limited tasks (sleep in main thread, not executor)
                 _MAX_REQUEUE_PIPE = 2
@@ -9149,6 +9267,23 @@ class VideoGenerationPipeline:
             if layout_theme_id:
                 style_guide["layout_theme"] = layout_theme_id
 
+        # ── Phase B: design identity → style guide fonts + motion label ──
+        # The identity is chosen at plan time (before this runs on the html
+        # stage) and already respects brand-locked fonts, so it is the single
+        # source of truth for the run's typography when present. Also emits
+        # `motion_strategy` (the personality name) — a key _write_timeline
+        # has always read for the frame-regen LLM but nothing ever produced.
+        _sg_di = getattr(self, "_design_identity", None)
+        if isinstance(_sg_di, dict):
+            _sg_di_typ = _sg_di.get("typography") or {}
+            if _sg_di_typ.get("display"):
+                style_guide["fonts"]["primary"] = _sg_di_typ["display"]
+            if _sg_di_typ.get("body"):
+                style_guide["fonts"]["secondary"] = _sg_di_typ["body"]
+            _sg_di_motion = (_sg_di.get("motion") or {}).get("personality")
+            if _sg_di_motion:
+                style_guide["motion_strategy"] = _sg_di_motion
+
         # Save for inspection
         (run_dir / "style_guide.json").write_text(json.dumps(style_guide, indent=2))
         # Store resolved style_guide so _ensure_fonts can use brand-override'd palette
@@ -9699,6 +9834,47 @@ class VideoGenerationPipeline:
                     "micro":   "clamp(0.9rem, 1.2vmin, 1.25rem)",
                 }
         safe_area = "4%" if is_portrait else "6%"
+
+        # ── Phase B: design-identity motion + typography tokens ──────────
+        # Registry lookups with the historical constants as the guaranteed
+        # fallback — a missing/failed identity produces the exact pack the
+        # pipeline has always emitted.
+        _pack_ease = {
+            "entry": "power3.out",
+            "exit": "power2.in",
+            "emphasis": "back.out(1.6)",
+            "bg_crossfade": "power2.inOut",
+            "snappy": "expo.out",
+            "settle": "power4.out",
+        }
+        _pack_timing = {
+            "entry_stagger": 0.12,
+            "title_delay": 0.3,
+            "subtitle_delay": 0.8,
+            "bg_crossfade_sec": 1.2,
+            "word_wipe_per_word": 0.15,
+        }
+        _pack_font_family = {
+            "display": "'Bebas Neue', 'Montserrat', sans-serif",
+            "heading": style_guide.get("fonts", {}).get("primary", "Montserrat"),
+            "body": style_guide.get("fonts", {}).get("secondary", "Inter"),
+            "mono": "'Fira Code', monospace",
+        }
+        try:
+            from design_identity import motion_values as _di_motion_values
+            _di_pack = getattr(self, "_design_identity", None)
+            if _di_pack:
+                _pack_ease, _pack_timing = _di_motion_values(_di_pack)
+                _di_pack_typ = _di_pack.get("typography") or {}
+                if _di_pack_typ.get("display_css"):
+                    _pack_font_family["display"] = _di_pack_typ["display_css"]
+                if _di_pack_typ.get("display"):
+                    _pack_font_family["heading"] = _di_pack_typ["display"]
+                if _di_pack_typ.get("body"):
+                    _pack_font_family["body"] = _di_pack_typ["body"]
+        except Exception as _di_pack_err:
+            print(f"[shot_pack] identity tokens skipped ({_di_pack_err})")
+
         return {
             "color_tokens": {
                 "primary": "var(--brand-primary)",
@@ -9721,12 +9897,7 @@ class VideoGenerationPipeline:
                 "good": "#16a34a",  # success, check, positive proof
                 "gold": "#c9a86a",  # premium, elevated, brand-positive
             },
-            "font_family": {
-                "display": "'Bebas Neue', 'Montserrat', sans-serif",
-                "heading": style_guide.get("fonts", {}).get("primary", "Montserrat"),
-                "body": style_guide.get("fonts", {}).get("secondary", "Inter"),
-                "mono": "'Fira Code', monospace",
-            },
+            "font_family": _pack_font_family,
             "font_scale": font_scale,
             "spacing": {
                 "xs": "8px",
@@ -9737,21 +9908,11 @@ class VideoGenerationPipeline:
                 "2xl": "96px",
                 "safe_area": safe_area,
             },
-            "ease": {
-                "entry": "power3.out",
-                "exit": "power2.in",
-                "emphasis": "back.out(1.6)",
-                "bg_crossfade": "power2.inOut",
-                "snappy": "expo.out",
-                "settle": "power4.out",
-            },
-            "timing": {
-                "entry_stagger": 0.12,
-                "title_delay": 0.3,
-                "subtitle_delay": 0.8,
-                "bg_crossfade_sec": 1.2,
-                "word_wipe_per_word": 0.15,
-            },
+            # Phase B: ease/timing come from the run's motion personality
+            # (design identity). The default personality is byte-identical to
+            # the constants that used to be hardcoded here.
+            "ease": _pack_ease,
+            "timing": _pack_timing,
             "layout": {
                 "aspect": "9:16" if is_portrait else "16:9",
                 "canvas_w": width,
@@ -10287,7 +10448,9 @@ class VideoGenerationPipeline:
 
         try:
             violations = client.check_shot_bbox(
-                html=html,
+                # Phase B: render with the real preamble (fonts, --brand-*/--font-*
+                # vars, finishing) so the bbox walk measures the shipped frame.
+                html=self._ensure_fonts(html),
                 width=canvas_w,
                 height=canvas_h,
                 timestamps=timestamps,
@@ -10377,7 +10540,7 @@ class VideoGenerationPipeline:
         # semantics so the call-site telemetry shape is consistent.
         try:
             violations2 = client.check_shot_bbox(
-                html=candidate,
+                html=self._ensure_fonts(candidate),
                 width=canvas_w,
                 height=canvas_h,
                 timestamps=timestamps,
@@ -10802,11 +10965,35 @@ class VideoGenerationPipeline:
         print(f"   🎬 Shot {shot_idx + 1}: creativity LOW (min {record.get('min_score')}/5) — firing elevation regen")
         try:
             corrective = build_elevation_corrective(record)
+            # Phase C: attach the shot's rendered mid-frame (already fetched
+            # for the critic) so the elevation regen SEES the flat frame it
+            # must push bolder. With an image in the payload the model must be
+            # vision-capable — use the critic/reviewer chain instead of the
+            # per-shot executor; text-only fallback keeps the old routing.
+            _regen_content: Any = corrective
+            _regen_model = self._resolve_stage_model("per_shot_html")
+            if _shot:
+                try:
+                    from shot_creativity_critic import _png_to_data_url as _cc_data_url
+                    _regen_content = [
+                        {"type": "text", "text": corrective + (
+                            "\n\nA screenshot of YOUR current (too-flat) frame is "
+                            "attached — elevate what you see, keep what already works."
+                        )},
+                        {"type": "image_url", "image_url": {"url": _cc_data_url(_shot)}},
+                    ]
+                    _regen_model = (
+                        _model
+                        or self._resolve_stage_model("vision_review")
+                        or "google/gemini-2.5-pro"
+                    )
+                except Exception:
+                    _regen_content = corrective
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
                 {"role": "assistant", "content": (last_raw_response or "")[:4000]},
-                {"role": "user", "content": corrective},
+                {"role": "user", "content": _regen_content},
             ]
             _prev_phase, _prev_stage = _llm_phase.get(), _llm_stage.get()
             _llm_phase.set("regen")
@@ -10816,7 +11003,7 @@ class VideoGenerationPipeline:
                     messages=messages,
                     temperature=self._tier_config.get("html_temperature", 0.7),
                     max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
-                    model=self._resolve_stage_model("per_shot_html"),
+                    model=_regen_model,
                 )
             finally:
                 _llm_phase.set(_prev_phase)
@@ -10828,15 +11015,55 @@ class VideoGenerationPipeline:
                 return record
             # Re-critique the bolder version; ship it ONLY if it raises the min score.
             if _cost_ok():
+                # Phase C: the OLD re-critique reused the PRE-regen frame
+                # against the POST-regen html — mismatched evidence. Render
+                # ONE mid-frame of the regen (same one-frame budget as the
+                # best-of-N judge) so pre and post are graded the same way;
+                # if the render worker is unavailable, fall back to a
+                # text-only re-critique with a +2 margin (text-only scores
+                # trend higher than screenshot-informed ones — a bare > would
+                # ship regressions).
+                _shot2: Optional[bytes] = None
+                if _shot is not None:
+                    try:
+                        from shot_screenshot_service import ShotScreenshotClient as _SSC
+                        _sc = getattr(self, "_screenshot_client", None)
+                        if _sc is None:
+                            _sc = _SSC()
+                            self._screenshot_client = _sc
+                        if _sc.is_configured:
+                            try:
+                                _cd_dur = max(1.0, float(shot.get("end_time", 0) or 0)
+                                              - float(shot.get("start_time", 0) or 0))
+                            except (TypeError, ValueError):
+                                _cd_dur = 4.0
+                            _fr2 = _sc.take_shot_screenshots(
+                                html=self._ensure_fonts(_html2),
+                                width=int(getattr(self, "video_width", 1920)),
+                                height=int(getattr(self, "video_height", 1080)),
+                                timestamps=[round(_cd_dur * 0.55, 2)],
+                                background=str(
+                                    ((getattr(self, "_current_style_guide", None) or {})
+                                     .get("palette") or {}).get("background") or "#0a0e27"
+                                ),
+                            )
+                            if _fr2:
+                                _shot2 = _fr2[0].image_bytes
+                    except Exception:
+                        _shot2 = None
                 record2 = critique_shot(
                     html=_html2, shot=shot, creative_concept=_cc, emotional_beat=_emotion,
-                    canvas=_canvas, llm_chat=self.html_client.chat, screenshot=_shot,
+                    canvas=_canvas, llm_chat=self.html_client.chat, screenshot=_shot2,
                     min_score=_min_score, model=_model,
                 )
                 _add_cost(float(record2.get("cost_usd") or 0.0))
                 record["scores_post"] = record2.get("scores")
                 record["min_score_post"] = record2.get("min_score")
-                if int(record2.get("min_score", 0)) > int(record.get("min_score", 0)):
+                # Symmetric evidence (both multimodal, or pre was text-only
+                # too) → simple improvement; asymmetric (pre had a frame,
+                # post is text-only) → demand a +2 margin.
+                _ship_margin = 0 if (_shot2 is not None or _shot is None) else 1
+                if int(record2.get("min_score", 0)) > int(record.get("min_score", 0)) + _ship_margin:
                     record["regen_html"] = _html2
                     record["shipped"] = "regen"
                     print(f"   🎬 Shot {shot_idx + 1}: elevation improved "
@@ -10923,7 +11150,10 @@ class VideoGenerationPipeline:
         # Take the pre-review screenshots.
         try:
             frames = client.take_shot_screenshots(
-                html=html,
+                # Phase B: screenshot with the real preamble — Phase A taught the
+                # LLM var(--brand-*), which would be unresolved without it, and
+                # the finishing layer must be visible to the reviewer.
+                html=self._ensure_fonts(html),
                 width=int(getattr(self, "video_width", 1920)),
                 height=int(getattr(self, "video_height", 1080)),
                 timestamps=timestamps,
@@ -10974,6 +11204,7 @@ class VideoGenerationPipeline:
             # has always been Pro and that's the matrix default too — admins
             # can flip via SQL but the BE never silently downgrades.
             model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
+            visual_style_mode=self._resolve_visual_style_mode(),
         )
 
         # Cache this shot's mid-frame so the next shot can BG_DISCONTINUITY-check
@@ -11075,16 +11306,44 @@ class VideoGenerationPipeline:
             # internal `review_shot` LLM call) is back to default phase=base.
             _phase_tok = _llm_phase.set("regen")
             _stage_tok = _llm_stage.set(f"vision_review_regen_shot_{shot_idx}")
+            # ── Phase C: MULTIMODAL corrective regen ──
+            # The failing render's PNG bytes are live locals here — attach up
+            # to two frames so the fixer SEES the defect instead of guessing
+            # from a text description of it (the craft review's highest
+            # impact/effort fix). The model is pinned to the vision-capable
+            # reviewer model: the un-pinned stage route could resolve to a
+            # text-only executor that errors on image parts.
+            _regen_user_content: Any = corrective
+            try:
+                if screenshots_pre:
+                    from shot_visual_reviewer import _png_to_data_url as _to_data_url
+                    _regen_user_content = [{
+                        "type": "text",
+                        "text": corrective + (
+                            "\n\nScreenshots of YOUR FAILING RENDER are attached "
+                            "(in shot-time order) — look at them and fix exactly "
+                            "what is visually wrong."
+                        ),
+                    }]
+                    for _png in screenshots_pre[:2]:
+                        _regen_user_content.append(
+                            {"type": "image_url", "image_url": {"url": _to_data_url(_png)}}
+                        )
+            except Exception:
+                _regen_user_content = corrective
             try:
                 raw2, usage2 = self.html_client.chat(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                         {"role": "assistant", "content": (last_raw_response or "")[:4000]},
-                        {"role": "user", "content": corrective},
+                        {"role": "user", "content": _regen_user_content},
                     ],
                     temperature=0.4,
                     max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                    model=(
+                        self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro"
+                    ) if not isinstance(_regen_user_content, str) else None,
                 )
             except Exception as _re_exc:
                 _llm_phase.reset(_phase_tok)
@@ -11120,7 +11379,7 @@ class VideoGenerationPipeline:
                     # original. Mirrors the animation-validator policy.
                     try:
                         frames2 = client.take_shot_screenshots(
-                            html=candidate,
+                            html=self._ensure_fonts(candidate),
                             width=int(getattr(self, "video_width", 1920)),
                             height=int(getattr(self, "video_height", 1080)),
                             timestamps=timestamps,
@@ -11147,6 +11406,7 @@ class VideoGenerationPipeline:
             # has always been Pro and that's the matrix default too — admins
             # can flip via SQL but the BE never silently downgrades.
             model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
+                            visual_style_mode=self._resolve_visual_style_mode(),
                         )
                         # If regen ships, overwrite the cached thumbnail with
                         # the post-regen mid-frame so the next shot's
@@ -12469,6 +12729,119 @@ class VideoGenerationPipeline:
         except Exception as _tp_err:
             print(f"   ⚠️ Transition validation failed ({_tp_err}) — keeping transitions")
 
+        # ── 1b. DESIGN IDENTITY (Phase B) — per-run visual signature ────
+        # One cheap LLM call picks a font pairing / motion personality /
+        # finishing / image art direction from FIXED registries so runs stop
+        # shipping the identical Montserrat+power3.out fingerprint. The
+        # identity rides shot_plan.json (raw-loaded on resume → survives legs
+        # verbatim) and is user-approvable via the assist "styleframe" gate.
+        # Marketing/bold get it at every tier; educational only at the
+        # aspirational tiers — and the fallback identity is byte-identical to
+        # the historical constants, so failure = today's look, never worse.
+        # NOTE: at plan time the visual mode resolves from video_type /
+        # explicit override only (subject_domain isn't classified yet); a
+        # domain-inferred marketing run keeps the default identity.
+        self._design_identity = None
+        try:
+            _di_mode = self._resolve_visual_style_mode()
+            _di_enabled = (_di_mode in ("marketing", "bold")) or (
+                self._quality_tier in ("ultra", "super_ultra")
+            )
+            if _di_enabled:
+                import design_identity as _di_mod
+                _di_style_cfg = getattr(self, "_current_style_config", None) or {}
+                _di_bh = str(_di_style_cfg.get("heading_font") or "").strip()
+                _di_bb = str(_di_style_cfg.get("body_font") or "").strip()
+                # Inter/Inter is the platform default — not a deliberate brand
+                # font choice; anything else locks typography to the brand.
+                _di_fonts_locked = bool(
+                    (_di_bh or _di_bb) and (_di_bh, _di_bb) != ("Inter", "Inter")
+                )
+                _di_model = (
+                    self._resolve_stage_model("design_identity")
+                    or tier_config.get("concept_model")
+                    or shot_planner_model
+                )
+                _di_identity, _di_usage = _di_mod.generate_design_identity(
+                    self.script_client.chat,
+                    concept=shot_plan_dict.get("creative_concept"),
+                    script_summary=" ".join(
+                        str(_dis.get("narration_brief") or "")
+                        for _dis in shot_plan_dict["shots"][:12]
+                        if isinstance(_dis, dict)
+                    ),
+                    mode=_di_mode,
+                    brand_brief=brand_brief or "",
+                    model=_di_model,
+                    brand_fonts_locked=_di_fonts_locked,
+                    brand_heading=_di_bh,
+                    brand_body=_di_bb,
+                )
+                if _di_usage:
+                    self._v3_accumulate_partial_usage(sp_usage, _di_usage)
+                # Styleframe: ONE hero image rendered from the identity — the
+                # approval artifact for the styleframe gate and the run's
+                # art-direction anchor. Deliberately NOT used as an i2i
+                # reference (Recraft reference-bleed; see ~24494). Marketing/
+                # bold only; failure is non-fatal (identity ships without it).
+                if _di_mode in ("marketing", "bold"):
+                    try:
+                        # At plan time the style guide doesn't exist yet (it is
+                        # generated in the html stage) — fall back to the raw
+                        # brand config so the styleframe still carries brand color.
+                        _sf_palette = ((getattr(self, "_current_style_guide", None) or {})
+                                       .get("palette") or {})
+                        if not _sf_palette:
+                            _sf_palette = {
+                                "primary": _di_style_cfg.get("primary_color") or "",
+                                "accent": _di_style_cfg.get("accent_color") or "",
+                            }
+                        _sf_prompt = _di_mod.styleframe_prompt(
+                            _di_identity,
+                            shot_plan_dict.get("creative_concept"),
+                            _sf_palette,
+                        )
+                        _sf_bytes, _sf_usage = self._call_image_generation_llm(
+                            _sf_prompt,
+                            width=getattr(self, "video_width", 1920),
+                            height=getattr(self, "video_height", 1080),
+                        )
+                        if _sf_usage:
+                            self._v3_accumulate_partial_usage(sp_usage, _sf_usage)
+                        if _sf_bytes:
+                            # Bill the image: the token accumulator drops
+                            # image_count, so track it on sp_usage explicitly
+                            # (flows into the returned usage → accumulate_usage).
+                            sp_usage["image_count"] = int(sp_usage.get("image_count", 0) or 0) + 1
+                            _sf_url = self._upload_subject_reference(
+                                _sf_bytes, "styleframe", run_dir
+                            )
+                            if _sf_url:
+                                _di_identity["styleframe_url"] = _sf_url
+                                print(f"   🎨 Styleframe ready: {_sf_url}")
+                    except Exception as _sf_err:
+                        print(f"   ⚠️ Styleframe generation failed ({_sf_err}) — identity ships without it")
+                shot_plan_dict["design_identity"] = _di_identity
+                self._design_identity = _di_identity
+                _di_typ = _di_identity.get("typography") or {}
+                print(
+                    f"   🎨 Design identity: {_di_identity.get('identity_name')} — "
+                    f"{_di_typ.get('display')}/{_di_typ.get('body')}, "
+                    f"motion={_di_identity.get('motion', {}).get('personality')}, "
+                    f"finishing={_di_identity.get('finishing')}"
+                )
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "design_identity_ready",
+                    "message": (
+                        f"Design identity: {_di_typ.get('display')} + {_di_typ.get('body')}, "
+                        f"{_di_identity.get('motion', {}).get('personality')} motion"
+                    ),
+                })
+        except Exception as _di_err:
+            print(f"   ⚠️ Design identity skipped ({_di_err}) — default look")
+            self._design_identity = None
+
         # Record ShotPlanner tokens NOW — if NarrationWriter raises below,
         # this is the only place the caller can recover the partial cost.
         if partial_usage is not None:
@@ -12587,6 +12960,9 @@ class VideoGenerationPipeline:
                 + int(nw_usage.get("prompt_tokens", 0) or 0),
             "completion_tokens": int(sp_usage.get("completion_tokens", 0) or 0)
                 + int(nw_usage.get("completion_tokens", 0) or 0),
+            # Phase B: the styleframe image generated at the plan seam rides
+            # sp_usage — surface it so run()'s accumulate_usage bills it.
+            "image_count": int(sp_usage.get("image_count", 0) or 0),
             "shot_planner": sp_usage,
             "narration_writer": nw_usage,
         }
@@ -16459,14 +16835,30 @@ class VideoGenerationPipeline:
             "total_tokens": 0, "image_count": 0,
         }
 
-        # Build a condensed style context string (reused across all shots)
+        # Build a condensed style context string (reused across all shots).
+        # Phase B: the fonts line reflects the run's design identity / brand
+        # fonts (it used to hardcode Montserrat/Inter, silently overriding
+        # both), and the identity's motion/color-arc lines ride along so every
+        # shot serves the same visual signature.
+        _sc_di = getattr(self, "_design_identity", None)
+        _sc_typ = (_sc_di or {}).get("typography") or {}
+        _sc_fonts = style_guide.get("fonts", {}) if isinstance(style_guide, dict) else {}
+        _sc_display = _sc_typ.get("display") or _sc_fonts.get("primary", "Montserrat")
+        _sc_body = _sc_typ.get("body") or _sc_fonts.get("secondary", "Inter")
         style_context = (
             f"Background: {background_type}\n"
             f"Text: {palette.get('text', '#ffffff')}\n"
             f"Primary: {palette.get('primary', '#3b82f6')}\n"
             f"Accent: {palette.get('accent', '#38bdf8')}\n"
-            f"Fonts: Montserrat (headings), Inter (body), Fira Code (code)\n"
+            f"Fonts: {_sc_display} (headlines — use var(--font-display)), "
+            f"{_sc_body} (body — use var(--font-body)), Fira Code (code)\n"
         )
+        if _sc_di:
+            try:
+                from design_identity import identity_style_context_lines
+                style_context += identity_style_context_lines(_sc_di)
+            except Exception:
+                pass
 
         # Video-level CREATIVE CONCEPT (v3 ShotPlanner output) — the POV every shot
         # must serve. Built once and prepended to each shot's creative direction so
@@ -16978,6 +17370,7 @@ class VideoGenerationPipeline:
                 shot_type, _w, _h,
                 aspirational=_aspirational_prompt,
                 cultural_context=getattr(self, "_cultural_context", None),
+                mode=self._resolve_visual_style_mode(),
             )
             # Pillar 2.4 — append the "don't re-emit shared preamble" rule
             # when the tier knob is on. Token cost: ~600 chars in the system
@@ -17003,11 +17396,52 @@ class VideoGenerationPipeline:
                 except Exception:
                     pass
 
-            # Content-aware visual aesthetic. Appended LAST so for marketing/bold
-            # it authoritatively overrides the base flat/whiteboard rules; for
-            # educational it returns "" and the base aesthetic is untouched.
-            system_prompt = self._append_aesthetic_directive(system_prompt)
+            # Content-aware visual aesthetic. The base prompt above is already
+            # COMPILED for the resolved mode, so this appends only a slim
+            # final-check tail for marketing/bold (and "" for educational).
+            system_prompt = self._append_aesthetic_directive(system_prompt, compiled=True)
 
+            # Inject the filtered skill catalog (ultra / super_ultra).
+            # The LLM sees a compact list of skills that match this shot type + tier
+            # and can optionally drop <skill> tags into its HTML. The composer
+            # resolves those tags after generation.
+            if _skill_enabled and _skill_catalog_fn is not None:
+                _canvas = "portrait" if _h > _w else "landscape"
+                _skill_catalog = _skill_catalog_fn(
+                    shot_type=shot_type,
+                    tier=self._quality_tier,
+                    canvas=_canvas,
+                )
+                if _skill_catalog:
+                    system_prompt = system_prompt + "\n\n" + _skill_catalog
+
+            # Phase 6: inline `<aivideo>` teaching block. Conditional on the
+            # run having AI video enabled AND the shot being a non-specialized
+            # composite type (AI_VIDEO_HERO doesn't need the inline tag — it's
+            # already AI-video at the whole-canvas level; KINETIC_TEXT /
+            # SOURCE_CLIP / IMAGE_CLIP don't support arbitrary composite HTML).
+            if (
+                getattr(self, "_ai_video_run_enabled", False)
+                and shot_type not in ("AI_VIDEO_HERO", "KINETIC_TEXT", "KINETIC_TITLE",
+                                      "SOURCE_CLIP", "IMAGE_CLIP")
+            ):
+                try:
+                    from shot_type_cards import build_ai_video_inline_teaching_block
+                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
+                    _av_inline_block = build_ai_video_inline_teaching_block(
+                        enabled=True,
+                        audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        cost_cap_usd=_av_cap,
+                    )
+                    if _av_inline_block:
+                        system_prompt = system_prompt + "\n\n" + _av_inline_block
+                except Exception as _av_block_err:
+                    print(f"   ⚠️ inline <aivideo> teaching block unavailable ({_av_block_err})")
+
+            # ── USER DIRECTIVES — appended LAST (after all catalogs/teaching
+            # blocks) so they sit in the highest-recency position of the prompt.
+            # A real user asset, confirmed figure, or revision note outranks
+            # every style rule above it.
             # User-provided REAL asset for THIS shot (assist asset_request gate).
             # A real screenshot/photo outranks anything generated — the shot is
             # built AROUND it, never replaced by an invention.
@@ -17064,42 +17498,13 @@ class VideoGenerationPipeline:
                 )
                 print(f"   🔁 Shot {shot_idx}: applying user revision note ({_regen_note[:60]!r})")
 
-            # Inject the filtered skill catalog (ultra / super_ultra).
-            # The LLM sees a compact list of skills that match this shot type + tier
-            # and can optionally drop <skill> tags into its HTML. The composer
-            # resolves those tags after generation.
-            if _skill_enabled and _skill_catalog_fn is not None:
-                _canvas = "portrait" if _h > _w else "landscape"
-                _skill_catalog = _skill_catalog_fn(
-                    shot_type=shot_type,
-                    tier=self._quality_tier,
-                    canvas=_canvas,
-                )
-                if _skill_catalog:
-                    system_prompt = system_prompt + "\n\n" + _skill_catalog
-
-            # Phase 6: inline `<aivideo>` teaching block. Conditional on the
-            # run having AI video enabled AND the shot being a non-specialized
-            # composite type (AI_VIDEO_HERO doesn't need the inline tag — it's
-            # already AI-video at the whole-canvas level; KINETIC_TEXT /
-            # SOURCE_CLIP / IMAGE_CLIP don't support arbitrary composite HTML).
-            if (
-                getattr(self, "_ai_video_run_enabled", False)
-                and shot_type not in ("AI_VIDEO_HERO", "KINETIC_TEXT", "KINETIC_TITLE",
-                                      "SOURCE_CLIP", "IMAGE_CLIP")
-            ):
-                try:
-                    from shot_type_cards import build_ai_video_inline_teaching_block
-                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
-                    _av_inline_block = build_ai_video_inline_teaching_block(
-                        enabled=True,
-                        audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
-                        cost_cap_usd=_av_cap,
-                    )
-                    if _av_inline_block:
-                        system_prompt = system_prompt + "\n\n" + _av_inline_block
-                except Exception as _av_block_err:
-                    print(f"   ⚠️ inline <aivideo> teaching block unavailable ({_av_block_err})")
+            # Output contract reminder — the strict JSON envelope lives mid-prompt
+            # now (inside the compiled base); restate it in one line at the very
+            # end so no append above can bury it.
+            system_prompt += (
+                "\n\nFINAL REMINDER: respond with ONLY the strict JSON envelope "
+                "defined in OUTPUT FORMAT above — no prose, no markdown fences."
+            )
 
             # Filter word timings to this shot's time range
             shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
@@ -17199,7 +17604,10 @@ class VideoGenerationPipeline:
                 )
             # Phase-B: this shot's section energy + accent role from the beat_map
             # (match on the shot's own shot_index, not the enumerate position).
+            # _bm_energy is also read ~1000 lines below (Phase C) to modulate
+            # the per-shot sampling temperature — keep it always-bound.
             _cd_section = None
+            _bm_energy = None
             _bm_sidx = shot.get("shot_index")
             _bm_sidx = _bm_sidx if isinstance(_bm_sidx, int) else shot_idx
             for _bm_e in _beat_map:
@@ -18182,6 +18590,45 @@ class VideoGenerationPipeline:
             # Cumulative usage across all attempts — tracks retry token burns
             usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             _base_user_prompt = user_prompt
+            # Phase C: best-of-N candidate stash (set only when the judge ran;
+            # persisted with the shot cache for the future shot_look gate).
+            _shot_look_stash: Optional[Dict[str, Any]] = None
+
+            # ── Phase C: per-shot model + temperature ─────────────────────
+            # Model: hero shots (hook/CTA/moment/first/last) may escalate to
+            # the tier's `hero_shot_model` — the craft review's "frontier
+            # intent, flash execution" fix. An explicit USER per-stage pick
+            # always wins over escalation (provenance lives in the raw
+            # stage-model map; _resolve_stage_model discards it).
+            _shot_model = self._resolve_stage_model("per_shot_html")
+            _hero_model = self._tier_config.get("hero_shot_model")
+            if _hero_model and _shot_is_high_impact(shot, shot_idx, total_shots):
+                _psm_entry = (getattr(self, "_stage_model_map", None) or {}).get("per_shot_html")
+                _user_pinned = (
+                    isinstance(_psm_entry, tuple) and len(_psm_entry) > 1
+                    # Both provenances are explicit user picks: a per-stage
+                    # override AND the legacy video-wide `model=` field
+                    # (source "user_default"). Escalate over neither.
+                    and _psm_entry[1] in ("user_per_stage", "user_default")
+                )
+                if not _user_pinned:
+                    _shot_model = _hero_model
+                    print(f"   ⬆️ Shot {shot_idx + 1}: hero-shot model escalation → {_hero_model}")
+            # Temperature: modulated by the shot's beat-map section energy
+            # (already resolved into _bm_energy above) so calm sections render
+            # conservatively and climax sections sample bolder — instead of
+            # one flat temperature for every shot in the video.
+            _shot_temperature = float(self._tier_config.get("html_temperature", 0.7))
+            try:
+                # Gated to the concept tiers (premium+): free/standard keep
+                # byte-identical flat-temperature behavior.
+                if isinstance(_bm_energy, (int, float)) and self._tier_config.get("concept_model"):
+                    _shot_temperature = max(
+                        0.55, min(0.95, _shot_temperature + 0.25 * (float(_bm_energy) - 0.5))
+                    )
+            except Exception:
+                pass
+
             for attempt in range(max_attempts):
                 _current_prompt = (
                     _base_user_prompt + _SIMPLIFY_RETRY_NOTE if attempt > 0 else _base_user_prompt
@@ -18193,12 +18640,12 @@ class VideoGenerationPipeline:
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": _current_prompt},
                         ],
-                        temperature=self._tier_config.get("html_temperature", 0.7),
+                        temperature=_shot_temperature,
                         max_tokens=(
                             8000 if attempt > 0
                             else self._tier_config.get("per_shot_max_tokens", 16000)
                         ),
-                        model=self._resolve_stage_model("per_shot_html"),
+                        model=_shot_model,
                     )
                     # Add this attempt's tokens before JSON parsing so parse failures
                     # are still counted in the cost.
@@ -18388,19 +18835,53 @@ class VideoGenerationPipeline:
             if (shot_idx in getattr(self, "_best_of_n_indices", set())
                     and not shot.get("_is_sub_shot")
                     and isinstance(data, dict) and (data.get("html") or "").strip()):
-                _bon_model = self._resolve_stage_model("per_shot_html")
-                _bon_candidates = [{"html": data.get("html", "")}]
+                # Phase C: extras inherit the hero-escalated model, run HOTTER
+                # than the baseline, and each gets a DISTINCT composition
+                # angle — identical prompts at identical temperature only
+                # differed by sampling noise ("fake diversity").
+                _bon_model = _shot_model
+                # Repair every candidate BEFORE judging (and carry the repaired
+                # html forward): the ship path fixes root-contract violations
+                # one line after the BoN block, so judging raw candidates
+                # blank-framed exactly the defects that never ship — the
+                # strongest candidate could auto-lose to a weaker one.
+                def _bon_repair(_h: str) -> str:
+                    try:
+                        _h = self._sanitize_html_content(_h)
+                        from html_contract_repair import repair_root_contract as _rrc
+                        _h, _ = _rrc(_h)
+                    except Exception:
+                        pass
+                    return _h
+                _bon_candidates = [{"html": _bon_repair(data.get("html", "")), "angle": "baseline"}]
                 _bon_n = int(self._tier_config.get("best_of_n_count", 1) or 1)
                 _bon_temp = (self._tier_config.get("best_of_n_temperature")
                              or self._tier_config.get("html_temperature", 0.7))
                 for _bon_i in range(1, max(1, _bon_n)):
                     if not self._best_of_n_cost_ok():
                         break
+                    # Deterministic angle pick (resume-stable, no RNG): rotate
+                    # the registry by shot_index so different hero shots try
+                    # different angles first.
+                    try:
+                        _bon_rot = int(shot.get("shot_index", shot_idx))
+                    except (TypeError, ValueError):
+                        _bon_rot = shot_idx
+                    _bon_angle = _BEST_OF_N_ANGLES[
+                        (_bon_rot + _bon_i - 1) % len(_BEST_OF_N_ANGLES)
+                    ]
                     try:
                         _bon_raw, _bon_usage = self.html_client.chat(
                             messages=[
                                 {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": _base_user_prompt},
+                                {"role": "user", "content": (
+                                    _base_user_prompt
+                                    + "\n\n## ALTERNATE TAKE — COMPOSITION ANGLE (this candidate only)\n"
+                                    + f"Commit fully to this angle: {_bon_angle['directive']}\n"
+                                    + "Same narration, same sync points, same brand tokens — "
+                                    + "different composition. Respond with the same strict JSON "
+                                    + "object format as instructed (first char `{`)."
+                                )},
                             ],
                             temperature=_bon_temp,
                             max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
@@ -18411,11 +18892,13 @@ class VideoGenerationPipeline:
                             usage[_k] = usage.get(_k, 0) + (_bon_usage or {}).get(_k, 0)
                         _bon_data = _extract_json_blob(_bon_raw)
                         if isinstance(_bon_data, dict) and (_bon_data.get("html") or "").strip():
-                            _bon_candidates.append({"html": _bon_data["html"]})
+                            _bon_candidates.append(
+                                {"html": _bon_repair(_bon_data["html"]), "angle": _bon_angle["key"]}
+                            )
                     except Exception as _bon_err:
                         print(f"   ⚠️ Shot {shot_idx + 1} best-of-N candidate {_bon_i} failed: {_bon_err}")
                 if len(_bon_candidates) > 1:
-                    _winner, _judge_usage = self._select_best_shot_html_with_llm(
+                    _winner, _judge_usage, _judge_meta = self._select_best_shot_candidate(
                         _bon_candidates, shot_idx=shot_idx, shot=shot,
                         narration_excerpt=shot.get("narration_excerpt", ""),
                         visual_description=shot.get("visual_description", ""),
@@ -18425,7 +18908,29 @@ class VideoGenerationPipeline:
                     if isinstance(_winner, dict) and (_winner.get("html") or "").strip():
                         data = dict(data)
                         data["html"] = _winner["html"]
-                        print(f"   🎲 Shot {shot_idx + 1}: best-of-{len(_bon_candidates)} → winner selected")
+                        # Downstream corrective regens (density/bbox/vision/
+                        # critic) replay `raw` as the assistant turn — refresh
+                        # it so they correct the shot that actually shipped,
+                        # not the losing baseline take.
+                        try:
+                            raw = json.dumps(data, ensure_ascii=False)
+                        except Exception:
+                            pass
+                        # Stash for the shot_cache file (future shot_look gate
+                        # + telemetry): candidates ride the per-shot cache,
+                        # never the timeline entries.
+                        _shot_look_stash = {
+                            "winner_angle": _winner.get("angle"),
+                            "judge": _judge_meta,
+                            "candidates": [
+                                {"angle": c.get("angle"), "html": c.get("html", "")}
+                                for c in _bon_candidates
+                            ],
+                        }
+                        print(
+                            f"   🎲 Shot {shot_idx + 1}: best-of-{len(_bon_candidates)} → "
+                            f"winner '{_winner.get('angle')}' via {(_judge_meta or {}).get('mode')}"
+                        )
 
             html = data.get("html", "")
             if not html:
@@ -19068,6 +19573,14 @@ class VideoGenerationPipeline:
             # Estimate USD cost for this shot (best-effort; None if model pricing unknown)
             _model_id = getattr(self.html_client, 'current_model',
                                 getattr(self.html_client, 'default_model', ''))
+            # Phase C: prefer the shot's own resolved model — current_model is
+            # a shared-client attr and racy under the 8-way fan-out, and hero
+            # escalation makes the divergence real ("Remake with AI" must use
+            # the model that actually authored this shot).
+            try:
+                _model_id = _shot_model or _model_id
+            except NameError:
+                pass  # deterministic paths (templates/builders) skip the LLM block
 
             # Stamp the resolved html_model onto every timeline entry produced
             # by this shot. Read at regen time by `_lookup_shot_html_model` so
@@ -19116,9 +19629,16 @@ class VideoGenerationPipeline:
                 "cumulative_tokens": _cum_snap,
             })
 
-            # Save checkpoint so a retry can skip this shot
+            # Save checkpoint so a retry can skip this shot. Phase C: when
+            # best-of-N ran, the losing candidates + judge verdict ride the
+            # SAME cache file under "shot_look" (resume readers only consume
+            # entries/usage — additive-safe) so a future shot_look gate can
+            # present them without regenerating.
             try:
-                _cache_path.write_text(json.dumps({"entries": entries, "usage": usage}, default=str))
+                _cache_body: Dict[str, Any] = {"entries": entries, "usage": usage}
+                if _shot_look_stash:
+                    _cache_body["shot_look"] = _shot_look_stash
+                _cache_path.write_text(json.dumps(_cache_body, default=str))
             except Exception:
                 pass  # cache write failure is non-fatal
 
@@ -20605,9 +21125,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "})();</script>"
             "</body></html>"
         )
-        return self._ensure_fonts(html_doc)
+        # finish=False: this html becomes an OVERLAY entry stacked on top of a
+        # base shot that already carries the finishing layer — grain/vignette
+        # would double up.
+        return self._ensure_fonts(html_doc, finish=False)
 
-    def _ensure_fonts(self, html: str) -> str:
+    def _ensure_fonts(self, html: str, *, finish: bool = True) -> str:
+        # IDEMPOTENT (Phase B): the preamble is now injected EARLY in the LLM
+        # path (before bbox lint / vision review, so QA screenshots finally
+        # see the fonts, --brand-*/--font-* vars, and the finishing layer) and
+        # the historical late call still runs — the marker makes the second
+        # application a no-op instead of a double-inject.
+        if "<!--vx-preamble-->" in html:
+            return html
         # Get colors based on background_type, preferring brand-override'd palette from style_guide
         bg_type = getattr(self, '_current_background_type', 'white')
         preset = BACKGROUND_PRESETS.get(bg_type, BACKGROUND_PRESETS["white"])
@@ -20636,6 +21166,77 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         _fonts_param = f"{_base_families}&family={_extra_family}" if _extra_family else _base_families
         _fonts_url = f"https://fonts.googleapis.com/css2?family={_fonts_param}&display=swap"
 
+        # ── Phase B: run design identity → fonts + finishing ─────────────
+        # The identity's font pairing (and any configured brand fonts, which
+        # previously reached the prompts but were NEVER loaded) get their own
+        # SECOND @import built from REGISTRY fragments only — no free text is
+        # ever interpolated into the URL, and a bad family can't 400 the base
+        # request. --font-display/--font-body land in the same :root block so
+        # the dispatcher's :root→:host rewrite carries them into shadow DOM.
+        _di = getattr(self, "_design_identity", None) or {}
+        _di_typ = _di.get("typography") or {}
+        _sg_fonts = _sg.get("fonts", {}) if isinstance(_sg, dict) else {}
+
+        def _css_font_safe(value: str, fallback: str) -> str:
+            v = re.sub(r"[^A-Za-z0-9 ,'\-]", "", str(value or "")).strip(" ,")
+            return v or fallback
+
+        _identity_import = ""
+        _font_display_css = "'Montserrat', sans-serif"
+        _font_body_css = "'Inter', sans-serif"
+        try:
+            from design_identity import (
+                FONT_PAIRINGS as _DI_PAIRINGS,
+                BRAND_FONT_FRAGMENTS as _DI_FRAGMENTS,
+                font_css_stack as _di_font_stack,
+            )
+            _fragments: list = []
+            _pk = str(_di_typ.get("pairing") or "")
+            if _pk in _DI_PAIRINGS and _DI_PAIRINGS[_pk].get("gf_fragment"):
+                _fragments.append(_DI_PAIRINGS[_pk]["gf_fragment"])
+            # Brand-locked identities ('brand') and style_guide brand fonts
+            # load via the allowlist map; unknown names simply don't load.
+            for _fam in (
+                _di_typ.get("display"), _di_typ.get("body"),
+                _sg_fonts.get("primary"), _sg_fonts.get("secondary"),
+            ):
+                _frag = _DI_FRAGMENTS.get(str(_fam or "").strip())
+                if _frag and _frag not in _fragments and f"family={_frag.split(':')[0]}" not in _fonts_param:
+                    _fragments.append(_frag)
+            if _fragments:
+                _identity_import = (
+                    "@import url('https://fonts.googleapis.com/css2?family="
+                    + "&family=".join(_fragments)
+                    + "&display=swap');"
+                )
+            if _di_typ.get("display_css"):
+                _font_display_css = _css_font_safe(_di_typ["display_css"], _font_display_css)
+            elif _sg_fonts.get("primary"):
+                _font_display_css = _css_font_safe(_di_font_stack(_sg_fonts["primary"]), _font_display_css)
+            if _di_typ.get("body_css"):
+                _font_body_css = _css_font_safe(_di_typ["body_css"], _font_body_css)
+            elif _sg_fonts.get("secondary"):
+                _font_body_css = _css_font_safe(_di_font_stack(_sg_fonts["secondary"]), _font_body_css)
+        except Exception as _di_font_err:
+            print(f"   ⚠️ identity fonts skipped ({_di_font_err})")
+
+        # Finishing overlay — a constant grain/vignette/glow layer that makes
+        # every frame read as film instead of a browser screenshot. Marketing/
+        # bold only (identity-driven); appended AFTER the shot html so it
+        # renders on top (z-index 8000, below the 9999 transition overlays).
+        _finish_overlay = ""
+        _vx_css = ""
+        try:
+            from design_identity import (
+                build_finishing_overlay_html as _di_overlay,
+                VX_FINISHING_CSS as _VX_CSS,
+            )
+            _vx_css = _VX_CSS
+            if finish and self._resolve_visual_style_mode() in ("marketing", "bold"):
+                _finish_overlay = _di_overlay(_di.get("finishing"))
+        except Exception:
+            _finish_overlay = ""
+
         # .svg-canvas class is always injected so any shot (INFOGRAPHIC_SVG / KINETIC_TITLE)
         # that opts into the cream+grid canvas works regardless of the document background.
         svg_canvas_css = """
@@ -20652,8 +21253,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             }
         """
 
-        global_css = f"""<style>
+        global_css = f"""<!--vx-preamble--><style>
             @import url('{_fonts_url}');
+            {_identity_import}
 
             /* --- BRAND PALETTE (institute AI settings → style_guide → CSS vars) --- */
             :root {{
@@ -20665,11 +21267,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               --brand-svg-stroke: {svg_stroke_color};
               --brand-svg-fill: {svg_fill_color};
               --brand-annotation: {annotation_color};
+              /* Run typography (design identity / brand fonts) */
+              --font-display: {_font_display_css};
+              --font-body: {_font_body_css};
               /* Legacy aliases so older hardcoded var names still resolve */
               --primary-color: {primary_color};
               --accent-color: {accent_color};
               --text-color: {text_color};
             }}
+{_vx_css}
 
             /* --- TEXT SAFETY: prevent word-smashing and overflow --- */
             * {{
@@ -20791,9 +21397,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             }}
             
             /* Typography Helpers - use dynamic colors */
-            .text-display {{ font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: {text_color}; }}
-            .text-h2 {{ font-family: 'Montserrat', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; color: {text_color}; }}
-            .text-body {{ font-family: 'Inter', sans-serif; font-size: 28px; font-weight: 400; color: {text_secondary}; line-height: 1.5; }}
+            .text-display {{ font-family: var(--font-display, 'Montserrat', sans-serif); font-size: 64px; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; color: {text_color}; }}
+            .text-h2 {{ font-family: var(--font-display, 'Montserrat', sans-serif); font-size: 48px; font-weight: 700; margin-bottom: 16px; color: {text_color}; }}
+            .text-body {{ font-family: var(--font-body, 'Inter', sans-serif); font-size: 28px; font-weight: 400; color: {text_secondary}; line-height: 1.5; }}
             .text-label {{ font-family: 'Fira Code', monospace; font-size: 18px; color: {accent_color}; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; display: block; }}
             
             /* --- CLEAN EDUCATIONAL COMPONENTS (NO shadows, NO app-like design) --- */
@@ -20920,7 +21526,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             :host {{
               width: 100%; height: 100%;
               display: flex; flex-direction: column; align-items: center; justify-content: center;
-              font-family: 'Inter', sans-serif;
+              font-family: var(--font-body, 'Inter', sans-serif);
               color: {text_color};
             }}
 
@@ -20953,7 +21559,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               display: inline-block;
               padding: 10px 36px;
               background: var(--brand-accent, {accent_color});
-              font-family: 'Bebas Neue', Impact, sans-serif;
+              font-family: var(--font-display, 'Bebas Neue', Impact, sans-serif);
               font-size: 4rem;
               letter-spacing: 0.05em;
               line-height: 1;
@@ -20976,7 +21582,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             .slam-text {{
               display: block;
               transform: translateY(102%);
-              font-family: 'Bebas Neue', Impact, sans-serif;
+              font-family: var(--font-display, 'Bebas Neue', Impact, sans-serif);
               font-size: 5.5rem;
               letter-spacing: 0.06em;
               line-height: 1;
@@ -20985,7 +21591,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
             /* --- TRACKING LABEL (small ALL-CAPS below subject) --- */
             .tracking-label {{
-              font-family: 'Inter', sans-serif;
+              font-family: var(--font-body, 'Inter', sans-serif);
               font-size: 0.85rem;
               font-weight: 700;
               letter-spacing: 0.28em;
@@ -20996,7 +21602,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
             /* --- DISPLAY HEADLINE SCALE SIZES --- */
             .display-xl {{
-              font-family: 'Bebas Neue', 'Montserrat', sans-serif;
+              font-family: var(--font-display, 'Bebas Neue', 'Montserrat', sans-serif);
               font-size: clamp(4rem, 12vw, 9rem);
               font-weight: 900;
               letter-spacing: 0.04em;
@@ -21004,7 +21610,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
               color: var(--brand-text, {text_color});
             }}
             .display-lg {{
-              font-family: 'Bebas Neue', 'Montserrat', sans-serif;
+              font-family: var(--font-display, 'Bebas Neue', 'Montserrat', sans-serif);
               font-size: clamp(3rem, 8vw, 6rem);
               font-weight: 900;
               letter-spacing: 0.03em;
@@ -21195,17 +21801,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # If the model already imports fonts, trust it.
         # But still inject our global helpers.
         if "fonts.googleapis.com" in html:
-            return svg_defs + global_css + html
+            return svg_defs + global_css + html + _finish_overlay
 
         # Fallback corporate pairing if none found
         base_style = (
             "<style>"
             "@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&display=swap');"
-            ":host { font-family: 'Inter', sans-serif; background: transparent; margin: 0; }"
-            "h1, h2, h3, h4, h5, h6 { font-family: 'Montserrat', sans-serif; }"
+            ":host { font-family: var(--font-body, 'Inter', sans-serif); background: transparent; margin: 0; }"
+            "h1, h2, h3, h4, h5, h6 { font-family: var(--font-display, 'Montserrat', sans-serif); }"
             "</style>"
         )
-        return svg_defs + global_css + base_style + html
+        return svg_defs + global_css + base_style + html + _finish_overlay
 
     def _ensure_segment_coverage(
         self, entries: List[Dict[str, Any]], seg: Dict[str, Any], base_start: float, base_end: float
@@ -22357,9 +22963,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 _cc_must_match = list(_cc.extra_stock_keywords)
             for svc in services:
                 provider_name = type(svc).__name__.replace("Service", "")
-                result = svc.search_photos(
-                    stock_q, orientation=orientation,
-                    must_match_keywords=_cc_must_match,
+                # Phase C: ranked pick (top-5 + LLM art direction) instead of
+                # the provider's first hit; legacy path when the knob is off.
+                result, _rank_usage = self._search_stock_photo_ranked(
+                    svc, stock_q, orientation, _cc_must_match,
+                    context_prompt=prompt,
                 )
                 if result:
                     stock_url = result.get("url", "")
@@ -22376,7 +22984,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         "stock_url":   stock_url,
                         "image_bytes": None,
                         "filename":    None,
-                        "usage":       {},
+                        "usage":       _rank_usage or {},
                     }
             if services:
                 print(f"    ⚠️  [pipeline] All stock providers missed, cascading to web: {stock_q[:50]}")
@@ -22885,18 +23493,40 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️ Image prompt enhancement failed: {e}")
         return raw_prompt, {}
 
+    # Conservative per-TOKEN prices used when real pricing is unavailable —
+    # roughly a mid-tier frontier model ($3/M in, $15/M out). The cap math
+    # must NEVER fail open: returning 0.0 on a pricing miss made the
+    # best-of-N budget a no-op in the deployed container (the bare
+    # `constants.models` import only resolves when cwd is the service root),
+    # so unmetered Opus candidates could run unbounded.
+    _FALLBACK_TOKEN_PRICE_IN = 3.0 / 1_000_000
+    _FALLBACK_TOKEN_PRICE_OUT = 15.0 / 1_000_000
+
     def _estimate_llm_cost_usd(self, usage: Dict[str, Any], model: Optional[str]) -> float:
         """Rough USD estimate for one LLM call from its usage dict + model id.
-        Mirrors the per-shot pricing path; returns 0.0 if pricing is unavailable."""
+        Unknown model / unimportable pricing → conservative FALLBACK estimate
+        (never 0.0 — the best-of-N cap depends on this accruing)."""
+        u = usage or {}
+        p_in = float(u.get("prompt_tokens", 0) or 0)
+        p_out = float(u.get("completion_tokens", 0) or 0)
         try:
-            from constants.models import get_model_pricing as _gmp  # type: ignore
+            try:
+                from constants.models import get_model_pricing as _gmp  # type: ignore
+            except ModuleNotFoundError:
+                # Flat sys.path load (hyphenated dir) — the canonical package
+                # root `ai_service` is always importable in the container.
+                from ai_service.app.constants.models import get_model_pricing as _gmp  # type: ignore
             pricing = _gmp(model) or {}
             inp = pricing.get("input_token_price") or 0.0
             outp = pricing.get("output_token_price") or 0.0
-            u = usage or {}
-            return float(u.get("prompt_tokens", 0) or 0) * inp + float(u.get("completion_tokens", 0) or 0) * outp
+            if inp or outp:
+                return p_in * inp + p_out * outp
         except Exception:
-            return 0.0
+            pass
+        if not getattr(self, "_warned_cost_fallback", False):
+            self._warned_cost_fallback = True
+            print(f"   ⚠️ LLM pricing unavailable for {model!r} — using conservative fallback estimate")
+        return p_in * self._FALLBACK_TOKEN_PRICE_IN + p_out * self._FALLBACK_TOKEN_PRICE_OUT
 
     def _best_of_n_cost_ok(self) -> bool:
         """True while the per-run best-of-N USD budget has headroom. Thread-safe.
@@ -22979,6 +23609,158 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"   ⚠️ Shot {shot_idx + 1} best-of-N judge failed ({e}) — shipping candidate 0")
         return candidates[0], usage
 
+    def _select_best_shot_candidate(
+        self,
+        candidates: List[Dict[str, Any]],
+        *,
+        shot_idx: int,
+        shot: Dict[str, Any],
+        narration_excerpt: str,
+        visual_description: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """Phase C best-of-N judge — VISUAL when possible, text-digest fallback.
+
+        The old judge compared regex digests (tween counts + 240 chars of
+        text) — structurally more tweens always looked "better" and the judge
+        never saw a pixel. When the tier knob ``best_of_n_visual_judge`` is on
+        and the render worker is reachable, each candidate gets ONE mid-frame
+        screenshot and a vision-capable judge compares actual frames. Any
+        failure (worker busy, screenshots missing, judge error) falls back to
+        the existing text-digest judge — never worse than before.
+
+        Returns (winner, usage, meta) where meta = {"mode": "visual"|"digest",
+        "reason": str} for telemetry + the future shot_look gate.
+        """
+        usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        meta: Dict[str, Any] = {"mode": "digest", "reason": ""}
+        if not candidates:
+            return {}, usage, meta
+        if len(candidates) == 1:
+            return candidates[0], usage, meta
+
+        if self._tier_config.get("best_of_n_visual_judge"):
+            try:
+                from shot_screenshot_service import ShotScreenshotClient
+                client = getattr(self, "_screenshot_client", None)
+                if client is None:
+                    client = ShotScreenshotClient()
+                    self._screenshot_client = client
+                if client.is_configured:
+                    # One mid-shot frame per candidate — the cheapest render
+                    # that still shows the composed frame (entrances settled,
+                    # back-half motion under way).
+                    try:
+                        _dur = max(
+                            1.0,
+                            float(shot.get("end_time", 0) or 0) - float(shot.get("start_time", 0) or 0),
+                        )
+                    except (TypeError, ValueError):
+                        _dur = 4.0
+                    _mid_t = round(_dur * 0.55, 2)
+                    _bg = str(
+                        ((getattr(self, "_current_style_guide", None) or {}).get("palette") or {})
+                        .get("background") or "#0a0e27"
+                    )
+                    # Media (stock/AI images, video) resolves AFTER the HTML
+                    # stage — at judge time every <img data-img-prompt> is a
+                    # broken placeholder.png. Swap those to a neutral gray
+                    # fill in the JUDGE COPY only (the real candidate html is
+                    # untouched) so imagery-led candidates aren't
+                    # systematically executed for "empty-looking frames".
+                    _ph_data_uri = (
+                        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
+                        "width='160' height='90'%3E%3Crect width='100%25' height='100%25' "
+                        "fill='%23384352'/%3E%3C/svg%3E"
+                    )
+                    frames: List[bytes] = []
+                    for _c in candidates:
+                        _judge_html = re.sub(
+                            r"""src=(["'])placeholder\.png\1""",
+                            f'src="{_ph_data_uri}"',
+                            _c.get("html", ""),
+                        )
+                        _fr = client.take_shot_screenshots(
+                            html=self._ensure_fonts(_judge_html),
+                            width=int(getattr(self, "video_width", 1920)),
+                            height=int(getattr(self, "video_height", 1080)),
+                            timestamps=[_mid_t],
+                            background=_bg,
+                        )
+                        if not _fr:
+                            raise RuntimeError("candidate screenshot missing")
+                        frames.append(_fr[0].image_bytes)
+
+                    from shot_visual_reviewer import _png_to_data_url as _to_data_url
+                    cc = getattr(self, "_creative_concept", None) or {}
+                    _judge_text = (
+                        "You are a motion-design director choosing between candidate "
+                        "frames for ONE shot of a video. The frames below are rendered "
+                        "mid-shot screenshots of each candidate, in order.\n"
+                        f"Controlling idea: {cc.get('controlling_idea', '')}\n"
+                        f"Visual metaphor: {cc.get('visual_metaphor', '')}\n"
+                        f"What to avoid: {cc.get('what_to_avoid', '')}\n"
+                        f"Shot role: {shot.get('intent_role', '')}\n"
+                        f"Narration: {(narration_excerpt or '')[:200]}\n"
+                        f"Visual direction: {(visual_description or '')[:200]}\n"
+                        "Candidate angles: "
+                        + ", ".join(f"{i}: {c.get('angle', '?')}" for i, c in enumerate(candidates))
+                        + "\n\nJudge COMPOSITION, hierarchy, depth, and finish — pick the "
+                        "frame a premium brand film would ship. Broken layouts, clipped "
+                        "text, or empty-looking frames LOSE regardless of style. "
+                        "EXCEPTION: solid dark-gray rectangles are unresolved media "
+                        "placeholders (real photos/footage arrive later) — judge the "
+                        "composition AROUND them and do not penalize the gray fill itself. "
+                        'Return JSON only: {"best_index": <int>, "reason": "<short>"}.'
+                    )
+                    _content: List[Dict[str, Any]] = [{"type": "text", "text": _judge_text}]
+                    for _i, _png in enumerate(frames):
+                        _content.append({"type": "text", "text": f"CANDIDATE {_i}:"})
+                        _content.append(
+                            {"type": "image_url", "image_url": {"url": _to_data_url(_png)}}
+                        )
+                    _judge_model = (
+                        self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro"
+                    )
+                    raw, _u = self.html_client.chat(
+                        messages=[
+                            {"role": "system", "content": (
+                                "You judge rendered candidate frames for an AI video "
+                                "pipeline. Respond with ONE JSON object and nothing else. "
+                                "First char `{`.")},
+                            {"role": "user", "content": _content},
+                        ],
+                        temperature=0.1,
+                        max_tokens=300,
+                        response_format={"type": "json_object"},
+                        model=_judge_model,
+                    )
+                    for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        usage[k] += (_u or {}).get(k, 0)
+                    self._best_of_n_add_cost(_u, _judge_model)
+                    parsed = _extract_json_blob(raw)
+                    if isinstance(parsed, dict):
+                        idx = parsed.get("best_index")
+                        if isinstance(idx, int) and 0 <= idx < len(candidates):
+                            meta = {
+                                "mode": "visual",
+                                "reason": str(parsed.get("reason") or "")[:200],
+                            }
+                            return candidates[idx], usage, meta
+            except Exception as _vj_err:
+                print(
+                    f"   ⚠️ Shot {shot_idx + 1} visual judge unavailable ({_vj_err}) "
+                    f"— falling back to digest judge"
+                )
+
+        winner, _tu = self._select_best_shot_html_with_llm(
+            candidates, shot_idx=shot_idx, shot=shot,
+            narration_excerpt=narration_excerpt, visual_description=visual_description,
+        )
+        for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            usage[k] += (_tu or {}).get(k, 0)
+        meta = {"mode": "digest", "reason": ""}
+        return winner, usage, meta
+
     def _rank_pexels_candidates_with_llm(
         self,
         candidates: List[Dict[str, Any]],
@@ -23060,6 +23842,151 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         except Exception as e:
             print(f"    ⚠️ Candidate ranker failed ({e}) — falling back to first candidate")
         return candidates[0], usage
+
+    def _search_stock_photo_ranked(
+        self,
+        svc: Any,
+        query: str,
+        orientation: str,
+        must_match_keywords: Optional[List[str]],
+        *,
+        context_prompt: str = "",
+    ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """Phase C stock-photo pick — "choose, don't accept photos[0]".
+
+        Tier knob ``stock_photo_llm_ranking``: None/absent → the provider's
+        legacy single-result pick (exact old behavior); "text" → fetch top
+        candidates and rank on alt/dimensions with one cheap LLM call (the
+        stock-video ranker pattern); "visual" → same, but the candidates'
+        THUMBNAILS ride the prompt as image_url parts and a vision-capable
+        model picks (Pexels thumb URLs are remote-fetchable by OpenRouter —
+        the same mechanism the reviewer uses). Only Pexels exposes a
+        multi-result API; other providers fall back to legacy. Any failure →
+        first candidate. Returns (result_dict_or_None, usage).
+        """
+        usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        mode = str(self._tier_config.get("stock_photo_llm_ranking") or "").strip().lower()
+        many = getattr(svc, "search_photos_many", None)
+        if mode not in ("text", "visual") or not callable(many):
+            return svc.search_photos(
+                query, orientation=orientation, must_match_keywords=must_match_keywords,
+            ), usage
+
+        try:
+            _fetch_n = 40 if must_match_keywords else 8  # legacy cultural scan depth was 40
+            raw_candidates = many(query, orientation=orientation, per_page=_fetch_n) or []
+        except Exception as _sp_err:
+            print(f"    ⚠️ search_photos_many failed ({_sp_err}) — legacy pick")
+            return svc.search_photos(
+                query, orientation=orientation, must_match_keywords=must_match_keywords,
+            ), usage
+        if not raw_candidates:
+            return None, usage
+
+        def _alt_matches(c: Dict[str, Any]) -> bool:
+            if not must_match_keywords:
+                return True
+            alt = str(c.get("alt") or "").lower()
+            return any(str(k).lower() in alt for k in must_match_keywords)
+
+        # Cultural keyword gate keeps its HARD semantics (parity with
+        # search_photos): with keywords set, non-matching candidates are
+        # dropped entirely; zero matches → None so the caller cascades.
+        candidates = [c for c in raw_candidates if _alt_matches(c)]
+        if not candidates:
+            return None, usage
+        # Orientation sanity — the API's orientation param is advisory.
+        _oriented = [
+            c for c in candidates
+            if not (c.get("width") and c.get("height"))
+            or (
+                (c["width"] >= c["height"]) if orientation == "landscape"
+                else (c["height"] > c["width"]) if orientation == "portrait"
+                else True
+            )
+        ]
+        if _oriented:
+            candidates = _oriented
+        candidates = candidates[:5]
+
+        def _to_result(c: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "url": c.get("url", ""),
+                "photographer": c.get("photographer", ""),
+                "photographer_url": c.get("photographer_url", ""),
+                "alt": c.get("alt", query),
+                "pexels_url": c.get("source_url", ""),
+            }
+
+        if len(candidates) == 1:
+            return _to_result(candidates[0]), usage
+
+        try:
+            _ctx = (
+                f"Search query: {query}\n"
+                f"Shot's visual intent: {(context_prompt or '')[:300]}\n"
+                f"Run image style: {getattr(self, '_current_image_style', '')[:200]}\n"
+            )
+            _lines = [
+                f"{i}. alt: {str(c.get('alt') or '')[:120]} | {c.get('width')}x{c.get('height')}"
+                for i, c in enumerate(candidates)
+            ]
+            _ask = (
+                "\nPick the photo that best serves the shot's visual intent AND the "
+                "run's image style — favor strong composition, editorial light, and a "
+                "clear subject; reject busy/cluttered/watermark-looking frames. "
+                'Return JSON only: {"best_index": <int>, "reason": "<short>"}.'
+            )
+            if mode == "visual":
+                _content: List[Dict[str, Any]] = [{"type": "text", "text": _ctx + _ask}]
+                for _i, _c in enumerate(candidates):
+                    _content.append({"type": "text", "text": f"CANDIDATE {_i} ({_lines[_i]}):"})
+                    _content.append({
+                        "type": "image_url",
+                        "image_url": {"url": _c.get("thumb") or _c.get("url", "")},
+                    })
+                _model = (
+                    self._resolve_stage_model("stock_photo_ranking")
+                    or self._resolve_stage_model("vision_review")
+                    or "google/gemini-2.5-pro"
+                )
+                _messages: List[Dict[str, Any]] = [
+                    {"role": "system", "content": (
+                        "You art-direct stock photo picks for a premium video. "
+                        "Respond with ONE JSON object and nothing else. First char `{`.")},
+                    {"role": "user", "content": _content},
+                ]
+            else:
+                _model = (
+                    self._resolve_stage_model("stock_photo_ranking")
+                    or self._resolve_stage_model("stock_video_ranking")
+                )
+                _messages = [
+                    {"role": "system", "content": (
+                        "You art-direct stock photo picks for a premium video. "
+                        "Respond with ONE JSON object and nothing else. First char `{`.")},
+                    {"role": "user", "content": _ctx + "\n".join(_lines) + _ask},
+                ]
+            raw, _u = self.html_client.chat(
+                # 400 not 200 — the adjacent video ranker's postmortem: some
+                # models burn 200 tokens on preamble and truncate the JSON.
+                _messages, temperature=0.2, max_tokens=400,
+                response_format={"type": "json_object"}, model=_model,
+            )
+            for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                usage[k] += (_u or {}).get(k, 0)
+            parsed = _extract_json_blob(raw)
+            if isinstance(parsed, dict):
+                idx = parsed.get("best_index")
+                if isinstance(idx, int) and 0 <= idx < len(candidates):
+                    print(
+                        f"    📷 Stock photo ranked ({mode}): pick {idx}/{len(candidates)} "
+                        f"— {str(parsed.get('reason') or '')[:80]}"
+                    )
+                    return _to_result(candidates[idx]), usage
+        except Exception as _rank_err:
+            print(f"    ⚠️ Stock photo ranker failed ({_rank_err}) — first candidate")
+        return _to_result(candidates[0]), usage
 
     # ------------------------------------------------------------------
     # Vision-review persistence sweep — runs after the HTML stage finishes
@@ -24391,9 +25318,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     _cc_must_match2 = list(_cc2.extra_stock_keywords)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(
-                        stock_q, orientation=orientation,
-                        must_match_keywords=_cc_must_match2,
+                    # Phase C: ranked pick — see _search_stock_photo_ranked.
+                    result, _rank_usage2 = self._search_stock_photo_ranked(
+                        svc, stock_q, orientation, _cc_must_match2,
+                        context_prompt=task.get("prompt", ""),
                     )
                     if result:
                         stock_url = result.get("url", "")
@@ -24415,7 +25343,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             "stock_url": stock_url,
                             "image_bytes": None,
                             "filename": None,
-                            "usage": {},
+                            "usage": _rank_usage2 or {},
                         }
                 if services:
                     print(f"    ⚠️  All stock providers missed, falling back to Seedream: {stock_q[:50]}")
@@ -24657,9 +25585,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         else:
                             total_image_usage["image_count"] += 1
                         u = res.get("usage") or {}
-                        total_image_usage["prompt_tokens"]      += u.get("promptTokenCount", 0)
-                        total_image_usage["completion_tokens"]  += u.get("candidatesTokenCount", 0)
-                        total_image_usage["total_tokens"]       += u.get("totalTokenCount", 0)
+                        # Both shapes: Gemini camelCase (legacy image path) AND
+                        # OpenRouter snake_case (Phase C stock-photo ranking) —
+                        # snake was silently dropped, so ranking tokens were
+                        # never billed.
+                        total_image_usage["prompt_tokens"]      += u.get("promptTokenCount", 0) + u.get("prompt_tokens", 0)
+                        total_image_usage["completion_tokens"]  += u.get("candidatesTokenCount", 0) + u.get("completion_tokens", 0)
+                        total_image_usage["total_tokens"]       += u.get("totalTokenCount", 0) + u.get("total_tokens", 0)
                         entry_id = res["entry_id"]
                         replacements.setdefault(entry_id, []).append(res)
                     else:

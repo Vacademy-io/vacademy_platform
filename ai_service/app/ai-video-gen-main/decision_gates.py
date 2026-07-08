@@ -59,6 +59,7 @@ class GateType(str, Enum):
     CONTACT_SHEET = "contact_sheet"          # per-shot frame review AFTER HTML, before finalize
     ASSET_REQUEST = "asset_request"          # agent-initiated asks: real screenshots/photos/data
     CAST = "cast"                            # approve character portraits BEFORE filming clips
+    STYLEFRAME = "styleframe"                # approve the run's design identity + styleframe
     VOICE = "voice"                          # TTS voice (needs preview audio)   [phase 2]
     MUSIC = "music"                          # background music track (needs previews) [phase 2]
     AVATAR = "avatar"                        # host/avatar pick (needs previews) [phase 2]
@@ -70,6 +71,7 @@ class GateType(str, Enum):
 DEFAULT_ASSIST_GATES: List[str] = [
     GateType.CREATIVE_CONCEPT.value,
     GateType.SHOT_PLAN.value,
+    GateType.STYLEFRAME.value,
     GateType.ASSET_REQUEST.value,
     GateType.NARRATION.value,
     GateType.CAST.value,
@@ -84,6 +86,11 @@ DEFAULT_ASSIST_GATES: List[str] = [
 SCRIPT_BOUNDARY_GATES: List[str] = [
     GateType.CREATIVE_CONCEPT.value,
     GateType.SHOT_PLAN.value,
+    # Design identity approval sits right after the plan — the identity is
+    # generated at planning time and shapes everything downstream (fonts,
+    # motion, finishing, image art direction), so it must lock before
+    # narration/HTML work begins.
+    GateType.STYLEFRAME.value,
     # Agent-initiated asks sit AFTER the plan (the planner knows what it
     # needs) and BEFORE narration (user-confirmed real numbers flow into
     # the spoken script via the grounding rule).
@@ -543,6 +550,69 @@ def cast_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[str, Dict[str
         note = str(c.get("regen_note") or "").strip()[:500] or None
         if url or note:
             out[name] = {"url": url, "note": note}
+    return out
+
+
+def build_styleframe_decision(
+    video_id: str,
+    identity: Dict[str, Any],
+    pairing_options: List[Dict[str, Any]],
+    motion_options: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Styleframe gate — approve the run's DESIGN IDENTITY before any shot is
+    built. ``identity`` is the normalized design_identity dict from
+    shot_plan.json (typography pairing, motion personality, finishing tokens,
+    color arc note, image art direction, optional styleframe_url — one hero
+    image rendered from the identity). ``pairing_options``/``motion_options``
+    are registry summaries [{key, label, vibe}] so the card can offer swaps
+    without hardcoding the registry in the FE.
+
+    Answer = ``edit`` with ``identity: {font_pairing?, motion_personality?,
+    finishing?, color_arc_note?, image_art_direction?}`` — only registry keys
+    and short text; the backend re-normalizes everything.
+    """
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.STYLEFRAME.value,
+        prompt=(
+            "Here's the design identity for this video — typography, motion "
+            "personality, and finishing. Approve it, or adjust before I build "
+            "the shots."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=True,
+        allow_edit=True,
+        payload={
+            "identity": identity,
+            "pairing_options": pairing_options,
+            "motion_options": motion_options,
+        },
+        seq=seq,
+    )
+
+
+def styleframe_answer_identity(answer: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The raw identity-edit dict from a styleframe ``edit`` answer. The
+    caller MUST re-normalize via design_identity.normalize_design_identity —
+    this only shapes/limits the input (registry validation happens there)."""
+    ident = (answer or {}).get("identity")
+    if not isinstance(ident, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for key in ("font_pairing", "motion_personality", "identity_name"):
+        if isinstance(ident.get(key), str):
+            out[key] = ident[key][:64]
+    if isinstance(ident.get("finishing"), dict):
+        out["finishing"] = {
+            k: str(v)[:16]
+            for k, v in ident["finishing"].items()
+            if k in ("grain", "vignette", "light")
+        }
+    for key in ("color_arc_note", "image_art_direction"):
+        if isinstance(ident.get(key), str):
+            out[key] = ident[key][:260]
     return out
 
 

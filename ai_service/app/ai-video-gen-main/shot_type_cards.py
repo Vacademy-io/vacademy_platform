@@ -609,6 +609,326 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "narration sync, legibility) remain hard requirements.\n\n"
 )
 
+# ---------------------------------------------------------------------------
+# Marketing / bold mode — a COMPILED design language, not an override.
+#
+# Craft-review finding (2026-07-07): marketing runs previously received the
+# full educational/whiteboard doctrine (persona, flat bans, DUAL CODING text
+# mandates, whiteboard example code) followed by a prose-only "premium
+# override" — and the concrete whiteboard examples beat the prose every time.
+# These blocks REPLACE the educational persona/principles for marketing/bold
+# runs so the prompt makes one coherent argument, and MARKETING_EXAMPLES
+# below swaps each key shot card's exemplar so the strongest signal in the
+# prompt (example code) demonstrates the premium look instead of fighting it.
+# ---------------------------------------------------------------------------
+
+MARKETING_PREAMBLE = (
+    "You are a senior motion designer at a premium brand studio — the person who makes "
+    "launch films for Apple, Linear, Stripe, and Vercel. You are composing ONE shot of a "
+    "short brand film. It must look expensive, intentional, and finished.\n\n"
+
+    "**CRITICAL — QUALITY STANDARDS**:\n"
+    "- **EASING IS MANDATORY** — every GSAP tween MUST use a named ease. Entrances: "
+    "`expo.out` / `power3.out`; hero pops: `back.out(1.4)`; settles: `power2.inOut`. "
+    "NEVER default linear.\n"
+    "- **DEPTH IS PREMIUM** — layer the frame: a rich background (soft gradient mesh, "
+    "brand-tinted vignette, faint texture) behind an elevated hero surface "
+    "(`box-shadow: 0 24px 60px -20px rgba(0,0,0,.35)`, 12–28px radii, hairline border). "
+    "Never a dead-flat fill behind a headline.\n"
+    "- **TYPOGRAPHY IS THE HERO** — big confident type, tight tracking, strong weight "
+    "contrast (one ultra-bold line + one light line), one accent-colored key word. "
+    "≤ 5 words per headline. Set headlines in `var(--font-display)` and body/labels in "
+    "`var(--font-body)` — the run's design identity resolves them; never hardcode a family.\n"
+    "- **CONTINUOUS LIFE** — no frame is ever static: a slow Ken-Burns/parallax on media, "
+    "a gentle float on the hero, a shimmer across a key word. Shots ≥3s need a tween "
+    "firing in the back half (`delay >= 0.55 × shot_duration`).\n"
+    "- **NARRATION LOCK** — the element you animate on each beat must be the SUBJECT of "
+    "the phrase spoken at that moment (use the Rel(s) word-timing as the delay).\n"
+    "- **BACKGROUND TREATMENT** — honor the Director's `background_treatment` token "
+    "(`brand_solid` / `brand_textured` / `brand_gradient` / `media_hero`) as the BASE "
+    "layer; build your mesh/vignette/texture ON TOP of it with the brand palette. "
+    "Never invent a hand-picked hex.\n"
+    "- **WHITESPACE-SAFE ACCENT WORDS** — when coloring a word mid-phrase, insert "
+    "`&nbsp;` explicitly before the span: "
+    "`STARTS&nbsp;<span style=\"color:var(--brand-accent)\">HERE</span>` — otherwise "
+    "adjacent inline-block spans collapse the space and render as STARTSHERE.\n"
+    "- **NO setTimeout** — the renderer seeks `gsap.globalTimeline` frame-by-frame. "
+    "Use GSAP `delay:` or `gsap.delayedCall()`. setTimeout never fires.\n\n"
+)
+
+MARKETING_PRINCIPLES = (
+    "**BRAND-FILM DESIGN PRINCIPLES**:\n"
+    "1. **ONE FOCAL IDEA PER SHOT** — a single hero moment, composed deliberately. "
+    "Imagery leads; text supports.\n"
+    "2. **KEYWORDS, NEVER THE NARRATION** — the narration is SPOKEN; putting the same "
+    "sentence on screen is the #1 tell of robotic AI video. On-screen text = a punchy "
+    "headline (≤5 words), a stat, a label. NO body paragraphs, NO caption sentences, "
+    "NO bullet lists of full sentences.\n"
+    "3. **EVERY ELEMENT EARNS A VISUAL** — a feature/step/stat never appears as a bare "
+    "text row: pair it with a meaningful `<iconify-icon>` in a brand-tinted chip, a "
+    "photo, a device frame, or an animated SVG shape.\n"
+    "4. **RESTRAINT IS ALSO PREMIUM** — one perfect full-bleed image with a 3-word "
+    "headline can beat any busy composition. When the beat is emotional, show LESS: "
+    "large negative space is a deliberate, welcome choice.\n"
+    "5. **CHOREOGRAPH THE REVEAL** — elements arrive in a deliberate stagger synced to "
+    "the narration's word timing; each reveal ADDS to the frame, never replaces it.\n\n"
+)
+
+# Guideline lines dropped from shot cards in marketing mode — they prescribe
+# the whiteboard look the compiled preamble no longer wants.
+_MARKETING_GUIDELINE_BANS = (
+    "cream",
+    "Never a dark background",
+    "flat colored",
+    "no box-shadow",
+    "zero border-radius",
+    "white text with text-shadow",
+)
+
+
+# Marketing exemplars — swapped in for the card's html_template/script_block
+# in marketing/bold mode. Each demonstrates the compiled design language:
+# layered background (mesh + texture over the brand base), elevated hero
+# surface with soft shadow, iconify chips, staggered eased entrances with
+# blur-in, an accent word, and a back-half tween. The example is the
+# strongest signal in the prompt — it must SHOW the premium look.
+MARKETING_EXAMPLES: Dict[str, Dict[str, str]] = {
+    "IMAGE_HERO": {
+        "html": (
+            "<div class='image-hero' style='position:relative; overflow:hidden;'>\n"
+            "  <img class='generated-image'\n"
+            "       data-img-prompt='editorial photograph, confident founder in a sunlit studio, shallow depth of field, cinematic color grade, {aspect_label}'\n"
+            "       data-ken-burns='zoom-in' src='placeholder.png' />\n"
+            "  <!-- brand-tinted vignette + bottom scrim: depth over the photo -->\n"
+            "  <div style='position:absolute; inset:0;\n"
+            "       background: radial-gradient(120% 90% at 70% 20%, transparent 55%, rgba(0,0,0,.45)),\n"
+            "                   linear-gradient(to top, rgba(0,0,0,.55), transparent 45%);'></div>\n"
+            "  <div style='position:absolute; left:6%; bottom:10%; max-width:44%;'>\n"
+            "    <div id='hero-label' style='opacity:0; display:inline-flex; align-items:center; gap:.5em;\n"
+            "         padding:.45em .9em; border-radius:999px; border:1px solid rgba(255,255,255,.35);\n"
+            "         backdrop-filter:blur(8px); color:#fff; font:600 .95rem var(--font-body);\n"
+            "         letter-spacing:.22em;'>\n"
+            "      <iconify-icon icon='mdi:lightning-bolt' width='18'></iconify-icon> LAUNCH WEEK\n"
+            "    </div>\n"
+            "    <h1 id='hero-title' style='opacity:0; margin:.35em 0 0; color:#fff;\n"
+            "        font:800 6.5rem/1.02 var(--font-display); letter-spacing:-0.02em;'>\n"
+            "      Built to&nbsp;<span style='color:var(--brand-accent)'>win</span>\n"
+            "    </h1>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.fromTo('#hero-label', {opacity:0, y:24, filter:'blur(8px)'},\n"
+            "  {opacity:1, y:0, filter:'blur(0px)', duration:.7, delay:.4, ease:'expo.out'});\n"
+            "gsap.fromTo('#hero-title', {opacity:0, y:44, filter:'blur(10px)'},\n"
+            "  {opacity:1, y:0, filter:'blur(0px)', duration:.9, delay:.75, ease:'power3.out'});\n"
+            "// back-half: the accent word breathes so the frame never sits still\n"
+            "gsap.to('#hero-title span', {opacity:.75, yoyo:true, repeat:-1, duration:1.6,\n"
+            "  delay:2.4, ease:'power2.inOut'});\n"
+        ),
+    },
+    "PRODUCT_HERO": {
+        "html": (
+            "<div class='svg-canvas' style='position:relative; display:flex; align-items:center;\n"
+            "     justify-content:center; overflow:hidden;'>\n"
+            "  <!-- layered bg: mesh glow + halftone texture over the brand base -->\n"
+            "  <div style='position:absolute; inset:0;\n"
+            "       background: radial-gradient(60% 55% at 30% 25%, color-mix(in srgb, var(--brand-accent) 22%, transparent), transparent 70%),\n"
+            "                   radial-gradient(50% 60% at 78% 75%, color-mix(in srgb, var(--brand-primary) 18%, transparent), transparent 70%);'></div>\n"
+            "  <div class='halftone' style='position:absolute; inset:0; opacity:.16;'></div>\n"
+            "  <div id='ph-stage' style='position:relative; display:flex; align-items:center; gap:4.5rem;'>\n"
+            "    <img id='ph-product' class='generated-image'\n"
+            "         data-img-prompt='premium product photograph, floating at a slight angle, studio rim light, isolated, {aspect_label}'\n"
+            "         data-cutout src='placeholder.png'\n"
+            "         style='opacity:0; width:34vw; filter: drop-shadow(0 40px 70px rgba(0,0,0,.45));' />\n"
+            "    <div style='max-width:34vw;'>\n"
+            "      <span id='ph-kicker' style='opacity:0; display:block; color:var(--brand-accent);\n"
+            "            font:600 1rem var(--font-body); letter-spacing:.28em;'>MEET THE NEW</span>\n"
+            "      <h1 id='ph-name' style='opacity:0; margin:.15em 0; color:var(--brand-text);\n"
+            "          font:800 5.4rem/1 var(--font-display); letter-spacing:-0.02em;'>Studio&nbsp;Pro</h1>\n"
+            "      <div id='ph-chip' style='opacity:0; display:inline-flex; align-items:center; gap:.5em;\n"
+            "           margin-top:.6em; padding:.5em 1em; border-radius:14px;\n"
+            "           background: color-mix(in srgb, var(--brand-primary) 14%, transparent);\n"
+            "           border:1px solid color-mix(in srgb, var(--brand-primary) 35%, transparent);\n"
+            "           box-shadow: 0 18px 44px -18px rgba(0,0,0,.35); color:var(--brand-text);\n"
+            "           font:600 1.05rem var(--font-body);'>\n"
+            "        <iconify-icon icon='mdi:rocket-launch' width='22'></iconify-icon> 2× faster\n"
+            "      </div>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.fromTo('#ph-product', {opacity:0, y:60, rotate:-6, scale:.92},\n"
+            "  {opacity:1, y:0, rotate:0, scale:1, duration:1.1, delay:.3, ease:'back.out(1.4)'});\n"
+            "gsap.fromTo('#ph-kicker', {opacity:0, y:18}, {opacity:1, y:0, duration:.6, delay:.9, ease:'expo.out'});\n"
+            "gsap.fromTo('#ph-name', {opacity:0, y:30, filter:'blur(8px)'},\n"
+            "  {opacity:1, y:0, filter:'blur(0px)', duration:.8, delay:1.05, ease:'power3.out'});\n"
+            "gsap.fromTo('#ph-chip', {opacity:0, scale:.8}, {opacity:1, scale:1, duration:.55, delay:1.5, ease:'back.out(1.6)'});\n"
+            "// back-half: product floats; glow drifts\n"
+            "gsap.to('#ph-product', {y:-14, yoyo:true, repeat:-1, duration:2.6, delay:2, ease:'power2.inOut'});\n"
+        ),
+    },
+    "DEVICE_MOCKUP": {
+        "html": (
+            "<div class='svg-canvas' style='position:relative; display:flex; align-items:center;\n"
+            "     justify-content:center; overflow:hidden;'>\n"
+            "  <div style='position:absolute; inset:0;\n"
+            "       background: radial-gradient(70% 60% at 50% 0%, color-mix(in srgb, var(--brand-primary) 16%, transparent), transparent 75%);'></div>\n"
+            "  <!-- laptop frame: chrome built AROUND the screen; animate the DEVICE -->\n"
+            "  <div id='dm-device' style='opacity:0; position:relative; width:58vw; border-radius:18px;\n"
+            "       background:#0b0d12; padding:1.1rem 1.1rem 1.6rem; border:1px solid rgba(255,255,255,.08);\n"
+            "       box-shadow: 0 34px 80px -24px rgba(0,0,0,.55);'>\n"
+            "    <div style='display:flex; gap:.45em; margin-bottom:.8rem;'>\n"
+            "      <span style='width:.75em;height:.75em;border-radius:50%;background:#ff5f57'></span>\n"
+            "      <span style='width:.75em;height:.75em;border-radius:50%;background:#febc2e'></span>\n"
+            "      <span style='width:.75em;height:.75em;border-radius:50%;background:#28c840'></span>\n"
+            "    </div>\n"
+            "    <div style='border-radius:10px; overflow:hidden; aspect-ratio:16/9; background:#11141b;'>\n"
+            "      <!-- the screen content: real screenshot when provided, else composed UI -->\n"
+            "      <img class='generated-image' data-img-prompt='clean modern SaaS dashboard interface, dark theme, data cards, {aspect_label}'\n"
+            "           src='placeholder.png' style='width:100%; height:100%; object-fit:cover; object-position:top;' />\n"
+            "    </div>\n"
+            "  </div>\n"
+            "  <div id='dm-callout' style='opacity:0; position:absolute; right:8%; top:18%;\n"
+            "       display:flex; align-items:center; gap:.6em; padding:.7em 1.1em; border-radius:14px;\n"
+            "       background: color-mix(in srgb, var(--brand-bg) 70%, transparent); backdrop-filter: blur(10px);\n"
+            "       border:1px solid color-mix(in srgb, var(--brand-accent) 40%, transparent);\n"
+            "       box-shadow: 0 18px 44px -16px rgba(0,0,0,.4); color:var(--brand-text);\n"
+            "       font:700 1.3rem var(--font-body);'>\n"
+            "    <iconify-icon icon='mdi:trending-up' width='26' style='color:var(--brand-accent)'></iconify-icon>\n"
+            "    +40% enrollments\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.fromTo('#dm-device', {opacity:0, y:70, rotateX:8, scale:.94},\n"
+            "  {opacity:1, y:0, rotateX:0, scale:1, duration:1.0, delay:.35, ease:'power3.out'});\n"
+            "gsap.fromTo('#dm-callout', {opacity:0, x:30, scale:.85},\n"
+            "  {opacity:1, x:0, scale:1, duration:.6, delay:1.4, ease:'back.out(1.5)'});\n"
+            "// back-half: subtle device parallax keeps the frame alive\n"
+            "gsap.to('#dm-device', {y:-10, yoyo:true, repeat:-1, duration:3, delay:2.2, ease:'power2.inOut'});\n"
+        ),
+    },
+    "DATA_STORY": {
+        "html": (
+            "<div class='svg-canvas' style='position:relative; display:flex; flex-direction:column;\n"
+            "     align-items:center; justify-content:center; overflow:hidden;'>\n"
+            "  <div style='position:absolute; inset:0;\n"
+            "       background: radial-gradient(55% 50% at 50% 30%, color-mix(in srgb, var(--brand-accent) 14%, transparent), transparent 75%);'></div>\n"
+            "  <span id='ds-label' style='opacity:0; color:var(--brand-text); opacity:.7;\n"
+            "        font:600 1rem var(--font-body); letter-spacing:.3em;'>CONVERSION LIFT</span>\n"
+            "  <div id='ds-num' style='opacity:0; display:flex; align-items:baseline; gap:.15em; margin:.1em 0;\n"
+            "       color:var(--brand-accent); font:800 11rem/1 var(--font-display); letter-spacing:-0.03em;\n"
+            "       text-shadow: 0 30px 60px color-mix(in srgb, var(--brand-accent) 35%, transparent);'>\n"
+            "    <span id='ds-count'>0</span><span style='font-size:.45em'>%</span>\n"
+            "  </div>\n"
+            "  <div id='ds-context' style='opacity:0; display:inline-flex; align-items:center; gap:.55em;\n"
+            "       padding:.55em 1.1em; border-radius:999px;\n"
+            "       background: color-mix(in srgb, var(--brand-primary) 12%, transparent);\n"
+            "       border:1px solid color-mix(in srgb, var(--brand-primary) 30%, transparent);\n"
+            "       color:var(--brand-text); font:600 1.2rem var(--font-body);'>\n"
+            "    <iconify-icon icon='mdi:account-group' width='24'></iconify-icon> across 500+ institutes\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.fromTo('#ds-label', {opacity:0, y:16}, {opacity:.7, y:0, duration:.5, delay:.3, ease:'expo.out'});\n"
+            "gsap.fromTo('#ds-num', {opacity:0, scale:.85, filter:'blur(10px)'},\n"
+            "  {opacity:1, scale:1, filter:'blur(0px)', duration:.8, delay:.55, ease:'back.out(1.3)'});\n"
+            "// count-up synced to the spoken number\n"
+            "gsap.to('#ds-count', {innerText:40, duration:1.4, delay:.7, ease:'power2.out', snap:{innerText:1}});\n"
+            "gsap.fromTo('#ds-context', {opacity:0, y:22}, {opacity:1, y:0, duration:.6, delay:1.7, ease:'power3.out'});\n"
+            "// back-half shimmer on the number\n"
+            "gsap.to('#ds-num', {scale:1.03, yoyo:true, repeat:-1, duration:2.2, delay:2.6, ease:'power2.inOut'});\n"
+        ),
+    },
+    "KINETIC_TITLE": {
+        "html": (
+            "<!-- KINETIC_TITLE (brand-film): deep brand bg + glow, word-wipe, 1 accent word -->\n"
+            "<div class='svg-canvas' style='position:relative; display:flex; align-items:center;\n"
+            "     justify-content:center; overflow:hidden;'>\n"
+            "  <div style='position:absolute; inset:0;\n"
+            "       background: radial-gradient(65% 55% at 50% 45%, color-mix(in srgb, var(--brand-accent) 18%, transparent), transparent 72%);'></div>\n"
+            "  <div style='display:flex; gap:.32em; line-height:1; position:relative;'>\n"
+            "    <div style='overflow:hidden; padding-bottom:.08em;'>\n"
+            "      <span id='kt-0' style='display:inline-block; transform:translateY(110%);\n"
+            "            font:800 8rem var(--font-display); letter-spacing:-0.02em;\n"
+            "            color:var(--brand-text);'>OWN</span>\n"
+            "    </div>\n"
+            "    <div style='overflow:hidden; padding-bottom:.08em;'>\n"
+            "      <span id='kt-1' style='display:inline-block; transform:translateY(110%);\n"
+            "            font:800 8rem var(--font-display); letter-spacing:-0.02em;\n"
+            "            color:var(--brand-text);'>THE</span>\n"
+            "    </div>\n"
+            "    <div style='overflow:hidden; padding-bottom:.08em;'>\n"
+            "      <span id='kt-2' style='display:inline-block; transform:translateY(110%);\n"
+            "            font:800 8rem var(--font-display); letter-spacing:-0.02em;\n"
+            "            color:var(--brand-accent); text-shadow: 0 24px 60px color-mix(in srgb, var(--brand-accent) 40%, transparent);'>MOMENT</span>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.to('#kt-0', {y:0, duration:.7, delay:.35, ease:'expo.out'});\n"
+            "gsap.to('#kt-1', {y:0, duration:.7, delay:.5, ease:'expo.out'});\n"
+            "gsap.to('#kt-2', {y:0, duration:.8, delay:.68, ease:'back.out(1.3)'});\n"
+            "// back-half: accent word glow breathes\n"
+            "gsap.to('#kt-2', {opacity:.8, yoyo:true, repeat:-1, duration:1.8, delay:2.2, ease:'power2.inOut'});\n"
+        ),
+    },
+    "IMAGE_SPLIT": {
+        "html": (
+            "<div style='position:relative; display:grid; grid-template-columns: 54% 46%; height:100%; overflow:hidden;'>\n"
+            "  <div style='position:relative; overflow:hidden;'>\n"
+            "    <img id='is-img' class='generated-image'\n"
+            "         data-img-prompt='candid photograph, students collaborating around a laptop, warm natural light, editorial, {aspect_label}'\n"
+            "         data-ken-burns='pan-right' src='placeholder.png'\n"
+            "         style='width:100%; height:100%; object-fit:cover;' />\n"
+            "    <div style='position:absolute; inset:0; background:linear-gradient(to right, transparent 60%, var(--brand-bg));'></div>\n"
+            "  </div>\n"
+            "  <div style='position:relative; display:flex; flex-direction:column; justify-content:center;\n"
+            "       padding:0 5vw; background:var(--brand-bg);'>\n"
+            "    <div style='position:absolute; inset:0;\n"
+            "         background: radial-gradient(80% 60% at 100% 20%, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 70%);'></div>\n"
+            "    <h2 id='is-title' style='opacity:0; position:relative; margin:0; color:var(--brand-text);\n"
+            "        font:800 4.6rem/1.05 var(--font-display); letter-spacing:-0.02em;'>\n"
+            "      Every lead,&nbsp;<span style='color:var(--brand-accent)'>answered</span>\n"
+            "    </h2>\n"
+            "    <div style='position:relative; display:flex; flex-direction:column; gap:.8em; margin-top:1.6em;'>\n"
+            "      <div id='is-f1' style='opacity:0; display:flex; align-items:center; gap:.7em;\n"
+            "           color:var(--brand-text); font:600 1.35rem var(--font-body);'>\n"
+            "        <span style='display:flex; padding:.5em; border-radius:12px;\n"
+            "              background: color-mix(in srgb, var(--brand-accent) 16%, transparent);\n"
+            "              box-shadow: 0 12px 30px -12px rgba(0,0,0,.35);'>\n"
+            "          <iconify-icon icon='mdi:whatsapp' width='26' style='color:var(--brand-accent)'></iconify-icon>\n"
+            "        </span> WhatsApp built in\n"
+            "      </div>\n"
+            "      <div id='is-f2' style='opacity:0; display:flex; align-items:center; gap:.7em;\n"
+            "           color:var(--brand-text); font:600 1.35rem var(--font-body);'>\n"
+            "        <span style='display:flex; padding:.5em; border-radius:12px;\n"
+            "              background: color-mix(in srgb, var(--brand-primary) 16%, transparent);\n"
+            "              box-shadow: 0 12px 30px -12px rgba(0,0,0,.35);'>\n"
+            "          <iconify-icon icon='mdi:bell-ring' width='26' style='color:var(--brand-primary)'></iconify-icon>\n"
+            "        </span> Follow-ups on autopilot\n"
+            "      </div>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script": (
+            "gsap.fromTo('#is-title', {opacity:0, y:34, filter:'blur(8px)'},\n"
+            "  {opacity:1, y:0, filter:'blur(0px)', duration:.8, delay:.45, ease:'power3.out'});\n"
+            "gsap.fromTo('#is-f1', {opacity:0, x:-26}, {opacity:1, x:0, duration:.6, delay:1.1, ease:'expo.out'});\n"
+            "gsap.fromTo('#is-f2', {opacity:0, x:-26}, {opacity:1, x:0, duration:.6, delay:1.45, ease:'expo.out'});\n"
+            "// back-half: icon chips pulse gently in sequence\n"
+            "gsap.to('#is-f1 span', {scale:1.06, yoyo:true, repeat:1, duration:.5, delay:2.6, ease:'power2.inOut'});\n"
+            "gsap.to('#is-f2 span', {scale:1.06, yoyo:true, repeat:1, duration:.5, delay:3.1, ease:'power2.inOut'});\n"
+        ),
+    },
+}
+
+
 DO_NOT_RULES_TECHNICAL = (
     "**HARD CONSTRAINTS** (technical only — stylistic bans are intentionally relaxed in aspirational mode):\n"
     "- **setTimeout for animations** — use GSAP `delay:` or `gsap.delayedCall()`. setTimeout never fires "
@@ -1902,23 +2222,41 @@ def get_cards_for_domain(subject_domain: str) -> List[str]:
     return types
 
 
-def _format_card(card: Dict[str, Any]) -> str:
-    """Format a single shot type card as prompt text."""
+def _format_card(card: Dict[str, Any], *, marketing: bool = False) -> str:
+    """Format a single shot type card as prompt text.
+
+    `marketing=True` swaps in the card's MARKETING_EXAMPLES exemplar (when one
+    exists) and drops whiteboard-prescribing guideline lines — the example code
+    is the strongest signal in the prompt, so in marketing mode it must SHOW
+    the premium look rather than the flat educational look.
+    """
+    html = card["html_template"]
+    script = card.get("script_block")
+    if marketing:
+        ex = MARKETING_EXAMPLES.get(card["id"])
+        if ex:
+            html = ex["html"]
+            script = ex["script"]
     lines = [
         f"**SHOT TYPE: {card['id']}** — {card['description']}",
         f"USE FOR: {card['use_for']}",
         "```html",
-        card["html_template"].rstrip(),
+        html.rstrip(),
         "```",
     ]
-    if card.get("script_block"):
+    if script:
         lines.append("```javascript")
-        lines.append(card["script_block"].rstrip())
+        lines.append(script.rstrip())
         lines.append("```")
     if card.get("guidelines"):
-        lines.append("Guidelines:")
-        for g in card["guidelines"]:
-            lines.append(f"- {g}")
+        kept = [
+            g for g in card["guidelines"]
+            if not (marketing and any(ban in g for ban in _MARKETING_GUIDELINE_BANS))
+        ]
+        if kept:
+            lines.append("Guidelines:")
+            for g in kept:
+                lines.append(f"- {g}")
     lines.append("")  # blank line separator
     return "\n".join(lines)
 
@@ -2021,6 +2359,7 @@ def build_per_shot_system_prompt(
     *,
     aspirational: bool = False,
     cultural_context: Any = None,
+    mode: str = "educational",
 ) -> str:
     """Build a system prompt with only ONE shot type card.
 
@@ -2033,29 +2372,47 @@ def build_per_shot_system_prompt(
     bans and the mandatory `.stage-drift` / 2-text-levels prescriptions while
     keeping the technical rails. Reduces cross-shot templating.
 
+    `mode` is the resolved visual style ("educational" | "marketing" | "bold").
+    marketing/bold COMPILES a coherent brand-film prompt: motion-designer
+    persona, brand-film principles, technical-only DO-NOTs, and premium
+    exemplars swapped into the shot card — instead of the old approach of
+    stacking a prose override on top of the whiteboard doctrine (which the
+    whiteboard example code always beat). See MARKETING_PREAMBLE above.
+
     `cultural_context` (optional `CulturalContext` instance) — when present
     AND has a region, the prompt gets a `<CULTURAL_CONTEXT>` block teaching
     the LLM to write region-aware image prompts. The 4-tier routing rule is
     always included for image-bearing shot types regardless of region.
     """
     aspect_label = "9:16 portrait" if width < height else "16:9"
+    is_marketing = mode in ("marketing", "bold")
 
     card = SHOT_TYPE_CARDS.get(shot_type)
     if not card:
         # Fallback to TEXT_DIAGRAM if unknown type
         card = SHOT_TYPE_CARDS["TEXT_DIAGRAM"]
 
-    preamble = CORE_PREAMBLE_ASPIRATIONAL if aspirational else CORE_PREAMBLE
-    do_not = DO_NOT_RULES_TECHNICAL if aspirational else DO_NOT_RULES
-    principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
+    if is_marketing:
+        # Marketing/bold: one coherent design language regardless of tier.
+        preamble = MARKETING_PREAMBLE
+        do_not = DO_NOT_RULES_TECHNICAL
+        principles = MARKETING_PRINCIPLES
+    else:
+        preamble = CORE_PREAMBLE_ASPIRATIONAL if aspirational else CORE_PREAMBLE
+        do_not = DO_NOT_RULES_TECHNICAL if aspirational else DO_NOT_RULES
+        principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
 
     card_text = (
-        _format_card(card)
+        _format_card(card, marketing=is_marketing)
         .replace("{canvas_width}", str(width))
         .replace("{canvas_height}", str(height))
         .replace("{aspect_label}", aspect_label)
     )
-    if aspirational:
+    if is_marketing:
+        # Cards without a marketing exemplar keep their educational example —
+        # strip its whiteboard-look prescriptions the same way aspirational does.
+        card_text = _relax_card_for_aspirational(card_text)
+    elif aspirational:
         card_text = _relax_card_for_aspirational(card_text)
 
     parts = [preamble, card_text]

@@ -65,8 +65,19 @@ ISSUE_CODES = frozenset({
 })
 
 
-SYSTEM_PROMPT = f"""You are a strict, conservative video frame reviewer for an AI-generated educational explainer.
-Reviewer prompt version: {PROMPT_VERSION}.
+# Persona header is mode-keyed (Phase A7): an educational explainer and a
+# premium brand film are judged by the same STRUCTURAL rubric, but the
+# persona + taste anchors differ — a reviewer told it's grading a lecture
+# slide penalizes exactly the depth/motion the marketing prompt asked for.
+_REVIEWER_HEADER_EDU = (
+    "You are a strict, conservative video frame reviewer for an AI-generated educational explainer."
+)
+_REVIEWER_HEADER_MKT = (
+    "You are a demanding motion-design director doing quality control on one shot of a premium "
+    "BRAND FILM (an Apple/Linear/Stripe-grade launch video). Judge craft to that standard."
+)
+
+_REVIEWER_BODY = f"""Reviewer prompt version: {PROMPT_VERSION}.
 
 You will see 1 to 3 screenshots from one shot in the order: early frame, middle frame, exit frame.
 Your job is to identify SHIPPING-BLOCKING defects and IGNORE subjective taste calls.
@@ -222,6 +233,35 @@ Rules of engagement:
 - If everything looks fine, return {{"passes": true, "issues": [], "severity_max": 0,
   "designer_score": <still grade it>}}.
 """
+
+# Backward-compat: the educational reviewer prompt under its historical name.
+SYSTEM_PROMPT = _REVIEWER_HEADER_EDU + "\n" + _REVIEWER_BODY
+
+_MARKETING_REVIEWER_ADDENDUM = """
+MARKETING-MODE JUDGING NOTES (this shot is from a BRAND FILM, not a lecture):
+- Rich, layered treatments are INTENTIONAL, not defects: dark backgrounds, gradient meshes,
+  brand-tinted vignettes, scrims over photography, glassmorphism, soft large-radius shadows,
+  and tints derived from the brand palette (color-mix / rgba of a brand color) are NOT
+  palette violations. Flag PALETTE only when a clearly foreign accent hue dominates the frame.
+- Pure white/black used for contrast over imagery are neutrals, never violations.
+- A CONSTANT, subtle finishing layer (faint film grain, a soft edge vignette, a gentle
+  brand-tinted top glow) is part of these videos' design system and appears in EVERY frame
+  including the exit frame. NEVER flag it as RESIDUAL or PALETTE. RESIDUAL still applies to
+  transition artifacts that are clearly mid-flight (a wipe half-done, a dip-to-black still
+  fading, an element frozen mid-slide).
+- Anchor designer_score to launch-film craft: a bare text panel with no imagery, icon, or
+  depth caps at 4; portfolio-grade composition with a confident focal point earns 9-10.
+- Every STRUCTURAL check above (legibility, wrap breaks, clipping, collisions, motion,
+  residuals, sync) applies unchanged — premium styling never excuses broken layout.
+"""
+
+
+def build_reviewer_system_prompt(mode: str = "educational") -> str:
+    """Reviewer system prompt keyed by the run's resolved visual style mode."""
+    m = (mode or "educational").strip().lower()
+    if m in ("marketing", "bold"):
+        return _REVIEWER_HEADER_MKT + "\n" + _REVIEWER_BODY + _MARKETING_REVIEWER_ADDENDUM
+    return SYSTEM_PROMPT
 
 
 def _build_user_prompt(
@@ -424,6 +464,10 @@ def review_shot(
     temperature: float = 0.0,
     input_cost_per_m: float = _DEFAULT_INPUT_COST_PER_M,
     output_cost_per_m: float = _DEFAULT_OUTPUT_COST_PER_M,
+    # Phase A7 — resolved visual style of the run ("educational" | "marketing"
+    # | "bold"): swaps the reviewer persona so brand-film shots are judged by
+    # a motion-design director, not an educational-slide reviewer.
+    visual_style_mode: str = "educational",
 ) -> Dict[str, Any]:
     """Run the vision review against a single shot. Never raises — every error
     path returns a no-op record so the caller can ship the original HTML.
@@ -481,7 +525,7 @@ def review_shot(
         })
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_reviewer_system_prompt(visual_style_mode)},
         {"role": "user", "content": user_content},
     ]
 

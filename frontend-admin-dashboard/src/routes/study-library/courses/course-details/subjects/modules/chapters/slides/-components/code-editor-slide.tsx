@@ -54,7 +54,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { QuestionEditor } from './coding-question/QuestionEditor';
-import { X } from '@phosphor-icons/react';
+import { GenerateCodingQuestionDialog } from './coding-question/GenerateCodingQuestionDialog';
+import { X, Sparkle } from '@phosphor-icons/react';
 
 export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     codeData,
@@ -72,6 +73,8 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
     const [waitingForInput, setWaitingForInput] = useState(false);
     const [inputValue, setInputValue] = useState<string>('');
     const [isPyodideLoading, setIsPyodideLoading] = useState(false);
+    // AI "Generate coding question" dialog (Question Mode only).
+    const [aiDialogOpen, setAiDialogOpen] = useState(false);
 
     // New state for output panel
     const [isOutputExpanded, setIsOutputExpanded] = useState(false);
@@ -504,6 +507,18 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                             </>
                         )}
 
+                        {isQuestionMode && isEditable && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setAiDialogOpen(true)}
+                                className="border-purple-200 text-purple-700 hover:bg-purple-50"
+                            >
+                                <Sparkle className="mr-1 size-4" weight="fill" />
+                                Generate with AI
+                            </Button>
+                        )}
+
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm">
@@ -741,6 +756,15 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                     />
                 )}
             </CardContent>
+
+            {isQuestionMode && isEditable && (
+                <GenerateCodingQuestionDialog
+                    open={aiDialogOpen}
+                    onOpenChange={setAiDialogOpen}
+                    defaultLanguages={currentData.question?.allowedLanguages ?? ['python']}
+                    onApply={handleQuestionChange}
+                />
+            )}
         </Card>
     );
 };

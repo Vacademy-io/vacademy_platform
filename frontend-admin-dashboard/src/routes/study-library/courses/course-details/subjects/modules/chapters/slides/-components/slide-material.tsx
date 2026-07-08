@@ -47,6 +47,7 @@ import { handlePublishSlide } from './slide-operations/handlePublishSlide';
 import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
+import { flattenSemanticWrappers, detectDeserializeLoss } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
 const SlideEditor = React.lazy(() =>
     import('./SlideEditor').then((module) => ({ default: module.default }))
@@ -413,6 +414,16 @@ export const SlideMaterial = ({
     // auto-save reads this to refuse a destructive overwrite. Reset on every
     // serialize; only the LAST serialize before a save matters.
     const lastSerializeDegradedRef = useRef(false);
+    // Layer-2 load integrity: set when the last DOC deserialize dropped blocks vs the
+    // stored HTML (a lossy round-trip for some block type). Tagged with the slide it
+    // was computed for. While set for the active slide, the DOC save path REFUSES to
+    // overwrite `data` — otherwise the reduced editor state would be persisted and the
+    // dropped content lost permanently. Recomputed on every content-apply.
+    const docLoadIntegrityRef = useRef<{ slideId: string | null; lossy: boolean; lost: string[] }>({
+        slideId: null,
+        lossy: false,
+        lost: [],
+    });
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -1032,7 +1043,38 @@ export const SlideMaterial = ({
             console.error('Error parsing HTML for Yoopta:', e);
         }
 
+        // Flatten semantic wrappers (<section>/<header>/nested <div>) LAST, so blocks
+        // (headings/paragraphs) nested inside them survive html.deserialize instead of
+        // being silently dropped. See docs/SLIDE_CONTENT_LOSS_INVESTIGATION.md.
+        contentForDeserialization = flattenSemanticWrappers(contentForDeserialization || '');
         const rawEditorContent = html.deserialize(editor, contentForDeserialization || '');
+
+        // Layer-2 load-integrity check: did html.deserialize drop any block (table,
+        // image, heading, custom block) that the stored HTML contained? If so, this
+        // editor state is a lossy view of the slide — record it so the save path can
+        // refuse to overwrite the DB with the reduced content. Compares load INPUT vs
+        // load OUTPUT, so it never fires on a genuine user edit.
+        try {
+            const loss = detectDeserializeLoss(
+                contentForDeserialization || '',
+                rawEditorContent as Record<string, unknown>
+            );
+            docLoadIntegrityRef.current = {
+                slideId: activeItem?.id ?? null,
+                lossy: loss.lossy,
+                lost: loss.lost,
+            };
+            if (loss.lossy) {
+                console.error(
+                    '[slide] deserialize dropped content on load — save disabled to protect it:',
+                    loss.lost.join(', '),
+                    'slide',
+                    activeItem?.id
+                );
+            }
+        } catch {
+            docLoadIntegrityRef.current = { slideId: activeItem?.id ?? null, lossy: false, lost: [] };
+        }
 
         const processNode = (node: any): any => {
             const newNode = { ...node };
@@ -2923,6 +2965,21 @@ export const SlideMaterial = ({
             }
 
             // Handle regular documents
+            // Layer-2 guard: if this slide's content was dropped by the deserializer on
+            // load (a lossy round-trip), the editor holds LESS than the DB. Persisting
+            // it would make the loss permanent, so refuse the save and keep the DB safe.
+            if (
+                docLoadIntegrityRef.current.lossy &&
+                docLoadIntegrityRef.current.slideId === slide?.id
+            ) {
+                toast.error(
+                    'This slide did not load completely (' +
+                        docLoadIntegrityRef.current.lost.join(', ') +
+                        ' missing). To protect your content it was NOT saved. Please reload the page and try again.'
+                );
+                return;
+            }
+
             const currentHtml = getCurrentEditorHTMLContent();
 
             // Explicit Save proceeds on user intent, but if a block's serializer
@@ -2972,8 +3029,11 @@ export const SlideMaterial = ({
                 return;
             }
 
-            try {
-                await addUpdateDocumentSlide({
+            // force=false first; the backend rejects (409) a save that would drop a
+            // structural block (table/image/video/custom block). On that 409 we ask the
+            // author to confirm and retry with force_overwrite — mirrors handlePublishSlide.
+            const saveDocDraft = (force: boolean) =>
+                addUpdateDocumentSlide({
                     id: slide?.id || '',
                     title: slide?.title || '',
                     image_file_id: '',
@@ -2993,16 +3053,39 @@ export const SlideMaterial = ({
                         published_data: slide?.document_slide?.published_data || null,
                         published_document_total_pages:
                             slide?.document_slide?.published_document_total_pages || 1,
+                        force_overwrite: force,
                     },
                     status: status,
                     new_slide: false,
                     notify: false,
                 });
+
+            try {
+                await saveDocDraft(false);
                 if (!containsBase64Images(currentHtml) || uploadedImagesCount === 0) {
                     toast.success(`slide saved in draft successfully!`);
                 }
-            } catch {
-                toast.error(`Error in saving the slide`);
+            } catch (error) {
+                const response = (
+                    error as {
+                        response?: { status?: number; data?: { ex?: string; message?: string } };
+                    }
+                )?.response;
+                const serverMessage = response?.data?.ex || response?.data?.message;
+                if (response?.status === 409 && serverMessage) {
+                    const confirmed = window.confirm(
+                        `To prevent accidental data loss, please confirm.\n\n${serverMessage}\n\nAre you sure you want to continue and save?`
+                    );
+                    if (!confirmed) return;
+                    try {
+                        await saveDocDraft(true);
+                        toast.success('Slide saved (forced override).');
+                    } catch {
+                        toast.error('Error in saving the slide');
+                    }
+                    return;
+                }
+                toast.error(serverMessage || `Error in saving the slide`);
             }
         } finally {
             setIsSaving(false);
@@ -3588,6 +3671,23 @@ export const SlideMaterial = ({
                                                     activeItem?.source_type === 'DOCUMENT' &&
                                                     activeItem?.document_slide?.type === 'DOC'
                                                 ) {
+                                                    // Layer-2 guard: never publish a lossy-loaded
+                                                    // slide (editor holds less than the DB).
+                                                    if (
+                                                        docLoadIntegrityRef.current.lossy &&
+                                                        docLoadIntegrityRef.current.slideId ===
+                                                            activeItem?.id
+                                                    ) {
+                                                        toast.error(
+                                                            'This slide did not load completely (' +
+                                                                docLoadIntegrityRef.current.lost.join(
+                                                                    ', '
+                                                                ) +
+                                                                ' missing). Publish blocked to protect your content. Please reload the page.'
+                                                        );
+                                                        setIsPublishDialogOpen(false);
+                                                        return;
+                                                    }
                                                     let currentHtml = getCurrentEditorHTMLContent();
                                                     if (containsBase64Images(currentHtml)) {
                                                         const { processedHtml } =

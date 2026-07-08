@@ -35,10 +35,14 @@ type OtpFormValues = { otp: string[] };
 
 export function EmailLogin({
     onSwitchToUsername,
-    onSwitchToPhone
+    onSwitchToPhone,
+    allowUsernamePasswordAuth: allowUsernamePasswordAuthProp,
+    allowPhoneAuth: allowPhoneAuthProp,
 }: {
     onSwitchToUsername: () => void;
     onSwitchToPhone?: () => void;
+    allowUsernamePasswordAuth?: boolean;
+    allowPhoneAuth?: boolean;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
     const [email, setEmail] = useState('');
@@ -470,7 +474,7 @@ export function EmailLogin({
                 )}
             </AnimatePresence>
 
-            {allowUsernamePasswordAuth && (
+            {(allowUsernamePasswordAuthProp ?? allowUsernamePasswordAuth) && (
                 <div className="mt-6 text-center">
                     <button
                         type="button"
@@ -482,7 +486,7 @@ export function EmailLogin({
                 </div>
             )}
 
-            {allowPhoneAuth && onSwitchToPhone && (
+            {(allowPhoneAuthProp ?? allowPhoneAuth) && onSwitchToPhone && (
                 <div className="mt-2 text-center">
                     <button
                         type="button"

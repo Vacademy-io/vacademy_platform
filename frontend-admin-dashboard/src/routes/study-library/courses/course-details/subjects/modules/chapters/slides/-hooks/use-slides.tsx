@@ -250,6 +250,8 @@ export interface DocumentSlidePayload {
         published_document_total_pages: number;
         /** When true, bypass the backend publish-time shrink guard (author confirmed). */
         force_publish?: boolean;
+        /** When true, bypass the backend draft/unsync structural-block loss guard (author confirmed). */
+        force_overwrite?: boolean;
     };
     status: string;
     new_slide: boolean;

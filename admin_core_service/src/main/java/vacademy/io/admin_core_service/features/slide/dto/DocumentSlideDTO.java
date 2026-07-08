@@ -21,4 +21,11 @@ public class DocumentSlideDTO {
      * replace a large published document with a much smaller one (confirmed in the UI).
      */
     private boolean forcePublish;
+
+    /**
+     * When true, bypasses the draft/unsync structural-block loss guard so an author can
+     * intentionally remove a table/image/video/custom block (confirmed in the UI). The
+     * draft-save equivalent of {@link #forcePublish}.
+     */
+    private boolean forceOverwrite;
 }

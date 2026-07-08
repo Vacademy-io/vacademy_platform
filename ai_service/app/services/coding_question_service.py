@@ -172,6 +172,10 @@ RULES:
    no debug prints, no prompt text in output.
 6. Keep test inputs small and valid per your constraints. Cover edge cases in the
    hidden tests (empty/min/max/boundary/duplicates as relevant).
+7. PYTHON ONLY: call your entry function at the TOP LEVEL. Do NOT wrap the stdin
+   reading / printing in `if __name__ == "__main__":` — the in-browser Python
+   sandbox may not set __name__, so a guarded block would print nothing. (C/C++/
+   Java keep their normal main().)
 
 Return ONLY this JSON object, no markdown, no commentary:
 {{

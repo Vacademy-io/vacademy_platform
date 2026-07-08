@@ -692,7 +692,7 @@ const RecentLeadsContent = () => {
         const baseHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile', 'Audience'];
         const tail = showOps
             ? [
-                  'Status',
+                  'Lead Status',
                   'Counsellor',
                   'Activity & Notes',
                   'Notes Count',

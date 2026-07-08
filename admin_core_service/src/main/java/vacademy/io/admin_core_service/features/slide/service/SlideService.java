@@ -28,6 +28,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import vacademy.io.admin_core_service.features.slide.repository.HtmlVideoSlideRepository;
@@ -568,8 +570,13 @@ public class SlideService {
             newPublishedData = documentSlide.getData();
             newPublishedTotalPages = documentSlide.getTotalPages();
         }
-        guardAgainstPublishedContentWipe(documentSlide.getPublishedData(), newPublishedData,
-                documentSlideDTO != null && documentSlideDTO.isForcePublish());
+        boolean force = documentSlideDTO != null && documentSlideDTO.isForcePublish();
+        // Two guards on the LIVE (published) content: the coarse byte-ratio wipe guard
+        // (catches a catastrophic text collapse) AND the precise structural-block guard
+        // (catches a dropped table/image/video/custom block even when byte size barely
+        // moves). Either one blocks with a 409 unless the author force-publishes.
+        guardAgainstPublishedContentWipe(documentSlide.getPublishedData(), newPublishedData, force);
+        guardAgainstStructuralBlockLoss(documentSlide.getPublishedData(), newPublishedData, force);
         documentSlide.setPublishedData(newPublishedData);
         documentSlide.setPublishedDocumentTotalPages(newPublishedTotalPages);
         // Keep the draft copy in sync with what we just published instead of nulling it.
@@ -588,15 +595,82 @@ public class SlideService {
         if (currentLen >= PUBLISHED_SHRINK_GUARD_MIN_CHARS
                 && incomingLen < currentLen * PUBLISHED_SHRINK_GUARD_RATIO) {
             throw new VacademyException(HttpStatus.CONFLICT,
-                    "Refusing to publish: this would replace the live content (" + currentLen
-                            + " chars) with a much smaller fragment (" + incomingLen
-                            + " chars), which looks like accidental data loss. "
-                            + "Re-publish with force enabled to override.");
+                    "This will replace the current slide content with a much shorter version.");
+        }
+    }
+
+    // --- Structural-block integrity guard (client-agnostic content-loss backstop) ---
+    // A save is rejected (409) when the incoming HTML drops a STRUCTURAL block — a custom
+    // Yoopta block (data-yoopta-type), table, image, or video/embed — that the stored HTML
+    // contained. These never disappear on a normal edit; their loss is the signature of an
+    // editor round-trip bug or a truncated client payload (see
+    // docs/SLIDE_CONTENT_LOSS_INVESTIGATION.md). Plain text/paragraph shrink is NOT guarded
+    // here — authors delete text freely. The author overrides with force (confirmed in UI).
+    private static final Pattern YOOPTA_BLOCK_MARKER = Pattern.compile("data-yoopta-type=\"([a-zA-Z]+)\"");
+
+    private static int countOccurrences(String s, String sub) {
+        int n = 0, i = 0;
+        while ((i = s.indexOf(sub, i)) >= 0) {
+            n++;
+            i += sub.length();
+        }
+        return n;
+    }
+
+    private static Map<String, Integer> structuralMarkerCounts(String html) {
+        Map<String, Integer> counts = new HashMap<>();
+        if (html == null) {
+            return counts;
+        }
+        Matcher m = YOOPTA_BLOCK_MARKER.matcher(html);
+        while (m.find()) {
+            counts.merge(m.group(1), 1, Integer::sum);
+        }
+        int tables = countOccurrences(html, "<table");
+        if (tables > 0) counts.put("table", tables);
+        int imgs = countOccurrences(html, "<img");
+        if (imgs > 0) counts.put("image", imgs);
+        int media = countOccurrences(html, "<video") + countOccurrences(html, "<iframe");
+        if (media > 0) counts.put("video/embed", media);
+        return counts;
+    }
+
+    /** Human description of structural blocks the new HTML dropped vs old, or "" if none. */
+    static String describeStructuralLoss(String oldHtml, String newHtml) {
+        Map<String, Integer> before = structuralMarkerCounts(oldHtml);
+        Map<String, Integer> after = structuralMarkerCounts(newHtml);
+        List<String> lost = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : before.entrySet()) {
+            int drop = e.getValue() - after.getOrDefault(e.getKey(), 0);
+            if (drop > 0) {
+                lost.add(drop + " " + e.getKey() + (drop > 1 ? "s" : ""));
+            }
+        }
+        return String.join(", ", lost);
+    }
+
+    private void guardAgainstStructuralBlockLoss(String oldHtml, String newHtml, boolean force) {
+        if (force) {
+            return;
+        }
+        // An empty/blank incoming payload is handled by the caller's own empty-guard; do
+        // not 409 here (that path is a distinct "editor returned nothing" case).
+        if (newHtml == null || newHtml.trim().isEmpty()) {
+            return;
+        }
+        String dropped = describeStructuralLoss(oldHtml, newHtml);
+        if (!dropped.isEmpty()) {
+            throw new VacademyException(HttpStatus.CONFLICT,
+                    "This will remove " + dropped + " from the slide.");
         }
     }
 
     public void handleDraftDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
         if (documentSlideDTO.getData() != null && !documentSlideDTO.getData().isEmpty()) {
+            // Server-side backstop (client-agnostic): reject a draft save that would drop a
+            // structural block (table/image/video/custom block) present in the stored draft.
+            guardAgainstStructuralBlockLoss(documentSlide.getData(), documentSlideDTO.getData(),
+                    documentSlideDTO.isForceOverwrite());
             documentSlide.setData(documentSlideDTO.getData());
         }
 
@@ -610,6 +684,8 @@ public class SlideService {
         // touched here; published_data is written exclusively by the publish path, so a
         // draft save can never mutate what learners currently see.
         if (documentSlideDTO.getData() != null && !documentSlideDTO.getData().isEmpty()) {
+            guardAgainstStructuralBlockLoss(documentSlide.getData(), documentSlideDTO.getData(),
+                    documentSlideDTO.isForceOverwrite());
             documentSlide.setData(documentSlideDTO.getData());
         }
         if (documentSlideDTO.getTotalPages() != null) {

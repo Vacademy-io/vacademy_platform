@@ -685,6 +685,7 @@ const CampaignUsersContent = ({
             });
             const tailHeaders = showOps
                 ? [
+                      'Lead Status',
                       'Counsellor',
                       'Activity & Notes',
                       'Notes Count',
@@ -735,6 +736,7 @@ const CampaignUsersContent = ({
                         })
                         .join('\n\n');
                     row.push(
+                        csvSafe(lead.lead_status ?? ''),
                         csvSafe(counsellor),
                         csvSafe(notesBlock),
                         csvSafe(summary?.count ?? 0),

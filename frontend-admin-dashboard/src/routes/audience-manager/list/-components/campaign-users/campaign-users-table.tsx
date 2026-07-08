@@ -12,11 +12,13 @@ import {
     Flame,
     CheckCircle,
     UserPlus,
+    UserMinus,
     UploadSimple,
     DownloadSimple,
     PaperPlaneTilt,
     X,
     Clock,
+    CaretDown,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,7 +58,11 @@ import { SendMessageDialog } from './SendMessageDialog';
 import { CommunicationHistory } from './CommunicationHistory';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
-import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    BulkAssignCounsellorDialog,
+    type BulkAssignMode,
+} from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -446,14 +452,18 @@ const CampaignUsersContent = ({
     const handleStatusUpdated = () =>
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
 
-    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
-    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    // ── Bulk assign / remove counsellor (multi-select, every view) ──
     const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    // Which flow the "Bulk actions" menu opened: assign (round-robin default)
+    // or unassign (REMOVE).
+    const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
 
-    // Selection only applies to the Unassigned view; drop it on filter change.
+    // Selection works in every view (previously Unassigned-only, which made
+    // reassign/remove unreachable); drop it on filter change so stale ids
+    // can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
     }, [counsellorFilter]);
@@ -995,8 +1005,8 @@ const CampaignUsersContent = ({
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
-                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
-                    {isUnassignedView && selectedLeads.size > 0 && (
+                    {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
+                    {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
                                 {selectedLeads.size} selected
@@ -1021,14 +1031,31 @@ const CampaignUsersContent = ({
                                 >
                                     Clear
                                 </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    scale="small"
-                                    onClick={() => setBulkAssignOpen(true)}
+                                <MyDropdown
+                                    dropdownList={[
+                                        {
+                                            label: 'Assign leads',
+                                            value: 'assign',
+                                            icon: <UserPlus className="size-4" />,
+                                        },
+                                        {
+                                            label: 'Unassign leads',
+                                            value: 'unassign',
+                                            icon: <UserMinus className="size-4" />,
+                                        },
+                                    ]}
+                                    onSelect={(value) => {
+                                        setBulkActionMode(
+                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
+                                        );
+                                        setBulkAssignOpen(true);
+                                    }}
                                 >
-                                    <UserPlus className="size-3.5" />
-                                    Assign counsellor
-                                </MyButton>
+                                    <MyButton buttonType="primary" scale="small">
+                                        Bulk actions
+                                        <CaretDown className="size-3.5" />
+                                    </MyButton>
+                                </MyDropdown>
                             </div>
                         </div>
                     )}
@@ -1049,7 +1076,7 @@ const CampaignUsersContent = ({
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
-                            selectable={isUnassignedView}
+                            selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}
@@ -1084,6 +1111,7 @@ const CampaignUsersContent = ({
                     instituteId={instituteId ?? ''}
                     leads={Array.from(selectedLeads.values())}
                     counsellorOptions={assignableCounsellorOptions}
+                    initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
                 />
 

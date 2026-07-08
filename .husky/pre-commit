@@ -26,6 +26,19 @@ if [ -z "$files" ]; then
   exit 0
 fi
 
+# Catalogue style engine / CSS byte-sync gate. The admin canvas and the
+# learner renderer each carry a copy of the shared style engine + catalogue
+# CSS; a drifted copy silently breaks canvas parity. Near-free (5 byte
+# compares); fix with: node scripts/check-style-engine-sync.mjs --fix
+node scripts/check-style-engine-sync.mjs
+sync_status=$?
+if [ "$sync_status" -ne 0 ]; then
+  echo ""
+  echo "Commit blocked: synced catalogue style files drifted between the apps."
+  echo "Run: node scripts/check-style-engine-sync.mjs --fix  then re-stage."
+  exit $sync_status
+fi
+
 # shellcheck disable=SC2086
 node scripts/design-lint.mjs $files
 status=$?

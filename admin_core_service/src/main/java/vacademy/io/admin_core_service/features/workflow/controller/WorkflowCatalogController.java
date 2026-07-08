@@ -32,28 +32,29 @@ public class WorkflowCatalogController {
                 .label("Get Enrollments with Computed Fields")
                 .description("Get enrollments with learningDay, remainingDays, daysPastExpiry computed fields")
                 .category("Enrollment")
-                .requiredParams(List.of("packageSessionIds", "statuses"))
+                .requiredParams(List.of("packageSessionIds", "statusList"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("updateSSIGMRemaingDaysByOne")
                 .label("Update Remaining Days")
                 .description("Decrement remaining days by 1 in custom fields for enrollments")
                 .category("Enrollment")
-                .requiredParams(List.of("ssigmList"))
+                .requiredParams(List.of("ssigm"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("createSessionSchedule")
                 .label("Create Live Session Schedule")
                 .description("Create a new schedule entry for a live session")
                 .category("Live Session")
-                .requiredParams(List.of("sessionId", "startTime", "endTime", "timezone"))
+                .requiredParams(List.of("sessionId"))
+                .optionalParams(List.of("recurrenceType", "meetingDate", "startTime", "lastEntryTime", "linkType", "customMeetingLink", "status", "dailyAttendance"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("createSessionParticipent")
                 .label("Add Session Participant")
                 .description("Add a participant to a live session")
                 .category("Live Session")
-                .requiredParams(List.of("sessionId", "userId"))
+                .requiredParams(List.of("sourceId", "sessionId"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("createLiveSession")
@@ -67,7 +68,7 @@ public class WorkflowCatalogController {
                 .label("Check Student Enrollment")
                 .description("Validate if a student is enrolled in a specific package session")
                 .category("Enrollment")
-                .requiredParams(List.of("studentId", "packageSessionId"))
+                .requiredParams(List.of("userId", "packageSessionId"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("fetchInstituteSetting")
@@ -79,30 +80,32 @@ public class WorkflowCatalogController {
             CatalogItemDTO.builder()
                 .key("getAudienceResponsesByDayDifference")
                 .label("Get Audience Responses by Day Offset")
-                .description("Get audience/lead responses filtered by days since submission")
+                .description("Get audience/lead responses whose workflowActivateDayAt is exactly N days ago. Custom-field keys are LOWERCASED in the result.")
                 .category("CRM")
-                .requiredParams(List.of("audienceId", "dayDifference"))
+                .requiredParams(List.of("instituteId", "audienceId", "daysAgo"))
+                .optionalParams(List.of("conversionStatus"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("fetchPackageLMSSetting")
                 .label("Fetch Package LMS Settings")
                 .description("Get LMS configuration for a specific package")
                 .category("Settings")
-                .requiredParams(List.of("packageId"))
+                .requiredParams(List.of("packageId", "settingKey"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("upsertUserCustomField")
                 .label("Upsert Custom Field Value")
                 .description("Create or update a custom field value for a user")
                 .category("Data")
-                .requiredParams(List.of("userId", "fieldId", "value"))
+                .requiredParams(List.of("userId", "customFieldId", "value"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("getUpcomingFeeInstallments")
                 .label("Get Upcoming Fee Installments")
-                .description("Get fee installments due within a date range for an institute")
+                .description("Get fee installments due within a window around today for an institute")
                 .category("Fee Management")
-                .requiredParams(List.of("instituteId", "startDate", "endDate"))
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("daysBeforeWindow", "daysAfterWindow"))
                 .build(),
             CatalogItemDTO.builder()
                 .key("fetch_live_sessions")
@@ -131,7 +134,7 @@ public class WorkflowCatalogController {
             CatalogItemDTO.builder()
                 .key("fetch_expiring_memberships")
                 .label("Fetch Expiring Memberships")
-                .description("Get user plans/memberships expiring within N days")
+                .description("Get this institute's ACTIVE user plans whose end_date falls within the next N days. Returns expiringMemberships[] with email/fullName/mobileNumber/endDate per plan.")
                 .category("CRM")
                 .requiredParams(List.of("instituteId"))
                 .optionalParams(List.of("daysUntilExpiry"))
@@ -175,6 +178,21 @@ public class WorkflowCatalogController {
                 .category("Notification")
                 .requiredParams(List.of("instituteId"))
                 .optionalParams(List.of("roles"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_live_session_attendance")
+                .label("Live Session Attendance (Present / Absent)")
+                .description("Get present and absent students for one live session occurrence, with attendance %, join time and a pre-rendered attendanceBlockHtml per student.")
+                .category("Live Session")
+                .requiredParams(List.of("sessionId", "scheduleId"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_enrollment_details")
+                .label("Fetch Enrollment & Payment Details")
+                .description("Get a learner's enrollment and payment status for a package session as a flat map (used to gate abandoned-cart / webhook flows).")
+                .category("Enrollment")
+                .requiredParams(List.of("userId"))
+                .optionalParams(List.of("packageSessionId", "packageSessionIds", "instituteId"))
                 .build()
         );
         return ResponseEntity.ok(keys);
@@ -246,16 +264,16 @@ public class WorkflowCatalogController {
 
     @GetMapping("/event-applied-types")
     public ResponseEntity<List<CatalogItemDTO>> getEventAppliedTypes() {
-        Map<String, String> descriptions = Map.of(
-            "PACKAGE_SESSION", "Package Session (enrollment-related)",
-            "AUDIENCE", "Audience / Lead (CRM-related)",
-            "LIVE_SESSION", "Live Session",
-            "ENROLL_INVITE", "Enrollment Invite",
-            "PAYMENT", "Payment",
-            "USER_PLAN", "User Plan / Membership",
-            "INSTITUTE", "Institute-wide",
-            "ASSESSMENT", "Assessment (cross-service)"
-        );
+        Map<String, String> descriptions = new HashMap<>();
+        descriptions.put("PACKAGE_SESSION", "Package Session (enrollment-related)");
+        descriptions.put("AUDIENCE", "Audience / Lead (CRM-related)");
+        descriptions.put("LIVE_SESSION", "Live Session");
+        descriptions.put("ENROLL_INVITE", "Enrollment Invite");
+        descriptions.put("PAYMENT", "Payment");
+        descriptions.put("USER_PLAN", "User Plan / Membership");
+        descriptions.put("INSTITUTE", "Institute-wide");
+        descriptions.put("ASSESSMENT", "Assessment (cross-service)");
+        descriptions.put("POOL", "Counselor Pool (lead routing)");
 
         List<CatalogItemDTO> types = new ArrayList<>();
         for (EventAppliedType type : EventAppliedType.values()) {

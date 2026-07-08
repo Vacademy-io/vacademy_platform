@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils';
 import type { CounsellorOption } from '@/hooks/use-lead-counsellor-options';
 import { assignLeads } from '@/routes/counsellors/-services/counsellor-workbench-services';
 
-type Mode = 'ROUND_ROBIN' | 'SINGLE' | 'MANUAL' | 'REMOVE';
+export type BulkAssignMode = 'ROUND_ROBIN' | 'SINGLE' | 'MANUAL' | 'REMOVE';
+type Mode = BulkAssignMode;
 
 export interface BulkAssignLead {
     userId: string;
@@ -31,6 +32,9 @@ interface BulkAssignCounsellorDialogProps {
     leads: BulkAssignLead[];
     /** Scoped counsellor list (id + name) — the assignable targets. */
     counsellorOptions: CounsellorOption[];
+    /** Mode pre-selected when the dialog opens — the "Bulk actions" menu
+     *  opens straight into Assign (ROUND_ROBIN) or Unassign (REMOVE). */
+    initialMode?: BulkAssignMode;
     /** Fired after a successful commit (refetch + clear selection). */
     onSuccess?: () => void;
 }
@@ -74,9 +78,10 @@ export function BulkAssignCounsellorDialog({
     instituteId,
     leads,
     counsellorOptions,
+    initialMode = 'ROUND_ROBIN',
     onSuccess,
 }: BulkAssignCounsellorDialogProps) {
-    const [mode, setMode] = useState<Mode>('ROUND_ROBIN');
+    const [mode, setMode] = useState<Mode>(initialMode);
     const [singleTarget, setSingleTarget] = useState<string>('');
     // Round-robin participants — all counsellors pre-checked; admin can deselect.
     const [rrChecked, setRrChecked] = useState<Set<string>>(new Set());
@@ -86,12 +91,12 @@ export function BulkAssignCounsellorDialog({
     // (Re)initialise when the dialog opens or the counsellor list loads.
     useEffect(() => {
         if (open) {
-            setMode('ROUND_ROBIN');
+            setMode(initialMode);
             setSingleTarget('');
             setRrChecked(new Set(counsellorOptions.map((c) => c.id)));
             setOverrides({});
         }
-    }, [open, counsellorOptions]);
+    }, [open, counsellorOptions, initialMode]);
 
     const activeCandidates = useMemo(
         () => counsellorOptions.filter((c) => rrChecked.has(c.id)),
@@ -213,7 +218,7 @@ export function BulkAssignCounsellorDialog({
 
     return (
         <MyDialog
-            heading="Assign counsellor"
+            heading={mode === 'REMOVE' ? 'Unassign leads' : 'Assign counsellor'}
             open={open}
             onOpenChange={onOpenChange}
             dialogWidth="w-full max-w-2xl"

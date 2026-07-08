@@ -68,9 +68,19 @@ public class PlivoIvrRenderer {
             }
             case GATHER -> {
                 String action = dtmfUrl(node.getMenuId(), node.getId(), corr, token);
+                // Plivo's GetDigits timeout counts from when the element STARTS — it runs
+                // CONCURRENTLY with the nested prompt, it does NOT wait for the prompt to
+                // finish. So a short timeout on a long menu prompt fires "no input" partway
+                // through the prompt (before the caller has even heard the options), which
+                // is exactly the "waited a few seconds → Sorry, we did not receive your
+                // response" symptom. Size the wait to cover the prompt's spoken length PLUS
+                // the configured post-prompt window to press. Barge-in still works — pressing
+                // a digit during the prompt submits immediately.
+                int postPromptWait = node.getTimeoutSeconds() == null ? 6 : node.getTimeoutSeconds();
+                int timeout = Math.min(120, estimateSpeechSeconds(node.getPromptText()) + postPromptWait);
                 b.append("<GetDigits action=\"").append(esc(action))
                         .append("\" method=\"POST\" numDigits=\"1\" timeout=\"")
-                        .append(node.getTimeoutSeconds() == null ? 6 : node.getTimeoutSeconds())
+                        .append(timeout)
                         .append("\" retries=\"1\" redirect=\"true\">");
                 speak(b, node);
                 b.append("</GetDigits>");
@@ -188,6 +198,18 @@ public class PlivoIvrRenderer {
 
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * Rough spoken duration (seconds) of a prompt, used to size the GetDigits wait so
+     * a long menu prompt isn't cut off by Plivo's timeout (which runs concurrently with
+     * playback). ~10 chars/sec deliberately UNDER-rates the pace so we over-estimate the
+     * duration and never clip — measured: a 603-char Hindi prompt ≈ 46s (~13 ch/s), so
+     * 10 leaves headroom across TTS voices/paces. Floor 3s; blank prompt ⇒ 0.
+     */
+    private static int estimateSpeechSeconds(String text) {
+        if (text == null || text.isBlank()) return 0;
+        return Math.max(3, (int) Math.ceil(text.length() / 10.0));
     }
 
     private static String esc(String s) {

@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, AsyncIterator, List
+from typing import Optional, Dict, Any, AsyncIterator, List, Tuple
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -99,6 +99,33 @@ def _dominant_model_from_breakdown(
     if heaviest_tokens > 0:
         return heaviest_model
     return max(by_calls.items(), key=lambda kv: kv[1])[0]
+
+
+def _llm_token_split_from_breakdown(
+    cost_breakdown: Optional[Dict[str, Any]],
+) -> Dict[str, Tuple[int, int]]:
+    """Per-model (prompt, completion) token subtotals for the stage's LLM
+    events. Phase C made the html stage multi-model (hero escalation +
+    best-of-N + pinned regen models) — the deduction path uses this to bill
+    each model's tokens at its OWN credit multiplier instead of pricing
+    everything at the dominant model's rate. Empty dict when no breakdown."""
+    out: Dict[str, Tuple[int, int]] = {}
+    if not cost_breakdown:
+        return out
+    stages = cost_breakdown.get("stages")
+    if not isinstance(stages, list):
+        return out
+    for ev in stages:
+        if not isinstance(ev, dict) or ev.get("kind") != "llm":
+            continue
+        model = ev.get("model")
+        if not isinstance(model, str) or not model:
+            continue
+        pt = int(ev.get("prompt_tokens", 0) or 0)
+        ct = int(ev.get("completion_tokens", 0) or 0)
+        prev = out.get(model, (0, 0))
+        out[model] = (prev[0] + pt, prev[1] + ct)
+    return out
 
 
 def _get_run_state_aggregator():
@@ -301,6 +328,15 @@ class VideoGenerationService:
         import decision_gates as _dg  # type: ignore
         return _dg
 
+    def _design_identity_mod(self):
+        """Lazy-import design_identity (Phase B) — same sys.path trick."""
+        import sys as _sys
+        root = str(self.video_gen_root)
+        if root not in _sys.path:
+            _sys.path.insert(0, root)
+        import design_identity as _di  # type: ignore
+        return _di
+
     def _load_assist_state(self, video_record, assist_mode, assist_gates, assist_granularity):
         """Read the persisted assist block, or build a fresh one on the first leg."""
         dg = self._decision_gates()
@@ -334,24 +370,31 @@ class VideoGenerationService:
         return None, False
 
     def _skip_empty_asset_gate(self, video_id, assist, gate_type):
-        """ASSET_REQUEST presents only when the planner actually asked for
-        something. With an empty ask list, auto-answer the gate and advance to
-        the next unanswered script-boundary gate (or None). Any other gate
-        passes through untouched."""
+        """Conditionally-presented gates auto-skip when their trigger data is
+        absent from the plan: ASSET_REQUEST needs a non-empty ask list,
+        STYLEFRAME needs a design_identity (educational low tiers don't
+        generate one). Auto-answer the empty gate and advance to the next
+        unanswered script-boundary gate (or None). Any other gate passes
+        through untouched."""
         dg = self._decision_gates()
-        if gate_type != dg.GateType.ASSET_REQUEST.value:
+        _conditional = {
+            dg.GateType.ASSET_REQUEST.value: "asset_requests",
+            dg.GateType.STYLEFRAME.value: "design_identity",
+        }
+        plan_key = _conditional.get(gate_type)
+        if plan_key is None:
             return gate_type
         plan = self._download_artifact_json(
             video_id,
             f"ai-videos/{video_id}/script/shot_plan.json",
             f"ai-videos/{video_id}/checkpoints/shot_plan.json",
         ) or {}
-        if plan.get("asset_requests"):
+        if plan.get(plan_key):
             return gate_type
         dg.record_answer(
             assist,
-            decision_id=f"auto_{dg.GateType.ASSET_REQUEST.value}_{video_id}",
-            gate_type=dg.GateType.ASSET_REQUEST.value,
+            decision_id=f"auto_{gate_type}_{video_id}",
+            gate_type=gate_type,
             mode="auto", answer={},
         )
         try:
@@ -359,6 +402,10 @@ class VideoGenerationService:
         except Exception:
             pass
         nxt, _ = self._next_script_boundary_gate(assist, self.STAGES.index("SCRIPT") + 1)
+        # The next gate may itself be conditional-and-empty (e.g. styleframe
+        # skipped → asset_request also empty) — recurse until stable.
+        if nxt is not None and nxt != gate_type and nxt in _conditional:
+            return self._skip_empty_asset_gate(video_id, assist, nxt)
         return nxt
 
     def _download_artifact_text(self, video_id, *candidate_keys):
@@ -434,6 +481,27 @@ class VideoGenerationService:
                 _hooks = self._generate_hook_variants(video_id, shots)
                 if _hooks:
                     decision["payload"]["hook_variants"] = _hooks
+        elif gate_type == dg.GateType.STYLEFRAME.value:
+            _identity = shot_plan.get("design_identity") if isinstance(shot_plan, dict) else {}
+            _pairing_opts: list = []
+            _motion_opts: list = []
+            try:
+                _di = self._design_identity_mod()
+                _locked = bool(((_identity or {}).get("typography") or {}).get("locked_by_brand"))
+                if not _locked:
+                    _pairing_opts = [
+                        {"key": k, "label": v["label"], "vibe": v["vibe"]}
+                        for k, v in _di.FONT_PAIRINGS.items()
+                    ]
+                _motion_opts = [
+                    {"key": k, "label": v["label"], "vibe": v["vibe"]}
+                    for k, v in _di.MOTION_PERSONALITIES.items()
+                ]
+            except Exception:
+                pass
+            decision = dg.build_styleframe_decision(
+                video_id, _identity or {}, _pairing_opts, _motion_opts
+            )
         elif gate_type == dg.GateType.ASSET_REQUEST.value:
             _reqs = shot_plan.get("asset_requests") if isinstance(shot_plan, dict) else []
             decision = dg.build_asset_request_decision(video_id, _reqs or [])
@@ -521,6 +589,13 @@ class VideoGenerationService:
                 )
             elif gate_type == dg.GateType.SHOT_PLAN.value:
                 plan = self._revise_shot_plan_with_note(client, plan, note)
+            elif gate_type == dg.GateType.STYLEFRAME.value:
+                revised_identity = self._revise_design_identity_with_note(
+                    client, plan.get("design_identity") or {}, note,
+                    plan.get("creative_concept") or {},
+                )
+                if revised_identity:
+                    plan["design_identity"] = revised_identity
             else:  # creative_concept
                 revised = self._revise_concept_with_note(
                     client, plan.get("creative_concept") or {}, note, source_request
@@ -614,6 +689,55 @@ class VideoGenerationService:
         if isinstance(revised.get("creative_concept"), dict) and revised["creative_concept"]:
             plan["creative_concept"] = revised["creative_concept"]
         return plan
+
+    def _revise_design_identity_with_note(self, client, identity, note, concept):
+        """One LLM call: revise the design identity per the user's note, then
+        re-normalize against the registries (free text can never leak into
+        fonts URLs or ease values). Preserves the brand-font lock. The old
+        styleframe image is dropped when the note changes the art direction
+        or pairing — a stale anchor is worse than none."""
+        _di = self._design_identity_mod()
+        typ = (identity or {}).get("typography") or {}
+        locked = bool(typ.get("locked_by_brand"))
+        system = (
+            _di.build_design_identity_prompt()
+            + "\n\nYou are REVISING an existing identity per a user's note. Keep every "
+            "choice the note doesn't ask to change."
+        )
+        user = json.dumps({
+            "current_identity": {
+                "identity_name": identity.get("identity_name"),
+                "font_pairing": typ.get("pairing"),
+                "motion_personality": (identity.get("motion") or {}).get("personality"),
+                "finishing": identity.get("finishing"),
+                "color_arc_note": identity.get("color_arc_note"),
+                "image_art_direction": identity.get("image_art_direction"),
+            },
+            "creative_concept": concept,
+            "user_note": str(note)[:800],
+        }, ensure_ascii=False)
+        text, _usage = client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=0.5, max_tokens=600, response_format={"type": "json_object"},
+        )
+        s, e = text.find("{"), text.rfind("}")
+        if s < 0 or e <= s:
+            raise RuntimeError("identity revision returned no JSON")
+        raw = json.loads(text[s:e + 1])
+        revised = _di.normalize_design_identity(
+            raw,
+            mode="marketing",
+            brand_fonts_locked=locked,
+            brand_heading=typ.get("display") or "",
+            brand_body=typ.get("body") or "",
+        )
+        # Keep the styleframe only when the visual anchor still matches.
+        same_look = (
+            revised.get("image_art_direction") == identity.get("image_art_direction")
+            and (revised.get("typography") or {}).get("pairing") == typ.get("pairing")
+        )
+        revised["styleframe_url"] = identity.get("styleframe_url") if same_look else None
+        return revised
 
     def _revise_concept_with_note(self, client, concept, note, source_request):
         """One LLM call: revise the creative concept fields per the user's note."""
@@ -2966,28 +3090,81 @@ class VideoGenerationService:
                             if _attributed_model and "gemini" in _attributed_model.lower():
                                 provider = ApiProvider.GEMINI
                                 
-                            # Deduct for LLM tokens (video request type)
+                            # Deduct for LLM tokens (video request type).
+                            # Phase C: the html stage is genuinely MULTI-model
+                            # now (hero-shot escalation + best-of-N candidates
+                            # on the hero model, regens on pinned vision
+                            # models) — one dominant-model row priced ALL
+                            # tokens at a single multiplier, systematically
+                            # under-billing frontier tokens on long videos and
+                            # over-billing flash tokens on short ones. When the
+                            # breakdown shows multiple LLM models, deduct one
+                            # row per model with its own subtotals; leftover
+                            # tokens the breakdown didn't capture go on the
+                            # dominant model's row.
                             if has_tokens:
-                                token_service.record_usage_and_deduct_credits(
-                                    api_provider=provider,
-                                    prompt_tokens=usage.get("prompt_tokens", 0),
-                                    completion_tokens=usage.get("completion_tokens", 0),
-                                    total_tokens=usage.get("total_tokens", 0),
-                                    request_type=RequestType.VIDEO,
-                                    institute_id=institute_id,
-                                    user_id=user_id,
-                                    model=_attributed_model,
-                                    metadata={
-                                        "video_id": video_id,
-                                        "image_count": usage.get("image_count", 0),
-                                        "stage": stage_pipeline_name,
-                                        "attributed_model_source": (
-                                            "cost_breakdown" if _executed_model else "resolved_model"
-                                        ),
-                                    },
-                                    batch_id=video_id,
+                                _split = _llm_token_split_from_breakdown(
+                                    outputs.get("cost_breakdown")
                                 )
-                                logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
+                                if len(_split) >= 2:
+                                    _u_pt = int(usage.get("prompt_tokens", 0) or 0)
+                                    _u_ct = int(usage.get("completion_tokens", 0) or 0)
+                                    _s_pt = sum(v[0] for v in _split.values())
+                                    _s_ct = sum(v[1] for v in _split.values())
+                                    _dom = _attributed_model
+                                    if _dom not in _split:
+                                        _dom = max(_split, key=lambda m: sum(_split[m]))
+                                    _rp, _rc = max(0, _u_pt - _s_pt), max(0, _u_ct - _s_ct)
+                                    if _rp or _rc:
+                                        _split[_dom] = (_split[_dom][0] + _rp, _split[_dom][1] + _rc)
+                                    for _m, (_pt, _ct) in _split.items():
+                                        if _pt + _ct <= 0:
+                                            continue
+                                        token_service.record_usage_and_deduct_credits(
+                                            api_provider=(
+                                                ApiProvider.GEMINI if "gemini" in _m.lower() else provider
+                                            ),
+                                            prompt_tokens=_pt,
+                                            completion_tokens=_ct,
+                                            total_tokens=_pt + _ct,
+                                            request_type=RequestType.VIDEO,
+                                            institute_id=institute_id,
+                                            user_id=user_id,
+                                            model=_m,
+                                            metadata={
+                                                "video_id": video_id,
+                                                "image_count": usage.get("image_count", 0),
+                                                "stage": stage_pipeline_name,
+                                                "attributed_model_source": "cost_breakdown_split",
+                                            },
+                                            batch_id=video_id,
+                                        )
+                                    logger.info(
+                                        f"[VideoGenService] Recorded per-model token usage for stage "
+                                        f"{stage_pipeline_name}: {len(_split)} model row(s), "
+                                        f"{usage.get('total_tokens')} tokens total"
+                                    )
+                                else:
+                                    token_service.record_usage_and_deduct_credits(
+                                        api_provider=provider,
+                                        prompt_tokens=usage.get("prompt_tokens", 0),
+                                        completion_tokens=usage.get("completion_tokens", 0),
+                                        total_tokens=usage.get("total_tokens", 0),
+                                        request_type=RequestType.VIDEO,
+                                        institute_id=institute_id,
+                                        user_id=user_id,
+                                        model=_attributed_model,
+                                        metadata={
+                                            "video_id": video_id,
+                                            "image_count": usage.get("image_count", 0),
+                                            "stage": stage_pipeline_name,
+                                            "attributed_model_source": (
+                                                "cost_breakdown" if _executed_model else "resolved_model"
+                                            ),
+                                        },
+                                        batch_id=video_id,
+                                    )
+                                    logger.info(f"[VideoGenService] Recorded token usage for stage {stage_pipeline_name}: {usage.get('total_tokens')} tokens")
 
                             # Deduct separately for images generated in this stage
                             _image_count = usage.get("image_count", 0)

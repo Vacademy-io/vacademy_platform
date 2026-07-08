@@ -374,6 +374,31 @@ def _get_fallback_models() -> List[ModelInfo]:
             speed_score=3,
             description="Anthropic's most capable model — highest quality",
         ),
+        # Fallback pricing row for the concept/hero model used by the video
+        # tiers (QUALITY_TIERS concept_model / hero_shot_model). get_model_by_id
+        # is exact-match — without this row the best-of-N cost cap and credit
+        # attribution priced Opus 4.8 tokens as unknown/free when the DB
+        # registry was unavailable.
+        ModelInfo(
+            id="anthropic/claude-opus-4-8",
+            name="Claude Opus 4.8",
+            provider="Anthropic",
+            category="general",
+            tier="ultra",
+            is_free=False,
+            credit_multiplier=5.0,
+            input_price_per_1m=15.0,
+            output_price_per_1m=75.0,
+            max_tokens=32000,
+            context_window=200000,
+            supports_streaming=True,
+            supports_images=True,
+            supports_function_calling=True,
+            supports_json_mode=True,
+            quality_score=5,
+            speed_score=3,
+            description="Anthropic's most capable model — highest quality",
+        ),
     ]
 
 

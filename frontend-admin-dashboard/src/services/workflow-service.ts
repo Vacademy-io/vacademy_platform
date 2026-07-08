@@ -16,6 +16,8 @@ import {
     WorkflowExecutionLogDTO,
     ExecutionSummary,
     EnrollmentWorkflowRun,
+    AiDraftRequest,
+    AiDraftResponse,
 } from '@/types/workflow/workflow-types';
 import { queryOptions } from '@tanstack/react-query';
 
@@ -239,6 +241,22 @@ export const validateWorkflow = async (
         method: 'POST',
         url: `${WORKFLOW_SERVICE_BASE}/validate`,
         data: dto,
+    });
+    return response.data;
+};
+
+/**
+ * AI-assisted drafting: turn a natural-language goal into a builder-shaped workflow draft
+ * (see WORKFLOW_AI_ASSIST_DESIGN.md). The draft is NOT persisted — the caller loads it into
+ * the builder canvas for review, then publishes via createWorkflow.
+ */
+export const draftWorkflowWithAi = async (
+    request: AiDraftRequest
+): Promise<AiDraftResponse> => {
+    const response = await authenticatedAxiosInstance<AiDraftResponse>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}/ai-draft`,
+        data: request,
     });
     return response.data;
 };

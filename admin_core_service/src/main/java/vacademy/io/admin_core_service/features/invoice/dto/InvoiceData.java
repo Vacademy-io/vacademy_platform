@@ -87,6 +87,15 @@ public class InvoiceData {
      * are configured (the legacy single-rate tax path is used instead).
      */
     private List<Map<String, Object>> aggregatedTaxComponents;
+
+    /**
+     * Remembered per-user billing details (from invoice_billing_profile), keyed by
+     * placeholder name (user_name, user_email, user_address, user_tax_info,
+     * place_of_supply). When present, these seed the editable DEFAULTS for the billed
+     * user in the preview — taking precedence over the raw auth-service user record —
+     * so the admin doesn't re-type them. Null when the user has no saved profile.
+     */
+    private Map<String, String> billingProfile;
 }
 
 

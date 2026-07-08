@@ -1,6 +1,6 @@
 {
   "name": "Shiksha_Nation",
-  "version": "1.0.9",
+  "version": "1.0.11",
   "description": "AI-Powered Learning Platform",
   "author": {
     "name": "Shiksha Nation",
@@ -24,6 +24,7 @@
     "build:win:production:direct": "tsc && electron-rebuild && npx electron-builder build --win -c ./electron-builder.production.json",
     "build:win:asar": "tsc && electron-rebuild && npx electron-builder build --win -c ./electron-builder.production-asar.json",
     "build:win:ssdc": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File ./build-windows-production.ps1' : './build-windows-production.sh', {stdio: 'inherit'})\"",
+    "build:mac:ssdc": "./build-mac-production.sh",
     "build:win:ssdc:legacy": "./build-windows.sh",
     "build:win:ssdc:asar": "./build-windows-asar-pnpm.sh",
     "build:win:ssdc:fast": "./build-windows-fast.sh",

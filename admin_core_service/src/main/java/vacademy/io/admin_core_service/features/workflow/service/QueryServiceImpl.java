@@ -1616,26 +1616,23 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private Map<String, Object> fetchExpiringMemberships(Map<String, Object> params) {
         try {
             String instituteId = (String) params.get("instituteId");
-            if (instituteId == null) return Map.of("error", "instituteId is required");
+            if (instituteId == null || instituteId.isBlank()) return Map.of("error", "instituteId is required");
 
             int daysUntilExpiry = 7; // default
             Object daysParam = params.get("daysUntilExpiry");
+            if (daysParam == null) daysParam = params.get("daysAhead");
             if (daysParam != null) {
                 try { daysUntilExpiry = Integer.parseInt(String.valueOf(daysParam)); }
                 catch (NumberFormatException e) { log.warn("Invalid daysUntilExpiry: {}", daysParam); }
             }
 
-            // Find UserPlans that are active and expiring within N days
-            // Expiry = createdAt + validityInDays (from PaymentPlan)
-            List<UserPlan> allPlans = userPlanRepository.findAll();
-            LocalDateTime now = LocalDateTime.now();
-            int finalDaysUntilExpiry = daysUntilExpiry;
-
-            // Collect user IDs for batch email lookup
-            List<UserPlan> activePlans = allPlans.stream()
-                    .filter(plan -> "ACTIVE".equalsIgnoreCase(plan.getStatus()))
-                    .filter(plan -> plan.getCreatedAt() != null)
-                    .collect(Collectors.toList());
+            // Institute-scoped + real expiry window (end_date). Previously this did a
+            // findAll() across ALL tenants with no institute or expiry filter — a
+            // cross-tenant data leak. Never load another institute's plans here.
+            java.util.Date now = new java.util.Date();
+            java.util.Date cutoff = new java.util.Date(now.getTime() + (long) daysUntilExpiry * 24L * 60L * 60L * 1000L);
+            List<UserPlan> activePlans = userPlanRepository
+                    .findActivePlansExpiringSoonByInstitute(instituteId, now, cutoff);
 
             // Batch fetch user details for email/name
             List<String> userIds = activePlans.stream()
@@ -1656,7 +1653,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         map.put("userPlanId", plan.getId());
                         map.put("userId", plan.getUserId());
                         map.put("status", plan.getStatus());
-                        map.put("createdAt", plan.getCreatedAt().toString());
+                        map.put("instituteId", instituteId);
+                        if (plan.getCreatedAt() != null) map.put("createdAt", plan.getCreatedAt().toString());
+                        if (plan.getEndDate() != null) {
+                            map.put("endDate", plan.getEndDate().toString());
+                            map.put("expiryDate", plan.getEndDate().toString());
+                        }
                         // Add user contact info for email sending
                         UserDTO user = userMap.get(plan.getUserId());
                         map.put("email", user != null && user.getEmail() != null ? user.getEmail() : "");
@@ -1668,7 +1670,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .filter(map -> map.get("email") != null && !((String) map.get("email")).isEmpty())
                     .collect(Collectors.toList());
 
-            return Map.of("expiringMemberships", expiringList, "daysUntilExpiry", finalDaysUntilExpiry);
+            return Map.of("expiringMemberships", expiringList,
+                    "daysUntilExpiry", daysUntilExpiry,
+                    "expiringCount", expiringList.size(),
+                    "instituteId", instituteId);
         } catch (Exception e) {
             log.error("Error in fetchExpiringMemberships", e);
             return Map.of("error", e.getMessage());

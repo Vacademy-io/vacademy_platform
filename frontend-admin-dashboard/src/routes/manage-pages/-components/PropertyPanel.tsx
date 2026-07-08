@@ -4,7 +4,20 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings, Copy, ArrowUp, ArrowDown, LayoutGrid, Clipboard, ClipboardPaste, Anchor } from 'lucide-react';
+import {
+    Plus,
+    Trash as Trash2,
+    CaretDown as ChevronDown,
+    CaretUp as ChevronUp,
+    Gear as Settings,
+    Copy,
+    ArrowUp,
+    ArrowDown,
+    SquaresFour as LayoutGrid,
+    Clipboard,
+    ClipboardText as ClipboardPaste,
+    Anchor,
+} from '@phosphor-icons/react';
 import { useState } from 'react';
 import { ColorPickerField } from './ColorPickerField';
 import { ImageUploadField } from './ImageUploadField';
@@ -188,7 +201,7 @@ export const PropertyPanel = () => {
                         className="h-7 text-xs"
                     />
                     {component.anchorId && (
-                        <p className="text-[10px] text-gray-400">Link to this: <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
+                        <p className="text-caption text-gray-400">Link to this: <code className="rounded bg-gray-100 px-1">#{component.anchorId}</code></p>
                     )}
                 </div>
 
@@ -264,7 +277,7 @@ export const PropertyPanel = () => {
                     {/* Page Background Color */}
                     <ColorPickerField
                         label="Page Background Color"
-                        value={page.backgroundColor || '#ffffff'}
+                        value={page.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                         onChange={(c) => updatePageBackgroundColor(page.id, c)}
                     />
 
@@ -476,15 +489,15 @@ const GlobalSettingsEditor = ({
                     <div className="grid grid-cols-3 gap-2">
                         {(
                             [
-                                { key: 'default', label: 'Default',  color: '#3B82F6' },
-                                { key: 'ocean',   label: 'Ocean',    color: '#0EA5E9' },
-                                { key: 'forest',  label: 'Forest',   color: '#16A34A' },
-                                { key: 'sunset',  label: 'Sunset',   color: '#F97316' },
-                                { key: 'midnight',label: 'Midnight', color: '#7C3AED' },
-                                { key: 'rose',    label: 'Rose',     color: '#E11D48' },
-                                { key: 'violet',  label: 'Violet',   color: '#8B5CF6' },
-                                { key: 'amber',   label: 'Amber',    color: '#D97706' },
-                                { key: 'slate',   label: 'Slate',    color: '#334155' },
+                                { key: 'default', label: 'Default',  color: '#3B82F6' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'ocean',   label: 'Ocean',    color: '#0EA5E9' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'forest',  label: 'Forest',   color: '#16A34A' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'sunset',  label: 'Sunset',   color: '#F97316' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'midnight',label: 'Midnight', color: '#7C3AED' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'rose',    label: 'Rose',     color: '#E11D48' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'violet',  label: 'Violet',   color: '#8B5CF6' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'amber',   label: 'Amber',    color: '#D97706' }, // design-lint-ignore: color-editor swatch/seed value
+                                { key: 'slate',   label: 'Slate',    color: '#334155' }, // design-lint-ignore: color-editor swatch/seed value
                             ] as const
                         ).map(({ key, label, color }) => {
                             const isActive = (gs.theme?.preset || 'default') === key;
@@ -494,7 +507,7 @@ const GlobalSettingsEditor = ({
                                     type="button"
                                     title={label}
                                     onClick={() => updateField('theme.preset', key)}
-                                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 text-[10px] font-medium transition-all ${
+                                    className={`flex flex-col items-center gap-1.5 rounded-lg border-2 p-2 text-caption font-medium transition-all ${
                                         isActive
                                             ? 'border-gray-800 bg-white shadow-sm'
                                             : 'border-transparent hover:border-gray-300'
@@ -519,7 +532,7 @@ const GlobalSettingsEditor = ({
                             <button
                                 type="button"
                                 onClick={() => updateField('theme.primaryColor', undefined)}
-                                className="text-[10px] text-gray-400 hover:text-red-500"
+                                className="text-caption text-gray-400 hover:text-red-500"
                             >
                                 Clear
                             </button>
@@ -528,7 +541,7 @@ const GlobalSettingsEditor = ({
                     <div className="flex items-center gap-2">
                         <input
                             type="color"
-                            value={gs.theme?.primaryColor || '#3B82F6'}
+                            value={gs.theme?.primaryColor || '#3B82F6'} // design-lint-ignore: color-editor swatch/seed value
                             onChange={(e) => updateField('theme.primaryColor', e.target.value)}
                             className="h-8 w-10 cursor-pointer rounded border bg-white p-0.5"
                         />
@@ -536,7 +549,7 @@ const GlobalSettingsEditor = ({
                             {gs.theme?.primaryColor || 'Using preset'}
                         </span>
                     </div>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-caption text-gray-400">
                         Overrides the preset color with a custom brand color.
                     </p>
                 </div>
@@ -558,7 +571,7 @@ const GlobalSettingsEditor = ({
                                     key={key}
                                     type="button"
                                     onClick={() => updateField('theme.borderRadius', key)}
-                                    className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border-2 py-2 text-[10px] font-medium transition-all ${
+                                    className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border-2 py-2 text-caption font-medium transition-all ${
                                         isActive
                                             ? 'border-gray-800 bg-white shadow-sm'
                                             : 'border-transparent bg-white hover:border-gray-300'
@@ -593,7 +606,108 @@ const GlobalSettingsEditor = ({
                                     key={key}
                                     type="button"
                                     onClick={() => updateField('theme.headingScale', key)}
-                                    className={`flex-1 rounded-lg border-2 py-1.5 text-[10px] font-medium transition-all ${
+                                    className={`flex-1 rounded-lg border-2 py-1.5 text-caption font-medium transition-all ${
+                                        isActive
+                                            ? 'border-gray-800 bg-white shadow-sm'
+                                            : 'border-transparent bg-white hover:border-gray-300'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Atmosphere — page canvas treatment (data-catalogue-atmosphere) */}
+                <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Atmosphere</Label>
+                    <div className="flex gap-2">
+                        {(
+                            [
+                                { key: 'flat',   label: 'Flat' },
+                                { key: 'soft',   label: 'Soft' },
+                                { key: 'mesh',   label: 'Mesh' },
+                                { key: 'aurora', label: 'Aurora' },
+                            ] as const
+                        ).map(({ key, label }) => {
+                            const isActive = (gs.theme?.atmosphere?.canvas || 'flat') === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() =>
+                                        updateField('theme.atmosphere', {
+                                            ...(gs.theme?.atmosphere || {}),
+                                            canvas: key,
+                                        })
+                                    }
+                                    className={`flex-1 rounded-lg border-2 py-1.5 text-caption font-medium transition-all ${
+                                        isActive
+                                            ? 'border-gray-800 bg-white shadow-sm'
+                                            : 'border-transparent bg-white hover:border-gray-300'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {(gs.theme?.atmosphere?.canvas || 'flat') !== 'flat' && (
+                        <div className="flex gap-2">
+                            {(
+                                [
+                                    { key: 'subtle', label: 'Subtle' },
+                                    { key: 'medium', label: 'Medium' },
+                                    { key: 'bold',   label: 'Bold' },
+                                ] as const
+                            ).map(({ key, label }) => {
+                                const isActive = (gs.theme?.atmosphere?.intensity || 'subtle') === key;
+                                return (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        onClick={() =>
+                                            updateField('theme.atmosphere', {
+                                                ...(gs.theme?.atmosphere || { canvas: 'mesh' }),
+                                                intensity: key,
+                                            })
+                                        }
+                                        className={`flex-1 rounded-lg border-2 py-1 text-caption font-medium transition-all ${
+                                            isActive
+                                                ? 'border-gray-800 bg-white shadow-sm'
+                                                : 'border-transparent bg-white hover:border-gray-300'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* Motion personality — entrance duration/easing site-wide */}
+                <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Motion</Label>
+                    <div className="flex gap-2">
+                        {(
+                            [
+                                { key: 'none',     label: 'None' },
+                                { key: 'calm',     label: 'Calm' },
+                                { key: 'balanced', label: 'Balanced' },
+                                { key: 'dynamic',  label: 'Dynamic' },
+                            ] as const
+                        ).map(({ key, label }) => {
+                            // Unset ≠ Balanced: legacy configs omit the attribute and keep
+                            // the :root motion fallbacks, so no button is pre-lit.
+                            const isActive = gs.motion?.personality === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => updateField('motion', { personality: key })}
+                                    className={`flex-1 rounded-lg border-2 py-1.5 text-caption font-medium transition-all ${
                                         isActive
                                             ? 'border-gray-800 bg-white shadow-sm'
                                             : 'border-transparent bg-white hover:border-gray-300'
@@ -782,7 +896,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         teamSection: 'Team', announcementFeed: 'Announcements', imageGallery: 'Image Gallery',
         videoEmbed: 'Video', buyRentSection: 'Buy/Rent', policyRenderer: 'Policy',
         cartComponent: 'Cart', courseDetails: 'Course Details', bookDetails: 'Book Details',
-        spacer: 'Spacer', tabsAccordion: 'Tabs/Accordion', logoCloud: 'Logo Cloud',
+        spacer: 'Spacer', tabsAccordion: 'Tabs/Accordion', logoCloud: 'Logo Cloud', trustChip: 'Trust Chip',
         mapEmbed: 'Map', countdownTimer: 'Countdown', textBlock: 'Text Block',
         featureGrid: 'Feature Grid', imageBlock: 'Image', buttonBlock: 'Button',
         newsletterSignup: 'Newsletter', stepsProcess: 'Steps/Process',
@@ -848,7 +962,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                     <div className="mt-1 flex gap-1.5">
                         {slots.map((_: any, i: number) => (
                             <div key={i} className="flex-1">
-                                <Label className="text-[10px] text-gray-400">Col {i + 1}</Label>
+                                <Label className="text-caption text-gray-400">Col {i + 1}</Label>
                                 <select
                                     value={columnWidths[i] || defaultWidth}
                                     onChange={(e) => {
@@ -1046,6 +1160,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
         case 'columnLayout':
             return <ColumnLayoutEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
 
+        case 'trustChip':
+            return <TrustChipEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'spacer':
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
@@ -1591,13 +1707,13 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
 
             <ColorPickerField
                 label="Background Color"
-                value={props.backgroundColor || '#ffffff'}
+                value={props.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('backgroundColor', c)}
             />
 
             <ColorPickerField
                 label="Text Color"
-                value={props.textColor || '#000000'}
+                value={props.textColor || '#000000'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('textColor', c)}
             />
 
@@ -1686,7 +1802,7 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                         </Button>
                     </div>
                 </div>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-caption text-gray-400">
                     Buttons shown on the right side of the header (e.g. Login, Sign Up). A
                     &ldquo;Get Started&rdquo; button opens the enrollment / lead-collection form
                     (requires lead collection to be enabled in catalogue settings).
@@ -2044,9 +2160,221 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
 
             <ColorPickerField
                 label="Background Color"
-                value={props.backgroundColor || '#ffffff'}
+                value={props.backgroundColor || '#ffffff'} // design-lint-ignore: color-editor swatch/seed value
                 onChange={(c) => updateProp('backgroundColor', c)}
             />
+
+            {/* ── Eyebrow (badge above the title) ── */}
+            <div className="space-y-2 rounded border bg-gray-50 p-3">
+                <h5 className="text-xs font-semibold">Eyebrow Badge</h5>
+                <Input
+                    placeholder="e.g. COHORT 4 · STARTS JULY"
+                    value={props.eyebrow?.text || ''}
+                    onChange={(e) =>
+                        updateProp(
+                            'eyebrow',
+                            e.target.value
+                                ? { ...(props.eyebrow || {}), text: e.target.value }
+                                : undefined,
+                        )
+                    }
+                />
+                {props.eyebrow?.text && (
+                    <select
+                        className="w-full rounded border px-3 py-2 text-sm"
+                        value={props.eyebrow?.style || 'badge'}
+                        onChange={(e) => updateProp('eyebrow', { ...props.eyebrow, style: e.target.value })}
+                    >
+                        <option value="badge">Badge (pill + live dot)</option>
+                        <option value="plain">Plain (accent label)</option>
+                    </select>
+                )}
+            </div>
+
+            {/* ── Stat chips row ── */}
+            <div className="space-y-2 rounded border bg-gray-50 p-3">
+                <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-semibold">Stat Chips</h5>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={(props.statChips || []).length >= 4}
+                        onClick={() =>
+                            updateProp('statChips', [
+                                ...(props.statChips || []),
+                                { value: '', label: '' },
+                            ])
+                        }
+                    >
+                        + Add
+                    </Button>
+                </div>
+                <p className="text-caption text-gray-400">Learner shows up to 4 chips.</p>
+                {(props.statChips || []).map((chip: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2">
+                        <Input
+                            className="flex-1"
+                            placeholder="20,000+"
+                            value={chip.value || ''}
+                            onChange={(e) => {
+                                const next = [...(props.statChips || [])];
+                                next[i] = { ...next[i], value: e.target.value };
+                                updateProp('statChips', next);
+                            }}
+                        />
+                        <Input
+                            className="flex-1"
+                            placeholder="Engineers taught"
+                            value={chip.label || ''}
+                            onChange={(e) => {
+                                const next = [...(props.statChips || [])];
+                                next[i] = { ...next[i], label: e.target.value };
+                                updateProp('statChips', next);
+                            }}
+                        />
+                        <button
+                            type="button"
+                            aria-label="Remove stat chip"
+                            className="text-xs text-red-500 hover:text-red-700"
+                            onClick={() =>
+                                updateProp(
+                                    'statChips',
+                                    (props.statChips || []).filter((_: any, j: number) => j !== i),
+                                )
+                            }
+                        >
+                            ✕
+                        </button>
+                    </div>
+                ))}
+            </div>
+
+            {/* ── Trust chip ── */}
+            <div className="space-y-2 rounded border bg-gray-50 p-3">
+                <h5 className="text-xs font-semibold">Trust Chip</h5>
+                <Input
+                    placeholder='e.g. "Trusted by 20,000+ students"'
+                    value={props.trust?.text || ''}
+                    onChange={(e) =>
+                        updateProp(
+                            'trust',
+                            e.target.value || props.trust?.rating
+                                ? { ...(props.trust || {}), text: e.target.value }
+                                : undefined,
+                        )
+                    }
+                />
+                <div className="flex items-center gap-2">
+                    <Label className="text-xs">Rating (0 = off)</Label>
+                    <Input
+                        type="number"
+                        min={0}
+                        max={5}
+                        step={0.1}
+                        className="w-24"
+                        value={props.trust?.rating ?? 0}
+                        onChange={(e) => {
+                            const rating = Math.min(5, Math.max(0, Number(e.target.value) || 0));
+                            updateProp('trust', {
+                                ...(props.trust || {}),
+                                rating: rating > 0 ? rating : undefined,
+                            });
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* ── CTA buttons (multi) ── */}
+            <div className="space-y-2 rounded border bg-gray-50 p-3">
+                <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-semibold">CTA Buttons (multi)</h5>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        disabled={(props.left?.buttons || []).length >= 3}
+                        onClick={() =>
+                            updateLeft('buttons', [
+                                ...(props.left?.buttons || []),
+                                { text: '', action: 'navigate', target: '', variant: (props.left?.buttons || []).length === 0 ? 'primary' : 'secondary' },
+                            ])
+                        }
+                    >
+                        + Add
+                    </Button>
+                </div>
+                <p className="text-caption text-gray-400">
+                    When any button has text here, it replaces the single legacy button below. Learner shows up to 3.
+                </p>
+                {(props.left?.buttons || []).map((b: any, i: number) => (
+                    <div key={i} className="space-y-1 rounded border bg-white p-2">
+                        <div className="flex items-center gap-2">
+                            <Input
+                                className="flex-1"
+                                placeholder="Button text"
+                                value={b.text || ''}
+                                onChange={(e) => {
+                                    const next = [...(props.left?.buttons || [])];
+                                    next[i] = { ...next[i], text: e.target.value };
+                                    updateLeft('buttons', next);
+                                }}
+                            />
+                            <select
+                                className="rounded border px-2 py-1.5 text-xs"
+                                value={b.variant || 'secondary'}
+                                onChange={(e) => {
+                                    const next = [...(props.left?.buttons || [])];
+                                    next[i] = { ...next[i], variant: e.target.value };
+                                    updateLeft('buttons', next);
+                                }}
+                            >
+                                <option value="primary">Primary</option>
+                                <option value="secondary">Secondary</option>
+                            </select>
+                            <button
+                                type="button"
+                                aria-label="Remove button"
+                                className="text-xs text-red-500 hover:text-red-700"
+                                onClick={() =>
+                                    updateLeft(
+                                        'buttons',
+                                        (props.left?.buttons || []).filter((_: any, j: number) => j !== i),
+                                    )
+                                }
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <select
+                                className="rounded border px-2 py-1.5 text-xs"
+                                value={b.action || 'navigate'}
+                                onChange={(e) => {
+                                    const next = [...(props.left?.buttons || [])];
+                                    next[i] = { ...next[i], action: e.target.value };
+                                    updateLeft('buttons', next);
+                                }}
+                            >
+                                <option value="navigate">Navigate</option>
+                                <option value="openLeadCollection">Open lead form</option>
+                            </select>
+                            {(b.action || 'navigate') === 'navigate' && (
+                                <Input
+                                    className="flex-1"
+                                    placeholder="Target route / URL"
+                                    value={b.target || ''}
+                                    onChange={(e) => {
+                                        const next = [...(props.left?.buttons || [])];
+                                        next[i] = { ...next[i], target: e.target.value };
+                                        updateLeft('buttons', next);
+                                    }}
+                                />
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
 
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">Left Content</h5>
@@ -2429,6 +2757,33 @@ const TestimonialsEditor = ({ component, pageId, updateComponent }: any) => {
                             value={item.avatar}
                             onChange={(e) => updateTestimonial(index, 'avatar', e.target.value)}
                         />
+                        <div className="flex items-center gap-3">
+                            <Label className="text-xs">Rating (0 = off)</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                max={5}
+                                step={1}
+                                className="w-20"
+                                value={item.rating ?? 0}
+                                onChange={(e) => {
+                                    const next = [...(props.testimonials || [])];
+                                    // Integer stars, clamped — the live card rounds and caps at 5
+                                    const r = Math.round(Math.min(5, Math.max(0, Number(e.target.value) || 0)));
+                                    next[index] = { ...next[index], rating: r > 0 ? r : undefined };
+                                    updateProp('testimonials', next);
+                                }}
+                            />
+                            <Label className="text-xs">Featured</Label>
+                            <Switch
+                                checked={item.highlight || false}
+                                onCheckedChange={(c) => {
+                                    const next = [...(props.testimonials || [])];
+                                    next[index] = { ...next[index], highlight: c || undefined };
+                                    updateProp('testimonials', next);
+                                }}
+                            />
+                        </div>
                     </div>
                 ))}
             </div>
@@ -2531,7 +2886,7 @@ const FaqSectionEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label>Subheading</Label>
                 <Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} />
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F9FAFB'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F9FAFB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div className="border-t pt-4">
                 <div className="mb-3 flex items-center justify-between">
                     <Label>Questions ({props.faqs?.length || 0})</Label>
@@ -2619,8 +2974,8 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                     <option value="split">Split (text left, button right)</option>
                 </select>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6'} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
             <div className="space-y-3 rounded border bg-gray-50 p-3">
                 <h5 className="text-xs font-semibold">Button</h5>
                 <div className="flex items-center justify-between">
@@ -2715,7 +3070,7 @@ const ContactFormEditor = ({ component, pageId, updateComponent }: any) => {
             <div className="space-y-2"><Label>Subheading</Label><Input value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} /></div>
             <div className="space-y-2"><Label>Submit Button Label</Label><Input value={props.submitLabel || 'Send Message'} onChange={(e) => updateProp('submitLabel', e.target.value)} /></div>
             <div className="space-y-2"><Label>Success Message</Label><Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} /></div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
                 Form submissions are sent as enquiries. Configure the Enquiry setting in Global Settings.
             </div>
@@ -2892,7 +3247,7 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex flex-wrap gap-1 mt-1">
                     {['16px', '24px', '32px', '48px', '64px', '80px', '120px'].map((v) => (
                         <button key={v} onClick={() => updateProp('height', v)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.height === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{v}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.height === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{v}</button>
                     ))}
                 </div>
             </div>
@@ -2907,17 +3262,17 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
                         <div className="flex gap-1 mt-1">
                             {['solid', 'dashed', 'dotted'].map((s) => (
                                 <button key={s} onClick={() => updateProp('dividerStyle', s)}
-                                    className={`rounded px-2 py-1 text-[11px] font-medium capitalize ${props.dividerStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.dividerStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
                             ))}
                         </div>
                     </div>
-                    <ColorPickerField label="Divider Color" value={props.dividerColor || '#E5E7EB'} onChange={(c) => updateProp('dividerColor', c)} />
+                    <ColorPickerField label="Divider Color" value={props.dividerColor || '#E5E7EB' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('dividerColor', c)} />
                     <div>
                         <Label className="text-xs">Divider Width</Label>
                         <div className="flex gap-1 mt-1">
                             {['1px', '2px', '3px', '4px'].map((w) => (
                                 <button key={w} onClick={() => updateProp('dividerWidth', w)}
-                                    className={`rounded px-2 py-1 text-[11px] font-medium ${props.dividerWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                                    className={`rounded px-2 py-1 text-caption font-medium ${props.dividerWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
                             ))}
                         </div>
                     </div>
@@ -2926,7 +3281,7 @@ const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
                         <div className="flex gap-1 mt-1">
                             {['40%', '60%', '80%', '100%'].map((w) => (
                                 <button key={w} onClick={() => updateProp('maxWidth', w)}
-                                    className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                                    className={`rounded px-2 py-1 text-caption font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
                             ))}
                         </div>
                     </div>
@@ -2960,17 +3315,38 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['tabs', 'accordion'].map((m) => (
                         <button key={m} onClick={() => updateProp('mode', m)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.mode === m ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{m}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.mode === m ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{m}</button>
                     ))}
                 </div>
             </div>
             {props.mode === 'accordion' && (
-                <div className="flex items-center justify-between">
-                    <Label className="text-xs">Allow Multiple Open</Label>
-                    <Switch checked={props.allowMultiple || false} onCheckedChange={(c) => updateProp('allowMultiple', c)} />
-                </div>
+                <>
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs">Allow Multiple Open</Label>
+                        <Switch checked={props.allowMultiple || false} onCheckedChange={(c) => updateProp('allowMultiple', c)} />
+                    </div>
+                    <div>
+                        <Label className="text-xs">Accordion Style</Label>
+                        <div className="flex gap-1 mt-1">
+                            {[
+                                { key: 'plain', label: 'Plain' },
+                                { key: 'boxed', label: 'Boxed' },
+                                { key: 'split', label: 'Split + Panel' },
+                            ].map((v) => (
+                                <button key={v.key} onClick={() => updateProp('variant', v.key)}
+                                    className={`rounded px-3 py-1 text-caption font-medium ${(props.variant || 'plain') === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
+                            ))}
+                        </div>
+                        {(props.variant || 'plain') === 'split' && (
+                            <p className="mt-1 text-caption text-gray-400">
+                                Split shows the open item's panel on the right (desktop). Panels
+                                can hold nested components via JSON/templates; rich text renders otherwise.
+                            </p>
+                        )}
+                    </div>
+                </>
             )}
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
                     <Label className="text-xs font-medium">Items ({items.length})</Label>
@@ -2988,9 +3364,75 @@ const TabsAccordionEditor = ({ component, pageId, updateComponent }: any) => {
                             {expandedItem === i && (
                                 <div className="space-y-2">
                                     <Input value={item.title || ''} onChange={(e) => updateItem(i, 'title', e.target.value)} placeholder="Title" />
+                                    <div className="flex gap-2">
+                                        <Input className="flex-1" value={item.icon || ''} onChange={(e) => updateItem(i, 'icon', e.target.value)} placeholder="Icon (emoji or e.g. Rocket)" />
+                                        <Input className="flex-1" value={item.meta || ''} onChange={(e) => updateItem(i, 'meta', e.target.value)} placeholder="Meta (e.g. 6 lessons)" />
+                                    </div>
                                     <RichTextField label="Content" value={item.content || ''} onChange={(html) => updateItem(i, 'content', html)} />
                                 </div>
                             )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Trust Chip Editor ────────────────────────────────────────────────── */
+const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const avatars: string[] = props.avatars || [];
+
+    return (
+        <div className="space-y-4">
+            <Input
+                value={props.text || ''}
+                onChange={(e) => updateProp('text', e.target.value)}
+                placeholder='e.g. "Trusted by 10,000+ learners"'
+            />
+            <div className="flex items-center gap-3">
+                <Label className="text-xs">Rating (0 = off)</Label>
+                <Input
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.1}
+                    className="w-24"
+                    value={props.rating ?? 0}
+                    onChange={(e) => {
+                        const r = Math.min(5, Math.max(0, Number(e.target.value) || 0));
+                        updateProp('rating', r > 0 ? r : undefined);
+                    }}
+                />
+            </div>
+            <div>
+                <Label className="text-xs">Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['left', 'center', 'right'].map((a) => (
+                        <button key={a} onClick={() => updateProp('alignment', a)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.alignment || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <Label className="text-xs font-medium">Avatars ({avatars.length}/4)</Label>
+                    <Button variant="ghost" size="sm" disabled={avatars.length >= 4} onClick={() => updateProp('avatars', [...avatars, ''])} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                </div>
+                <div className="space-y-2">
+                    {avatars.map((src: string, i: number) => (
+                        <div key={i} className="flex items-center gap-2">
+                            <div className="flex-1">
+                                <ImageUploadField label="" value={src} onChange={(url) => {
+                                    const next = [...avatars];
+                                    next[i] = url;
+                                    updateProp('avatars', next);
+                                }} />
+                            </div>
+                            <Button variant="ghost" size="sm" onClick={() => updateProp('avatars', avatars.filter((_: string, j: number) => j !== i))} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
                     ))}
                 </div>
@@ -3024,7 +3466,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['grid', 'marquee'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                     ))}
                 </div>
             </div>
@@ -3033,7 +3475,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {[3, 4, 5, 6].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
                     ))}
                 </div>
             </div>
@@ -3041,6 +3483,48 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                 <Label className="text-xs">Grayscale</Label>
                 <Switch checked={props.grayscale !== false} onCheckedChange={(c) => updateProp('grayscale', c)} />
             </div>
+            <div>
+                <Label className="text-xs">Display</Label>
+                <div className="flex gap-1 mt-1">
+                    {[
+                        { key: 'logo', label: 'Logo' },
+                        { key: 'logo+label', label: 'Logo + Label' },
+                        { key: 'label-pill', label: 'Label Pills' },
+                    ].map((d) => (
+                        <button key={d.key} onClick={() => updateProp('display', d.key)}
+                            className={`rounded px-3 py-1 text-caption font-medium ${(props.display || 'logo') === d.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{d.label}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Tile</Label>
+                <div className="flex gap-1 mt-1">
+                    {['none', 'card', 'pill'].map((t) => (
+                        <button key={t} onClick={() => updateProp('tile', t)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.tile || 'none') === t ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{t}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Logo Height</Label>
+                <div className="flex gap-1 mt-1">
+                    {['sm', 'md', 'lg'].map((h) => (
+                        <button key={h} onClick={() => updateProp('logoHeight', h)}
+                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.logoHeight || 'md') === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{h}</button>
+                    ))}
+                </div>
+            </div>
+            {props.layout === 'marquee' && (
+                <div>
+                    <Label className="text-xs">Marquee Speed</Label>
+                    <div className="flex gap-1 mt-1">
+                        {['slow', 'medium', 'fast'].map((sp) => (
+                            <button key={sp} onClick={() => updateProp('marqueeSpeed', sp)}
+                                className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.marqueeSpeed || 'medium') === sp ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{sp}</button>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div>
                 <div className="flex items-center justify-between mb-2">
                     <Label className="text-xs font-medium">Logos ({logos.length})</Label>
@@ -3055,6 +3539,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                             </div>
                             <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} />
                             <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
+                            <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
                             <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
                         </div>
                     ))}
@@ -3085,7 +3570,7 @@ const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['300px', '400px', '500px', '600px'].map((h) => (
                         <button key={h} onClick={() => updateProp('height', h)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.height === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{h}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.height === h ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{h}</button>
                     ))}
                 </div>
             </div>
@@ -3094,7 +3579,7 @@ const MapEmbedEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['0', '4px', '8px', '16px', '24px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r || '0'}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r || '0'}</button>
                     ))}
                 </div>
             </div>
@@ -3127,12 +3612,12 @@ const CountdownTimerEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['cards', 'minimal'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#1E293B'} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#1E293B' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
         </div>
     );
 };
@@ -3155,7 +3640,7 @@ const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['600px', '800px', '1000px', '100%'].map((w) => (
                         <button key={w} onClick={() => updateProp('maxWidth', w)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{w}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{w}</button>
                     ))}
                 </div>
             </div>
@@ -3164,12 +3649,50 @@ const TextBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
                     ))}
                 </div>
             </div>
         </div>
     );
+};
+
+/* ─── List Field (raw-buffer editor for string[] props) ────────────────── */
+/* Parsing on every keystroke resets the input to the normalized join — a
+   trailing comma/newline/space gets stripped before the next item can be
+   typed. Buffer the raw text locally and commit the parsed array on blur. */
+const ListField = ({
+    value,
+    onCommit,
+    separator,
+    placeholder,
+    rows,
+}: {
+    value: string[] | undefined;
+    onCommit: (items: string[]) => void;
+    separator: 'comma' | 'newline';
+    placeholder?: string;
+    rows?: number;
+}) => {
+    const sep = separator === 'comma' ? ', ' : '\n';
+    const joined = (value || []).join(sep);
+    const [raw, setRaw] = useState<string | null>(null);
+    const commit = () => {
+        const text = raw ?? joined;
+        const items = text
+            .split(separator === 'comma' ? ',' : '\n')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        onCommit(items);
+        setRaw(null);
+    };
+    const shared = {
+        value: raw ?? joined,
+        onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setRaw(e.target.value),
+        onBlur: commit,
+        placeholder,
+    };
+    return separator === 'comma' ? <Input {...shared} /> : <Textarea {...shared} rows={rows ?? 3} />;
 };
 
 /* ─── Feature Grid Editor ──────────────────────────────────────────────── */
@@ -3198,16 +3721,25 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {[2, 3, 4].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium ${props.columns === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
                     ))}
                 </div>
             </div>
             <div>
                 <Label className="text-xs">Style</Label>
-                <div className="flex gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered'].map((s) => (
+                <div className="flex flex-wrap gap-1 mt-1">
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s.replace('-', ' ')}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Text Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['center', 'left'].map((a) => (
+                        <button key={a} onClick={() => updateProp('align', a)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
                     ))}
                 </div>
             </div>
@@ -3216,11 +3748,11 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['small', 'medium', 'large'].map((s) => (
                         <button key={s} onClick={() => updateProp('iconSize', s)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.iconSize === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.iconSize === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
                     <Label className="text-xs font-medium">Features ({features.length})</Label>
@@ -3238,8 +3770,35 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                             {expandedIdx === i && (
                                 <div className="space-y-2">
                                     <Input value={f.icon || ''} onChange={(e) => updateFeature(i, 'icon', e.target.value)} placeholder="Icon (emoji or text)" />
+                                    <select
+                                        className="w-full rounded border px-2 py-1.5 text-xs"
+                                        value={f.iconName || ''}
+                                        onChange={(e) => updateFeature(i, 'iconName', e.target.value || undefined)}
+                                    >
+                                        <option value="">Icon library: none (use emoji above)</option>
+                                        {['GraduationCap','Rocket','Target','UsersThree','Code','Brain','Trophy','Lightbulb','ShieldCheck','ChartLineUp','Clock','Star','BookOpen','Certificate','ChatsCircle','Wrench','Sparkle','Medal','Briefcase','Globe'].map((n) => (
+                                            <option key={n} value={n}>{n}</option>
+                                        ))}
+                                    </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder="Title" />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                    <ListField
+                                        value={f.chips}
+                                        onCommit={(items) => updateFeature(i, 'chips', items)}
+                                        separator="comma"
+                                        placeholder="Chips (comma-separated, e.g. Beginner, Live)"
+                                    />
+                                    <ListField
+                                        value={f.bullets}
+                                        onCommit={(items) => updateFeature(i, 'bullets', items)}
+                                        separator="newline"
+                                        placeholder="Checklist bullets (one per line)"
+                                        rows={3}
+                                    />
+                                    <div className="flex gap-2">
+                                        <Input className="flex-1" value={f.link?.text || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), text: e.target.value })} placeholder="Link text" />
+                                        <Input className="flex-1" value={f.link?.url || ''} onChange={(e) => updateFeature(i, 'link', { ...(f.link || {}), url: e.target.value })} placeholder="Link URL" />
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -3275,7 +3834,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
                     ))}
                 </div>
             </div>
@@ -3284,7 +3843,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['300px', '500px', '800px', '100%'].map((w) => (
                         <button key={w} onClick={() => updateProp('maxWidth', w)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.maxWidth === w ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{w}</button>
                     ))}
                 </div>
             </div>
@@ -3293,7 +3852,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['0', '4px', '8px', '16px', '9999px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Full' : r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Full' : r}</button>
                     ))}
                 </div>
             </div>
@@ -3302,7 +3861,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['auto', '16/9', '4/3', '1/1', '3/4'].map((r) => (
                         <button key={r} onClick={() => updateProp('aspectRatio', r)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.aspectRatio === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.aspectRatio === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r}</button>
                     ))}
                 </div>
             </div>
@@ -3332,7 +3891,7 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['filled', 'outline', 'ghost'].map((v) => (
                         <button key={v} onClick={() => updateProp('variant', v)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.variant === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.variant === v ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
                     ))}
                 </div>
             </div>
@@ -3341,7 +3900,7 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['small', 'medium', 'large'].map((s) => (
                         <button key={s} onClick={() => updateProp('size', s)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.size === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.size === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
                     ))}
                 </div>
             </div>
@@ -3350,18 +3909,18 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['left', 'center', 'right'].map((a) => (
                         <button key={a} onClick={() => updateProp('alignment', a)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.alignment === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6'} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF'} onChange={(c) => updateProp('textColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Text Color" value={props.textColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('textColor', c)} />
             <div>
                 <Label className="text-xs">Border Radius</Label>
                 <div className="flex gap-1 mt-1">
                     {['4px', '8px', '12px', '9999px'].map((r) => (
                         <button key={r} onClick={() => updateProp('borderRadius', r)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Pill' : r}</button>
+                            className={`rounded px-2 py-1 text-caption font-medium ${props.borderRadius === r ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{r === '9999px' ? 'Pill' : r}</button>
                     ))}
                 </div>
             </div>
@@ -3391,11 +3950,11 @@ const NewsletterSignupEditor = ({ component, pageId, updateComponent }: any) => 
                 <div className="flex gap-1 mt-1">
                     {['inline', 'stacked'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F8FAFC'} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#F8FAFC' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
         </div>
     );
 };
@@ -3426,21 +3985,51 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
                 <div className="flex gap-1 mt-1">
                     {['horizontal', 'vertical'].map((l) => (
                         <button key={l} onClick={() => updateProp('layout', l)}
-                            className={`rounded px-3 py-1 text-[11px] font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.layout === l ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                     ))}
                 </div>
             </div>
             <div>
-                <Label className="text-xs">Connector Style</Label>
+                <Label className="text-xs">Variant</Label>
                 <div className="flex gap-1 mt-1">
-                    {['line', 'dashed', 'dots', 'none'].map((s) => (
-                        <button key={s} onClick={() => updateProp('connectorStyle', s)}
-                            className={`rounded px-2 py-1 text-[11px] font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    {[
+                        { key: 'plain', label: 'Plain' },
+                        { key: 'timeline-cards', label: 'Timeline Cards' },
+                        { key: 'alternating', label: 'Alternating' },
+                    ].map((v) => (
+                        <button key={v.key} onClick={() => updateProp('variant', v.key)}
+                            className={`rounded px-2 py-1 text-caption font-medium ${(props.variant || 'plain') === v.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v.label}</button>
                     ))}
                 </div>
             </div>
-            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF'} onChange={(c) => updateProp('backgroundColor', c)} />
-            <ColorPickerField label="Accent Color" value={props.accentColor || '#3B82F6'} onChange={(c) => updateProp('accentColor', c)} />
+            {(props.variant || 'plain') !== 'plain' && (
+                <>
+                    <div>
+                        <Label className="text-xs">Node Style</Label>
+                        <div className="flex gap-1 mt-1">
+                            {['number', 'icon', 'dot'].map((n) => (
+                                <button key={n} onClick={() => updateProp('nodeStyle', n)}
+                                    className={`rounded px-2 py-1 text-caption font-medium capitalize ${(props.nodeStyle || 'number') === n ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{n}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs">Gradient Rail</Label>
+                        <Switch checked={props.connectorGradient || false} onCheckedChange={(c) => updateProp('connectorGradient', c)} />
+                    </div>
+                </>
+            )}
+            <div>
+                <Label className="text-xs">Connector Style (plain variant)</Label>
+                <div className="flex gap-1 mt-1">
+                    {['line', 'dashed', 'dots', 'none'].map((s) => (
+                        <button key={s} onClick={() => updateProp('connectorStyle', s)}
+                            className={`rounded px-2 py-1 text-caption font-medium capitalize ${props.connectorStyle === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
+                    ))}
+                </div>
+            </div>
+            <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
+            <ColorPickerField label="Accent Color" value={props.accentColor || '#3B82F6' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('accentColor', c)} />
             <div>
                 <div className="flex items-center justify-between mb-2">
                     <Label className="text-xs font-medium">Steps ({steps.length})</Label>
@@ -3460,6 +4049,20 @@ const StepsProcessEditor = ({ component, pageId, updateComponent }: any) => {
                                     <Input value={step.number || ''} onChange={(e) => updateStep(i, 'number', e.target.value)} placeholder="Step number/label" />
                                     <Input value={step.title || ''} onChange={(e) => updateStep(i, 'title', e.target.value)} placeholder="Title" />
                                     <Textarea value={step.description || ''} onChange={(e) => updateStep(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                    <Input value={step.meta || ''} onChange={(e) => updateStep(i, 'meta', e.target.value)} placeholder="Meta (e.g. Weeks 1-4)" />
+                                    <ListField
+                                        value={step.chips}
+                                        onCommit={(items) => updateStep(i, 'chips', items)}
+                                        separator="comma"
+                                        placeholder="Chips (comma-separated)"
+                                    />
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs">Highlight this step</Label>
+                                        <Switch
+                                            checked={step.state === 'highlight'}
+                                            onCheckedChange={(c) => updateStep(i, 'state', c ? 'highlight' : undefined)}
+                                        />
+                                    </div>
                                 </div>
                             )}
                         </div>

@@ -248,6 +248,8 @@ export interface DocumentSlidePayload {
         total_pages: number;
         published_data: string | null;
         published_document_total_pages: number;
+        /** When true, bypass the backend publish-time shrink guard (author confirmed). */
+        force_publish?: boolean;
     };
     status: string;
     new_slide: boolean;

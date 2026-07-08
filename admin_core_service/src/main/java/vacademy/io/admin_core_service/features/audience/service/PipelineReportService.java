@@ -57,6 +57,7 @@ public class PipelineReportService {
     private final ReportScopeResolver scopeResolver;
     private final LeadReportSettingService settingService;
     private final AuthService authService;
+    private final vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
     private static final String SYSTEM_ACTOR_ID = "SYSTEM";
@@ -300,6 +301,15 @@ public class PipelineReportService {
                     .merge(rs.getString("status"), rs.getLong("n"), Long::sum);
         };
         jdbc.query(CALL_OUTCOMES_SQL, p, outcomesCollector);
+
+        // Every ACTIVE counsellor in scope gets a row in BOTH matrices — the
+        // SQL groups the DATA, so a counsellor with no status changes / calls
+        // in the window used to vanish from the report entirely. Zero-filled
+        // rows sort to the bottom via the existing total-desc ordering.
+        for (String id : scopedActiveCounsellors(instituteId, scopeCsv)) {
+            changesByActor.computeIfAbsent(id, k -> new LinkedHashMap<>());
+            outcomesByActor.computeIfAbsent(id, k -> new LinkedHashMap<>());
+        }
 
         // One auth-service batch for the union of human actor ids across both groupings.
         Set<String> ids = new LinkedHashSet<>();
@@ -567,6 +577,24 @@ public class PipelineReportService {
 
     private static String trimToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    /**
+     * The ACTIVE counsellor-role users inside the resolved report scope — the
+     * roster per-counsellor report rows must render even with zero activity.
+     * Intersected with the role roster because a teamId-filtered scope CSV can
+     * carry non-counsellor team members. Empty when the scope is unfiltered
+     * (setup mode — nothing sensible to pad with).
+     */
+    private java.util.List<String> scopedActiveCounsellors(String instituteId, String scopeCsv) {
+        if (scopeCsv == null || scopeCsv.isBlank()) return java.util.List.of();
+        Set<String> counsellors = new java.util.HashSet<>(
+                counsellorScopeService.allCounsellorUserIds(instituteId));
+        return java.util.Arrays.stream(scopeCsv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty() && counsellors.contains(s))
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     /** numerator/denominator * 100, one decimal; null when denominator is 0. */

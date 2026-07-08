@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { CampaignItem } from '../../-services/get-campaigns-list';
 import { generateCurlCommand } from '../../-services/submit-audience-lead';
 import { SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
+import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface ApiIntegrationDialogProps {
     isOpen: boolean;
@@ -22,20 +24,36 @@ interface ApiIntegrationDialogProps {
 
 export const ApiIntegrationDialog = ({ isOpen, onClose, campaign }: ApiIntegrationDialogProps) => {
     const [copiedSection, setCopiedSection] = useState<string | null>(null);
+    const { instituteDetails } = useInstituteDetailsStore();
 
     const campaignId = campaign.id || campaign.campaign_id || campaign.audience_id || '';
+    const instituteId = instituteDetails?.id || campaign.institute_id || '';
+
+    // The campaigns-list endpoint doesn't return institute_custom_fields (only
+    // get-by-id does), so fetch the full campaign when the prop lacks them —
+    // same fallback pattern as LeadBulkImportDialog.
+    const needsFetch = !campaign.institute_custom_fields?.length;
+    const { data: fetchedCampaign } = useGetCampaignById({
+        instituteId,
+        audienceId: campaignId,
+        enabled: isOpen && needsFetch,
+    });
+
+    const customFieldsSource = campaign.institute_custom_fields?.length
+        ? campaign.institute_custom_fields
+        : (fetchedCampaign as CampaignItem | undefined)?.institute_custom_fields;
 
     // Extract custom fields from campaign
     const customFields = useMemo(() => {
-        if (!campaign.institute_custom_fields) return [];
-        return campaign.institute_custom_fields.map((field: any) => ({
+        if (!customFieldsSource) return [];
+        return customFieldsSource.map((field: any) => ({
             id: field.custom_field?.id || field.id,
             fieldName: field.custom_field?.fieldName || field.custom_field?.field_name || '',
             fieldKey: field.custom_field?.fieldKey || field.custom_field?.field_key || '',
             fieldType: field.custom_field?.fieldType || field.custom_field?.field_type || 'TEXT',
             isMandatory: field.custom_field?.isMandatory ?? true,
         }));
-    }, [campaign.institute_custom_fields]);
+    }, [customFieldsSource]);
 
     const curlCommand = useMemo(() => {
         return generateCurlCommand(campaignId, customFields);

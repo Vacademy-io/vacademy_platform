@@ -1,0 +1,106 @@
+name: Build & Publish Electron OTA Update (NSIS + portable)
+
+# Builds the learner Electron app for Windows on a windows-latest runner and
+# PUBLISHES it to the OTA feed (GitHub releases Vacademy-io/electron-build-repo)
+# so already-installed apps auto-update via electron-updater.
+#
+# This is the OTA counterpart to electron-store-build.yml (which produces the
+# Microsoft Store AppX and does NOT publish). It uses the flavor's
+# electron-builder.<flavor>.json config and runs electron-builder with
+# `--publish always`.
+#
+# AUTO-UPDATE REQUIREMENTS:
+#   • The flavor config must include an `nsis` win target — electron-updater
+#     reads the `latest.yml` manifest + installer that only nsis (not portable)
+#     produces. The portable .exe is published too, but only for manual download.
+#   • Bump `electron/package.json` "version" before running, or the release will
+#     collide with the existing one and clients won't see an update.
+#
+# TOKEN: publishing lands in a DIFFERENT repo (electron-build-repo), so the
+# default GITHUB_TOKEN (scoped to this repo) is not enough. Provide a PAT with
+# `contents:write` on Vacademy-io/electron-build-repo as the repo/org secret
+# ELECTRON_PUBLISH_TOKEN.
+
+run-name: "electron-ota-build ${{ inputs.flavor }} v${{ inputs.version_note }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: "Electron flavor (matches electron-builder.<flavor>.json). e.g. shikshanation"
+        required: true
+        default: "shikshanation"
+      vite_app_id:
+        description: "VITE_ELECTRON_APP_ID for the web build"
+        required: true
+        default: "com.shikshanation.new.app"
+      version_note:
+        description: "Version being published (for the run name only; the real version comes from electron/package.json)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./frontend-learner-dashboard-app
+    steps:
+      # Some frontend-admin-dashboard route paths exceed Windows' 260-char MAX_PATH,
+      # which makes `git checkout` fail with "Filename too long" (exit 128) on the
+      # windows-latest runner. Enabling git long-path support before checkout fixes it.
+      - name: Enable git long paths (Windows MAX_PATH workaround)
+        working-directory: ${{ github.workspace }}
+        run: git config --system core.longpaths true
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install web deps
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build web app (flavored)
+        env:
+          VITE_ELECTRON_APP_ID: ${{ inputs.vite_app_id }}
+        run: pnpm run build
+
+      - name: Stage web build into electron/app
+        run: |
+          rm -rf electron/app
+          cp -r dist electron/app
+
+      - name: Write electron-flavor.json
+        run: echo "{\"flavor\":\"${{ inputs.flavor }}\"}" > electron/electron-flavor.json
+
+      - name: Install electron deps
+        working-directory: ./frontend-learner-dashboard-app/electron
+        run: npm install
+
+      - name: Compile electron main process
+        working-directory: ./frontend-learner-dashboard-app/electron
+        run: npm run build
+
+      - name: Build & publish OTA update
+        working-directory: ./frontend-learner-dashboard-app/electron
+        env:
+          # PAT with contents:write on Vacademy-io/electron-build-repo (cross-repo publish).
+          GH_TOKEN: ${{ secrets.ELECTRON_PUBLISH_TOKEN }}
+        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish always
+
+      - name: Upload build artifacts (installer + update manifest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.flavor }}-ota
+          path: |
+            frontend-learner-dashboard-app/electron/dist/*.exe
+            frontend-learner-dashboard-app/electron/dist/latest.yml
+          if-no-files-found: error

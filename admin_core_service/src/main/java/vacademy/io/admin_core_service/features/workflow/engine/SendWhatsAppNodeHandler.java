@@ -7,9 +7,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.institute.entity.Template;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.notification.dto.WhatsappRequest;
+import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.SendWhatsAppNodeDTO;
@@ -37,6 +40,7 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
     private final TemplateRepository templateRepository;
     private final WorkflowExecutionLogger executionLogger;
     private final NotificationRateLimitService rateLimitService;
+    private final InstituteRepository instituteRepository;
 
     // Cache for templates (InstituteID:TemplateName -> Template)
     private final Map<String, Template> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -179,6 +183,12 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                 return changes;
             }
 
+            // Resolve once whether this institute's numbers default to India (+91)
+            // for bare 10-digit numbers. Blank/unknown country → treat as India.
+            boolean instituteDefaultsToIndia = PhoneCountryUtil.defaultsToIndia(
+                    instituteRepository.findById(instituteId)
+                            .map(Institute::getCountry).orElse(null));
+
             // --- OPTIMIZATION START ---
 
             // Map to group users by templateName
@@ -320,8 +330,9 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             continue;
                         }
 
-                        // Sanitize: remove '+' and all non-numeric characters
-                        String sanitizedMobile = mobileNumber.replaceAll("[^0-9]", "");
+                        // Sanitize to digits and prepend 91 for bare 10-digit numbers
+                        // when the institute defaults to India (blank/unknown or India).
+                        String sanitizedMobile = PhoneCountryUtil.normalizePhone(mobileNumber, instituteDefaultsToIndia);
 
                         if (!StringUtils.hasText(sanitizedMobile)) {
                             log.warn("Skipping user {}: mobile number '{}' is invalid after sanitization.", userId,

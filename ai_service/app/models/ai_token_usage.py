@@ -118,6 +118,7 @@ class RequestType(str, enum.Enum):
     AVATAR_VIDEO = "avatar_video"    # Per-second avatar video (fal.ai talking-head, Host feature)
     # Metered AI tools (academy-credits Phase 2) — parametric pricing via ai_tool_pricing.
     ASSESSMENT = "assessment"        # AI assessment generation (topic / transcript)
+    CODING_QUESTION = "coding_question"  # AI coding-question generation (problem + tests + starter code)
     NOTES = "notes"                  # Auto study-notes from a lecture transcript
     TRANSCRIPTION = "transcription"  # Live-recording speech-to-text (per audio-minute)
     CALL_INTELLIGENCE = "call_intelligence"  # CRM call recording transcription + LLM analysis (per minute)

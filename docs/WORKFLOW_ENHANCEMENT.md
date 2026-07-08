@@ -183,11 +183,11 @@ For delays > 60 seconds, the workflow pauses and resumes later:
 6. Uses `claimForResume()` (atomic UPDATE) for multi-pod safety
 7. Deserializes context, resumes workflow from paused point
 
-### Current Status: **Scheduler Paused**
+### Current Status: **ACTIVE** _(updated 2026-07-07)_
 
-The resume job is commented out in `QuartzConfig.java`. To enable:
-1. Uncomment the `workflowResumeJobDetail()` and `workflowResumeTrigger()` beans
-2. Deploy
+The resume job is **registered** in `QuartzConfig.java` (`workflowResumeJobDetail()` + `workflowResumeTrigger()` beans) and runs every ~2 minutes (cron `0 0/2 * * * ?`). `DelayNodeHandler` persists `workflow_execution_state` (`status = WAITING` + JSONB context) for delays > 60s, and `WorkflowResumeJob` resumes them via the atomic `claimForResume()` claim.
+
+> **Note:** The same pause/resume machinery is reused by the **CALL_AI** node — `CallAiNodeHandler` pauses with `pauseReason` `AI_CALL_RETRY` / `AI_CALL_RECHECK` (re-dial / result re-check loop), resumed by the same `WorkflowResumeJob`.
 
 ### Files
 
@@ -200,6 +200,8 @@ The resume job is commented out in `QuartzConfig.java`. To enable:
 ---
 
 ## 6. Service Integrations
+
+> **Note (2026-07-07):** The table below is the _original_ enhancement set. Since then, many more triggers were wired across the platform — `LIVE_SESSION_START` / `LIVE_SESSION_END` (via `LiveSessionNotificationProcessor`, 5-min scan), `MEMBERSHIP_EXPIRY` (via `PackageSessionScheduler`, daily cron), the full CRM / lead-automation family (`LEAD_ASSIGNED_TO_COUNSELOR`, `LEAD_STATUS_CHANGED`, `LEAD_TAT_*`, `FOLLOW_UP_*`, `LEAD_CALLED_BACK`), `PAYMENT_SUCCESS`, `SUBSCRIPTION_*`, and `LEARNER_RE_ENROLLMENT` / `LEARNER_TERMINATION`. For the current authoritative trigger list see **`WORKFLOW_PLATFORM_PROGRESS.md`** (verified 2026-07-07).
 
 ### Where Each Trigger Fires
 
@@ -241,6 +243,8 @@ Each trigger injects relevant data into the workflow context:
 ---
 
 ## 7. Assessment Service Integration
+
+> **Note (2026-07-07):** The `ASSESSMENT_*` triggers below are now live and wired end-to-end (no longer pending). For the full, current cross-service trigger inventory see **`WORKFLOW_PLATFORM_PROGRESS.md`** (verified 2026-07-07).
 
 Assessment lives in a separate microservice. Integration via HTTP:
 
@@ -445,7 +449,7 @@ Email templates are stored in the `templates` table, managed via:
 | `QueryServiceImpl.java` | 7 new query implementations |
 | `DelayNodeHandler.java` | Persistent delay for >60s |
 | `WorkflowEngineService.java` | Handles `__workflow_paused` signal |
-| `QuartzConfig.java` | Resume job (currently commented out) |
+| `QuartzConfig.java` | Resume job **registered & active** (runs every ~2 min; also powers CALL_AI pause/resume) |
 | `Step1Service.java` | LIVE_SESSION_CREATE trigger |
 | `EnrollInviteService.java` | INVITE_CREATE trigger |
 | `LearnerEnrollInviteService.java` | INVITE_FORM_FILL trigger |

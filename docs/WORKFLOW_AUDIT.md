@@ -5,6 +5,19 @@
 
 ---
 
+## ⚠️ Superseded in part — corrections 2026-07-07
+
+A 2026-07-07 re-audit of the live code found several core conclusions in this doc are now FALSE. This banner supersedes them; the body below is preserved as a point-in-time record.
+
+- LIVE_SESSION_START, LIVE_SESSION_END, MEMBERSHIP_EXPIRY, and ASSESSMENT_CREATE/START/END are now ALL WIRED (they were NOT when this doc was written). LIVE_SESSION_START/END fire from scheduler/LiveSessionNotificationProcessor.java (~lines 242/292, 5-min Quartz scan); MEMBERSHIP_EXPIRY from PackageSessionScheduler (daily 09:00 cron); ASSESSMENT_* from assessment_service via WorkflowTriggerClient → InternalWorkflowController.
+- A large CRM/lead-automation event family was added after this doc and is wired: LEAD_ASSIGNED_TO_COUNSELOR, LEAD_STATUS_CHANGED, LEAD_TAT_REMINDER_BEFORE, LEAD_TAT_OVERDUE, FOLLOW_UP_DUE, FOLLOW_UP_OVERDUE, LEAD_CALLED_BACK, AUDIENCE_OPT_OUT, plus PAYMENT_SUCCESS, SUBSCRIPTION_CANCELLED/TERMINATED, LEARNER_RE_ENROLLMENT, LEARNER_TERMINATION. 34 of 38 enum events are now emitted.
+- Issue #5 (fetch_expiring_memberships) is WORSE than described here: it isn't merely "incomplete filtering" — it does userPlanRepository.findAll() with NO institute filter and NO expiry filter, returning every tenant's active plans = a cross-tenant data-exposure bug. See QueryServiceImpl.java ~1616-1676.
+- Issue #4 (fetch_students_by_batch findAll) — re-verify against current QueryServiceImpl before acting; the query layer was substantially rewritten.
+- The persistent DELAY/resume machinery is now LIVE (WorkflowResumeJob registered in QuartzConfig, every 2 min), not staged.
+- For the current accurate reference, see WORKFLOW_PLATFORM_PROGRESS.md (verified 2026-07-07).
+
+---
+
 ## Executive Summary
 
 The core workflow engine (trigger → routing → handler → context flow) is **working correctly**.  
@@ -418,18 +431,19 @@ Before deploying, verify each use case:
 | SUB_ORG_MEMBER_ENROLLMENT | SubOrgLearnerService | Sub-org enroll | ACTIVE |
 | SUB_ORG_MEMBER_TERMINATION | SubOrgLearnerService | Sub-org terminate | ACTIVE |
 | LIVE_SESSION_CREATE | Step1Service | Create/update session | ACTIVE |
-| LIVE_SESSION_START | — | — | NOT INTEGRATED |
-| LIVE_SESSION_END | — | — | NOT INTEGRATED |
+| LIVE_SESSION_START | LiveSessionNotificationProcessor (scheduler) | 5-min Quartz scan (~line 242) | ACTIVE (see 2026-07-07 banner) |
+| LIVE_SESSION_END | LiveSessionNotificationProcessor (scheduler) | 5-min Quartz scan (~line 292) | ACTIVE (see 2026-07-07 banner) |
 | LIVE_SESSION_FORM_SUBMISSION | — | — | NOT INTEGRATED |
 | PAYMENT_FAILED | PaymentLogService | Payment failure | ACTIVE |
 | ABANDONED_CART | LearnerEnrollmentEntryService | Enrollment without payment | ACTIVE |
 | INVITE_CREATE | EnrollInviteService | Create invite | ACTIVE |
 | INVITE_FORM_FILL | LearnerEnrollInviteService | Learner fills invite form | ACTIVE |
-| MEMBERSHIP_EXPIRY | — | — | NOT INTEGRATED (needs scheduler) |
+| MEMBERSHIP_EXPIRY | PackageSessionScheduler | Daily 09:00 cron | ACTIVE (see 2026-07-07 banner) |
 | INSTALLMENT_DUE_REMINDER | (original scheduler) | Cron job | ACTIVE (original) |
 | GENERATE_ADMIN_LOGIN_URL | LearnerPortalAccessService | Login request | ACTIVE (original) |
 | SEND_LEARNER_CREDENTIALS | LearnerPortalAccessService | Credential request | ACTIVE (original) |
-| ASSESSMENT_CREATE/START/END | — | — | NOT INTEGRATED |
+| ASSESSMENT_CREATE/START/END | assessment_service → WorkflowTriggerClient → InternalWorkflowController | assessment_service events | ACTIVE (see 2026-07-07 banner) |
+| ASSESSMENT_FORM_SUBMISSION | — | — | NOT INTEGRATED |
 
 ---
 

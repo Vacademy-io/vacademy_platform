@@ -44,6 +44,27 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                 @Param("now") java.util.Date now,
                 @Param("cutoff") java.util.Date cutoff);
 
+        /**
+         * Institute-scoped variant of {@link #findActivePlansExpiringSoon}, used by the
+         * {@code fetch_expiring_memberships} workflow query. Scopes on ei.instituteId so a
+         * workflow only ever sees its OWN institute's expiring plans (the un-scoped variant
+         * above is safe only because its one caller reads institute_id off each row to route;
+         * a workflow query must never see other tenants' plans).
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                WHERE up.status = 'ACTIVE'
+                  AND ei.instituteId = :instituteId
+                  AND up.endDate IS NOT NULL
+                  AND up.endDate > :now
+                  AND up.endDate <= :cutoff
+                """)
+        List<UserPlan> findActivePlansExpiringSoonByInstitute(
+                @Param("instituteId") String instituteId,
+                @Param("now") java.util.Date now,
+                @Param("cutoff") java.util.Date cutoff);
+
         @Query(value = """
                             SELECT DISTINCT up FROM UserPlan up
                             JOIN FETCH up.enrollInvite ei

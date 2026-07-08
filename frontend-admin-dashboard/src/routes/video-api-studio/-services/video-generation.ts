@@ -534,6 +534,7 @@ export interface GenerateVideoRequest {
 export type GateType =
     | 'creative_concept'
     | 'shot_plan'
+    | 'styleframe'
     | 'narration'
     | 'visual_casting'
     | 'shot_look'
@@ -543,6 +544,43 @@ export type GateType =
     | 'voice'
     | 'music'
     | 'avatar';
+
+/**
+ * The per-run design identity presented at the styleframe gate — the visual
+ * signature (fonts, motion, finishing, color arc) every shot follows.
+ */
+export interface DesignIdentity {
+    identity_name: string;
+    typography: {
+        pairing: string;
+        display: string;
+        display_css: string;
+        display_weight: number;
+        body: string;
+        body_css: string;
+        locked_by_brand: boolean;
+    };
+    motion: { personality: string };
+    finishing: {
+        grain: 'none' | 'soft' | 'film';
+        vignette: 'none' | 'soft' | 'medium';
+        light: 'none' | 'glow';
+    };
+    color_arc_note: string;
+    image_art_direction: string;
+    rationale: string;
+    /** Hero styleframe render; null when this run skipped the render. */
+    styleframe_url: string | null;
+}
+
+/** Styleframe gate edit — send ONLY the fields the user actually changed. */
+export interface DesignIdentityEdit {
+    font_pairing?: string;
+    motion_personality?: string;
+    finishing?: { grain?: string; vignette?: string; light?: string };
+    color_arc_note?: string;
+    image_art_direction?: string;
+}
 
 /** One character on the cast gate (cast gate payload.characters[]). */
 export interface CastGateCharacter {
@@ -643,6 +681,12 @@ export interface DecisionPayload {
     requests?: AssetRequestItem[];
     /** cast: the characters awaiting portrait approval. */
     characters?: CastGateCharacter[];
+    /** styleframe: the drafted design identity awaiting approval. */
+    identity?: DesignIdentity;
+    /** styleframe: selectable font pairings. */
+    pairing_options?: Array<{ key: string; label: string; vibe: string }>;
+    /** styleframe: selectable motion personalities. */
+    motion_options?: Array<{ key: string; label: string; vibe: string }>;
     [key: string]: unknown;
 }
 
@@ -696,6 +740,7 @@ export type DecisionAnswer =
           }>;
       }
     | { kind: 'edit'; gate_type: 'narration'; modified_script: string; shots?: Array<{ shot_index: number; narration_text: string }> }
+    | { kind: 'edit'; gate_type: 'styleframe'; identity: DesignIdentityEdit }
     | {
           kind: 'edit';
           gate_type: 'visual_casting';
@@ -1926,6 +1971,8 @@ export function decisionAnswerToBody(
                 payload = { responses: answer.responses };
             } else if (answer.gate_type === 'cast') {
                 payload = { characters: answer.characters };
+            } else if (answer.gate_type === 'styleframe') {
+                payload = { identity: answer.identity };
             } else {
                 payload = { selections: answer.selections };
             }

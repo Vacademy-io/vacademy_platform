@@ -3,6 +3,10 @@ const flowbiteReact = require("flowbite-react/plugin/tailwindcss");
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ['class'],
+    // Catalogue type-scale utilities live in catalogue-tokens.css @layer
+    // utilities (byte-synced with the learner app); safelist so the canvas
+    // emits them even when no admin source file references the literals.
+    safelist: ['catalogue-display', 'catalogue-h1', 'catalogue-h2', 'catalogue-h3', 'catalogue-lead', 'catalogue-card-glass', 'catalogue-card-gradient-border', 'catalogue-card-tinted'],
     content: [
         './pages/**/*.{ts,tsx}',
         './components/**/*.{ts,tsx}',

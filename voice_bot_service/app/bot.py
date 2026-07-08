@@ -265,32 +265,36 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "Keep this consistent the whole call."
         )
 
-    # SECOND-person agreement: Hindi addresses the LISTENER with gendered forms too
-    # ('aap kaisi hain' to a woman vs 'aap kaise hain' to a man), separate from the
-    # bot's OWN gender above. An explicit leadGender wins; otherwise infer from the
-    # name + the voice on the line. Neither should be confused with the agent's gender.
+    # SECOND-person agreement + HONORIFIC. Hindi addresses the LISTENER with gendered
+    # forms ('aap kaisi hain' to a woman vs 'aap kaise hain' to a man), and the model's
+    # reflex English honorific is 'sir' — wrong for a woman, the #1 gender complaint.
+    # An explicit leadGender (resolved server-side from the user record, else the name)
+    # wins; when it's UNKNOWN, forbid guessing a gendered honorific — use the name + 'ji'.
     lead_gender = str(context.get("leadGender") or "").strip().lower()
     if lead_gender in ("female", "f", "woman"):
-        who = f"{lead_name} is a woman" if lead_name else "The person on the line is a woman"
+        who = f"{lead_name} is a WOMAN" if lead_name else "The person on the line is a WOMAN"
         addressee_line = (
-            f"{who}. Address HER with FEMININE second-person Hindi forms — 'aap kaisi hain', "
-            "'aap kya chahti hain', 'aapne socha hoga', 'aap bata sakti hain' — never the masculine ones."
+            f"{who}. Use FEMININE second-person Hindi — 'aap kaisi hain', 'aap kya chahti hain', "
+            "'aap bata sakti hain' — and, if you use an honorific, say 'ma'am' or "
+            + (f"'{lead_name} ji'" if lead_name else "her name with 'ji'")
+            + ". NEVER call her 'sir' and never use masculine forms for her."
         )
     elif lead_gender in ("male", "m", "man"):
-        who = f"{lead_name} is a man" if lead_name else "The person on the line is a man"
+        who = f"{lead_name} is a MAN" if lead_name else "The person on the line is a MAN"
         addressee_line = (
-            f"{who}. Address HIM with MASCULINE second-person Hindi forms — 'aap kaise hain', "
-            "'aap kya chahte hain', 'aap bata sakte hain' — never the feminine ones."
+            f"{who}. Use MASCULINE second-person Hindi — 'aap kaise hain', 'aap kya chahte hain', "
+            "'aap bata sakte hain' — and, if you use an honorific, say 'sir' or "
+            + (f"'{lead_name} ji'" if lead_name else "his name with 'ji'")
+            + ". Never use feminine forms for him."
         )
     else:
         addressee_line = (
-            "Judge whether the person you are speaking with is a man or a woman from their "
-            + (f"name ('{lead_name}') and from " if lead_name else "from ")
-            + "how they refer to themselves (a man says 'main aaya', 'main karunga'; a woman says "
-            "'main aayi', 'main karungi'), and match your SECOND-person Hindi forms to THEM: to a "
-            "woman 'aap kaisi hain', 'aap kya chahti hain'; to a man 'aap kaise hain', 'aap kya "
-            "chahte hain'. Until you can tell, use the respectful neutral form ('aap kaise hain'). "
-            "This is about THEM, not you."
+            "You do NOT know whether this person is a man or a woman, so you MUST NOT guess a "
+            "gendered honorific — NEVER say 'sir' or 'ma'am'. Address them by their name with 'ji' ("
+            + (f"'{lead_name} ji'" if lead_name else "their name + ' ji'")
+            + ") and use gender-neutral 'aap' forms ('aap kaise hain'). Only if they clearly reveal "
+            "their gender by how they speak of themselves ('main aayi'/'karungi' = a woman, 'main "
+            "aaya'/'karunga' = a man) may you switch to the matching feminine/masculine forms."
         )
 
     if direction == "INBOUND":
@@ -316,15 +320,14 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
-        # Numbers/times/money are the #1 audio-quality break on Hinglish calls: the
-        # model spells digits ('two zero zero') or mixes languages ('twelve baje').
-        "- Numbers, times and money: say them as natural spoken WORDS in the SAME language as "
-        "the rest of the sentence — never digit-by-digit, never mixing languages. In "
-        "Hindi/Hinglish: 'do sau rupaye' (NOT 'two zero zero', NOT 'do zero zero'), 'barah baje' "
-        "or 'dopahar barah baje' (NOT 'twelve baje'), 'pandrah tarikh', 'saade paanch baje'. In "
-        "English: 'two hundred rupees', 'twelve pm', 'half past five'. One language per number — "
-        "'twelve baje' and 'two zero zero' are both wrong. A 10-digit phone number IS read digit "
-        "by digit, but grouped ('nau eight ...' → say each digit in the sentence's language).",
+        # Numbers/times are the #1 audio break on Hinglish calls: the model mixes
+        # languages ('five baje') or spells digits ('two zero zero').
+        "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
+        "noon', 'quarter past six'. NEVER the Hindi 'baje' form and NEVER a mix — 'five baje' and "
+        "'paanch baje' are both WRONG; say 'five PM'.",
+        "- Other numbers and money: whole spoken words in the sentence's one language, never spelled "
+        "out digit-by-digit — 'do sau rupaye' / 'two hundred rupees' (NEVER 'two zero zero' or 'do "
+        "zero zero'), 'pandrah tarikh'. Exception: a 10-digit phone number is read digit by digit.",
         f"- When the conversation has reached a natural end, say a short goodbye and append {END_MARKER}.",
         f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting them and append {TRANSFER_MARKER}."
         if (context.get("handoff") or {}).get("enabled")

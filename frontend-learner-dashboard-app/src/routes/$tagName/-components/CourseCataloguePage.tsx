@@ -10,6 +10,7 @@ import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
+import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -146,34 +147,23 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   };
 
   useEffect(() => {
-    const fonts = catalogueData?.globalSettings?.fonts;
+    // Load EVERY font face the config references (global family + every
+    // per-component style.typography.fontFamily incl. responsive overrides)
+    // in one merged Google-Fonts request. Previously only the global family
+    // loaded, so per-component font picks silently fell back to system fonts.
+    ensureFontsLoaded(collectConfigFontFamilies(catalogueData));
 
+    const fonts = catalogueData?.globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) {
       document.body.style.fontFamily =
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
       return;
     }
 
+    // Apply the global font exactly as specified in JSON
     const fontFamily = fonts.family.trim();
-    const primaryFont = fontFamily.split(",")[0].replace(/['"]/g, "").trim();
-
-    // Create Google Fonts link
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
-      primaryFont
-    )}:wght@300;400;500;600;700&display=swap`;
-
-    // Append link only once
-    if (!document.querySelector(`link[href="${link.href}"]`)) {
-      document.head.appendChild(link);
-    }
-
-    // Apply font exactly as specified in JSON
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
-
-    console.log("[CourseCataloguePage] Applied font:", fontFamily, "Primary font:", primaryFont);
   }, [catalogueData]);
 
   // Apply institute theme
@@ -381,6 +371,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-theme={themePreset}
       data-catalogue-radius={themeRadius}
       data-heading-scale={catalogueData?.globalSettings?.theme?.headingScale || 'default'}
+      data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || 'flat'}
+      data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
+      data-catalogue-intensity={themeSettings?.atmosphere?.intensity || 'subtle'}
     >
       <Helmet>
         <title>{seoTitle}</title>

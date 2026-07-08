@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendReque
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.EffectiveAccess;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.Mode;
@@ -714,6 +715,32 @@ public class AudienceService {
         UserDTO createdUser = null;
         try {
             UserDTO userDTO = requestDTO.getUserDTO();
+
+            // Phone-only rows (CSV/bulk imports, phone-first campaigns) carry no email,
+            // but auth_service needs one to mint the lead's account — historically these
+            // rows fell through to the generic error sentinel and the lead was dropped.
+            // Synthesize the same deterministic, non-deliverable placeholder the
+            // Meta/Google webhook leads use (name+phone@<placeholder domain>) so the
+            // lead is ingested. Every send path suppresses placeholder addresses
+            // (see PlaceholderEmailService), so nothing is ever mailed to them.
+            boolean emailSynthesized = false;
+            if (userDTO != null && !StringUtils.hasText(userDTO.getEmail())
+                    && (StringUtils.hasText(userDTO.getMobileNumber())
+                            || StringUtils.hasText(userDTO.getFullName()))) {
+                userDTO.setEmail(placeholderEmailService.synthesize(
+                        userDTO.getFullName(), userDTO.getMobileNumber(), null));
+                emailSynthesized = true;
+                logger.info("No email on lead for audience {} — synthesized placeholder {} from name+phone",
+                        requestDTO.getAudienceId(), userDTO.getEmail());
+            }
+
+            // A lead with no email, no phone AND no name has no identity to key the
+            // auth user on — reject with an actionable message (the generic sentinel
+            // below tells the bulk-upload caller nothing about what to fix).
+            if (userDTO == null || !StringUtils.hasText(userDTO.getEmail())) {
+                return "Error in submitting the response: user email, mobile number or name is required";
+            }
+
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
@@ -875,15 +902,22 @@ public class AudienceService {
                     contextData.put("phone", savedResponse.getParentMobile());
                     contextData.put("parentMobile", savedResponse.getParentMobile());
                     contextData.put("campaignName", audience.getCampaignName());
-                    contextData.put("sendRespondentEmail",
-                            audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail());
+                    // The SEND_EMAIL node sends one email per respondentEmailRequests
+                    // entry (the flag alone doesn't gate it) — suppress the entry for
+                    // synthesized placeholder addresses, which are non-deliverable and
+                    // would bounce. Same contract as the form-webhook path.
+                    boolean wantRespondentEmail = audience.getSendRespondentEmail() == null
+                            || audience.getSendRespondentEmail();
+                    contextData.put("sendRespondentEmail", !emailSynthesized && wantRespondentEmail);
 
                     List<Map<String, Object>> respondentEmailRequests = new ArrayList<>();
-                    Map<String, Object> respondentEmailRequest = new HashMap<>();
-                    respondentEmailRequest.put("to", userForNotification.getEmail());
-                    respondentEmailRequest.put("subject", respondentEmailSubject);
-                    respondentEmailRequest.put("body", respondentEmailBody);
-                    respondentEmailRequests.add(respondentEmailRequest);
+                    if (!emailSynthesized) {
+                        Map<String, Object> respondentEmailRequest = new HashMap<>();
+                        respondentEmailRequest.put("to", userForNotification.getEmail());
+                        respondentEmailRequest.put("subject", respondentEmailSubject);
+                        respondentEmailRequest.put("body", respondentEmailBody);
+                        respondentEmailRequests.add(respondentEmailRequest);
+                    }
                     contextData.put("respondentEmailRequests", respondentEmailRequests);
 
                     List<Map<String, Object>> adminEmailRequests = new ArrayList<>();
@@ -908,8 +942,10 @@ public class AudienceService {
                 // No workflow trigger configured for this audience — preserve the
                 // original direct-email behavior below.
 
-                // 5. Send notification to respondent (if enabled)
-                if (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail()) {
+                // 5. Send notification to respondent (if enabled; never to a synthesized
+                // placeholder address — non-deliverable by design, would bounce on SES)
+                if (!emailSynthesized
+                        && (audience.getSendRespondentEmail() == null || audience.getSendRespondentEmail())) {
                     logger.info("Sending notification to respondent: {}", userForNotification.getEmail());
 
                     // Fetch the most recent EMAIL template config for this institute and event
@@ -4514,6 +4550,15 @@ public class AudienceService {
 
         String channel = request.getChannel();
 
+        // Resolve once whether this institute's numbers should default to India
+        // (+91) for bare 10-digit numbers. Blank/unknown country → treat as India.
+        String messageInstituteId = request.getInstituteId();
+        boolean instituteDefaultsToIndia = PhoneCountryUtil.defaultsToIndia(
+                StringUtils.hasText(messageInstituteId)
+                        ? instituteRepository.findById(messageInstituteId)
+                                .map(Institute::getCountry).orElse(null)
+                        : null);
+
         // 3. Batch-fetch user details for leads that have a userId (needed for contact
         // resolution)
         List<String> userIds = allResponses.stream()
@@ -4631,10 +4676,9 @@ public class AudienceService {
                     String phone = StringUtils.hasText(resp.getParentMobile())
                             ? resp.getParentMobile()
                             : (userDTO != null ? userDTO.getMobileNumber() : null);
-                    if (phone != null && phone.startsWith("+")) {
-                        phone = phone.substring(1);
-                    }
-                    recipientBuilder.phone(phone);
+                    // Sanitize to digits and prepend 91 for bare 10-digit numbers
+                    // when the institute defaults to India (blank/unknown or India).
+                    recipientBuilder.phone(PhoneCountryUtil.normalizePhone(phone, instituteDefaultsToIndia));
                     break;
                 case "EMAIL":
                     String email = StringUtils.hasText(resp.getParentEmail())

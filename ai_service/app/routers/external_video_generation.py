@@ -1065,6 +1065,63 @@ async def decision_video_external(
                             content_type="application/json",
                         )
                     artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+        elif mode == "edit" and gate_type == dg.GateType.STYLEFRAME.value:
+            # Merge the identity edit into shot_plan.json, RE-NORMALIZED
+            # against the registries (font pairing / motion personality /
+            # finishing are keys, not free text — nothing user-typed can leak
+            # into a fonts URL or an ease value). Brand-locked typography
+            # survives any pairing edit.
+            _sf_edit = dg.styleframe_answer_identity(answer)
+            if _sf_edit:
+                plan = _read_s3_json(
+                    s3_svc, _bucket, video_id,
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ) or {}
+                _cur = plan.get("design_identity") or {}
+                _cur_typ = (_cur.get("typography") or {}) if isinstance(_cur, dict) else {}
+                import sys as _sys_sf, pathlib as _pl_sf
+                _vgr = str(_pl_sf.Path(__file__).resolve().parent.parent / "ai-video-gen-main")
+                if _vgr not in _sys_sf.path:
+                    _sys_sf.path.insert(0, _vgr)
+                import design_identity as _di_mod  # type: ignore
+                _merged_raw = {
+                    "identity_name": _sf_edit.get("identity_name") or _cur.get("identity_name"),
+                    "font_pairing": _sf_edit.get("font_pairing") or _cur_typ.get("pairing"),
+                    "motion_personality": _sf_edit.get("motion_personality")
+                        or ((_cur.get("motion") or {}).get("personality") if isinstance(_cur, dict) else None),
+                    "finishing": {**(_cur.get("finishing") or {}), **(_sf_edit.get("finishing") or {})},
+                    "color_arc_note": _sf_edit.get("color_arc_note", _cur.get("color_arc_note")),
+                    "image_art_direction": _sf_edit.get(
+                        "image_art_direction", _cur.get("image_art_direction")
+                    ),
+                    "styleframe_url": _cur.get("styleframe_url"),
+                }
+                _revised = _di_mod.normalize_design_identity(
+                    _merged_raw,
+                    mode="marketing",
+                    brand_fonts_locked=bool(_cur_typ.get("locked_by_brand")),
+                    brand_heading=_cur_typ.get("display") or "",
+                    brand_body=_cur_typ.get("body") or "",
+                )
+                # Drop the styleframe image if the look it anchored changed.
+                if (
+                    _revised.get("image_art_direction") != _cur.get("image_art_direction")
+                    or (_revised.get("typography") or {}).get("pairing") != _cur_typ.get("pairing")
+                ):
+                    _revised["styleframe_url"] = None
+                plan["design_identity"] = _revised
+                _sfbody = json.dumps(plan, ensure_ascii=False).encode("utf-8")
+                for _k in (
+                    f"ai-videos/{video_id}/script/shot_plan.json",
+                    f"ai-videos/{video_id}/checkpoints/shot_plan.json",
+                ):
+                    s3_svc.upload_file_content(
+                        content=_sfbody, filename="shot_plan.json", s3_key=_k,
+                        content_type="application/json",
+                    )
+                artifact_key = f"ai-videos/{video_id}/script/shot_plan.json"
+                logger.info(f"[Decision] styleframe: identity updated for {video_id}")
         elif mode == "edit" and gate_type == dg.GateType.ASSET_REQUEST.value:
             # Route each response into the plan: per-shot real assets/figures
             # onto the shot dicts (the HTML + narration prompts read them);

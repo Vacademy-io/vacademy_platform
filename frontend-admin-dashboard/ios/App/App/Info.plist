@@ -47,5 +47,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Vacademy Admin uses the camera so you can take photos for attachments and uploads.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Vacademy Admin accesses your photo library so you can attach and upload images and files.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Vacademy Admin saves images and files you download or export to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Vacademy Admin uses the microphone to record audio in supported features.</string>
 </dict>
 </plist>

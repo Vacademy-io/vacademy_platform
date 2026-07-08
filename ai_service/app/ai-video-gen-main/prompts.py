@@ -1701,7 +1701,8 @@ If `transition_in` is `cut`, omit this block entirely.
 
 **COLOR RULES**:
 Background: {background_type}
-Text: `color: {text_color}` | SVG stroke: `{svg_stroke}` | SVG fill: `{svg_fill}` | Annotation: `{annotation_color}`
+Use the brand CSS variables — NOT raw hex: text `color: var(--brand-text)` | SVG stroke `var(--brand-svg-stroke)` | SVG fill `var(--brand-svg-fill)` | annotation `var(--brand-annotation)` | primary `var(--brand-primary)` | accent `var(--brand-accent)`.
+(For reference they resolve to text {text_color}, stroke {svg_stroke}, fill {svg_fill}, annotation {annotation_color} — use the raw values ONLY inside functions that need a literal, e.g. an rgba() tint.)
 
 **CONTINUITY**:
 {continuity_context}
@@ -1721,9 +1722,10 @@ Return a SINGLE shot as JSON (no array, no wrapper):
   "htmlStartX": 0, "htmlStartY": 0,
   "width": {width}, "height": {height},
   "z": 10,
-  "html": "<style>@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&family=Inter:wght@400;600&family=Fira+Code&display=swap');</style>..."
+  "html": "<div id=\\"shot-root\\" style=\\"position:relative;width:100%;height:100%;overflow:hidden\\">...</div><script>...</script>"
 }}
 
+Fonts (Montserrat, Inter, Bebas Neue, Poppins, Fira Code) and the `--brand-*` CSS variables are ALREADY loaded by the renderer — do NOT emit `@import` or `:root` blocks.
 The first character of your response must be `{{` and the last must be `}}`. No markdown, no commentary.
 """
 

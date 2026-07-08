@@ -12,6 +12,18 @@ Step-by-step instructions for creating workflows using the Vacademy workflow bui
 
 ---
 
+## Available Trigger Events
+
+The examples below use audience, live-session, and enrollment events, but when you pick **"When something happens"** the event picker offers many more, including:
+
+- **CRM / leads:** Lead Assigned to Counselor, Lead Status Changed, Lead TAT reminders, Follow-up Due / Overdue
+- **Payments:** Payment Failed, Abandoned Cart, Subscription Cancelled
+- **Lifecycle:** Membership Expiry, Learner Termination
+
+See **WORKFLOW_PLATFORM_PROGRESS.md** (same docs folder) for the complete, up-to-date list.
+
+---
+
 ## Use Case 1: Follow-up Email 5 Days After Audience Form Fill
 
 **Goal:** Every day at 9 AM, find leads who submitted a form exactly 5 days ago and send them a follow-up email.
@@ -254,7 +266,7 @@ The TRIGGER node is auto-created. Add:
 | Field | What to do |
 |-------|-----------|
 | Template | Select your notification template |
-| Recipients | Advanced mode: `#ctx['liveSession']['createdByUserId']` (or a list of admin emails) |
+| Recipients | Advanced mode: `#ctx['createdBy']` (this is the creating admin's user ID, not an email — or type a list of admin emails instead) |
 | Template Vars | Map from `#ctx['liveSession']` — e.g., title, subject, etc. |
 
 ---
@@ -504,7 +516,7 @@ If you need to map different names, use template variables:
 |---------------|-------------------|--------------------------|
 | **QUERY** (`fetch_audience_responses_filtered`) | `ctx['leads']` (top-level) | `#ctx['leads']` |
 | **QUERY** (`fetch_batch_attendance_report`) | `ctx['students']` (top-level) | `#ctx['students']` |
-| **QUERY** (`fetch_ssigm_by_package`) | `ctx['ssigm']` (top-level) | `#ctx['ssigm']` |
+| **QUERY** (`fetch_ssigm_by_package`) | `ctx['ssigm_list']` (top-level) | `#ctx['ssigm_list']` (each item has both snake_case `full_name`/`mobile_number` and camelCase `fullName`/`mobileNumber`) |
 | **HTTP_REQUEST** (default resultKey) | `ctx['httpResult']` (wrapped) | `#ctx['httpResult']['body']` for response data |
 | **HTTP_REQUEST** (custom resultKey=`userData`) | `ctx['userData']` (wrapped) | `#ctx['userData']['body']` |
 | **TRIGGER** (AUDIENCE_LEAD_SUBMISSION) | Various context keys | `#ctx['respondentEmailRequests']`, `#ctx['user']`, `#ctx['customFields']` |
@@ -631,6 +643,7 @@ Create in Settings > Templates:
 ## Tips
 
 1. **Always test with "Test Run"** before publishing — it does a dry run without sending real emails
+   > **Caution:** Test Run suppresses SEND_EMAIL, HTTP_REQUEST, and push-notification sends — but it does **NOT** suppress QUERY-node writes (some queries mutate data), `SET_LEAD_STATUS`, or WhatsApp sent via the COMBOT node. Those execute for real even in a Test Run, so don't test-run a workflow that changes lead status or writes data unless you intend those changes to happen.
 2. **Check the Executions tab** on the workflow details page to see if it ran and any errors
 3. **Optional params left empty = apply to all** — e.g., empty `batchId` = all batches, empty `audienceId` = all audiences
 4. **`instituteId` is always auto-filled** — you never need to set it manually

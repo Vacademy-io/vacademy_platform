@@ -1,8 +1,7 @@
 // publish-dialog.tsx
 import { MyButton } from '@/components/design-system/button';
-import { MyDialog } from '@/components/design-system/dialog';
-import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
-import { Dispatch, SetStateAction, useState } from 'react';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { Dispatch, ReactNode, SetStateAction, useState } from 'react';
 
 interface PublishDialogProps {
     isOpen: boolean;
@@ -11,103 +10,100 @@ interface PublishDialogProps {
         setIsOpen: Dispatch<SetStateAction<boolean>>,
         notify: boolean
     ) => void;
+    /** The button the confirm popover anchors to (rendered by the caller so it
+        keeps its exact styling / responsive labels). */
+    trigger?: ReactNode;
 }
-interface NotifyDialogProps {
-    openNotifyDialog: boolean;
-    setOpenNotifyDialog: Dispatch<SetStateAction<boolean>>;
-    handleNotify: (notify: boolean) => void;
-}
-
-const NotifyDialog = ({
-    openNotifyDialog,
-    setOpenNotifyDialog,
-    handleNotify,
-}: NotifyDialogProps) => {
-    return (
-        <MyDialog
-            heading="Notify"
-            dialogWidth="w-[400px]"
-            open={openNotifyDialog}
-            onOpenChange={setOpenNotifyDialog}
-        >
-            <div className="flex w-full flex-col gap-6">
-                <p>Do you want to send the notification to students about this slide?</p>
-                <div className="flex justify-end gap-4">
-                    <MyButton
-                        buttonType="secondary"
-                        onClick={() => {
-                            handleNotify(false);
-                        }}
-                    >
-                        No
-                    </MyButton>
-                    <MyButton
-                        buttonType="primary"
-                        onClick={() => {
-                            handleNotify(true);
-                        }}
-                    >
-                        Yes
-                    </MyButton>
-                </div>
-            </div>
-        </MyDialog>
-    );
-};
 
 export const PublishDialog = ({
     isOpen,
     setIsOpen,
     handlePublishUnpublishSlide,
+    trigger,
 }: PublishDialogProps) => {
-    const { activeItem } = useContentStore();
+    // Two-step compact confirm: publish? → notify? — same call flow as before,
+    // just rendered inline in a single anchored popover instead of two modals.
     const [notify, setNotify] = useState(false);
-    const [openNotifyDialog, setOpenNotifyDialog] = useState(false);
-
-    const publishTrigger = (
-        <MyButton
-            buttonType="primary"
-            scale="medium"
-            layoutVariant="default"
-            disable={activeItem?.status == 'PUBLISHED'}
-        >
-            Publish
-        </MyButton>
-    );
+    const [step, setStep] = useState<'confirm' | 'notify'>('confirm');
 
     const handleNotify = (notify: boolean) => {
         setNotify(notify);
-        setOpenNotifyDialog(false);
+        setStep('confirm');
         setIsOpen(false);
         handlePublishUnpublishSlide(setIsOpen, notify);
     };
 
     return (
-        <MyDialog
-            heading={`Publish Slide`}
-            dialogWidth="w-[400px]"
+        <Popover
             open={isOpen}
-            onOpenChange={setIsOpen}
-            trigger={publishTrigger}
+            onOpenChange={(open) => {
+                setIsOpen(open);
+                // Reset to the first step whenever the popover closes.
+                if (!open) setStep('confirm');
+            }}
         >
-            <div className="flex w-full flex-col gap-6">
-                <p>Are you sure you want to publish this slide?</p>
-                <div className="flex justify-end gap-4">
-                    <MyButton buttonType="secondary" onClick={() => setIsOpen(false)}>
-                        Cancel
-                    </MyButton>
-
-                    <MyButton buttonType="primary" onClick={() => setOpenNotifyDialog(true)}>
-                        Yes, I&apos;m sure
-                    </MyButton>
-
-                    <NotifyDialog
-                        openNotifyDialog={openNotifyDialog}
-                        setOpenNotifyDialog={setOpenNotifyDialog}
-                        handleNotify={() => handleNotify(notify)}
-                    />
-                </div>
-            </div>
-        </MyDialog>
+            {trigger && <PopoverAnchor asChild>{trigger}</PopoverAnchor>}
+            <PopoverContent align="end" sideOffset={8} className="w-72 p-4">
+                {step === 'confirm' ? (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <p className="text-subtitle font-semibold text-neutral-700">
+                                Publish this slide?
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                Learners will be able to see it.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <MyButton
+                                buttonType="secondary"
+                                scale="medium"
+                                className="min-w-0 sm:min-w-0"
+                                onClick={() => setIsOpen(false)}
+                            >
+                                Cancel
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                className="min-w-0 sm:min-w-0"
+                                onClick={() => setStep('notify')}
+                            >
+                                Publish
+                            </MyButton>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <p className="text-subtitle font-semibold text-neutral-700">
+                                Notify students?
+                            </p>
+                            <p className="text-caption text-neutral-500">
+                                Send an update about this slide.
+                            </p>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <MyButton
+                                buttonType="secondary"
+                                scale="medium"
+                                className="min-w-0 sm:min-w-0"
+                                onClick={() => handleNotify(false)}
+                            >
+                                Skip
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                className="min-w-0 sm:min-w-0"
+                                onClick={() => handleNotify(true)}
+                            >
+                                Notify
+                            </MyButton>
+                        </div>
+                    </div>
+                )}
+            </PopoverContent>
+        </Popover>
     );
 };

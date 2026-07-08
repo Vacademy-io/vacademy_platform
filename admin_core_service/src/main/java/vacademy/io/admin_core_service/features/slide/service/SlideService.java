@@ -6,6 +6,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
 import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
@@ -257,9 +258,8 @@ public class SlideService {
         if (StringUtils.hasText(videoSlideDTO.getUrl())) {
             videoSlide.setUrl(videoSlideDTO.getUrl());
         }
-        if (StringUtils.hasText(videoSlideDTO.getPublishedUrl())) {
-            videoSlide.setPublishedUrl(videoSlideDTO.getPublishedUrl());
-        }
+        // published_url is written only by the publish path (handlePublishedVideoSlide),
+        // never on a draft/unsync save, so a draft edit can't change what learners see.
         if (StringUtils.hasText(videoSlideDTO.getSourceType())) {
             videoSlide.setSourceType(videoSlideDTO.getSourceType());
         }
@@ -550,17 +550,49 @@ public class SlideService {
                 .orElseThrow(() -> new VacademyException("Chapter to slide not found"));
     }
 
+    // Publishing a substantial live document down to a near-empty fragment is almost
+    // always an accidental editor wipe, not a real edit. Block it unless the caller
+    // explicitly forces it (author confirmed the deletion in the UI). This is the
+    // server-side backstop that would have prevented the silent slide-wipe incidents.
+    private static final int PUBLISHED_SHRINK_GUARD_MIN_CHARS = 2000;
+    private static final double PUBLISHED_SHRINK_GUARD_RATIO = 0.25;
+
     public void handlePublishedDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
+        String newPublishedData;
+        Integer newPublishedTotalPages;
         if (documentSlideDTO != null && documentSlideDTO.getPublishedData() != null
                 && documentSlideDTO.getPublishedData().trim().length() > 0) {
-            documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
-            documentSlide.setPublishedDocumentTotalPages(documentSlideDTO.getPublishedDocumentTotalPages());
+            newPublishedData = documentSlideDTO.getPublishedData();
+            newPublishedTotalPages = documentSlideDTO.getPublishedDocumentTotalPages();
         } else {
-            documentSlide.setPublishedData(documentSlide.getData());
-            documentSlide.setPublishedDocumentTotalPages(documentSlide.getTotalPages());
+            newPublishedData = documentSlide.getData();
+            newPublishedTotalPages = documentSlide.getTotalPages();
         }
-        documentSlide.setData(null);
-        documentSlide.setTotalPages(null);
+        guardAgainstPublishedContentWipe(documentSlide.getPublishedData(), newPublishedData,
+                documentSlideDTO != null && documentSlideDTO.isForcePublish());
+        documentSlide.setPublishedData(newPublishedData);
+        documentSlide.setPublishedDocumentTotalPages(newPublishedTotalPages);
+        // Keep the draft copy in sync with what we just published instead of nulling it.
+        // A published slide must reopen in the editor with its real content, so an author
+        // can never re-save over an empty editor and wipe published_data.
+        documentSlide.setData(newPublishedData);
+        documentSlide.setTotalPages(newPublishedTotalPages);
+    }
+
+    private void guardAgainstPublishedContentWipe(String currentPublished, String incomingPublished, boolean force) {
+        if (force) {
+            return;
+        }
+        int currentLen = currentPublished == null ? 0 : currentPublished.trim().length();
+        int incomingLen = incomingPublished == null ? 0 : incomingPublished.trim().length();
+        if (currentLen >= PUBLISHED_SHRINK_GUARD_MIN_CHARS
+                && incomingLen < currentLen * PUBLISHED_SHRINK_GUARD_RATIO) {
+            throw new VacademyException(HttpStatus.CONFLICT,
+                    "Refusing to publish: this would replace the live content (" + currentLen
+                            + " chars) with a much smaller fragment (" + incomingLen
+                            + " chars), which looks like accidental data loss. "
+                            + "Re-publish with force enabled to override.");
+        }
     }
 
     public void handleDraftDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
@@ -574,32 +606,35 @@ public class SlideService {
     }
 
     public void handleUnsyncDocumentSlide(DocumentSlide documentSlide, DocumentSlideDTO documentSlideDTO) {
+        // UNSYNC = a published slide with pending draft edits. Only the draft columns are
+        // touched here; published_data is written exclusively by the publish path, so a
+        // draft save can never mutate what learners currently see.
         if (documentSlideDTO.getData() != null && !documentSlideDTO.getData().isEmpty()) {
             documentSlide.setData(documentSlideDTO.getData());
         }
-
         if (documentSlideDTO.getTotalPages() != null) {
             documentSlide.setTotalPages(documentSlideDTO.getTotalPages());
-        }
-        if (documentSlideDTO.getPublishedData() != null && !documentSlideDTO.getPublishedData().isEmpty()) {
-            documentSlide.setPublishedData(documentSlideDTO.getPublishedData());
-        }
-        if (documentSlideDTO.getPublishedDocumentTotalPages() != null) {
-            documentSlide.setPublishedDocumentTotalPages(documentSlideDTO.getPublishedDocumentTotalPages());
         }
     }
 
     public void handlePublishedVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {
+        String newPublishedUrl;
+        Long newPublishedLength;
         if (videoSlide != null && videoSlideDTO.getPublishedUrl() != null
                 && videoSlideDTO.getPublishedUrl().trim().length() > 0) {
-            videoSlide.setPublishedUrl(videoSlideDTO.getPublishedUrl());
-            videoSlide.setPublishedVideoLengthInMillis(videoSlide.getPublishedVideoLengthInMillis());
+            newPublishedUrl = videoSlideDTO.getPublishedUrl();
+            newPublishedLength = videoSlide.getPublishedVideoLengthInMillis();
         } else {
-            videoSlide.setPublishedUrl(videoSlide.getUrl());
-            videoSlide.setPublishedVideoLengthInMillis(videoSlideDTO.getVideoLengthInMillis());
+            newPublishedUrl = videoSlide.getUrl();
+            newPublishedLength = videoSlideDTO.getVideoLengthInMillis();
         }
-        videoSlide.setUrl(null);
-        videoSlide.setVideoLengthInMillis(null);
+        videoSlide.setPublishedUrl(newPublishedUrl);
+        videoSlide.setPublishedVideoLengthInMillis(newPublishedLength);
+        // Keep the draft url/length in sync with the just-published content instead of
+        // nulling them, so a published video always reopens in the editor with its real
+        // URL and a re-save over an empty editor can never wipe published_url.
+        videoSlide.setUrl(newPublishedUrl);
+        videoSlide.setVideoLengthInMillis(newPublishedLength);
     }
 
     public void handleDraftVideoSlide(VideoSlide videoSlide, VideoSlideDTO videoSlideDTO) {

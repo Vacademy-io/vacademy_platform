@@ -19,7 +19,7 @@ import { useState } from 'react';
 import { html } from '@yoopta/exports';
 import { SlidesMenuOption } from './slides-menu-options/slides-menu-option';
 import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-plugins-tools';
-import { useRouter } from '@tanstack/react-router';
+import { useRouter, useBlocker } from '@tanstack/react-router';
 import { getPublicUrl } from '@/services/upload_file';
 import DeckPlayer from './deck-player';
 import { PublishDialog } from './publish-slide-dialog';
@@ -29,7 +29,7 @@ import {
     useSlidesMutations,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
 import { toast } from 'sonner';
-import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk, LinkSimple } from '@phosphor-icons/react';
+import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk, LinkSimple, Warning } from '@phosphor-icons/react';
 import { AlertCircle } from 'lucide-react';
 import {
     converDataToAssignmentFormat,
@@ -65,6 +65,13 @@ import { SplitScreenSlide } from './split-screen-slide';
 import { getTokenFromCookie, getTokenDecodedData, getUserRoles } from '@/lib/auth/sessionUtility';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { TokenKey } from '@/constants/auth/tokens';
+import {
+    saveDraft as saveLocalDraft,
+    loadDraft as loadLocalDraft,
+    removeDraft as removeLocalDraft,
+    dirtySlideIds as getDirtySlideIds,
+    pruneOldDrafts,
+} from '../-utils/slide-draft-store';
 import QuizPreview from './QuizPreview';
 import { createQuizSlidePayload } from './quiz/utils/api-helpers';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
@@ -218,6 +225,7 @@ function repairSlateChildren(children: any): any {
 import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
+import { SlideHistoryDialog } from './slide-history-dialog';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -427,6 +435,115 @@ export const SlideMaterial = ({
         searchParams;
 
     const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+    // Bumped after a version-history restore to force loadContent to re-run (and
+    // re-deserialize) even when the slide's id/status didn't change — the effect's
+    // deps intentionally exclude document_slide.data for DOC slides.
+    const [historyRestoreNonce, setHistoryRestoreNonce] = useState(0);
+
+    // ---- Explicit-save lifecycle: local (unsaved) draft persistence ----
+    // Autosave to the DB is gone. Unsaved editor edits are stashed in localStorage
+    // (per user+slide) so they survive slide-switch / refresh, are restored when the
+    // slide reopens, and are cleared on an explicit Save draft / Publish or Discard.
+    const [currentUserId] = useState<string>(() => {
+        try {
+            const t = getTokenFromCookie(TokenKey.accessToken);
+            return (t ? getTokenDecodedData(t)?.sub : null) || 'anonymous';
+        } catch {
+            return 'anonymous';
+        }
+    });
+    const [dirtySlideIdSet, setDirtySlideIdSet] = useState<Set<string>>(() =>
+        getDirtySlideIds(currentUserId)
+    );
+    const refreshDirtySlides = useCallback(() => {
+        setDirtySlideIdSet((prev) => {
+            const next = getDirtySlideIds(currentUserId);
+            // Return the SAME reference when membership is unchanged so React skips a
+            // re-render — the continuous 500ms stash calls this on every edit tick.
+            if (prev.size === next.size && [...next].every((id) => prev.has(id))) {
+                return prev;
+            }
+            return next;
+        });
+    }, [currentUserId]);
+    useEffect(() => {
+        pruneOldDrafts(currentUserId);
+        refreshDirtySlides();
+    }, [currentUserId, refreshDirtySlides]);
+    const stashDocDraftLocally = useCallback(
+        (slideId: string, htmlString: string, guardShrink = true) => {
+            if (!slideId) return;
+            // Anti-clobber (switch-time only): a truncated/degraded switch-time
+            // serialization must not overwrite a larger draft already saved by the
+            // continuous onChange stash. The continuous stash passes guardShrink=false
+            // because it reflects the user's real current edits (incl. intentional
+            // deletions), which must always win.
+            if (guardShrink) {
+                const existing = loadLocalDraft<string>(currentUserId, slideId);
+                if (
+                    existing &&
+                    typeof existing.content === 'string' &&
+                    htmlString.trim().length < existing.content.trim().length * 0.6
+                ) {
+                    return;
+                }
+            }
+            saveLocalDraft(currentUserId, slideId, htmlString);
+            refreshDirtySlides();
+        },
+        [currentUserId, refreshDirtySlides]
+    );
+    const clearLocalDraft = useCallback(
+        (slideId?: string | null) => {
+            if (!slideId) return;
+            removeLocalDraft(currentUserId, slideId);
+            refreshDirtySlides();
+        },
+        [currentUserId, refreshDirtySlides]
+    );
+    const clearAllLocalDrafts = useCallback(() => {
+        dirtySlideIdSet.forEach((id) => removeLocalDraft(currentUserId, id));
+        refreshDirtySlides();
+    }, [dirtySlideIdSet, currentUserId, refreshDirtySlides]);
+    const getRestorableLocalDraftHtml = useCallback(
+        (slide?: Slide | null): string | null => {
+            if (!slide?.id) return null;
+            const d = loadLocalDraft<string>(currentUserId, slide.id);
+            if (
+                d &&
+                typeof d.content === 'string' &&
+                d.content.trim().length > 0 &&
+                !checkIsHtmlEmpty(d.content)
+            ) {
+                return d.content;
+            }
+            return null;
+        },
+        [currentUserId]
+    );
+    // Warn only on a real browser close/refresh while a slide has unsaved local edits.
+    // We intentionally do NOT block in-app slide-switching or navigation: edits are
+    // stashed to localStorage and restored on return, so switching is always safe
+    // (blocking it prompted even on unchanged slides — bug).
+    useEffect(() => {
+        if (dirtySlideIdSet.size === 0) return;
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [dirtySlideIdSet.size]);
+    // In-app navigation guard: when leaving the slides editor (a real pathname
+    // change — NOT a slide-switch, which only mutates the ?slideId search param)
+    // while any slide has an unsaved local draft, block and offer a styled dialog
+    // instead of losing the edits silently. Slide-switching stays intentionally
+    // unblocked (see the beforeunload note above).
+    const leaveBlocker = useBlocker({
+        withResolver: true,
+        disabled: dirtySlideIdSet.size === 0,
+        shouldBlockFn: ({ current, next }) => current.pathname !== next.pathname,
+    });
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
     const [isEditLinkDialogOpen, setIsEditLinkDialogOpen] = useState(false);
     const { getPackageSessionId } = useInstituteDetailsStore();
@@ -587,10 +704,35 @@ export const SlideMaterial = ({
                             debounceTimerRef.current = setTimeout(() => {
                                 try {
                                     const currentContent = html.serialize(editor, editor.children);
+                                    const serializedHtml = formatHTMLString(currentContent || '');
+                                    const targetSlideId =
+                                        prevDocSlideRef.current?.id ?? activeItem?.id ?? null;
                                     currentDocHtmlRef.current = {
-                                        slideId: prevDocSlideRef.current?.id ?? null,
-                                        html: formatHTMLString(currentContent || ''),
+                                        slideId: targetSlideId,
+                                        html: serializedHtml,
                                     };
+                                    // Continuously persist the unsaved edit to localStorage as the
+                                    // user types/pastes, so it survives a slide switch / refresh.
+                                    // Only stash a REAL edit: Yoopta's setEditorValue on load also
+                                    // fires onChange, so without the changed-vs-initial check merely
+                                    // opening a slide would mark it dirty.
+                                    const initialForThisSlide =
+                                        initialDocHtmlRef.current.slideId === targetSlideId
+                                            ? initialDocHtmlRef.current.html
+                                            : null;
+                                    const isRealEdit =
+                                        initialForThisSlide !== null &&
+                                        serializedHtml !== initialForThisSlide;
+                                    if (
+                                        targetSlideId &&
+                                        serializedHtml &&
+                                        !checkIsHtmlEmpty(serializedHtml) &&
+                                        isRealEdit
+                                    ) {
+                                        // guardShrink=false: continuous stash reflects the user's real
+                                        // current content and must always win over an older draft.
+                                        stashDocDraftLocally(targetSlideId, serializedHtml, false);
+                                    }
                                 } catch (error) {
                                     console.error('Error serializing content in onChange:', error);
                                 }
@@ -687,14 +829,18 @@ export const SlideMaterial = ({
         // the slide opens blank even though the content survives in
         // published_data. checkIsHtmlEmpty detects the blank wrapper.
         const draftDocData = activeItem?.document_slide?.data;
+        // Restore an unsaved LOCAL draft (stashed on a previous switch/refresh) over
+        // the server content so in-progress edits are never lost on reopen.
+        const restorableLocalDraft = getRestorableLocalDraftHtml(activeItem);
         const docData =
-            activeItem?.status == 'PUBLISHED'
+            restorableLocalDraft ??
+            (activeItem?.status == 'PUBLISHED'
                 ? activeItem.document_slide?.published_data || null
                 : (draftDocData && !checkIsHtmlEmpty(draftDocData)
                       ? draftDocData
                       : null) ||
                   activeItem?.document_slide?.published_data ||
-                  null;
+                  null);
 
         // Sanitize any public S3 URLs that may contain expired signatures
         let sanitizedDocData = stripAwsQueryParamsFromUrls(docData || '');
@@ -1544,52 +1690,11 @@ export const SlideMaterial = ({
                 }
             }
 
-            const totalPages = estimatePageCount(processedHtmlString);
-
-            // Determine status and published_data based on role
-            let newStatus = slide.status;
-            let publishedData = slide.document_slide?.published_data || '';
-
-            if (hidePublishButtons) {
-                // Non-admin (Teacher): Auto-publish
-                newStatus = 'PUBLISHED';
-                publishedData = processedHtmlString;
-            } else {
-                // Admin: Auto-save draft
-                // If currently published, it becomes UNSYNC because draft has changed
-                if (slide.status === 'PUBLISHED') {
-                    newStatus = 'UNSYNC';
-                } else {
-                    newStatus = slide.status || 'DRAFT';
-                }
-                // Do NOT update publishedData for admins — keep live version safe
-            }
-
-            await addUpdateDocumentSlide({
-                id: slide?.id || '',
-                title: slide?.title || '',
-                image_file_id: '',
-                description: slide?.description || '',
-                slide_order: null,
-                document_slide: {
-                    id: slide?.document_slide?.id || '',
-                    type: 'DOC',
-                    data: processedHtmlString,
-                    title: slide?.document_slide?.title || '',
-                    cover_file_id: '',
-                    total_pages: totalPages,
-                    published_data: publishedData,
-                    published_document_total_pages: 1,
-                },
-                status: newStatus,
-                new_slide: false,
-                notify: false,
-            });
-            if (!hidePublishButtons) {
-                toast.success('Draft auto-saved');
-            } else {
-                toast.success('Changes saved and published');
-            }
+            // Autosave is gone: do NOT write to the DB or publish here. Persist the
+            // edit to localStorage so it survives this slide switch / a refresh and is
+            // restored when the slide reopens. The author commits it explicitly via the
+            // Save draft / Publish buttons (which clear this local copy).
+            stashDocDraftLocally(slide.id, processedHtmlString);
         } catch (error) {
             console.error('Error auto-publishing DOC slide:', error);
             toast.error('Failed to auto-save changes');
@@ -3042,6 +3147,7 @@ export const SlideMaterial = ({
             if (customSaveFunction && activeItem) {
                 console.log('🔄 Using custom save function for non-admin');
                 await customSaveFunction(activeItem);
+                clearLocalDraft(activeItem?.id);
                 return; // Don't show additional toast as custom function handles it
             }
 
@@ -3051,6 +3157,7 @@ export const SlideMaterial = ({
             // success-after-error stack when the DOC branch guarded empty
             // editor content.
             await SaveDraft(activeItem);
+            clearLocalDraft(activeItem?.id);
         } catch {
             toast.error('error saving document');
         }
@@ -3158,7 +3265,27 @@ export const SlideMaterial = ({
         // Re-render the video preview when an external link is edited in place.
         activeItem?.video_slide?.url,
         activeItem?.video_slide?.published_url,
+        // Reload the editor with the restored content after a history restore.
+        historyRestoreNonce,
     ]);
+
+    // A version-history snapshot was copied into this slide's draft on the
+    // backend. Mirror it into the store and force a full editor reload: clear
+    // the local (unsaved) draft so it can't shadow the restored content, and
+    // reset the same-slide guard so the DOC branch re-deserializes.
+    const handleHistoryRestored = (restoredValue: string, slideStatus: string) => {
+        if (!activeItem) return;
+        clearLocalDraft(activeItem.id);
+        lastLoadContentSlideIdRef.current = null;
+        setActiveItem({
+            ...activeItem,
+            status: slideStatus || activeItem.status,
+            document_slide: activeItem.document_slide
+                ? { ...activeItem.document_slide, data: restoredValue }
+                : activeItem.document_slide,
+        } as Slide);
+        setHistoryRestoreNonce((n) => n + 1);
+    };
 
     // Update the refs whenever these functions change
     useEffect(() => {
@@ -3188,8 +3315,73 @@ export const SlideMaterial = ({
             className="flex h-[calc(100vh-76px)] w-full flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out sm:h-[calc(100vh-84px)] md:h-[calc(100vh-108px)] lg:h-[calc(100vh-132px)]"
             ref={selectionRef}
         >
+            {/* Bug 2: styled leave-guard dialog (replaces the browser-default prompt)
+                when navigating away from the slides editor with unsaved local edits. */}
+            {leaveBlocker.status === 'blocked' && (
+                <MyDialog
+                    heading="Unsaved changes"
+                    open
+                    onOpenChange={(open) => {
+                        if (!open) leaveBlocker.reset?.();
+                    }}
+                    dialogWidth="w-full max-w-md"
+                    footer={
+                        <div className="flex w-full flex-col gap-3">
+                            <p className="text-caption text-neutral-500">
+                                Kept only on this device — logging out or clearing browser
+                                data will lose these changes.
+                            </p>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    onClick={() => leaveBlocker.proceed?.()}
+                                >
+                                    Keep in browser
+                                </MyButton>
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    className="border-danger-400 text-danger-600 hover:bg-danger-50"
+                                    onClick={() => {
+                                        clearAllLocalDrafts();
+                                        leaveBlocker.proceed?.();
+                                    }}
+                                >
+                                    Discard changes
+                                </MyButton>
+                                <MyButton
+                                    buttonType="primary"
+                                    scale="medium"
+                                    disabled={isSaving}
+                                    className={cn(isSaving && 'pointer-events-none')}
+                                    onClick={async () => {
+                                        await handleSaveDraftClick();
+                                        leaveBlocker.proceed?.();
+                                    }}
+                                >
+                                    {isSaving ? 'Saving…' : 'Save draft'}
+                                </MyButton>
+                            </div>
+                        </div>
+                    }
+                >
+                    <div className="flex items-start gap-3">
+                        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-danger-50 text-danger-600">
+                            <Warning size={20} weight="fill" />
+                        </span>
+                        <p className="text-subtitle text-neutral-600">
+                            You have edits that haven&apos;t been saved to the database. Choose
+                            what to do before leaving this page.
+                        </p>
+                    </div>
+                </MyDialog>
+            )}
             {activeItem && (
-                <div className="sticky top-0 z-50 -mx-2 -mt-2 flex flex-wrap items-center justify-between gap-1 border-b border-neutral-200 bg-white/80 px-2 py-1 shadow-sm backdrop-blur-sm sm:-mx-3 sm:-mt-3 sm:px-3 sm:py-1.5 md:-mx-4 md:-mt-4 md:flex-nowrap md:gap-3 md:px-4 md:py-2.5 lg:-mx-7 lg:-mt-7 lg:gap-4 lg:px-7 lg:py-3">
+                <div className="sticky top-0 z-50 -mx-2 -mt-2 flex flex-col gap-2 border-b border-neutral-200 bg-white/80 px-2 py-1 shadow-sm backdrop-blur-sm sm:-mx-3 sm:-mt-3 sm:px-3 sm:py-1.5 md:-mx-4 md:-mt-4 md:px-4 md:py-2.5 lg:-mx-7 lg:-mt-7 lg:px-7 lg:py-3">
+                    {/* Row 1 — editable title + actions. Wraps so the title truncates
+                        and the actions drop to their own line before anything clips. */}
+                    <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
                     <div className="w-full min-w-0 md:w-auto md:flex-1">
                         {isEditing ? (
                             <div className="flex items-center justify-center gap-2 duration-200 animate-in fade-in">
@@ -3233,7 +3425,7 @@ export const SlideMaterial = ({
                     </div>
 
                     {!isLearnerView && (
-                        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2 md:gap-3">
                             <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
                                 {activeItem.source_type === 'DOCUMENT' &&
                                     activeItem?.document_slide?.type === 'DOC' && (
@@ -3264,6 +3456,18 @@ export const SlideMaterial = ({
                                     )}
 
                                 <ActivityStatsSidebar />
+
+                                {/* Version history + restore — content snapshots are
+                                    trigger-written for document slides (V363). */}
+                                {activeItem.source_type === 'DOCUMENT' &&
+                                    activeItem?.document_slide?.type !== 'PRESENTATION' && (
+                                        <SlideHistoryDialog
+                                            key={activeItem.id}
+                                            activeItem={activeItem}
+                                            chapterId={chapterId || ''}
+                                            onRestored={handleHistoryRestored}
+                                        />
+                                    )}
 
                                 {isExternalVideoLink && (
                                     <MyButton
@@ -3318,35 +3522,24 @@ export const SlideMaterial = ({
                                     </MyButton>
                                 )}
 
-                                {/* Single Publish/Unpublish Button - Hidden for non-admin users */}
-                                {!hidePublishButtons &&
-                                    (activeItem.status === 'PUBLISHED' ? (
-                                        <MyButton
-                                            buttonType="secondary"
-                                            scale="medium"
-                                            layoutVariant="default"
-                                            onClick={() => setIsUnpublishDialogOpen(true)}
-                                        >
-                                            <span className="hidden sm:inline">Unpublish</span>
-                                            <span className="text-xs sm:hidden">Unpub</span>
-                                        </MyButton>
-                                    ) : (
-                                        <MyButton
-                                            buttonType="primary"
-                                            scale="medium"
-                                            layoutVariant="default"
-                                            onClick={() => setIsPublishDialogOpen(true)}
-                                        >
-                                            <span className="hidden sm:inline">Publish</span>
-                                            <span className="text-xs sm:hidden">Pub</span>
-                                        </MyButton>
-                                    ))}
-
-                                {/* Keep dialogs but make them conditional */}
-                                {isUnpublishDialogOpen && (
+                                {/* Publish/Unpublish — shown to ALL roles (no auto-publish anymore).
+                                    The confirm step is a compact popover anchored to this button
+                                    (no full-screen modal); the button below is its anchor. */}
+                                {activeItem.status === 'PUBLISHED' ? (
                                     <UnpublishDialog
                                         isOpen={isUnpublishDialogOpen}
                                         setIsOpen={setIsUnpublishDialogOpen}
+                                        trigger={
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="medium"
+                                                layoutVariant="default"
+                                                onClick={() => setIsUnpublishDialogOpen(true)}
+                                            >
+                                                <span className="hidden sm:inline">Unpublish</span>
+                                                <span className="text-xs sm:hidden">Unpub</span>
+                                            </MyButton>
+                                        }
                                         handlePublishUnpublishSlide={() =>
                                             handleUnpublishSlide(
                                                 setIsUnpublishDialogOpen,
@@ -3365,17 +3558,27 @@ export const SlideMaterial = ({
                                             )
                                         }
                                     />
-                                )}
-
-                                {isPublishDialogOpen && (
+                                ) : (
                                     <PublishDialog
                                         isOpen={isPublishDialogOpen}
                                         setIsOpen={setIsPublishDialogOpen}
+                                        trigger={
+                                            <MyButton
+                                                buttonType="primary"
+                                                scale="medium"
+                                                layoutVariant="default"
+                                                onClick={() => setIsPublishDialogOpen(true)}
+                                            >
+                                                <span className="hidden sm:inline">Publish</span>
+                                                <span className="text-xs sm:hidden">Pub</span>
+                                            </MyButton>
+                                        }
                                         handlePublishUnpublishSlide={async () => {
                                             if (
                                                 activeItem?.document_slide?.type === 'PRESENTATION'
                                             ) {
                                                 publishExcalidrawPresentation();
+                                                clearLocalDraft(activeItem?.id);
                                                 setIsPublishDialogOpen(false);
                                             } else {
                                                 // For DOC slides, get fresh editor HTML so
@@ -3414,7 +3617,8 @@ export const SlideMaterial = ({
                                                     addUpdateScormSlide,
                                                     SaveDraft,
                                                     playerRef,
-                                                    addUpdateAssessmentSlide
+                                                    addUpdateAssessmentSlide,
+                                                    () => clearLocalDraft(activeItem?.id)
                                                 );
                                             }
                                         }}
@@ -3469,6 +3673,21 @@ export const SlideMaterial = ({
                             )}
                             {/* Slides Menu Option */}
                             <SlidesMenuOption />
+                        </div>
+                    )}
+                    </div>
+                    {/* Bug 4 — unsaved notice on its own row so it never crowds or
+                        overlaps the title / action buttons at any viewport width. */}
+                    {!isLearnerView && activeItem?.id && dirtySlideIdSet.has(activeItem.id) && (
+                        <div
+                            role="status"
+                            className="flex w-fit items-center gap-1.5 rounded-md bg-danger-50 px-2 py-1 text-caption font-semibold text-danger-600"
+                        >
+                            <Warning size={16} weight="fill" className="shrink-0" />
+                            <span>
+                                Unsaved — not saved to the database. Use Save Draft or Publish
+                                to persist.
+                            </span>
                         </div>
                     )}
                 </div>

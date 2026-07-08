@@ -1061,3 +1061,20 @@ body .yoopta-accordion-list-item-content [data-slate-placeholder='true'] {
     font-size: 16px; /* matches .yoopta-numbered-list font-size */
 }
 
+/* Uploaded images are stored with their natural pixel size (`sizes` on upload),
+   so Yoopta renders the image block at that raw width. A large photo (e.g.
+   ~2000px) then overflows the editor column: the block's options (⋯) button and
+   resize handles — pinned to the image's right edge — land off-frame, and a
+   horizontal scrollbar appears that swallows the click. Cap the image block to
+   the column width so it always fits and its controls stay reachable. A user's
+   deliberate down-size (width < column) is below the cap, so this doesn't touch
+   intentionally-smaller images. */
+.yoopta-editor .yoopta-image,
+.yoopta-editor .yoopta-image-inner {
+    max-width: 100% !important;
+}
+.yoopta-editor .yoopta-image-inner img {
+    max-width: 100% !important;
+    height: auto !important;
+}
+

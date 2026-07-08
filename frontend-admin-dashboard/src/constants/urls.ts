@@ -548,6 +548,10 @@ export const GET_CHAPTERS_WITH_SLIDES = `${BASE_URL}/admin-core-service/v1/study
 export const ADD_UPDATE_SPLIT_SCREEN_SLIDE = `${BASE_URL}/admin-core-service/slide/v1/add-update-video-slide`;
 export const GET_ALL_SLIDES = `${BASE_URL}/admin-core-service/v1/study-library/chapters-with-slides`;
 export const ADD_UPDATE_DOCUMENT_SLIDE = `${BASE_URL}/admin-core-service/slide/v1/add-update-document-slide`;
+// Version history of slide content (trigger-written audit trail) + restore.
+export const GET_SLIDE_CONTENT_HISTORY = `${BASE_URL}/admin-core-service/slide/v1/content-history`;
+export const GET_SLIDE_CONTENT_HISTORY_DETAIL = `${BASE_URL}/admin-core-service/slide/v1/content-history/detail`;
+export const RESTORE_SLIDE_CONTENT_HISTORY = `${BASE_URL}/admin-core-service/slide/v1/content-history/restore`;
 export const UPDATE_SLIDE_STATUS = `${BASE_URL}/admin-core-service/slide/v1/update-status`;
 export const UPDATE_SLIDE_ORDER = `${BASE_URL}/admin-core-service/slide/v1/update-slide-order`;
 export const UPDATE_QUESTION_ORDER = `${BASE_URL}/admin-core-service/slide/question-slide/add-or-update`;

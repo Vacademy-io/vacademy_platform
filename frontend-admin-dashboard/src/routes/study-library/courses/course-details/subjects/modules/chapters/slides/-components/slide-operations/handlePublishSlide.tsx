@@ -62,7 +62,9 @@ export const handlePublishSlide = async (
         Error,
         AssessmentSlidePayload,
         unknown
-    >
+    >,
+    /** Called only after the publish network call SUCCEEDS (e.g. to clear the local draft). */
+    onPublishSuccess?: () => void
 ) => {
     const status = 'PUBLISHED';
 
@@ -98,8 +100,8 @@ export const handlePublishSlide = async (
             return;
         }
 
-        try {
-            await addUpdateDocumentSlide({
+        const publishDocumentSlide = (force: boolean) =>
+            addUpdateDocumentSlide({
                 id: activeItem?.id || '',
                 title: activeItem.title || '',
                 image_file_id: activeItem?.image_file_id || '',
@@ -117,15 +119,44 @@ export const handlePublishSlide = async (
                     total_pages: activeItem?.document_slide?.total_pages || 0,
                     published_data: publishedData,
                     published_document_total_pages: activeItem?.document_slide?.total_pages || 0,
+                    force_publish: force,
                 },
                 status: status,
                 new_slide: false,
                 notify: notify,
             });
+
+        try {
+            await publishDocumentSlide(false);
             toast.success(`Slide published successfully!`);
             setIsOpen(false);
-        } catch {
-            toast.error(`Error in publishing the slide`);
+            onPublishSuccess?.();
+        } catch (error) {
+            // The backend blocks a publish that would shrink a large live slide down to
+            // a tiny fragment (409). Surface the real reason and let the author confirm
+            // an explicit force-override instead of a generic "error saving".
+            const response = (
+                error as {
+                    response?: { status?: number; data?: { ex?: string; message?: string } };
+                }
+            )?.response;
+            const serverMessage = response?.data?.ex || response?.data?.message;
+            if (response?.status === 409 && serverMessage) {
+                const confirmed = window.confirm(
+                    `${serverMessage}\n\nDo you want to publish anyway and replace the live version?`
+                );
+                if (!confirmed) return;
+                try {
+                    await publishDocumentSlide(true);
+                    toast.success('Slide published (forced override).');
+                    setIsOpen(false);
+                    onPublishSuccess?.();
+                } catch {
+                    toast.error('Error in publishing the slide');
+                }
+                return;
+            }
+            toast.error(serverMessage || `Error in publishing the slide`);
         }
     }
 

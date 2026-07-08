@@ -718,14 +718,14 @@ export const ChapterSidebarAddButton = () => {
     return (
         <div className="w-full px-1 duration-500 animate-in fade-in slide-in-from-top-2">
             <div className="flex w-full items-center gap-2">
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                     <MyDropdown dropdownList={filteredDropdownList} onSelect={handleSelect}>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             className={`
-                                group relative h-9 w-full
-                                overflow-hidden border-0 bg-gradient-to-r
+                                group relative h-9 w-full min-w-0
+                                overflow-hidden border-0 bg-gradient-to-r sm:min-w-0
                                 from-primary-400 to-primary-400
                                 shadow-md shadow-primary-500/20
                                 transition-all duration-300 ease-in-out
@@ -735,6 +735,7 @@ export const ChapterSidebarAddButton = () => {
                                 ${open ? 'px-3' : 'px-2.5'}
                             `}
                             id="add-slides"
+                            title="Add a single slide — pick a type (document, PDF, video, quiz, code…)"
                         >
                             <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-white/0 via-white/20 to-white/0 transition-transform duration-700 ease-out group-hover:translate-x-full" />
 
@@ -755,11 +756,12 @@ export const ChapterSidebarAddButton = () => {
                         </MyButton>
                     </MyDropdown>
                 </div>
-                <div>
+                <div className="shrink-0">
                     <MyButton
                         buttonType="primary"
                         scale="medium"
-                        className={`flex items-center justify-center gap-1.5 ${open ? 'px-3' : 'px-2.5'}`}
+                        className={`flex min-w-0 items-center justify-center gap-1.5 whitespace-nowrap sm:min-w-0 ${open ? 'px-3' : 'px-2.5'}`}
+                        title="Quick add — upload and publish several slides at once"
                         onClick={() => {
                             const s = route.state.location.search as Record<string, unknown>;
                             const search = {
@@ -785,7 +787,7 @@ export const ChapterSidebarAddButton = () => {
                         }}
                         id="quick-add-fast"
                     >
-                        <Lightning className="size-4" />
+                        <Lightning className="size-4 shrink-0" />
                         {open && <span className="text-sm font-medium">Quick Add</span>}
                     </MyButton>
                 </div>

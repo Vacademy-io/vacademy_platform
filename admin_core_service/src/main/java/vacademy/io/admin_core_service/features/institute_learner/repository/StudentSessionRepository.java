@@ -99,6 +99,21 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
   List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserIdAndStatusIn(String instituteId,
                                                                                      String userId, List<String> status);
 
+  /**
+   * Eagerly fetches package + institute because LearnerLmsUserSyncService
+   * walks these relations on an @Async thread where no Hibernate session
+   * (or open-in-view) exists to lazy-load them.
+   */
+  @Query("""
+          SELECT m FROM StudentSessionInstituteGroupMapping m
+          LEFT JOIN FETCH m.packageSession ps
+          LEFT JOIN FETCH ps.packageEntity
+          LEFT JOIN FETCH m.institute
+          WHERE m.userId = :userId AND m.status IN :statuses
+          """)
+  List<StudentSessionInstituteGroupMapping> findAllByUserIdAndStatusIn(
+          @Param("userId") String userId, @Param("statuses") List<String> statuses);
+
   List<StudentSessionInstituteGroupMapping> findAllBySubOrgIdAndStatusIn(String subOrgId, List<String> status);
 
   @Query(value = "SELECT COUNT(ss.id) " +

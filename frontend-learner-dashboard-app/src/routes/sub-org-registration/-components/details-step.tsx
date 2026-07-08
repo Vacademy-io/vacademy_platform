@@ -305,9 +305,67 @@ const DetailsStep = ({
             />
           </div>
 
+          <Separator />
+
+          <FormField
+            control={form.control}
+            name="adminName"
+            render={({ field, fieldState }) => (
+              <FormItem>
+                <FormControl>
+                  <MyInput
+                    label="Admin Full Name"
+                    inputType="text"
+                    inputPlaceholder="Full name of the org admin"
+                    input={field.value}
+                    onChangeFunction={field.onChange}
+                    onBlur={field.onBlur}
+                    error={fieldState.error?.message}
+                    required
+                    size="large"
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="adminEmail"
+            render={({ field, fieldState }) => (
+              <FormItem>
+                <FormControl>
+                  <MyInput
+                    label="Admin Email"
+                    inputType="email"
+                    inputPlaceholder="admin@yourorg.com"
+                    input={field.value}
+                    onChangeFunction={field.onChange}
+                    onBlur={field.onBlur}
+                    error={fieldState.error?.message}
+                    required
+                    size="large"
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+          <p className="-mt-4 text-caption text-neutral-400">
+            We&apos;ll send a verification code to this email
+          </p>
+
+          <PhoneInputField
+            label="Admin Phone"
+            placeholder="123 456 7890"
+            name="adminPhone"
+            control={form.control}
+            required={false}
+          />
+
           {/* Organization address — only when the template collects it */}
           {collectAddress && (
             <>
+              <Separator />
               <FormField
                 control={form.control}
                 name="addressLine1"
@@ -419,63 +477,6 @@ const DetailsStep = ({
               />
             </>
           )}
-
-          <Separator />
-
-          <FormField
-            control={form.control}
-            name="adminName"
-            render={({ field, fieldState }) => (
-              <FormItem>
-                <FormControl>
-                  <MyInput
-                    label="Admin Full Name"
-                    inputType="text"
-                    inputPlaceholder="Full name of the org admin"
-                    input={field.value}
-                    onChangeFunction={field.onChange}
-                    onBlur={field.onBlur}
-                    error={fieldState.error?.message}
-                    required
-                    size="large"
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="adminEmail"
-            render={({ field, fieldState }) => (
-              <FormItem>
-                <FormControl>
-                  <MyInput
-                    label="Admin Email"
-                    inputType="email"
-                    inputPlaceholder="admin@yourorg.com"
-                    input={field.value}
-                    onChangeFunction={field.onChange}
-                    onBlur={field.onBlur}
-                    error={fieldState.error?.message}
-                    required
-                    size="large"
-                  />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-          <p className="-mt-4 text-caption text-neutral-400">
-            We&apos;ll send a verification code to this email
-          </p>
-
-          <PhoneInputField
-            label="Admin Phone"
-            placeholder="123 456 7890"
-            name="adminPhone"
-            control={form.control}
-            required={false}
-          />
 
           <div className="mt-2 flex justify-end">
             <MyButton

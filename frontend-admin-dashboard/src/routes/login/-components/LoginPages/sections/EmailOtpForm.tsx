@@ -101,7 +101,7 @@ export function EmailLogin({
         mutationFn: (email: string) => {
             return axios.post(
                 REQUEST_OTP,
-                { email },
+                { email, client_name: 'ADMIN' },
                 {
                     headers: {
                         'Content-Type': 'application/json',

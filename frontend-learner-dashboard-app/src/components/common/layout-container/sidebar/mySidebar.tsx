@@ -211,7 +211,7 @@ export const MySidebar = ({
                 );
               }
               return {
-                subItem: subLabel || s.id,
+                subItem: subLabel || humanizeText(s.id),
                 subItemLink: s.route || "/",
               };
             })

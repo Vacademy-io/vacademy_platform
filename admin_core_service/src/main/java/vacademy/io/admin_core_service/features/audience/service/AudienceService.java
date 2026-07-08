@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendReque
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.EffectiveAccess;
 import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.Mode;
@@ -4549,6 +4550,15 @@ public class AudienceService {
 
         String channel = request.getChannel();
 
+        // Resolve once whether this institute's numbers should default to India
+        // (+91) for bare 10-digit numbers. Blank/unknown country → treat as India.
+        String messageInstituteId = request.getInstituteId();
+        boolean instituteDefaultsToIndia = PhoneCountryUtil.defaultsToIndia(
+                StringUtils.hasText(messageInstituteId)
+                        ? instituteRepository.findById(messageInstituteId)
+                                .map(Institute::getCountry).orElse(null)
+                        : null);
+
         // 3. Batch-fetch user details for leads that have a userId (needed for contact
         // resolution)
         List<String> userIds = allResponses.stream()
@@ -4666,10 +4676,9 @@ public class AudienceService {
                     String phone = StringUtils.hasText(resp.getParentMobile())
                             ? resp.getParentMobile()
                             : (userDTO != null ? userDTO.getMobileNumber() : null);
-                    if (phone != null && phone.startsWith("+")) {
-                        phone = phone.substring(1);
-                    }
-                    recipientBuilder.phone(phone);
+                    // Sanitize to digits and prepend 91 for bare 10-digit numbers
+                    // when the institute defaults to India (blank/unknown or India).
+                    recipientBuilder.phone(PhoneCountryUtil.normalizePhone(phone, instituteDefaultsToIndia));
                     break;
                 case "EMAIL":
                     String email = StringUtils.hasText(resp.getParentEmail())

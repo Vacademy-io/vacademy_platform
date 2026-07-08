@@ -51,10 +51,14 @@ import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-f
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
-import { BulkAssignCounsellorDialog } from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import {
+    BulkAssignCounsellorDialog,
+    type BulkAssignMode,
+} from '@/components/shared/leads/bulk-assign-counsellor-dialog';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
-import { UserPlus } from '@phosphor-icons/react';
+import { CaretDown, UserMinus, UserPlus } from '@phosphor-icons/react';
 import {
     LeadEmptyState,
     LeadTable,
@@ -512,15 +516,19 @@ const RecentLeadsContent = () => {
         queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
     };
 
-    // ── Bulk assign counsellor (multi-select on the Unassigned view) ──
-    const isUnassignedView = counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE;
+    // ── Bulk assign / remove counsellor (multi-select, every view) ──
     const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    // Which flow the "Bulk actions" menu opened: assign (round-robin default)
+    // or unassign (REMOVE).
+    const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
 
-    // Selection is only meaningful on the Unassigned view; drop it when the
-    // counsellor filter changes so stale ids can't leak into an assign.
+    // Selection works in EVERY view (assign, reassign AND bulk-remove need
+    // assigned leads too — it was previously Unassigned-only, which made the
+    // dialog's Remove mode unreachable). Drop it when the counsellor filter
+    // changes so stale ids can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
     }, [counsellorFilter]);
@@ -1137,8 +1145,8 @@ const RecentLeadsContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
-                    {/* Bulk-assign toolbar — only on the Unassigned view with a selection. */}
-                    {isUnassignedView && selectedLeads.size > 0 && (
+                    {/* Bulk-action toolbar — any view with a selection (assign / remove counsellor). */}
+                    {selectedLeads.size > 0 && (
                         <div className="mb-2 flex items-center justify-between rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
                             <span className="text-body font-medium text-primary-700">
                                 {selectedLeads.size} selected
@@ -1163,14 +1171,31 @@ const RecentLeadsContent = () => {
                                 >
                                     Clear
                                 </MyButton>
-                                <MyButton
-                                    buttonType="primary"
-                                    scale="small"
-                                    onClick={() => setBulkAssignOpen(true)}
+                                <MyDropdown
+                                    dropdownList={[
+                                        {
+                                            label: 'Assign leads',
+                                            value: 'assign',
+                                            icon: <UserPlus className="size-4" />,
+                                        },
+                                        {
+                                            label: 'Unassign leads',
+                                            value: 'unassign',
+                                            icon: <UserMinus className="size-4" />,
+                                        },
+                                    ]}
+                                    onSelect={(value) => {
+                                        setBulkActionMode(
+                                            value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
+                                        );
+                                        setBulkAssignOpen(true);
+                                    }}
                                 >
-                                    <UserPlus className="size-3.5" />
-                                    Assign counsellor
-                                </MyButton>
+                                    <MyButton buttonType="primary" scale="small">
+                                        Bulk actions
+                                        <CaretDown className="size-3.5" />
+                                    </MyButton>
+                                </MyDropdown>
                             </div>
                         </div>
                     )}
@@ -1191,7 +1216,7 @@ const RecentLeadsContent = () => {
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
-                            selectable={isUnassignedView}
+                            selectable
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}
@@ -1216,6 +1241,7 @@ const RecentLeadsContent = () => {
                     instituteId={instituteId ?? ''}
                     leads={Array.from(selectedLeads.values())}
                     counsellorOptions={assignableCounsellorOptions}
+                    initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
                 />
 

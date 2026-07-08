@@ -18,7 +18,7 @@ import { createYooptaEditor } from '@yoopta/editor';
 import { html } from '@yoopta/exports';
 import { plugins } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from '../formatHtmlString';
-import { appReloadPreprocess } from './reload';
+import { appReloadPreprocess, detectDeserializeLoss } from './reload';
 
 // Register the app's real plugins onto a bare editor, mirroring
 // slide-material.tsx applyDocContentToEditor() so serialize/deserialize
@@ -469,5 +469,107 @@ describe('DOC slide: signed S3 images survive and get de-signed (truncation regr
             expect(searchable, `combined slide lost image "${img}"`).toContain(img);
         }
         expect(searchable, 'every image de-signed').not.toContain('X-Amz-Signature');
+    });
+});
+
+describe('DOC slide: content nested in semantic wrappers survives reload (heading-loss regression)', () => {
+    // Yoopta's html.deserialize does NOT recurse into <section>/<header>/nested <div>,
+    // so blocks buried inside them were silently dropped on reload. appReloadPreprocess
+    // now flattens those wrappers first. See docs/SLIDE_CONTENT_LOSS_INVESTIGATION.md.
+    const typeCounts = (value: Record<string, any>) => {
+        const counts: Record<string, number> = {};
+        Object.values(value || {}).forEach((b: any) => {
+            counts[b?.type ?? 'UNKNOWN'] = (counts[b?.type ?? 'UNKNOWN'] || 0) + 1;
+        });
+        return counts;
+    };
+
+    it('keeps every heading/paragraph nested in <section>/<header>/<div>', () => {
+        const stored = `<html><head></head><body>
+            <header><div><h1>SIG_H1</h1></div></header>
+            <section>
+                <h2>SIG_H2_A</h2>
+                <p>SIG_P_A</p>
+                <div><h3>SIG_H3_A</h3><p>SIG_P_NESTED</p></div>
+            </section>
+            <section>
+                <div><div><h2>SIG_H2_DEEP</h2></div></div>
+                <h3>SIG_H3_B</h3>
+            </section>
+        </body></html>`;
+
+        const reloaded = makeEditor();
+        const value = html.deserialize(reloaded, appReloadPreprocess(stored));
+        const counts = typeCounts(value as any);
+
+        // Source has 1 h1, 2 h2, 2 h3 — all must survive (pre-fix: several dropped).
+        expect(counts.HeadingOne ?? 0, 'lost the <h1>').toBe(1);
+        expect(counts.HeadingTwo ?? 0, 'lost an <h2> nested in a wrapper').toBe(2);
+        expect(counts.HeadingThree ?? 0, 'lost an <h3> nested in a wrapper').toBe(2);
+
+        reloaded.setEditorValue(value);
+        const out = formatHTMLString(html.serialize(reloaded, reloaded.getEditorValue()));
+        for (const sig of ['SIG_H1', 'SIG_H2_A', 'SIG_P_A', 'SIG_H3_A', 'SIG_P_NESTED', 'SIG_H2_DEEP', 'SIG_H3_B']) {
+            expect(out, `content "${sig}" lost through the semantic-wrapper round-trip`).toContain(sig);
+        }
+    });
+
+    it('does NOT flatten the internals of protected blocks (table/list/custom) inside a section', () => {
+        const stored = `<html><head></head><body>
+            <section>
+                <h2>SIG_BEFORE_TABLE</h2>
+                <table><thead><tr><th>SIG_TH</th></tr></thead><tbody><tr><td>SIG_TD</td></tr></tbody></table>
+                <ul><li>SIG_LI_ONE</li><li>SIG_LI_TWO</li></ul>
+            </section>
+        </body></html>`;
+
+        const reloaded = makeEditor();
+        const value = html.deserialize(reloaded, appReloadPreprocess(stored));
+        const counts = typeCounts(value as any);
+
+        expect(counts.Table ?? 0, 'table dropped or shredded when its section was flattened').toBe(1);
+        reloaded.setEditorValue(value);
+        const out = formatHTMLString(html.serialize(reloaded, reloaded.getEditorValue()));
+        for (const sig of ['SIG_BEFORE_TABLE', 'SIG_TH', 'SIG_TD', 'SIG_LI_ONE', 'SIG_LI_TWO']) {
+            expect(out, `protected-block content "${sig}" lost`).toContain(sig);
+        }
+    });
+});
+
+describe('DOC slide: load-integrity detector flags a lossy deserialize (Layer 2)', () => {
+    it('flags a dropped table', () => {
+        const src = '<h2>x</h2><table><tbody><tr><td>c</td></tr></tbody></table>';
+        const value = { a: blk(0, 'HeadingTwo', 'heading-two', 'x') }; // Table missing
+        const r = detectDeserializeLoss(src, value as any);
+        expect(r.lossy).toBe(true);
+        expect(r.lost.join(' ')).toMatch(/table/);
+    });
+
+    it('flags a dropped heading', () => {
+        const src = '<h2>a</h2><h2>b</h2>';
+        const value = { a: blk(0, 'HeadingTwo', 'heading-two', 'a') }; // one h2 missing
+        expect(detectDeserializeLoss(src, value as any).lossy).toBe(true);
+    });
+
+    it('does NOT flag a clean round-trip', () => {
+        const src = '<h2>x</h2>';
+        const value = { a: blk(0, 'HeadingTwo', 'heading-two', 'x') };
+        expect(detectDeserializeLoss(src, value as any).lossy).toBe(false);
+    });
+
+    it('does NOT false-positive on media/headings nested inside a custom block', () => {
+        // A quiz block whose serialized markup contains an inner <img> and <h3>.
+        const src = '<div data-yoopta-type="quizBlock"><h3>inner</h3><img src="x"/></div>';
+        const value = { q: custom(0, 'quizBlock', { quizData: {} }) };
+        // The quiz block survived; its inner img/heading are part of it, not lost blocks.
+        expect(detectDeserializeLoss(src, value as any).lossy).toBe(false);
+    });
+
+    it('flags a dropped custom block', () => {
+        const src = '<div data-yoopta-type="flashcard" data-front="a" data-back="b"></div>';
+        const value = { p: blk(0, 'Paragraph', 'paragraph', 'nothing') }; // flashcard gone
+        const r = detectDeserializeLoss(src, value as any);
+        expect(r.lossy).toBe(true);
+        expect(r.lost.join(' ')).toMatch(/flashcard/);
     });
 });

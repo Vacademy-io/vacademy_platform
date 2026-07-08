@@ -27,11 +27,11 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Pushes learner profile edits (name/email) to every WordPress LMS the
- * learner's courses are connected to, via the site's CRM plugin
+ * Pushes learner profile edits (name/email) AND portal password changes to every
+ * WordPress LMS the learner's courses are connected to, via the site's CRM plugin
  * ({@code /wp-json/crm/v1/edit-user}, Basic auth with the same
  * apiKey/apiSecret stored in LMS_SETTING). Best-effort and async: the
- * profile edit never fails because an LMS is unreachable, and a learner
+ * profile/password edit never fails because an LMS is unreachable, and a learner
  * missing on the LMS is the LMS's 4xx to log, not ours to surface.
  *
  * <p>Connection discovery mirrors what the enrolment workflow reads: each
@@ -62,16 +62,70 @@ public class LearnerLmsUserSyncService {
         }
     }
 
+    /**
+     * Mirrors a learner's new portal password to every connected WordPress LMS.
+     * Same discovery + edit-user path as the profile sync, but the payload carries
+     * only {@code email} (to match the WP user) + {@code password}. Async and
+     * best-effort: a password change must never fail because an LMS is unreachable.
+     */
+    @Async
+    public void syncPasswordUpdate(String userId, String email, String newPassword) {
+        try {
+            doPasswordSync(userId, email, newPassword);
+        } catch (Exception e) {
+            log.warn("LMS password sync failed for user {}: {}", userId, e.getMessage());
+        }
+    }
+
     private void doSync(String userId, String oldEmail, String newEmail, String newFullName) {
         if (!StringUtils.hasText(oldEmail)) {
             log.debug("LMS profile sync skipped for user {}: no existing email to match on", userId);
             return;
         }
 
+        Map<String, JsonNode> connections = resolveWordpressConnections(userId);
+        if (connections.isEmpty()) {
+            log.debug("LMS profile sync: no WordPress LMS connections for user {}", userId);
+            return;
+        }
+
+        ObjectNode payload = buildEditUserPayload(oldEmail, newEmail, newFullName);
+        for (JsonNode conn : connections.values()) {
+            pushEditUser(conn, payload, userId);
+        }
+    }
+
+    private void doPasswordSync(String userId, String email, String newPassword) {
+        if (!StringUtils.hasText(email) || !StringUtils.hasText(newPassword)) {
+            log.debug("LMS password sync skipped for user {}: missing email or password", userId);
+            return;
+        }
+
+        Map<String, JsonNode> connections = resolveWordpressConnections(userId);
+        if (connections.isEmpty()) {
+            log.debug("LMS password sync: no WordPress LMS connections for user {}", userId);
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("email", email.trim());
+        payload.put("password", newPassword);
+        for (JsonNode conn : connections.values()) {
+            pushEditUser(conn, payload, userId);
+        }
+    }
+
+    /**
+     * Distinct WordPress connections across the learner's active courses, deduped by
+     * (normalized apiUrl, apiKey) so one site is called once. Reads each enrolled
+     * package's LMS_SETTING (double-data envelope), falling back to the institute-level
+     * setting only when no course-level config exists.
+     */
+    private Map<String, JsonNode> resolveWordpressConnections(String userId) {
         List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
                 .findAllByUserIdAndStatusIn(userId, ACTIVE_STATUSES);
         if (mappings.isEmpty()) {
-            return;
+            return Map.of();
         }
 
         Set<String> packageIds = new LinkedHashSet<>();
@@ -85,8 +139,6 @@ public class LearnerLmsUserSyncService {
             }
         }
 
-        // Distinct WordPress connections across the learner's courses,
-        // deduped by (normalized apiUrl, apiKey) so one site is called once.
         Map<String, JsonNode> connections = new LinkedHashMap<>();
         for (String packageId : packageIds) {
             collectWordpressConnections(readPackageLmsSetting(packageId), connections);
@@ -96,15 +148,7 @@ public class LearnerLmsUserSyncService {
                 collectWordpressConnections(readInstituteLmsSetting(instituteId), connections);
             }
         }
-        if (connections.isEmpty()) {
-            log.debug("LMS profile sync: no WordPress LMS connections for user {}", userId);
-            return;
-        }
-
-        ObjectNode payload = buildEditUserPayload(oldEmail, newEmail, newFullName);
-        for (JsonNode conn : connections.values()) {
-            pushEditUser(conn, payload, userId);
-        }
+        return connections;
     }
 
     private ObjectNode buildEditUserPayload(String oldEmail, String newEmail, String newFullName) {

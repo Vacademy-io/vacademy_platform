@@ -3,6 +3,7 @@ package vacademy.io.auth_service.feature.user.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService;
 import vacademy.io.auth_service.feature.user.dto.UserBasicDetailsDto;
@@ -68,7 +69,14 @@ public class UserDetailController {
         try {
             userDTO.setId(userId);
             institutePolicyService.updateLearnerDetails(userDTO);
-            return ResponseEntity.ok(userService.updateUserDetails(userDTO, userId));
+            UserDTO updated = userService.updateUserDetails(userDTO, userId);
+            // This is the endpoint the learner "Change Password" screen calls (PUT with
+            // {username, password}). If the password was changed, mirror it to any
+            // WordPress LMS the learner's courses are connected to (async, best-effort).
+            if (StringUtils.hasText(userDTO.getPassword())) {
+                institutePolicyService.syncLmsPassword(userId, updated.getEmail(), userDTO.getPassword());
+            }
+            return ResponseEntity.ok(updated);
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

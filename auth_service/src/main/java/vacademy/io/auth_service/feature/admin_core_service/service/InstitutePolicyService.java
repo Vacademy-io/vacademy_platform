@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.admin_core_service.dto.InstituteSignupPolicy;
@@ -97,6 +98,33 @@ public class InstitutePolicyService {
                 userDTO);
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * After a learner changes their portal password, mirror it to any WordPress LMS
+     * their courses are connected to (admin_core owns the LMS_SETTING + enrolment data,
+     * so it does the actual crm/v1/edit-user push). Async + best-effort: a failure or
+     * an admin_core outage must never block or fail the password change itself.
+     */
+    @Async
+    public void syncLmsPassword(String userId, String email, String password) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(email) || !StringUtils.hasText(password)) {
+            return;
+        }
+        try {
+            UserDTO userDTO = new UserDTO();
+            userDTO.setId(userId);
+            userDTO.setEmail(email);
+            userDTO.setPassword(password);
+            internalClientUtils.makeHmacRequest(
+                applicationName,
+                HttpMethod.POST.name(),
+                adminCoreServiceBaseUrl,
+                "/admin-core-service/internal/learner/v1/sync-lms-password",
+                userDTO);
+        } catch (Exception e) {
+            // best-effort: never surface an LMS-sync failure to the password change
         }
     }
 }

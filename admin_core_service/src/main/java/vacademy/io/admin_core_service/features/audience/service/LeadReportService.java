@@ -43,6 +43,7 @@ public class LeadReportService {
     private final LeadSlaConfigService leadSlaConfigService;
     private final AuthService authService;
     private final ReportScopeResolver reportScopeResolver;
+    private final vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
 
     private static final int DEFAULT_RANGE_DAYS = 30;
 
@@ -176,9 +177,18 @@ public class LeadReportService {
                 .findReportCounselorPerformance(instituteId, range.from, range.to, tatHoursParam,
                         scopeCsv, trimToNull(audienceId), trimToNull(sourceType));
 
-        // Batch-resolve counsellor names (one call to auth-service for all ids in the result).
+        // Every ACTIVE counsellor in the caller's scope must get a row — the
+        // SQL groups the lead DATA, so a counsellor with zero leads in the
+        // window produced no row at all and read as "missing" in the report.
+        // Zero rows are appended after the data-driven ones (below).
+        List<String> scopedCounsellors = scopedActiveCounsellors(instituteId, scopeCsv);
+
+        // Batch-resolve counsellor names (one call to auth-service for all ids
+        // in the result AND the zero-padded roster).
         Map<String, String> nameById = Collections.emptyMap();
-        List<String> ids = raw.stream().map(LeadReportProjections.CounselorRowProjection::getCounselorId)
+        List<String> ids = java.util.stream.Stream.concat(
+                        raw.stream().map(LeadReportProjections.CounselorRowProjection::getCounselorId),
+                        scopedCounsellors.stream())
                 .filter(s -> s != null && !s.isBlank()).distinct().collect(Collectors.toList());
         if (!ids.isEmpty()) {
             try {
@@ -215,6 +225,32 @@ public class LeadReportService {
                     .build();
         }).collect(Collectors.toList());
 
+        // Zero rows for scoped active counsellors with no lead data in the
+        // window, name-sorted after the data-driven rows.
+        Set<String> presentIds = rows.stream()
+                .map(CounselorPerformanceDTO.Row::getCounselorId)
+                .collect(Collectors.toSet());
+        scopedCounsellors.stream()
+                .filter(id -> !presentIds.contains(id))
+                .map(id -> CounselorPerformanceDTO.Row.builder()
+                        .counselorId(id)
+                        .counselorName(Optional.ofNullable(nameByIdFinal.get(id))
+                                .filter(s -> !s.isBlank())
+                                .orElse(id))
+                        .leadsAssigned(0)
+                        .leadsResponded(0)
+                        .conversions(0)
+                        .conversionRate(null)
+                        .avgResponseMinutes(null)
+                        .tatMetCount(tatHours == null ? null : 0L)
+                        .tatMetRate(null)
+                        .openLeads(0)
+                        .overdueLeads(0)
+                        .build())
+                .sorted(Comparator.comparing(CounselorPerformanceDTO.Row::getCounselorName,
+                        String.CASE_INSENSITIVE_ORDER))
+                .forEach(rows::add);
+
         // Summary: weighted averages so a few heavy counsellors don't get equal weight to outliers.
         long totalAssigned = rows.stream().mapToLong(CounselorPerformanceDTO.Row::getLeadsAssigned).sum();
         long totalConversions = rows.stream().mapToLong(CounselorPerformanceDTO.Row::getConversions).sum();
@@ -245,6 +281,24 @@ public class LeadReportService {
 
     private static String trimToNull(String s) {
         return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    /**
+     * The ACTIVE counsellor-role users inside the resolved report scope — the
+     * roster that per-counsellor reports must render even with zero activity.
+     * The scope CSV may also carry non-counsellor ids (explicit teamId filters
+     * list whole teams), so it's intersected with the role roster. Empty when
+     * the scope is unfiltered (setup mode — nothing sensible to pad with).
+     */
+    private List<String> scopedActiveCounsellors(String instituteId, String scopeCsv) {
+        if (scopeCsv == null || scopeCsv.isBlank()) return List.of();
+        Set<String> counsellors = new java.util.HashSet<>(
+                counsellorScopeService.allCounsellorUserIds(instituteId));
+        return java.util.Arrays.stream(scopeCsv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty() && counsellors.contains(s))
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     /** Read tat_hours when TAT is enabled; null otherwise (drives "is TAT shown?" downstream). */

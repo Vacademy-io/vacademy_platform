@@ -150,6 +150,15 @@ export const executePythonWithPyodide = async (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const globals = dict() as any;
 
+      // Run as the main module so `if __name__ == "__main__":` guards execute.
+      // Without this the fresh globals dict has no __name__, so any program that
+      // puts its I/O under that guard silently produces no output.
+      try {
+        globals.set("__name__", "__main__");
+      } catch {
+        // Older Pyodide dict proxy without .set — ignore.
+      }
+
       await pyodideInstance.loadPackagesFromImports(code);
       await pyodideInstance.runPythonAsync(code, { globals, locals: globals });
 

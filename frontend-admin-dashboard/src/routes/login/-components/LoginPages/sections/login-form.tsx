@@ -636,6 +636,8 @@ export function LoginForm() {
                                         return <EmailLogin
                                             onSwitchToUsername={handleSwitchToUsername}
                                             onSwitchToPhone={handleSwitchToPhone}
+                                            allowUsernamePasswordAuth={allowUserPass}
+                                            allowPhoneAuth={allowPhone}
                                         />;
                                     }
 

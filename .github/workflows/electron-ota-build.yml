@@ -38,6 +38,14 @@ on:
         description: "Version being published (for the run name only; the real version comes from electron/package.json)"
         required: false
         default: ""
+      publish_mode:
+        description: "never = build only (download the .exe from artifacts, no token needed); always = publish to electron-build-repo (needs ELECTRON_PUBLISH_TOKEN)"
+        required: true
+        default: "never"
+        type: choice
+        options:
+          - never
+          - always
 
 jobs:
   build:
@@ -89,18 +97,22 @@ jobs:
         working-directory: ./frontend-learner-dashboard-app/electron
         run: npm run build
 
-      - name: Build & publish OTA update
+      - name: Build (publish_mode=${{ inputs.publish_mode }}) OTA update
         working-directory: ./frontend-learner-dashboard-app/electron
         env:
           # PAT with contents:write on Vacademy-io/electron-build-repo (cross-repo publish).
+          # Only used when publish_mode=always; ignored for build-only (never) runs.
           GH_TOKEN: ${{ secrets.ELECTRON_PUBLISH_TOKEN }}
-        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish always
+        run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish ${{ inputs.publish_mode }}
 
       - name: Upload build artifacts (installer + update manifest)
+        # Always upload so a build-only (never) run still hands back the .exe, even if a
+        # later publish step were to fail.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.flavor }}-ota
           path: |
             frontend-learner-dashboard-app/electron/dist/*.exe
-            frontend-learner-dashboard-app/electron/dist/latest.yml
-          if-no-files-found: error
+            frontend-learner-dashboard-app/electron/dist/*.yml
+          if-no-files-found: warn

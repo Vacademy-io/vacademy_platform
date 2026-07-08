@@ -51,43 +51,58 @@ if (electronIsDev) {
   // self-update here would error at best and violate Store policy at worst. process.windowsStore is
   // true ONLY for Store-packaged builds, so NSIS/portable/dmg builds are completely unaffected.
   if (!electronIsDev && !process.windowsStore) {
-    // Configure auto-updater
-    autoUpdater.autoDownload = false; // Don't auto-download, let user choose
-    autoUpdater.autoInstallOnAppQuit = true;
-    
+    // Silent OTA auto-update via electron-updater (feed: GitHub releases Vacademy-io/electron-build-repo,
+    // see app-update.yml). "Silent" here means: pull the new build in the background the moment it's
+    // published, then install it with no prompts the next time the user quits — they simply launch into
+    // the new version. Microsoft Store (MSIX/AppX) builds are excluded above; they update via the Store.
+    // NOTE: this only self-installs for NSIS/dmg targets (which ship latest.yml); a portable .exe has no
+    // installer to run, so those users would still re-download manually.
+    autoUpdater.autoDownload = true; // download the update in the background as soon as one is found
+    autoUpdater.autoInstallOnAppQuit = true; // install it silently on the next quit — no user action needed
+
     autoUpdater.on('checking-for-update', () => {
-      console.log('Checking for updates...');
+      console.log('[updater] Checking for updates…');
     });
-    
+
     autoUpdater.on('update-available', (info) => {
-      console.log('Update available:', info);
-      // You can show a dialog to user here
+      console.log(`[updater] Update available: ${info.version} — downloading in background`);
     });
-    
-    autoUpdater.on('update-not-available', (info) => {
-      console.log('Update not available.');
+
+    autoUpdater.on('update-not-available', () => {
+      console.log('[updater] No update available; already on the latest version.');
     });
-    
+
     autoUpdater.on('error', (err) => {
-      console.log('Error in auto-updater:', err);
-      // This is expected in development builds without published releases
+      // Expected on unpublished/dev builds or transient network issues — never crash the app over it.
+      console.log('[updater] Auto-updater error:', err?.message ?? err);
     });
-    
+
     autoUpdater.on('download-progress', (progressObj) => {
-      console.log(`Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`);
+      console.log(
+        `[updater] Downloading update: ${Math.round(progressObj.percent)}% ` +
+          `(${Math.round(progressObj.bytesPerSecond / 1024)} KB/s)`
+      );
     });
-    
+
     autoUpdater.on('update-downloaded', (info) => {
-      console.log('Update downloaded');
-      // Notify user that update is ready
+      // Staged and ready. autoInstallOnAppQuit applies it silently on the next quit, so there is nothing
+      // to prompt here — the user just gets the new version on their next launch.
+      console.log(`[updater] Update ${info.version} downloaded; will install silently on quit.`);
     });
-    
-    // Check for updates (wrapped in try-catch to handle missing app-update.yml gracefully)
-    try {
-      autoUpdater.checkForUpdatesAndNotify();
-    } catch (err) {
-      console.log('Auto-updater not available:', err.message);
-    }
+
+    // Check on launch, then periodically so long-running sessions still pick up new releases.
+    // Wrapped in try/catch so a missing app-update.yml or offline start never breaks app startup.
+    const checkForUpdates = () => {
+      try {
+        void autoUpdater.checkForUpdates();
+      } catch (err) {
+        console.log('[updater] Update check failed:', err?.message ?? err);
+      }
+    };
+
+    checkForUpdates();
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    setInterval(checkForUpdates, SIX_HOURS_MS);
   }
 })();
 

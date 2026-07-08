@@ -34,6 +34,9 @@ public class UserOperationService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private vacademy.io.auth_service.feature.admin_core_service.service.InstitutePolicyService institutePolicyService;
+
     public String sendUserPasswords(List<String> userIds, CustomUserDetails userDetails) {
         if (userIds == null || userIds.isEmpty()) {
             return "Invalid input: userIds or userDetails is missing";
@@ -114,6 +117,9 @@ public class UserOperationService {
         user.setUsername(userCredentials.getUsername());
         userRepository.save(user);
         sendPasswordToUser(user);
+        // Mirror the new password to any WordPress LMS the learner's courses are
+        // connected to (async, best-effort — never blocks/fails the password change).
+        institutePolicyService.syncLmsPassword(user.getId(), user.getEmail(), user.getPassword());
         return "Password updated successfully";
     }
 

@@ -3,6 +3,7 @@ import { ChatCircle, Sparkle, Question, BookOpen } from "@phosphor-icons/react";
 import { useLocation } from "@tanstack/react-router";
 import { Capacitor } from "@capacitor/core";
 import { useChatbotContext } from "./useChatbotContext";
+import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { cn } from "@/lib/utils";
 import { avatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion } from "framer-motion";
@@ -18,6 +19,7 @@ const LONG_PROMPT = "How can I help you in your learning journey today?";
 export const ChatbotFloatingButton = () => {
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();
+  const isDoubtSidebarOpen = useDoubtSidebarStore((state) => state.isOpen);
   const location = useLocation();
 
   // Move button higher on video/slide pages to avoid overlapping player controls
@@ -90,6 +92,12 @@ export const ChatbotFloatingButton = () => {
 
   // Hide the floating button when the panel is open
   if (isOpen) {
+    return null;
+  }
+
+  // Hide the floating button while the doubt sidebar is open so it never
+  // covers the doubt submit controls in the bottom-right corner
+  if (isDoubtSidebarOpen) {
     return null;
   }
 

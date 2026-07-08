@@ -130,6 +130,14 @@ export const DoubtResolutionSidebar = () => {
     };
   }, [open, closeSidebar]);
 
+  // Reset the open flag when the sidebar unmounts (e.g. navigating away with
+  // it open) so consumers of the store (chatbot visibility) don't get stuck
+  useEffect(() => {
+    return () => {
+      useDoubtSidebarStore.getState().closeSidebar();
+    };
+  }, []);
+
   useEffect(() => {
     setAllDoubts(data?.pages.flatMap((page) => page.content) || []);
   }, [data]);

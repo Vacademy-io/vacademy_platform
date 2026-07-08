@@ -2023,7 +2023,7 @@ export const CourseStructureDetails = ({
                                                                                                                         }
                                                                                                                         className="group/chapter"
                                                                                                                     >
-                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
+                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-sm font-semibold text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
                                                                                                                             <div className="flex flex-1 items-center gap-2">
                                                                                                                                 {isChapterOpen ? (
                                                                                                                                     <CaretDown
@@ -2667,7 +2667,7 @@ export const CourseStructureDetails = ({
                                                                                                                         }
                                                                                                                         className="group/chapter"
                                                                                                                     >
-                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
+                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-sm font-semibold text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
                                                                                                                             <div className="flex flex-1 items-center gap-2">
                                                                                                                                 {isChapterOpen ? (
                                                                                                                                     <CaretDown
@@ -3180,7 +3180,7 @@ export const CourseStructureDetails = ({
                                                                                                                         }
                                                                                                                         className="group/chapter"
                                                                                                                     >
-                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-xs font-medium text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
+                                                                                                                        <CollapsibleTrigger className="group/chapter-trigger flex w-full items-center rounded-md px-2 py-1 text-left text-sm font-semibold text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
                                                                                                                             <div className="flex flex-1 items-center gap-2">
                                                                                                                                 {isChapterOpen ? (
                                                                                                                                     <CaretDown

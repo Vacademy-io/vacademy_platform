@@ -26,6 +26,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useChatbot } from "./useChatbot";
+import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -99,8 +100,15 @@ export const ChatbotWidget = () => {
     isSessionClosed,
     isInitializing,
   } = useChatbot();
+  const isDoubtSidebarOpen = useDoubtSidebarStore((state) => state.isOpen);
 
   if (!shouldShowChatbot()) {
+    return null;
+  }
+
+  // Hide the chat panel while the doubt sidebar is open so it never covers
+  // the doubt submit controls; chat state persists and reappears on close
+  if (isDoubtSidebarOpen) {
     return null;
   }
 

@@ -99,8 +99,11 @@ public class ReportScopeResolver {
             return callerScope;
         }
 
-        List<String> counsellors = counsellorScopeService.allCounsellorUserIds(instituteId);
-        return counsellors.isEmpty() ? null : counsellors; // empty = setup mode — no scope filter
+        // Pure admin with no explicit counsellor/team filter: return null (no restriction).
+        // Returning the counsellor-role list would silently drop changes made by admin users
+        // who have ADMIN role but not COUNSELLOR role, causing those counsellors to always
+        // show zero dispositions even when they manually changed lead statuses.
+        return null;
     }
 
     private static String trimToNull(String s) {

@@ -16,8 +16,10 @@ import vacademy.io.admin_core_service.features.audience.entity.LeadStatus;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
+import vacademy.io.admin_core_service.features.audience.entity.LeadStatusHistory;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadStatusHistoryRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -56,6 +58,7 @@ public class UserLeadProfileService {
     private final AudienceRepository audienceRepository;
     private final LeadScoreRepository leadScoreRepository;
     private final LeadStatusRepository leadStatusRepository;
+    private final LeadStatusHistoryRepository leadStatusHistoryRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final TimelineEventRepository timelineEventRepository;
     private final WorkflowTriggerService workflowTriggerService;
@@ -183,7 +186,7 @@ public class UserLeadProfileService {
      * Setting to CONVERTED freezes score updates; setting back to LEAD unfreezes them.
      */
     @Transactional
-    public UserLeadProfile updateConversionStatus(String userId, String instituteId, String status) {
+    public UserLeadProfile updateConversionStatus(String userId, String instituteId, String status, String actorUserId) {
         UserLeadProfile profile = userLeadProfileRepository
                 .findByUserIdAndInstituteId(userId, instituteId)
                 .orElseGet(() -> UserLeadProfile.builder()
@@ -212,7 +215,7 @@ public class UserLeadProfileService {
         // prefers the per-response id — reflects this side-view change. Best-effort: a
         // cascade failure must never break the status update the admin actually requested.
         try {
-            syncResponsesLeadStatus(userId, instituteId, status);
+            syncResponsesLeadStatus(userId, instituteId, status, actorUserId);
         } catch (Exception e) {
             log.warn("Failed to mirror conversion_status onto audience responses for user={} institute={}",
                     userId, instituteId, e);
@@ -255,12 +258,13 @@ public class UserLeadProfileService {
      * its id on audience_response.lead_status_id. This is what keeps the leads list (which
      * reads lead_status_id first) in sync with a side-view status change.
      *
-     * <p>Sets the field directly rather than routing through LeadStatusService.changeLeadStatus
-     * so we don't re-emit per-response triggers/history — the profile-level LEAD_STATUS_CHANGED
-     * and the journey timeline event already record this change. No catalog row for the key
-     * (shouldn't happen — the side-view only offers catalog statuses) → leave lead_status_id as-is.</p>
+     * <p>Also creates a {@code lead_status_history} record for each updated response so that
+     * side-view status changes are counted in the disposition report — previously they were
+     * invisible because only the list-inline path (LeadStatusService.changeLeadStatus) wrote
+     * history rows. Per-response triggers are NOT re-emitted; the profile-level
+     * LEAD_STATUS_CHANGED event already records this change at the correct grain.</p>
      */
-    private void syncResponsesLeadStatus(String userId, String instituteId, String statusKey) {
+    private void syncResponsesLeadStatus(String userId, String instituteId, String statusKey, String actorUserId) {
         LeadStatus target = leadStatusRepository.findByInstituteIdAndStatusKey(instituteId, statusKey).orElse(null);
         if (target == null) return;
 
@@ -282,10 +286,22 @@ public class UserLeadProfileService {
                 .filter(r -> !target.getId().equals(r.getLeadStatusId()))
                 .collect(Collectors.toList());
 
-        if (!toUpdate.isEmpty()) {
-            toUpdate.forEach(r -> r.setLeadStatusId(target.getId()));
-            audienceResponseRepository.saveAll(toUpdate);
-        }
+        if (toUpdate.isEmpty()) return;
+
+        List<LeadStatusHistory> historyRecords = toUpdate.stream()
+                .map(r -> LeadStatusHistory.builder()
+                        .audienceResponseId(r.getId())
+                        .instituteId(instituteId)
+                        .fromStatusId(r.getLeadStatusId())
+                        .toStatusId(target.getId())
+                        .changedByUserId(actorUserId)
+                        .source("MANUAL")
+                        .build())
+                .collect(Collectors.toList());
+
+        toUpdate.forEach(r -> r.setLeadStatusId(target.getId()));
+        audienceResponseRepository.saveAll(toUpdate);
+        leadStatusHistoryRepository.saveAll(historyRecords);
     }
 
     /**

@@ -2602,10 +2602,20 @@ public class AudienceService {
         // Use label (human-readable display name) rather than status_key so the
         // lead_status field in the API response / CSV export shows "New", "DNP", etc.
         // rather than internal codes like "LEAD", "DNP_KEY".
-        Map<String, String> leadStatusIdToKey = leadStatusIds.isEmpty() ? Collections.emptyMap()
-                : leadStatusRepository.findAllById(leadStatusIds).stream()
+        // Also build a statusKey→label reverse map for the fallback path (leads that
+        // have no lead_status_id yet and fall back to user_lead_profile.conversion_status,
+        // which stores raw keys like "LEAD"/"CONVERTED"/"LOST").
+        List<vacademy.io.admin_core_service.features.audience.entity.LeadStatus> fetchedStatuses =
+                leadStatusIds.isEmpty() ? Collections.emptyList()
+                        : leadStatusRepository.findAllById(leadStatusIds);
+        Map<String, String> leadStatusIdToKey = fetchedStatuses.stream()
                         .collect(Collectors.toMap(
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
+                                (a, b) -> a));
+        Map<String, String> leadStatusKeyToLabel = fetchedStatuses.stream()
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
                                 (a, b) -> a));
 
@@ -2719,7 +2729,11 @@ public class AudienceService {
                             response.getLeadStatusId() != null
                                     && leadStatusIdToKey.containsKey(response.getLeadStatusId())
                                             ? leadStatusIdToKey.get(response.getLeadStatusId())
-                                            : (profile != null ? profile.getConversionStatus() : null))
+                                            : (profile != null && profile.getConversionStatus() != null
+                                                    ? leadStatusKeyToLabel.getOrDefault(
+                                                            profile.getConversionStatus(),
+                                                            profile.getConversionStatus())
+                                                    : null))
                     .parentName(response.getParentName())
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())

@@ -234,7 +234,7 @@ public class PipelineReportService {
                    ls.status_key,
                    COUNT(*) AS n
             FROM lead_status_history lsh
-            JOIN lead_status ls ON ls.id = lsh.to_status_id
+            JOIN lead_status ls ON ls.id = lsh.to_status_id AND ls.is_active = true
             JOIN audience_response ar ON ar.id = lsh.audience_response_id
             WHERE lsh.institute_id = :instituteId
               AND lsh.changed_at >= :fromTs

@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnaly
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
+import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.NarrativeSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.TopicConfidence;
 
 import java.util.stream.Collectors;
@@ -152,8 +153,11 @@ public class StudentAnalysisProcessorService {
                 // Step 2: Layer-2 AI narrative (best-effort; failure → report without ai_insights)
                 log.info("[Student-Analysis-Processor] [v2] Generating AI narrative");
                 try {
+                        // Must exceed the per-request timeout in ComprehensiveReportLLMService
+                        // (RESPONSE_TIMEOUT_SECONDS) so a slow free-tier model gets one full attempt
+                        // instead of being cut off here at the blocking read. Background @Async job.
                         AiInsightsSection insights = comprehensiveLLMService.narrate(report, process.getUserId())
-                                        .blockOptional(Duration.ofSeconds(90))
+                                        .blockOptional(Duration.ofSeconds(180))
                                         .orElse(null);
 
                         if (insights != null) {
@@ -502,6 +506,14 @@ public class StudentAnalysisProcessorService {
                                         }
                                 }
                         }
+
+                        // ── Narrative floor: guarantee the "Detailed analysis" panel is never blank when the
+                        // LLM timed out or returned no narrative. Built ONLY from values already in the report
+                        // (no invented numbers) and reuses the strengths / areas / recommendations set above.
+                        if (report.getNarrative() == null) {
+                                NarrativeSection nf = buildDeterministicNarrative(report);
+                                if (nf != null) report.setNarrative(nf);
+                        }
                 } catch (Exception e) {
                         log.warn("[Student-Analysis-Processor] [v2] ensureInsightsFromFacts fallback failed (non-fatal): {}", e.getMessage());
                 }
@@ -623,6 +635,139 @@ public class StudentAnalysisProcessorService {
         private static AiInsightsSection.RecommendationItem rec(String priority, String area, String suggestion) {
                 return AiInsightsSection.RecommendationItem.builder()
                                 .priority(priority).area(area).suggestion(suggestion).build();
+        }
+
+        /**
+         * Builds a plain, facts-only {@link NarrativeSection} so the "Detailed analysis" panel is never
+         * blank when the Layer-2 LLM timed out or returned no narrative. Uses ONLY values already on the
+         * report — attendance, study habits, academics, course progress, assignments, and the
+         * strengths / areas / recommendations that {@link #ensureInsightsFromFacts} derived just above —
+         * and invents no numbers. Returns null only when there is genuinely nothing to say.
+         */
+        private NarrativeSection buildDeterministicNarrative(ComprehensiveStudentReport report) {
+                String name = (report.getStudent() != null && report.getStudent().getName() != null)
+                                ? report.getStudent().getName() : "The student";
+
+                NarrativeSection.NarrativeSectionBuilder b = NarrativeSection.builder();
+                boolean any = false;
+
+                var sh = report.getStudyHabits();
+                var att = report.getAttendance();
+                var ac = report.getAcademics();
+                var cp = report.getCourseProgress();
+                var asg = report.getAssignments();
+
+                // learning_frequency — study habits + attendance
+                if ((sh != null && sh.isAvailable()) || (att != null && att.isAvailable())) {
+                        StringBuilder md = new StringBuilder("### Learning frequency\n\n");
+                        if (sh != null && sh.isAvailable() && sh.getActiveDays() != null && sh.getTotalDays() != null) {
+                                md.append(name).append(" was active on **").append(sh.getActiveDays())
+                                                .append(" of ").append(sh.getTotalDays()).append(" days**");
+                                if (sh.getConsistencyRating() != null)
+                                        md.append(" (").append(sh.getConsistencyRating().toLowerCase()).append(" consistency)");
+                                if (sh.getAvgMinutesPerDay() != null)
+                                        md.append(", averaging **").append(sh.getAvgMinutesPerDay()).append(" min/day**");
+                                if (sh.getLongestStreakDays() != null)
+                                        md.append(", with a longest streak of **").append(sh.getLongestStreakDays()).append(" day(s)**");
+                                md.append(".");
+                        }
+                        if (att != null && att.isAvailable() && att.getOverallPercentage() != null) {
+                                md.append(" Class attendance was **").append(Math.round(att.getOverallPercentage())).append("%**");
+                                if (att.getPresent() != null && att.getAbsent() != null && att.getTotalSessions() != null)
+                                        md.append(" (").append(att.getPresent()).append(" present / ")
+                                                        .append(att.getAbsent()).append(" absent of ")
+                                                        .append(att.getTotalSessions()).append(" sessions)");
+                                md.append(".");
+                        }
+                        b.learningFrequency(md.toString());
+                        any = true;
+                }
+
+                // progress — overview + academics + course completion
+                var ov = report.getOverview();
+                if (ov != null || (ac != null && ac.isAvailable()) || (cp != null && cp.isAvailable())) {
+                        StringBuilder md = new StringBuilder("### Progress\n\n");
+                        if (ov != null && ov.getOverallStatus() != null) {
+                                md.append(name).append(" is currently **").append(ov.getOverallStatus()).append("**");
+                                if (ov.getOverallGrade() != null)
+                                        md.append(" with an overall grade of **").append(ov.getOverallGrade()).append("**");
+                                md.append(".");
+                        }
+                        if (ac != null && ac.isAvailable() && ac.getAveragePercentage() != null) {
+                                md.append(" Average score was **").append(Math.round(ac.getAveragePercentage())).append("%**");
+                                if (ac.getClassAveragePercentage() != null)
+                                        md.append(" against a class average of **")
+                                                        .append(Math.round(ac.getClassAveragePercentage())).append("%**");
+                                md.append(".");
+                        }
+                        if (cp != null && cp.isAvailable() && cp.getOverallCompletionPercentage() != null)
+                                md.append(" Course completion stands at **")
+                                                .append(Math.round(cp.getOverallCompletionPercentage())).append("%**.");
+                        b.progress(md.toString());
+                        any = true;
+                }
+
+                // student_efforts — small table of effort signals
+                java.util.List<String[]> rows = new java.util.ArrayList<>();
+                if (sh != null && sh.isAvailable()) {
+                        if (sh.getTotalStudyHours() != null)
+                                rows.add(new String[] { "Study time", fmt1(sh.getTotalStudyHours()) + " hrs" });
+                        if (sh.getActiveDays() != null && sh.getTotalDays() != null)
+                                rows.add(new String[] { "Active days", sh.getActiveDays() + "/" + sh.getTotalDays() });
+                }
+                if (ac != null && ac.isAvailable() && ac.getAveragePercentage() != null)
+                        rows.add(new String[] { "Avg. score", Math.round(ac.getAveragePercentage()) + "%" });
+                if (asg != null && asg.isAvailable() && asg.getSubmitted() != null)
+                        rows.add(new String[] { "Assignments submitted", String.valueOf(asg.getSubmitted()) });
+                if (!rows.isEmpty()) {
+                        StringBuilder md = new StringBuilder("### Effort vs. output\n\n| Signal | Value |\n| --- | --- |\n");
+                        for (String[] r : rows) md.append("| ").append(r[0]).append(" | ").append(r[1]).append(" |\n");
+                        b.studentEfforts(md.toString());
+                        any = true;
+                }
+
+                // topics_of_improvement — strengths
+                if (report.getStrengths() != null && !report.getStrengths().isEmpty()) {
+                        StringBuilder md = new StringBuilder("### Topics improving\n\n");
+                        for (TopicConfidence t : report.getStrengths())
+                                md.append("- **").append(t.getTopic()).append("**")
+                                                .append(t.getConfidence() != null ? " — " + t.getConfidence() + "%" : "").append("\n");
+                        b.topicsOfImprovement(md.toString());
+                        any = true;
+                }
+
+                // topics_of_degradation — areas to improve
+                if (report.getAreasToImprove() != null && !report.getAreasToImprove().isEmpty()) {
+                        StringBuilder md = new StringBuilder("### Topics needing attention\n\n");
+                        for (TopicConfidence t : report.getAreasToImprove())
+                                md.append("- ⚠️ **").append(t.getTopic()).append("**")
+                                                .append(t.getConfidence() != null ? " — " + t.getConfidence() + "%" : "").append("\n");
+                        b.topicsOfDegradation(md.toString());
+                        any = true;
+                }
+
+                // remedial_points — checklist from recommendations (fallback: areas-to-improve)
+                java.util.List<String> actions = new java.util.ArrayList<>();
+                if (report.getAiInsights() != null && report.getAiInsights().getRecommendations() != null)
+                        report.getAiInsights().getRecommendations().forEach(r -> {
+                                if (r.getSuggestion() != null) actions.add(r.getSuggestion());
+                        });
+                if (actions.isEmpty() && report.getAreasToImprove() != null)
+                        report.getAreasToImprove().forEach(t ->
+                                        actions.add("Strengthen " + t.getTopic() + " with focused practice."));
+                if (!actions.isEmpty()) {
+                        StringBuilder md = new StringBuilder("### Action checklist\n\n");
+                        for (String a : actions) md.append("- [ ] ").append(a).append("\n");
+                        b.remedialPoints(md.toString());
+                        any = true;
+                }
+
+                return any ? b.build() : null;
+        }
+
+        /** Formats a double as an integer when whole, else one decimal (US locale). */
+        private static String fmt1(double d) {
+                return d == Math.floor(d) ? String.valueOf((long) d) : String.format(java.util.Locale.US, "%.1f", d);
         }
 
         /** Fire learner notifications without ever affecting report generation. */

@@ -1870,6 +1870,14 @@ public class InvoiceService {
             currencySymbol = inrCurrencySymbol();
         }
 
+        // Row shape is FIXED at 4 cells — Description | Quantity | Unit Price | Amount — matching
+        // the default template's <thead>. This is plain string-templating, not a real table
+        // renderer: every {{line_items}}-consuming <thead> across ALL institutes must declare
+        // exactly these 4 columns in this order, or its data visibly misaligns. DO NOT add/reorder
+        // cells here without auditing every existing custom INVOICE template's <thead> first — a
+        // 2026-07-09 attempt to prepend a row-number cell would have fixed 3 institutes whose
+        // templates already (incorrectly) expect a leading "#" column, but broken the other 7
+        // whose templates correctly match this 4-column contract today.
         StringBuilder html = new StringBuilder();
         for (InvoiceLineItemData item : lineItems) {
             html.append("<tr>");

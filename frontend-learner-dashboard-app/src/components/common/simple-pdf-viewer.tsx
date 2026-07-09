@@ -20,10 +20,17 @@ const PDF_WORKER_URL =
 // Evaluated-copy / submission PDFs are served from S3 signed URLs whose object
 // keys carry no ".pdf" extension. react-pdf-viewer's default download derives
 // the filename from that URL, so the saved file has no extension and won't open
-// on the device. Force a ".pdf" name on every download.
+// on the device. This viewer only ever renders PDFs, so force a ".pdf" name —
+// replacing a mislabeled image extension rather than doubling it up
+// (e.g. "answer.jpg" → "answer.pdf", not "answer.jpg.pdf").
 const ensurePdfName = (name?: string): string => {
     const base = (name || 'document').trim() || 'document';
-    return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+    if (/\.pdf$/i.test(base)) return base;
+    const stripped = base.replace(
+        /\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif|tiff?)$/i,
+        ''
+    );
+    return `${stripped}.pdf`;
 };
 
 interface SimplePDFViewerProps {

@@ -188,8 +188,8 @@ export const getFileDetail = async (
     };
 };
 
-// Common MIME → extension map for the formats an evaluated copy can be
-// (admin allows PDF / JPEG / PNG; a few extra images kept for safety).
+// Formats an evaluated copy / submission can be (admin allows PDF / JPEG / PNG;
+// a few extra images kept for safety).
 const MIME_TO_EXT: Record<string, string> = {
     "application/pdf": "pdf",
     "image/jpeg": "jpg",
@@ -202,27 +202,49 @@ const MIME_TO_EXT: Record<string, string> = {
     "image/heic": "heic",
     "image/heif": "heif",
     "image/avif": "avif",
+    "image/tiff": "tiff",
 };
 
-const hasFileExtension = (name: string): boolean =>
-    /\.[a-z0-9]{1,5}$/i.test(name.trim());
+const KNOWN_EXTS = new Set<string>([
+    "pdf", "jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "heif",
+    "avif", "tiff", "tif",
+]);
 
-const extensionFromMime = (mime?: string | null): string | undefined => {
-    if (!mime) return undefined;
-    const key = mime.toLowerCase().split(";")[0].trim();
-    if (MIME_TO_EXT[key]) return MIME_TO_EXT[key];
-    // Generic fallback: "image/xyz" → "xyz".
-    const sub = key.includes("/") ? key.slice(key.indexOf("/") + 1) : "";
-    return /^[a-z0-9]+$/.test(sub) ? sub : undefined;
+// Treat equivalent spellings as the same format so we don't needlessly rename a
+// user's ".jpeg" to ".jpg" (same format, different spelling).
+const canonicalExt = (ext: string): string => {
+    const e = ext.toLowerCase();
+    if (e === "jpeg") return "jpg";
+    if (e === "tif") return "tiff";
+    return e;
 };
 
 /**
- * Download a file to the device with a real, extension-bearing name. Fetches
- * the bytes and saves via a Blob so the saved file keeps its correct extension
- * even though the S3 signed URL has none (a plain link would save an
- * un-openable, extension-less file). If the given name has no extension, one is
- * derived from the passed MIME type, falling back to the downloaded blob's own
- * type — so the file is openable whatever format the admin uploaded.
+ * Resolve a KNOWN extension from a media-service file_type (normally a MIME like
+ * "application/pdf", occasionally a bare "pdf") or a blob's own content type.
+ * Returns undefined for anything we can't confidently classify, so we never
+ * overwrite a good filename with a guess.
+ */
+const extensionFromType = (type?: string | null): string | undefined => {
+    if (!type) return undefined;
+    const t = type.toLowerCase().split(";")[0].trim();
+    if (!t) return undefined;
+    if (t.includes("/")) return MIME_TO_EXT[t];
+    return KNOWN_EXTS.has(t) ? canonicalExt(t) : undefined;
+};
+
+const splitExtension = (name: string): { base: string; ext: string | null } => {
+    const m = name.match(/^(.*)\.([A-Za-z0-9]{1,5})$/);
+    return m ? { base: m[1], ext: m[2].toLowerCase() } : { base: name, ext: null };
+};
+
+/**
+ * Download a file to the device in its true format. The file's real content
+ * type is authoritative for the extension — the stored filename can carry a
+ * stale/wrong extension, so we normalise the saved name to match the actual
+ * bytes: media-service file_type first, then the downloaded blob's own S3
+ * Content-Type. Fetching via a Blob is also what lets the download carry any
+ * extension at all (the S3 signed URL has none).
  */
 export const downloadFileWithName = async (
     url: string,
@@ -232,10 +254,16 @@ export const downloadFileWithName = async (
     const response = await axios.get(url, { responseType: "blob" });
     const blob: Blob = response.data;
     let name = (fileName || "download").trim() || "download";
-    if (!hasFileExtension(name)) {
-        const ext = extensionFromMime(fileType) || extensionFromMime(blob?.type);
-        if (ext) name = `${name}.${ext}`;
+
+    const trueExt = extensionFromType(fileType) || extensionFromType(blob?.type);
+    if (trueExt) {
+        const { base, ext } = splitExtension(name);
+        // Replace a missing or format-mismatched extension; keep an equivalent one.
+        if (!ext || canonicalExt(ext) !== canonicalExt(trueExt)) {
+            name = `${base}.${trueExt}`;
+        }
     }
+
     const objectUrl = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;

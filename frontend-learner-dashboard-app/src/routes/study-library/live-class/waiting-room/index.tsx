@@ -11,6 +11,7 @@ import { getPublicUrl } from "@/services/upload_file";
 import { BackgroundMusic } from "./-components/BackgroundMusic";
 import { SessionStreamingServiceType, LinkType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
+import { openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { toast } from "sonner";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
@@ -92,10 +93,16 @@ function WaitingRoomComponent() {
           userSourceId: "",
           details: "Joined live class from waiting room",
         });
-        if (
+        if (isBbb) {
+          // BBB: open the personalized join URL (real name + userId) directly.
+          // Do NOT route to the embed page — its session data can resolve linkType
+          // to "other" and fail with "Unsupported session type". The backend
+          // /meeting/join is authoritative. Then leave the waiting room.
+          await openBbbJoinForLearner(sessionId);
+          navigate({ to: "/study-library/live-class" });
+        } else if (
           sessionDetails.sessionStreamingServiceType ===
-            SessionStreamingServiceType.EMBED ||
-          isBbb
+          SessionStreamingServiceType.EMBED
         ) {
           navigate({
             to: "/study-library/live-class/embed",
@@ -108,10 +115,16 @@ function WaitingRoomComponent() {
       } catch (error) {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
-        if (
+        if (isBbb) {
+          // BBB: open the personalized join URL (real name + userId) directly.
+          // Do NOT route to the embed page — its session data can resolve linkType
+          // to "other" and fail with "Unsupported session type". The backend
+          // /meeting/join is authoritative. Then leave the waiting room.
+          await openBbbJoinForLearner(sessionId);
+          navigate({ to: "/study-library/live-class" });
+        } else if (
           sessionDetails.sessionStreamingServiceType ===
-            SessionStreamingServiceType.EMBED ||
-          isBbb
+          SessionStreamingServiceType.EMBED
         ) {
           navigate({
             to: "/study-library/live-class/embed",

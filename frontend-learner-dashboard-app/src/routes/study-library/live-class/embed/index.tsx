@@ -244,9 +244,13 @@ function EmbedComponent() {
 
   const renderEmbeddedSession = () => {
     console.log("[LearnerEmbed] Session details:", sessionDetails);
-    // Check link type first — BBB sessions may not have a defaultMeetLink
+    // Check link type first — BBB sessions may not have a defaultMeetLink.
+    // Fall back to the fetched session details (authoritative, loaded by scheduleId)
+    // when the passed-in sessionDetails.linkType is missing/"other" — otherwise a BBB
+    // session can slip through to "Unsupported session type". Mirrors isBbbSession below.
     const linkType =
       sessionDetails?.linkType ||
+      fetchedSessionDetails?.linkType ||
       (videoUrl ? LinkType.YOUTUBE : undefined);
 
     // Handle BBB early — room is auto-created, no defaultMeetLink needed

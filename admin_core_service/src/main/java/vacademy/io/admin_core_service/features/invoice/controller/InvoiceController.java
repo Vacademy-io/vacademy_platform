@@ -32,11 +32,18 @@ public class InvoiceController {
     private vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
     /**
-     * Get invoice by ID
+     * Get invoice by ID. Cross-tenant guard: fetch first (the id alone doesn't reveal the
+     * institute), then verify the caller belongs to the invoice's institute before returning
+     * it — this endpoint is now also reachable from the frontend "Duplicate" action, which
+     * would otherwise let any authenticated admin read another institute's invoice (line
+     * items, learner, notes) by id.
      */
     @GetMapping("/{invoiceId}")
-    public ResponseEntity<InvoiceDTO> getInvoice(@PathVariable String invoiceId) {
+    public ResponseEntity<InvoiceDTO> getInvoice(
+            @PathVariable String invoiceId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
         InvoiceDTO invoice = invoiceService.getInvoiceById(invoiceId);
+        instituteAccessValidator.validateUserAccess(userDetails, invoice.getInstituteId());
         return ResponseEntity.ok(invoice);
     }
 
@@ -159,6 +166,28 @@ public class InvoiceController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
         PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Void a PENDING_PAYMENT admin invoice created in error (wrong amount, wrong
+     * learner, …). Terminal — flips status to REJECTED, disables the payment link, and
+     * the invoice can never be marked paid afterward. The row + PDF are kept for
+     * record-keeping. To fix the mistake, the admin re-creates via "Duplicate" on the
+     * frontend, which prefills a new invoice from this one's line items.
+     *
+     * <p>Body: {@code {"reason": "..."}} (optional).
+     *
+     * <p>{@code POST /v1/invoices/{invoiceId}/reject?instituteId=xxx}
+     */
+    @PostMapping("/{invoiceId}/reject")
+    public ResponseEntity<InvoiceDTO> rejectInvoice(
+            @PathVariable String invoiceId,
+            @RequestParam String instituteId,
+            @RequestBody(required = false) vacademy.io.admin_core_service.features.invoice.dto.RejectInvoiceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        instituteAccessValidator.validateUserAccess(userDetails, instituteId);
+        String reason = request != null ? request.getReason() : null;
+        return ResponseEntity.ok(invoiceService.rejectInvoice(invoiceId, instituteId, reason, userDetails));
     }
 
     /**

@@ -65,6 +65,7 @@ function getStatusBadge(status: string) {
         VIEWED: 'bg-amber-50 text-amber-700 border-amber-200',
         PENDING_PAYMENT: 'bg-warning-50 text-warning-700 border-warning-200',
         PAID: 'bg-success-50 text-success-700 border-success-200',
+        REJECTED: 'bg-danger-50 text-danger-700 border-danger-200',
     };
     return (
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>

@@ -22,6 +22,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyInput } from '@/components/design-system/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import SelectField from '@/components/design-system/select-field';
 import { StatusChip } from '@/components/design-system/status-chips';
 import {
@@ -40,6 +41,7 @@ import {
     previewAdminInvoice,
     type AdminCreateInvoiceRequest,
     type AdminInvoicePaymentLinkResponse,
+    type InvoiceDTO,
     type InvoicePlaceholderValue,
 } from '@/services/invoice-service';
 
@@ -83,6 +85,15 @@ interface CreateInvoiceDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
+    /**
+     * When set, the dialog opens pre-filled from this invoice's line items, currency,
+     * and notes (the "Duplicate" action) instead of a blank form. Tax is NOT copied —
+     * it re-defaults from the institute's current settings, which is safer than
+     * silently repeating a possibly-stale rate. The synthetic TAX line item (added
+     * automatically by the backend) is filtered out so it isn't duplicated as a
+     * regular item.
+     */
+    duplicateFrom?: InvoiceDTO | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -331,6 +342,7 @@ export function CreateInvoiceDialog({
     open,
     onOpenChange,
     onSuccess,
+    duplicateFrom,
 }: CreateInvoiceDialogProps) {
     const [successResult, setSuccessResult] = useState<AdminInvoicePaymentLinkResponse | null>(null);
     const [step, setStep] = useState<'items' | 'review'>('items');
@@ -344,6 +356,15 @@ export function CreateInvoiceDialog({
     const [previewError, setPreviewError] = useState<string | null>(null);
     // Skips exactly one debounced refresh right after seeding (its result is already shown).
     const skipNextPreviewRef = useRef(false);
+
+    // Per-invoice tax override (step 1). null = "not touched, use the institute default" —
+    // distinguishing null from false/0 lets an admin explicitly re-enable tax or set a 0%
+    // rate without it being mistaken for "untouched".
+    const [taxEnabledOverride, setTaxEnabledOverride] = useState<boolean | null>(null);
+    // Raw text, not a number: lets the field go genuinely empty while the admin is retyping a
+    // rate (e.g. clearing "18" to type "12.5") without the display snapping to "0" on every
+    // keystroke. null = untouched (use the institute default); "" = cleared but not yet retyped.
+    const [taxRatePercentText, setTaxRatePercentText] = useState<string | null>(null);
 
     const { data: invoiceSettings, isLoading: isSettingsLoading } = useQuery({
         queryKey: ['invoice-settings'],
@@ -369,6 +390,39 @@ export function CreateInvoiceDialog({
         form.setValue('currency', defaultCurrency);
     }
 
+    // Re-seed the form whenever the dialog opens — either from an existing invoice
+    // ("Duplicate") or a blank form. Tax controls always reset to "use institute default"
+    // (duplicated tax would silently repeat a possibly-stale rate).
+    useEffect(() => {
+        if (!open) return;
+        setTaxEnabledOverride(null);
+        setTaxRatePercentText(null);
+        if (duplicateFrom) {
+            form.reset({
+                line_items:
+                    duplicateFrom.line_items
+                        .filter((li) => li.item_type !== 'TAX')
+                        .map((li) => ({
+                            description: li.description,
+                            quantity: li.quantity || 1,
+                            unit_price: li.unit_price || 0,
+                            item_type: li.item_type || 'SERVICE',
+                        })) || [{ description: '', quantity: 1, unit_price: 0, item_type: 'SERVICE' }],
+                due_date: '',
+                currency: duplicateFrom.currency || defaultCurrency,
+                notes: duplicateFrom.notes || '',
+            });
+        } else {
+            form.reset({
+                line_items: [{ description: '', quantity: 1, unit_price: 0, item_type: 'SERVICE' }],
+                due_date: '',
+                currency: defaultCurrency,
+                notes: '',
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, duplicateFrom]);
+
     const { fields, append, remove } = useFieldArray({
         control: form.control,
         name: 'line_items',
@@ -378,15 +432,29 @@ export function CreateInvoiceDialog({
     const watchedLineItems = useWatch({ control: form.control, name: 'line_items' });
     const currency = useWatch({ control: form.control, name: 'currency' }) || defaultCurrency;
 
-    const taxRate = invoiceSettings?.taxRate ?? 0;
+    const settingsTaxRate = invoiceSettings?.taxRate ?? 0;
     const taxLabel = invoiceSettings?.taxLabel ?? 'Tax';
     const taxIncluded = invoiceSettings?.taxIncluded ?? false;
+    // Effective per-invoice tax: the admin's override when touched, else the institute default.
+    // A transiently-empty text buffer ("" while retyping) computes as 0, not the settings
+    // default — it only reverts to the default once truly untouched (taxRatePercentText === null).
+    const taxEnabled = taxEnabledOverride ?? true;
+    const taxRate = taxRatePercentText !== null ? Number(taxRatePercentText) || 0 : settingsTaxRate;
 
     const subtotal = watchedLineItems.reduce((sum, item) => {
         return sum + (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
     }, 0);
-    const taxAmount = taxIncluded ? 0 : subtotal * (taxRate / 100);
-    const total = subtotal + taxAmount;
+    let taxAmount = 0;
+    let total = subtotal;
+    if (taxEnabled && taxRate > 0) {
+        if (taxIncluded) {
+            const netSubtotal = subtotal / (1 + taxRate / 100);
+            taxAmount = subtotal - netSubtotal;
+        } else {
+            taxAmount = subtotal * (taxRate / 100);
+            total = subtotal + taxAmount;
+        }
+    }
 
     const handleClose = () => {
         form.reset();
@@ -397,6 +465,8 @@ export function CreateInvoiceDialog({
         setReviewDates({});
         setPreviewHtml('');
         setPreviewError(null);
+        setTaxEnabledOverride(null);
+        setTaxRatePercentText(null);
         onOpenChange(false);
     };
 
@@ -431,6 +501,10 @@ export function CreateInvoiceDialog({
             invoice_date: invoiceDate,
             notes: ov.notes || undefined,
             overrides: ov,
+            // Only sent when the admin actually touched the tax controls — otherwise the
+            // institute's INVOICE_SETTING default applies, same as before this feature.
+            tax_enabled: taxEnabledOverride ?? undefined,
+            tax_rate_percent: taxRatePercentText !== null ? Number(taxRatePercentText) || 0 : undefined,
         };
     };
 
@@ -636,20 +710,53 @@ export function CreateInvoiceDialog({
 
                     {/* ── Summary ── */}
                     <div className="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3">
-                        <div className="space-y-1 text-body">
+                        <div className="space-y-2 text-body">
                             <div className="flex justify-between text-neutral-600">
                                 <span>Subtotal</span>
                                 <span className="tabular-nums">{fmt(subtotal, currency)}</span>
                             </div>
-                            {taxRate > 0 && !taxIncluded && (
-                                <div className="flex justify-between text-neutral-600">
-                                    <span>{taxLabel} ({taxRate}%)</span>
+
+                            {/* Tax: defaults to the institute's Invoice Settings, but editable
+                                (or removable) per invoice. */}
+                            <div className="flex items-center justify-between gap-2 text-neutral-600">
+                                <label className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={taxEnabled}
+                                        onCheckedChange={(checked) => setTaxEnabledOverride(checked === true)}
+                                    />
+                                    <span>Apply {taxLabel}</span>
+                                    {taxEnabled && (
+                                        <span className="flex items-center gap-1">
+                                            <MyInput
+                                                inputType="number"
+                                                inputPlaceholder="0"
+                                                input={
+                                                    taxRatePercentText !== null
+                                                        ? taxRatePercentText
+                                                        : String(settingsTaxRate)
+                                                }
+                                                onChangeFunction={(e) => setTaxRatePercentText(e.target.value)}
+                                                size="small"
+                                                className="w-14 text-right tabular-nums"
+                                                aria-label={`${taxLabel} rate percent`}
+                                                min={0}
+                                                max={100}
+                                                step={0.01}
+                                            />
+                                            <span className="text-caption">%</span>
+                                        </span>
+                                    )}
+                                </label>
+                                {taxEnabled && (
                                     <span className="tabular-nums">{fmt(taxAmount, currency)}</span>
-                                </div>
+                                )}
+                            </div>
+                            {taxEnabled && taxIncluded && (
+                                <p className="text-caption text-neutral-500">
+                                    Incl. {taxRate}% {taxLabel} (prices already include tax)
+                                </p>
                             )}
-                            {taxRate > 0 && taxIncluded && (
-                                <p className="text-caption text-neutral-500">Incl. {taxRate}% {taxLabel}</p>
-                            )}
+
                             <div className="flex justify-between border-t border-primary-200 pt-1.5 font-semibold">
                                 <span className="text-neutral-700">Total</span>
                                 <span className="text-primary-600 tabular-nums">{fmt(total, currency)}</span>

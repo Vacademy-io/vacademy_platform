@@ -86,6 +86,18 @@ export interface InvoiceSettingsData {
     /** Auth-service user ids of the admins who receive the copy. */
     adminCopyUserIds: string[];
     country: InvoiceCountryConfig;
+    /**
+     * Institute-level invoice defaults set from the admin Create-Invoice dialog (Review
+     * step "Institute" group) — corrected institute name/address/contact and default
+     * notes, remembered so future invoices (by any admin) prefill them. Not editable
+     * from this settings page; passed through untouched so saving unrelated settings
+     * here (tax rate, currency, …) doesn't silently wipe them — INVOICE_SETTING writes
+     * are a full overwrite, not a merge, on the backend.
+     */
+    instituteNameOverride?: string;
+    instituteAddressOverride?: string;
+    instituteContactOverride?: string;
+    defaultNotes?: string;
 }
 
 export const SETTING_KEY = 'INVOICE_SETTING';
@@ -193,6 +205,11 @@ const normalize = (raw: Partial<InvoiceSettingsData> | null | undefined): Invoic
             taxComponents: normalizeComponents(country.taxComponents),
             taxComponentsByPackageType: byType,
         },
+        // Pass-through only — see the field doc on InvoiceSettingsData.
+        instituteNameOverride: base.instituteNameOverride,
+        instituteAddressOverride: base.instituteAddressOverride,
+        instituteContactOverride: base.instituteContactOverride,
+        defaultNotes: base.defaultNotes,
     };
 };
 

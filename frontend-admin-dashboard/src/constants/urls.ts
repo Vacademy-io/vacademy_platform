@@ -981,8 +981,12 @@ export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/institute/${instituteId}`;
 export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
+export const GET_INVOICE_BY_ID = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}`;
 export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/create`;
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
+export const POST_REJECT_INVOICE = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot

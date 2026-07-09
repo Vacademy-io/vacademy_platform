@@ -2599,11 +2599,14 @@ public class AudienceService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
+        // Use label (human-readable display name) rather than status_key so the
+        // lead_status field in the API response / CSV export shows "New", "DNP", etc.
+        // rather than internal codes like "LEAD", "DNP_KEY".
         Map<String, String> leadStatusIdToKey = leadStatusIds.isEmpty() ? Collections.emptyMap()
                 : leadStatusRepository.findAllById(leadStatusIds).stream()
                         .collect(Collectors.toMap(
                                 vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
-                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getLabel,
                                 (a, b) -> a));
 
         // Batch fetch all custom field values for these responses

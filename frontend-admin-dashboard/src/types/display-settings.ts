@@ -375,6 +375,14 @@ export interface DisplaySettingsData {
         // Structure header. Off by default for every role — opt-in per role
         // from Display Settings.
         showBulkUpload?: boolean;
+        // Per-role visibility of the "Add" creation buttons in the Outline &
+        // Content Structure tabs (and the standalone Subject/Module/Chapter
+        // material pages). Default (undefined/true) shows them so existing
+        // roles are unaffected; set false to hide the button for this role.
+        showAddSubject?: boolean;
+        showAddModule?: boolean;
+        showAddChapter?: boolean;
+        showAddSlide?: boolean;
     };
 
     // 10) Slide view action visibility toggles

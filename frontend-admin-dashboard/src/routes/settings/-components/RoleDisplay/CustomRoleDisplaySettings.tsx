@@ -498,6 +498,22 @@ export default function CustomRoleDisplaySettings({
                                 'allowViewSlidesInReadOnly',
                                 'Allow viewing slides on published / in-review courses (read-only)',
                             ],
+                            [
+                                'showAddSubject',
+                                'Show "Add Subject" button (Outline & Content Structure)',
+                            ],
+                            [
+                                'showAddModule',
+                                'Show "Add Module" button (Outline & Content Structure)',
+                            ],
+                            [
+                                'showAddChapter',
+                                'Show "Add Chapter" button (Outline & Content Structure)',
+                            ],
+                            [
+                                'showAddSlide',
+                                'Show "Add Slide" button (Outline & Content Structure)',
+                            ],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -533,6 +549,14 @@ export default function CustomRoleDisplaySettings({
                                                 prev.coursePage?.showAdvancedCourseIds ?? false,
                                             showBulkUpload:
                                                 prev.coursePage?.showBulkUpload ?? false,
+                                            showAddSubject:
+                                                prev.coursePage?.showAddSubject ?? true,
+                                            showAddModule:
+                                                prev.coursePage?.showAddModule ?? true,
+                                            showAddChapter:
+                                                prev.coursePage?.showAddChapter ?? true,
+                                            showAddSlide:
+                                                prev.coursePage?.showAddSlide ?? true,
                                             [key]: checked,
                                         },
                                     }))
@@ -570,6 +594,10 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showBulkUpload:
                                             prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         showAdvancedCourseIds: checked,
                                     },
                                 }))
@@ -616,6 +644,10 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
                                         showBulkUpload:
                                             prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         directEditPublishedCourse: checked,
                                     },
                                 }))
@@ -681,6 +713,10 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
                                         showBulkUpload:
                                             prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         canEditCourseStructure: checked,
                                     },
                                 }))
@@ -714,6 +750,10 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
                                         showBulkUpload:
                                             prev.coursePage?.showBulkUpload ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         canDeleteCourseStructure: checked,
                                     },
                                 }))
@@ -749,6 +789,10 @@ export default function CustomRoleDisplaySettings({
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
                                         showAdvancedCourseIds:
                                             prev.coursePage?.showAdvancedCourseIds ?? false,
+                                        showAddSubject: prev.coursePage?.showAddSubject ?? true,
+                                        showAddModule: prev.coursePage?.showAddModule ?? true,
+                                        showAddChapter: prev.coursePage?.showAddChapter ?? true,
+                                        showAddSlide: prev.coursePage?.showAddSlide ?? true,
                                         showBulkUpload: checked,
                                     },
                                 }))

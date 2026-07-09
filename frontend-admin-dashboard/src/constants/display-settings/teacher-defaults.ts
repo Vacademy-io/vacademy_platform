@@ -123,6 +123,10 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
         showBulkUpload: false,
+        showAddSubject: true,
+        showAddModule: true,
+        showAddChapter: true,
+        showAddSlide: true,
     },
     courseList: {
         tabs: [

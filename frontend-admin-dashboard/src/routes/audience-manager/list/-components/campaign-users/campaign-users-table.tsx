@@ -449,8 +449,11 @@ const CampaignUsersContent = ({
         }),
         [setSelectedStudent, updateTier]
     );
-    const handleStatusUpdated = () =>
+    const handleStatusUpdated = () => {
         queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
+        queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
+        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+    };
 
     // ── Bulk assign / remove counsellor (multi-select, every view) ──
     const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(

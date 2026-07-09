@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Storage } from "@capacitor/storage";
+import { Storage } from "@/utils/storage-plugin";
 import {
   CheckCircle,
   Clock,
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
 import { Slide } from "@/hooks/study-library/use-slides";
 import { fetchAssessmentData, storeAssessmentInfo } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -24,7 +25,7 @@ import { Assessment, assessmentTypes } from "@/types/assessment";
 import { formatDuration, getInstituteId } from "@/constants/helper";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { GET_ASSESSMENT_MARKS, STUDENT_REPORT_DETAIL_URL } from "@/constants/urls";
-import { getPublicUrl } from "@/services/upload_file";
+import { getFileDetail } from "@/services/upload_file";
 
 interface TotalMarksResponse {
   total_achievable_marks?: number | null;
@@ -282,13 +283,40 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
     return null;
   })();
 
+  // Render the evaluated copy in the shared in-app viewer rather than
+  // window.open — the signed S3 URL has no extension, so the native webview
+  // can't open it on its own (and a download would save an extension-less,
+  // un-openable file). The copy may be a PDF or an image, so we resolve its
+  // real name + type and render/download it in that format.
+  const [evaluatedUrl, setEvaluatedUrl] = useState<string | null>(null);
+  const [evaluatedName, setEvaluatedName] = useState<string | undefined>(
+    undefined
+  );
+  const [evaluatedType, setEvaluatedType] = useState<string | undefined>(
+    undefined
+  );
+  const [evaluatedOpen, setEvaluatedOpen] = useState(false);
+  const [openingEvaluated, setOpeningEvaluated] = useState(false);
+
   const handleViewEvaluatedCopy = async () => {
-    if (!evaluatedFileId) return;
+    if (!evaluatedFileId || openingEvaluated) return;
     try {
-      const url = await getPublicUrl(evaluatedFileId);
-      if (url) window.open(url, "_blank");
+      setOpeningEvaluated(true);
+      const detail = await getFileDetail(evaluatedFileId);
+      if (detail?.url) {
+        setEvaluatedUrl(detail.url);
+        setEvaluatedName(
+          detail.fileName || `${assessment?.name || "assessment"} - evaluated`
+        );
+        setEvaluatedType(detail.fileType);
+        setEvaluatedOpen(true);
+      } else {
+        toast.error("Could not open the evaluated copy.");
+      }
     } catch {
       toast.error("Could not open the evaluated copy.");
+    } finally {
+      setOpeningEvaluated(false);
     }
   };
 
@@ -407,10 +435,11 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
                 <Button
                   variant="link"
                   onClick={handleViewEvaluatedCopy}
+                  disabled={openingEvaluated}
                   className="h-auto w-fit gap-1.5 p-0 text-xs font-medium text-emerald-700"
                 >
                   <FileArrowDown className="size-4" />
-                  View evaluated copy
+                  {openingEvaluated ? "Opening…" : "View evaluated copy"}
                 </Button>
               )}
             </div>
@@ -450,6 +479,16 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           {buttonState.label}
         </Button>
       </div>
+
+      <EvaluatedReportDialog
+        open={evaluatedOpen}
+        onOpenChange={setEvaluatedOpen}
+        fileUrl={evaluatedUrl}
+        fileName={evaluatedName}
+        fileType={evaluatedType}
+        remark={evaluatorRemark}
+        title="Evaluated copy"
+      />
     </div>
   );
 };

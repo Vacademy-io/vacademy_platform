@@ -3,18 +3,22 @@ import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif|avif)$/i;
 
 /**
- * Whether a file should be shown as an image. Prefers the MIME type from
- * media-service; falls back to the filename extension. Admin uploads for
- * answer sheets allow PDF / JPEG / PNG, so anything non-image is treated as a
- * PDF for rendering.
+ * Whether a file should be shown as an image. The real content type
+ * (media-service file_type) is authoritative — a stored filename can carry a
+ * stale/wrong extension. Only when the type is absent/unknown do we fall back
+ * to the filename. Admin answer-sheet uploads allow PDF / JPEG / PNG, so a
+ * confident non-image type (e.g. PDF) renders in the PDF viewer.
  */
 export function isImageFile(
   fileType?: string | null,
   fileName?: string | null
 ): boolean {
-  if (fileType && fileType.toLowerCase().startsWith("image/")) return true;
-  if (fileName && IMAGE_EXT.test(fileName.trim())) return true;
-  return false;
+  const t = (fileType || "").toLowerCase().split(";")[0].trim();
+  if (t.startsWith("image/")) return true;
+  if (t === "application/pdf" || t === "pdf") return false;
+  // file_type may be a bare extension like "png"; treat it like one.
+  if (t && IMAGE_EXT.test(`.${t}`)) return true;
+  return fileName ? IMAGE_EXT.test(fileName.trim()) : false;
 }
 
 interface FilePreviewProps {

@@ -17,7 +17,7 @@ import { formatDuration } from "@/constants/helper";
 import { parseHtmlToString } from "@/lib/utils";
 import { useState, useCallback, useEffect } from "react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { getPublicUrl } from "@/services/upload_file";
+import { getFileDetail } from "@/services/upload_file";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -107,7 +107,14 @@ export function ComparisonDashboard({
 }: ComparisonDashboardProps) {
   // Manual assessments have no per-question learner responses, so the answer
   // review is meaningless there — hide it entirely.
-  const isManual = (evaluationType || "").toUpperCase() === "MANUAL";
+  //
+  // `evaluationType` comes from router navigation state, which is lost on a
+  // reload / deep-link — so we can't rely on it alone to decide manual-ness.
+  // We additionally derive it from the report detail below (presence of an
+  // evaluated copy or a learner submission), then use `effectiveIsManual`
+  // everywhere so the report-options menu (View evaluated / View submitted)
+  // always shows for manual attempts.
+  const isManualFromState = (evaluationType || "").toUpperCase() === "MANUAL";
 
   // For manual assessments, surface the evaluated copy + the learner's own
   // submission via a report-options menu (in place of the plain Download PDF).
@@ -117,15 +124,32 @@ export function ComparisonDashboard({
     remark?: string | null;
   }>({});
   const [downloadingReport, setDownloadingReport] = useState(false);
+  // True once the report detail confirms this is a manual attempt (has an
+  // evaluated copy and/or a learner submission).
+  const [isManualFromDetail, setIsManualFromDetail] = useState(false);
 
-  // In-app PDF viewer (evaluated / submitted) with the teacher's remark.
+  const isManual = isManualFromState || isManualFromDetail;
+
+  // In-app viewer (evaluated / submitted) with the teacher's remark. Renders the
+  // file in its actual format (PDF or image), so we track its real name + type.
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerRemark, setViewerRemark] = useState<string | null>(null);
   const [viewerTitle, setViewerTitle] = useState<string>("");
+  const [viewerFileName, setViewerFileName] = useState<string | undefined>(
+    undefined
+  );
+  const [viewerFileType, setViewerFileType] = useState<string | undefined>(
+    undefined
+  );
+  const [openingFileId, setOpeningFileId] = useState<string | null>(null);
 
+  // Always fetch the report detail — we can't trust the router-state
+  // evaluationType (lost on reload/deep-link) to decide whether to load the
+  // evaluated copy + submission. If either file is present it's a manual
+  // attempt, which flips `isManualFromDetail` and surfaces the options menu.
   useEffect(() => {
-    if (!isManual) return;
+    if (!assessmentId || !attemptId || !instituteId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -145,11 +169,10 @@ export function ComparisonDashboard({
             break;
           }
         }
-        setReportFiles({
-          evaluated: res.data?.evaluated_file_id,
-          submitted: res.data?.response_file_id,
-          remark,
-        });
+        const evaluated = res.data?.evaluated_file_id;
+        const submitted = res.data?.response_file_id;
+        setReportFiles({ evaluated, submitted, remark });
+        setIsManualFromDetail(!!evaluated || !!submitted);
       } catch {
         // Best-effort; the menu items just stay disabled if this fails.
       }
@@ -157,28 +180,35 @@ export function ComparisonDashboard({
     return () => {
       cancelled = true;
     };
-  }, [isManual, assessmentId, attemptId, instituteId]);
+  }, [assessmentId, attemptId, instituteId]);
 
   const openInAppViewer = async (
     fileId: string | null | undefined,
-    opts: { remark?: string | null; title: string }
+    opts: { remark?: string | null; title: string; fallbackName: string }
   ) => {
-    if (!fileId) {
-      toast.error("File not available.");
+    if (!fileId || openingFileId) {
+      if (!fileId) toast.error("File not available.");
       return;
     }
     try {
-      const url = await getPublicUrl(fileId);
-      if (!url) {
+      setOpeningFileId(fileId);
+      // Resolve the real name + MIME type so the file renders/downloads in its
+      // actual format (the admin may upload a PDF or an image).
+      const detail = await getFileDetail(fileId);
+      if (!detail?.url) {
         toast.error("Could not open the file.");
         return;
       }
-      setViewerUrl(url);
+      setViewerUrl(detail.url);
+      setViewerFileName(detail.fileName || opts.fallbackName);
+      setViewerFileType(detail.fileType);
       setViewerRemark(opts.remark ?? null);
       setViewerTitle(opts.title);
       setViewerOpen(true);
     } catch {
       toast.error("Could not open the file.");
+    } finally {
+      setOpeningFileId(null);
     }
   };
 
@@ -349,9 +379,13 @@ export function ComparisonDashboard({
                   openInAppViewer(reportFiles.evaluated, {
                     remark: reportFiles.remark,
                     title: "Evaluated answer",
+                    fallbackName: `${assessmentName || "assessment"} - evaluated`,
                   })
                 }
-                disabled={!reportFiles.evaluated}
+                disabled={
+                  !reportFiles.evaluated ||
+                  openingFileId === reportFiles.evaluated
+                }
               >
                 <Eye className="mr-2 h-4 w-4" />
                 View evaluated
@@ -360,9 +394,13 @@ export function ComparisonDashboard({
                 onClick={() =>
                   openInAppViewer(reportFiles.submitted, {
                     title: "Your submission",
+                    fallbackName: `${assessmentName || "assessment"} - submission`,
                   })
                 }
-                disabled={!reportFiles.submitted}
+                disabled={
+                  !reportFiles.submitted ||
+                  openingFileId === reportFiles.submitted
+                }
               >
                 <FileArrowDown className="mr-2 h-4 w-4" />
                 View submitted
@@ -783,7 +821,9 @@ export function ComparisonDashboard({
       <EvaluatedReportDialog
         open={viewerOpen}
         onOpenChange={setViewerOpen}
-        pdfUrl={viewerUrl}
+        fileUrl={viewerUrl}
+        fileName={viewerFileName}
+        fileType={viewerFileType}
         remark={viewerRemark}
         title={viewerTitle}
       />

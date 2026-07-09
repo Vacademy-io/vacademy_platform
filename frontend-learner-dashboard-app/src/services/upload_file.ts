@@ -154,6 +154,98 @@ export const getPublicUrls = async (fileIds: string | undefined | null) => {
     );
 };
 
+/** A single file's viewable details from media-service (real name + MIME type). */
+export interface FileDetail {
+    id?: string;
+    url: string;
+    fileName?: string;
+    fileType?: string;
+}
+
+/**
+ * Resolve a single fileId to its signed URL AND its real name/MIME type, so a
+ * caller can render/download it in its actual format (PDF, JPEG, PNG, …) rather
+ * than assuming one. Falls back to the URL alone for direct-URL values.
+ */
+export const getFileDetail = async (
+    fileId: string | undefined | null
+): Promise<FileDetail | null> => {
+    if (!fileId) return null;
+    if (isDirectUrl(fileId)) return { url: fileId.trim() };
+    const res = await getWithETag<any>(
+        authenticatedAxiosInstance,
+        GET_DETAILS,
+        { fileIds: fileId, expiryDays: 7 }
+    );
+    const detail = Array.isArray(res) ? res[0] : res;
+    if (!detail?.url) return null;
+    return {
+        id: detail.id,
+        url: detail.url,
+        // media-service serialises snake_case; keep a camelCase fallback too.
+        fileName: detail.file_name ?? detail.fileName,
+        fileType: detail.file_type ?? detail.fileType,
+    };
+};
+
+// Common MIME → extension map for the formats an evaluated copy can be
+// (admin allows PDF / JPEG / PNG; a few extra images kept for safety).
+const MIME_TO_EXT: Record<string, string> = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/bmp": "bmp",
+    "image/svg+xml": "svg",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/avif": "avif",
+};
+
+const hasFileExtension = (name: string): boolean =>
+    /\.[a-z0-9]{1,5}$/i.test(name.trim());
+
+const extensionFromMime = (mime?: string | null): string | undefined => {
+    if (!mime) return undefined;
+    const key = mime.toLowerCase().split(";")[0].trim();
+    if (MIME_TO_EXT[key]) return MIME_TO_EXT[key];
+    // Generic fallback: "image/xyz" → "xyz".
+    const sub = key.includes("/") ? key.slice(key.indexOf("/") + 1) : "";
+    return /^[a-z0-9]+$/.test(sub) ? sub : undefined;
+};
+
+/**
+ * Download a file to the device with a real, extension-bearing name. Fetches
+ * the bytes and saves via a Blob so the saved file keeps its correct extension
+ * even though the S3 signed URL has none (a plain link would save an
+ * un-openable, extension-less file). If the given name has no extension, one is
+ * derived from the passed MIME type, falling back to the downloaded blob's own
+ * type — so the file is openable whatever format the admin uploaded.
+ */
+export const downloadFileWithName = async (
+    url: string,
+    fileName: string,
+    fileType?: string | null
+): Promise<void> => {
+    const response = await axios.get(url, { responseType: "blob" });
+    const blob: Blob = response.data;
+    let name = (fileName || "download").trim() || "download";
+    if (!hasFileExtension(name)) {
+        const ext = extensionFromMime(fileType) || extensionFromMime(blob?.type);
+        if (ext) name = `${name}.${ext}`;
+    }
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(objectUrl);
+};
+
 /**
  * Upload a file using the PUBLIC (unauthenticated) signed-URL endpoint.
  * Used on public-facing registration pages (live-class, audience-response)

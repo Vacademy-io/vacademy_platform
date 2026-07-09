@@ -2124,6 +2124,48 @@ public class InvoiceService {
     }
 
     /**
+     * Strip {@code @media ... screen ... { ... }} wrappers, promoting their contained CSS rules
+     * to unconditional top-level rules. See the call site in {@link #generatePdfFromHtml} for
+     * why: openhtmltopdf never matches a "screen" media context, so a template's screen-gated
+     * rules (MJML's responsive column widths, in practice) would otherwise be silently dropped
+     * in the PDF. Non-screen media blocks (e.g. {@code @media print}) are left untouched.
+     * Best-effort: an unbalanced/malformed block is left as-is rather than risking corrupting
+     * the rest of the document.
+     */
+    private String unwrapScreenMediaQueries(String html) {
+        // Matches the "@media ... screen ..." prelude up to (not including) its opening '{'.
+        // Deliberately broad ("screen" anywhere in the prelude) so it also catches
+        // "@media screen and (min-width:480px)" and "@media only screen and (...)" variants,
+        // and comma-separated lists like "@media print, screen".
+        java.util.regex.Pattern mediaStart = java.util.regex.Pattern.compile(
+                "@media\\s+[^{]*\\bscreen\\b[^{]*\\{", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = mediaStart.matcher(html);
+        StringBuilder out = new StringBuilder();
+        int cursor = 0;
+        while (cursor <= html.length() && m.find(cursor)) {
+            int preludeStart = m.start();
+            int braceOpen = m.end() - 1; // index of the matched '{'
+            int depth = 1;
+            int i = braceOpen + 1;
+            while (i < html.length() && depth > 0) {
+                char c = html.charAt(i);
+                if (c == '{') depth++;
+                else if (c == '}') depth--;
+                i++;
+            }
+            if (depth != 0) {
+                break; // unbalanced — bail out, leave the remainder of the document untouched
+            }
+            int blockEnd = i; // index just past the matching '}'
+            out.append(html, cursor, preludeStart);
+            out.append(html, braceOpen + 1, blockEnd - 1); // the block's inner rules, unwrapped
+            cursor = blockEnd;
+        }
+        out.append(html.substring(cursor));
+        return out.toString();
+    }
+
+    /**
      * Generate PDF from HTML
      */
     private byte[] generatePdfFromHtml(String htmlContent) {
@@ -2138,6 +2180,19 @@ public class InvoiceService {
                 htmlWithCss = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/></head><body>" +
                         htmlContent + "</body></html>";
             }
+
+            // MJML-compiled custom invoice templates (built via the admin template editor) gate
+            // their responsive column widths (e.g. .mj-column-per-50 { width:50% !important })
+            // behind `@media only screen and (min-width:480px) { ... }`. PdfRendererBuilder never
+            // sets a CSS media type, so openhtmltopdf's print/no-media context never matches
+            // "screen" and the whole block is silently skipped — the two-column FROM/BILL TO /
+            // header layout collapses to stacked 100%-width blocks in the PDF even though the
+            // identical HTML renders correctly (side-by-side) in a browser (the live preview
+            // iframe, which is NOT run through this method). A PDF page is always "wide enough",
+            // so unconditionally applying the desktop/screen variant is exactly what we want —
+            // only the PDF path is touched; the preview HTML returned to the frontend is
+            // unaffected.
+            htmlWithCss = unwrapScreenMediaQueries(htmlWithCss);
 
             // Force the embedded Unicode font everywhere so glyphs like ₹ always render,
             // regardless of the template's own font-family (an unmatched family would fall

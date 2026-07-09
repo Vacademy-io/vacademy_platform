@@ -660,7 +660,7 @@ const PDFEvaluator = ({
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.download = `evaluated-${pdfFile.name}`;
+            link.download = `evaluated-${(pdfFile.name || "attempt").replace(/\.[^./\\]+$/, "")}.pdf`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -816,8 +816,15 @@ const PDFEvaluator = ({
             const progressInterval = setInterval(() => {
                 setUploadingProgress((prev) => Math.min(prev + Math.random() * 10, 90));
             }, 200);
+            // Always give the evaluated artifact a .pdf name/type — the source
+            // answer file may be named without an extension (or be missing),
+            // which would otherwise produce a file that won't open/download as PDF.
+            const baseName = (file?.name || `attempt-${attemptId}`).replace(/\.[^./\\]+$/, "");
+            const evaluatedFileName = `evaluated-${baseName}.pdf`;
             const evaluatedFileId = await uploadFile({
-                file: new File([annotatedPdfBlob], `evaluated-${file?.name}`),
+                file: new File([annotatedPdfBlob], evaluatedFileName, {
+                    type: "application/pdf",
+                }),
                 setIsUploading,
                 userId: "your-user-id",
                 source: instituteId,
@@ -1232,7 +1239,9 @@ const PDFEvaluator = ({
                                         buttonType="primary"
                                         scale="medium"
                                         onClick={() => setShowEvaluationPanel(true)}
-                                        className={cn(isFreeTool && "hidden")}
+                                        className={cn(
+                                            (isFreeTool || showEvaluationPanel) && "hidden"
+                                        )}
                                         aria-label="Open grading panel"
                                     >
                                         Grade
@@ -1315,7 +1324,11 @@ const PDFEvaluator = ({
             {/* Evaluation Panel (right column). Fixed header + scrollable content
                 (which grows to fill the height, so no dead gap) + pinned action footer. */}
             {showEvaluationPanel && (
-                    <div className="flex w-full shrink-0 flex-col border-l border-neutral-200 bg-white sm:w-96 lg:w-1/4">
+                    // On small screens the panel is a solid full-height overlay
+                    // (fixed + bg-white + z-40) so the PDF column behind it can't
+                    // show through or bleed its toolbar over the grading content.
+                    // From sm up it becomes an in-flow right column again.
+                    <div className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l border-neutral-200 bg-white sm:static sm:z-auto sm:w-96 sm:shrink-0 lg:w-1/4">
                         <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-4 py-3">
                             <div className="flex flex-col">
                                 <span className="text-2xs font-medium uppercase tracking-wide text-neutral-500">

@@ -76,11 +76,16 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                         registration_id: student.registration_id,
                         attempt_id: student.attempt_id,
                         full_name: student.student_name,
-                        package_id: student.batch_id,
                         package_session_id: getBatchNameById(
                             batches_for_sessions,
                             student.batch_id
                         ),
+                        // Real ids so Portal Access can resolve the learner's package
+                        // for portal redirect / reset password. (package_session_id
+                        // above is a display NAME, not a UUID.) package_id is the
+                        // course/package id; all_package_session_ids the ps UUID(s).
+                        package_id: getPackageIdByBatchId(batches_for_sessions, student.batch_id),
+                        all_package_session_ids: student.batch_id ? [student.batch_id] : [],
                         attempt_date: extractDateTime(convertToLocalDateTime(student.attempt_date))
                             .date,
                         start_time: extractDateTime(convertToLocalDateTime(student.attempt_date))
@@ -128,6 +133,12 @@ export const getAssessmentSubmissionsFilteredDataStudentData = (
                             batches_for_sessions,
                             student.batch_id
                         ),
+                        // Real ids so Portal Access can resolve the learner's package
+                        // for portal redirect / reset password. (package_session_id
+                        // above is a display NAME, not a UUID.) package_id is the
+                        // course/package id; all_package_session_ids the ps UUID(s).
+                        package_id: getPackageIdByBatchId(batches_for_sessions, student.batch_id),
+                        all_package_session_ids: student.batch_id ? [student.batch_id] : [],
                         attempt_date: extractDateTime(convertToLocalDateTime(student.attempt_date))
                             .date,
                         start_time: extractDateTime(convertToLocalDateTime(student.attempt_date))
@@ -796,6 +807,14 @@ export function compareAndUpdateSections(
     });
 
     return processedSections;
+}
+
+// Resolve the real package (course) id for a batch/package-session id from the
+// same batches_for_sessions list used to render batch names. Used to give
+// submission rows a valid package_id for Portal Access (portal redirect /
+// reset password), instead of relying on the institute store being hydrated.
+export function getPackageIdByBatchId(data: BatchDetailsInterface[] | undefined, id: string) {
+    return data?.find((obj) => obj.id === id)?.package_dto?.id || '';
 }
 
 export function getBatchNameById(data: BatchDetailsInterface[] | undefined, id: string) {

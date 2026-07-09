@@ -17,10 +17,13 @@ import { StudentRevaluateQuestionWiseComponent } from './student-revaluate-quest
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { SelectedFilterRevaluateInterface } from '@/types/assessments/assessment-revaluate-question-wise';
 import {
+    getAttemptData,
     getReleaseStudentResult,
     getRevaluateStudentResult,
     handleGetStudentReportExportPDF,
+    viewStudentReport,
 } from '../../-services/assessment-details-services';
+import { getPublicUrl } from '@/services/upload_file';
 import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
@@ -149,14 +152,67 @@ const ReleaseResultComponent = ({
     );
 };
 
+// Confirmation shown before opening the manual evaluation tool for an attempt
+// that has already been evaluated. Re-grading resets its status to "Evaluating"
+// until new marks are submitted, so warn the teacher first.
+const ManualReEvaluateConfirmComponent = ({
+    student,
+    onConfirm,
+    onClose,
+}: {
+    student: AssessmentRevaluateStudentInterface;
+    onConfirm: () => void;
+    onClose: () => void;
+}) => {
+    return (
+        <DialogContent className="flex flex-col p-0">
+            <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Re-evaluate Attempt</h1>
+            <div className="flex flex-col gap-2 p-4">
+                <div className="flex items-center gap-1 text-danger-600">
+                    <p>Attention</p>
+                    <WarningCircle size={18} />
+                </div>
+                <h1>
+                    <span className="text-primary-500">{student.full_name}</span>&apos;s attempt has
+                    already been evaluated. Re-evaluating will move it back to{' '}
+                    <span className="font-semibold">Evaluating</span> until you submit new marks. Do
+                    you want to continue?
+                </h1>
+                <div className="mt-4 flex justify-end gap-2">
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="secondary"
+                        className="font-medium"
+                        onClick={onClose}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        scale="medium"
+                        buttonType="primary"
+                        className="font-medium"
+                        onClick={onConfirm}
+                    >
+                        Continue
+                    </MyButton>
+                </div>
+            </div>
+        </DialogContent>
+    );
+};
+
 const StudentEvaluateWithAIComponent = ({
     student,
     onClose,
     assessmentData,
+    isReEvaluation,
 }: {
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
     assessmentData: any;
+    isReEvaluation?: boolean;
 }) => {
     const { assessmentId } = Route.useParams();
     const instituteId = getInstituteId();
@@ -217,6 +273,16 @@ const StudentEvaluateWithAIComponent = ({
                 Evaluate Assessment with AI
             </h1>
             <div className="flex flex-col gap-4 p-4">
+                {isReEvaluation && (
+                    <div className="flex items-start gap-2 rounded-md bg-danger-50 p-3 text-danger-600">
+                        <WarningCircle size={18} className="mt-0.5 shrink-0" />
+                        <p className="text-sm">
+                            This attempt has already been evaluated. Re-evaluating will move it back
+                            to <span className="font-semibold">Evaluating</span> until the new result
+                            is ready.
+                        </p>
+                    </div>
+                )}
                 <div className="flex flex-col gap-2">
                     <label className="text-sm font-medium text-neutral-700">Select AI Model</label>
                     <Select value={selectedModel} onValueChange={setSelectedModel}>
@@ -391,21 +457,73 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
         setSelectedOption(value);
     };
 
-    // Fetch the participant's submission report PDF and open it in a new tab.
+    // Fetch the report detail for this attempt, resolve the evaluated copy's
+    // public URL and open it. The evaluated_file_id lives on the report detail,
+    // not on the table row, so it is fetched on demand.
+    const viewEvaluatedMutation = useMutation({
+        mutationFn: async () => {
+            const report = await viewStudentReport(assessmentId, student.attempt_id, instituteId);
+            const fileId = (report as { evaluated_file_id?: string | null } | undefined)
+                ?.evaluated_file_id;
+            if (!fileId) return null;
+            return getPublicUrl(fileId);
+        },
+        onSuccess: (url) => {
+            if (url) {
+                const evaluatedTab = window.open(url, '_blank');
+                if (!evaluatedTab) {
+                    toast.error('Please allow pop-ups to view the evaluated copy.');
+                }
+            } else {
+                toast.error('No evaluated copy found for this attempt.');
+            }
+        },
+        onError: (error: unknown) => {
+            console.error('Failed to load evaluated copy:', error);
+            toast.error('Failed to load the evaluated copy. Please try again.');
+        },
+    });
+
+    const handleViewEvaluated = () => {
+        if (viewEvaluatedMutation.isPending) return;
+        viewEvaluatedMutation.mutate();
+    };
+
+    // Open the learner's actual submitted answer file. The attempt's uploaded
+    // file id comes from getAttemptData; if there is no uploaded file (e.g. an
+    // objective attempt) fall back to the generated submission report PDF.
     const viewSubmissionMutation = useMutation({
-        mutationFn: () =>
-            handleGetStudentReportExportPDF(assessmentId, instituteId, student.attempt_id),
-        onSuccess: (pdfBlob: Blob) => {
-            const fileUrl = window.URL.createObjectURL(pdfBlob);
+        mutationFn: async () => {
+            const fileId = await getAttemptData(student.attempt_id);
+            if (fileId) {
+                const url = await getPublicUrl(fileId as string);
+                return { type: 'url' as const, value: url };
+            }
+            const pdfBlob = await handleGetStudentReportExportPDF(
+                assessmentId,
+                instituteId,
+                student.attempt_id
+            );
+            return { type: 'blob' as const, value: pdfBlob };
+        },
+        onSuccess: (result) => {
+            const fileUrl =
+                result.type === 'blob' ? window.URL.createObjectURL(result.value) : result.value;
+            if (!fileUrl) {
+                toast.error('No submission file found for this attempt.');
+                return;
+            }
             const submissionTab = window.open(fileUrl, '_blank');
             if (!submissionTab) {
                 toast.error('Please allow pop-ups to view the submission.');
             }
-            // Revoke after a delay so the new tab has time to load the blob.
-            setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+            // Revoke object URLs after a delay so the new tab can load the blob.
+            if (result.type === 'blob') {
+                setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+            }
         },
         onError: (error: unknown) => {
-            console.error('Failed to load submission PDF:', error);
+            console.error('Failed to load submission:', error);
             toast.error('Failed to load submission. Please try again.');
         },
     });
@@ -479,7 +597,16 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                                 <>
                                     <DropdownMenuItem
                                         className="cursor-pointer"
-                                        onClick={handleManualEvaluate}
+                                        onClick={() => {
+                                            // Already-evaluated attempts get a confirmation
+                                            // (re-grading resets status to "Evaluating"); a
+                                            // first-time evaluation opens the tool directly.
+                                            if (isEvaluationPending) {
+                                                handleManualEvaluate();
+                                            } else {
+                                                handleProvideReattempt('Manual Re-evaluate');
+                                            }
+                                        }}
                                     >
                                         Manual
                                     </DropdownMenuItem>
@@ -493,6 +620,19 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                             )}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
+                    {isManualEvaluation && !isEvaluationPending && (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                                e.preventDefault();
+                                handleViewEvaluated();
+                            }}
+                        >
+                            {viewEvaluatedMutation.isPending
+                                ? 'Loading Evaluated Copy...'
+                                : 'View Evaluated Copy'}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}
@@ -533,6 +673,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                         student={student}
                         onClose={() => setOpenDialog(false)}
                         assessmentData={assessmentData}
+                        isReEvaluation={!isEvaluationPending}
+                    />
+                )}
+                {selectedOption === 'Manual Re-evaluate' && (
+                    <ManualReEvaluateConfirmComponent
+                        student={student}
+                        onConfirm={() => {
+                            setOpenDialog(false);
+                            handleManualEvaluate();
+                        }}
+                        onClose={() => setOpenDialog(false)}
                     />
                 )}
             </Dialog>

@@ -3,16 +3,20 @@ import {
     GET_INVOICES_BY_USER,
     GET_INVOICES_BY_INSTITUTE,
     GET_INVOICE_DOWNLOAD_URL,
+    GET_INVOICE_BY_ID,
     POST_ADMIN_CREATE_INVOICE,
     POST_ADMIN_PREVIEW_INVOICE,
+    POST_REJECT_INVOICE,
 } from '@/constants/urls';
 
+// Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
+// @JsonNaming(SnakeCaseStrategy) — item_type/unit_price, NOT itemType/unitPrice.
 export interface InvoiceLineItemDTO {
     id: string;
-    itemType: string;
+    item_type: string;
     description: string;
     quantity: number;
-    unitPrice: number;
+    unit_price: number;
     amount: number;
 }
 
@@ -32,6 +36,8 @@ export interface InvoiceDTO {
     pdf_file_id: string | null;
     pdf_url: string | null;
     tax_included: boolean;
+    /** Admin-entered notes, if any — used to prefill "Duplicate". */
+    notes?: string | null;
     created_at: string;
     updated_at: string;
     line_items: InvoiceLineItemDTO[];
@@ -85,6 +91,29 @@ export function getInvoiceDownloadUrl(invoiceId: string): string {
     return GET_INVOICE_DOWNLOAD_URL(invoiceId);
 }
 
+/** Full invoice detail (line items + notes) — used to prefill "Duplicate". */
+export async function fetchInvoiceById(invoiceId: string): Promise<InvoiceDTO> {
+    const response = await authenticatedAxiosInstance.get<InvoiceDTO>(GET_INVOICE_BY_ID(invoiceId));
+    return response.data;
+}
+
+/**
+ * Voids a PENDING_PAYMENT admin invoice created in error. Terminal — the payment link
+ * stops working and it can never be marked paid afterward. `reason` is optional.
+ */
+export async function rejectInvoice(
+    invoiceId: string,
+    instituteId: string,
+    reason?: string
+): Promise<InvoiceDTO> {
+    const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
+        POST_REJECT_INVOICE(invoiceId),
+        reason ? { reason } : {},
+        { params: { instituteId } }
+    );
+    return response.data;
+}
+
 // ─── Admin Invoice Creation ───────────────────────────────────────────────────
 
 export interface AdminInvoiceLineItemRequest {
@@ -105,6 +134,10 @@ export interface AdminCreateInvoiceRequest {
     notes?: string;
     /** Per-invoice edits to dynamic template values, keyed by placeholder name. */
     overrides?: Record<string, string>;
+    /** Turn tax off entirely for this invoice, regardless of the institute's default. */
+    tax_enabled?: boolean;
+    /** Override the tax rate (percentage, e.g. 18) for this invoice only. Ignored when tax_enabled is false. */
+    tax_rate_percent?: number;
 }
 
 /** One editable/derived dynamic value discovered in the institute's invoice template. */

@@ -352,9 +352,15 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         String bbbMeetingId = getXmlText(doc, "meetingID");
         String internalMeetingId = getXmlText(doc, "internalMeetingID");
 
-        // Generate join URLs
-        String moderatorJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Moderator", "moderator-id", "MODERATOR");
-        String attendeeJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Attendee", "attendee-id", "VIEWER");
+        // Generic fallback join URLs. These are NOT the path real users take —
+        // learners/hosts join via buildJoinUrlForUser (through /meeting/join), which
+        // sets their real name + unique userId. We pass a null userID here (instead of
+        // the old shared "attendee-id"/"moderator-id") so that IF this fallback URL ever
+        // leaks into a real join, BBB assigns each joiner a unique internal id and they
+        // don't eject one another via maxUserConcurrentAccesses. The name stays generic
+        // because a stored, shared URL cannot know who is joining.
+        String moderatorJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Moderator", null, "MODERATOR");
+        String attendeeJoinUrl = buildJoinUrl(apiUrl, secret, bbbMeetingId, "Attendee", null, "VIEWER");
 
         Map<String, Object> raw = new HashMap<>();
         raw.put("meetingID", bbbMeetingId);
@@ -385,7 +391,13 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("meetingID", meetingId);
         params.put("fullName", fullName);
-        params.put("userID", userId);
+        // Only send userID when we have a real per-user id. For the generic
+        // fallback URLs (see createMeeting) we pass null so BBB assigns a unique
+        // internal id per joiner — a shared userID would trip maxUserConcurrentAccesses
+        // and eject learners who ever land on the fallback URL.
+        if (userId != null && !userId.isBlank()) {
+            params.put("userID", userId);
+        }
         params.put("role", role);
         params.put("redirect", "true");
 

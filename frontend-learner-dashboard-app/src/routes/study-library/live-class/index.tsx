@@ -11,10 +11,6 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { useMarkAttendance } from "./-hooks/useMarkAttendance";
 import { toast } from "sonner";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { BASE_URL } from "@/constants/urls";
-import { Capacitor } from "@capacitor/core";
-import { Browser } from "@capacitor/browser";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Calendar,
@@ -40,6 +36,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { calculateDuration } from "@/lib/live-class/utils";
+import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import {
   formatSessionTimeInUserTimezone,
   convertSessionTimeToUserTimezone,
@@ -279,43 +276,14 @@ function RouteComponent() {
     // open), proceed to join the live class directly.
     if (isLiveClassStarted || isZoomReady || (isInWaitingRoom && isPreJoining)) {
       // Helper to navigate/open based on session type
-      const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
+      const isBbb = isBbbSession(session.link_type);
 
       const openSession = async () => {
         if (isBbb) {
-          // BBB: fetch join URL and open directly (skip embed page)
-          try {
-            const response = await authenticatedAxiosInstance.get(
-              `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`,
-              { params: { scheduleId: session.schedule_id, role: "VIEWER" } }
-            );
-
-            // Backend returns { error: "Meeting has ended" } if meeting was force-ended
-            if (response.data?.error) {
-              toast.error("This class has ended.");
-              return;
-            }
-
-            const joinUrl = response.data?.joinUrl;
-            if (!joinUrl) {
-              toast.error("Failed to get video class URL");
-              return;
-            }
-
-            if (Capacitor.isNativePlatform()) {
-              Browser.open({ url: joinUrl, presentationStyle: "fullscreen" });
-            } else {
-              window.open(joinUrl, "_blank", "noopener,noreferrer");
-            }
-          } catch (err: any) {
-            console.error("Failed to get BBB join URL:", err);
-            const errMsg = err?.response?.data?.message || err?.response?.data?.error || "";
-            if (errMsg.toLowerCase().includes("ended") || errMsg.toLowerCase().includes("not found")) {
-              toast.error("This class has ended.");
-            } else {
-              toast.error("Failed to join video class. Please try again.");
-            }
-          }
+          // BBB: fetch a personalized per-user join URL (real name + userId) and
+          // open it. NEVER open the stored generic meeting_link for BBB — it is a
+          // shared "Attendee"/"attendee-id" URL that causes duplicate-userId ejects.
+          await openBbbJoinForLearner(session.schedule_id);
         } else if (
           session.session_streaming_service_type ===
           SessionStreamingServiceType.EMBED
@@ -347,21 +315,10 @@ function RouteComponent() {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
 
-        // Still proceed with navigation even if attendance marking fails
-        const streamingType = session.session_streaming_service_type?.toLowerCase();
-        if (streamingType === SessionStreamingServiceType.EMBED.toLowerCase()) {
-          (navigate as any)({
-            to: "/study-library/live-class/embed",
-            search: {
-              sessionId: session.schedule_id,
-              learnerButtonConfig: session.learner_button_config ?? undefined,
-            },
-          });
-        } else {
-          const joinLink = (session as any).custom_meeting_link || (session as any).customMeetingLink || session.meeting_link;
-          window.open(joinLink, "_blank", "noopener,noreferrer");
-        }
-        // Still proceed even if attendance marking fails
+        // Still proceed even if attendance marking fails — openSession() already
+        // routes BBB / EMBED / external links correctly (BBB via the personalized
+        // join URL). Do NOT also open meeting_link here: for BBB that is the shared
+        // generic link, and it would double-open the session.
         await openSession();
       }
     } else {

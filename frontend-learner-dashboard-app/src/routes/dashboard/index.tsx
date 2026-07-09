@@ -50,6 +50,7 @@ import {
   VideoCamera,
 } from "@phosphor-icons/react";
 import { SessionDetails } from "../study-library/live-class/-types/types";
+import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAttendance";
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
 import { toast } from "sonner";
@@ -534,7 +535,12 @@ export function DashboardComponent() {
               : "external_link",
         });
 
-        if (
+        if (isBbbSession(session.link_type)) {
+          // BBB: open the personalized join URL (real name + userId). Checked FIRST
+          // so BBB never routes to the embed page (which can't resolve a BBB room →
+          // "Unsupported session type") or the shared generic meeting_link.
+          await openBbbJoinForLearner(session.schedule_id);
+        } else if (
           session.session_streaming_service_type ===
           SessionStreamingServiceType.EMBED
         ) {
@@ -552,7 +558,12 @@ export function DashboardComponent() {
         console.error("Failed to mark attendance:", error);
         toast.error("Failed to mark attendance");
 
-        if (
+        if (isBbbSession(session.link_type)) {
+          // BBB: open the personalized join URL (real name + userId). Checked FIRST
+          // so BBB never routes to the embed page (which can't resolve a BBB room →
+          // "Unsupported session type") or the shared generic meeting_link.
+          await openBbbJoinForLearner(session.schedule_id);
+        } else if (
           session.session_streaming_service_type ===
           SessionStreamingServiceType.EMBED
         ) {

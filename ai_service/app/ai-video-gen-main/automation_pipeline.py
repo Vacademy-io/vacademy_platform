@@ -4791,7 +4791,27 @@ class VideoGenerationPipeline:
             if word_outputs["words_json"] is not None:
                 words = self._load_words(word_outputs["words_json"])
                 if not words:
-                    raise RuntimeError("No words parsed from timestamps; cannot continue.")
+                    # An EMPTY word list is a VALID state, not a corruption:
+                    # v3 per-shot TTS can produce audio with zero word-level
+                    # timings (some premium voices / languages — e.g. certain
+                    # regional English variants — return none), in which case
+                    # narration.words.json is legitimately `[]`. The FRESH
+                    # html leg already proceeds with words=[] and simply skips
+                    # word-snapping (shot boundaries then follow the audio
+                    # durations). Only this resume branch used to hard-raise —
+                    # an asymmetry that killed EVERY resumed leg for such a
+                    # video (e.g. every assist /decision answer). Before giving
+                    # up on snapping, try to rebuild from the checkpointed v3
+                    # raw (narration_raw.json holds {word_entries}); if that's
+                    # also empty, continue without word timings.
+                    words = self._recover_words_from_raw(run_dir)
+                    if not words:
+                        print(
+                            "⚠️ narration.words.json is empty and no word_entries "
+                            "to recover — proceeding WITHOUT word-level snapping "
+                            "(audio durations drive shot boundaries)."
+                        )
+                        words = []
             else:
                 words = []
         else:
@@ -9296,6 +9316,49 @@ class VideoGenerationPipeline:
     @staticmethod
     def _load_words(words_path: Path) -> List[Dict[str, Any]]:
         return json.loads(words_path.read_text())
+
+    def _recover_words_from_raw(self, run_dir: Path) -> List[Dict[str, Any]]:
+        """Rebuild the flat word list from the v3 stitched raw
+        (narration_raw.json = ``{metadata, word_entries, shot_offsets}``) when
+        the top-level narration.words.json is empty on a resume leg. Mirrors the
+        fresh-path derivation at the html stage. Returns [] when nothing is
+        recoverable (raw missing / word_entries empty) — a valid state that the
+        caller handles by skipping word-snapping."""
+        try:
+            _raw = run_dir / "narration_raw.json"
+            if not _raw.exists():
+                return []
+            _stitched = json.loads(_raw.read_text(encoding="utf-8"))
+            if not isinstance(_stitched, dict):
+                return []
+            _entries = _stitched.get("word_entries") or []
+            _flat = [
+                {
+                    "word": w.get("word", ""),
+                    "start": float(w.get("start") or 0.0),
+                    "end": float(w.get("end") or 0.0),
+                }
+                for w in _entries
+                if isinstance(w, dict) and w.get("word")
+            ]
+            if _flat:
+                # Re-persist so a later leg (and the words S3 upload) sees the
+                # recovered timings instead of the empty file.
+                try:
+                    (run_dir / "narration.words.json").write_text(
+                        json.dumps(_flat, ensure_ascii=False), encoding="utf-8"
+                    )
+                    (run_dir / "narration.words.csv").write_text(
+                        "\n".join(f'"{w["word"]}",{w["start"]:.3f},{w["end"]:.3f}' for w in _flat),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                print(f"   ♻️ Recovered {len(_flat)} word timings from narration_raw.json")
+            return _flat
+        except Exception as _rec_err:
+            print(f"   ⚠️ word recovery from narration_raw.json failed: {_rec_err}")
+            return []
 
     @staticmethod
     def _segment_words(words: List[Dict[str, Any]], window: float = 40.0, audio_duration: float = 0.0) -> List[Dict[str, Any]]:

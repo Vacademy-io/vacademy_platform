@@ -374,6 +374,17 @@ export const CourseStructureDetails = ({
         canEditAllowed ||
         canDeleteAllowed ||
         roleDisplay?.coursePage?.directEditPublishedCourse === true;
+    // Per-role visibility of the "Add" creation buttons in the Outline &
+    // Content Structure tabs. Default (undefined/true) shows them; admin can
+    // hide any of them for a role from Display Settings → Course Page. The
+    // Add Subject/Module/Chapter buttons also self-gate inside their shared
+    // components; these flags additionally hide the wrapping "add card" in the
+    // Content Structure grid (and gate the inline Add Slide buttons, which
+    // have no shared component).
+    const showAddSubject = roleDisplay?.coursePage?.showAddSubject !== false;
+    const showAddModule = roleDisplay?.coursePage?.showAddModule !== false;
+    const showAddChapter = roleDisplay?.coursePage?.showAddChapter !== false;
+    const showAddSlide = roleDisplay?.coursePage?.showAddSlide !== false;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
@@ -2214,7 +2225,7 @@ export const CourseStructureDetails = ({
                                                                                                                         </CollapsibleTrigger>
                                                                                                                         <CollapsibleContent className="py-1 pl-2 sm:pl-9">
                                                                                                                             <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
-                                                                                                                                {!readOnly && (
+                                                                                                                                {!readOnly && showAddSlide && (
                                                                                                                                     <MyButton
                                                                                                                                         buttonType="text"
                                                                                                                                         onClick={(
@@ -2856,7 +2867,7 @@ export const CourseStructureDetails = ({
                                                                                                                         </CollapsibleTrigger>
                                                                                                                         <CollapsibleContent className="py-1 pl-2 sm:pl-9">
                                                                                                                             <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
-                                                                                                                                {!readOnly && (
+                                                                                                                                {!readOnly && showAddSlide && (
                                                                                                                                     <MyButton
                                                                                                                                         buttonType="text"
                                                                                                                                         onClick={(
@@ -3369,6 +3380,7 @@ export const CourseStructureDetails = ({
                                                                                                                         </CollapsibleTrigger>
                                                                                                                         <CollapsibleContent className="py-1 pl-2 sm:pl-9">
                                                                                                                             <div className="relative space-y-1.5 border-l-2 border-dashed border-gray-200 pl-2 sm:pl-6">
+                                                                                                                                {showAddSlide && (
                                                                                                                                 <MyButton
                                                                                                                                     buttonType="text"
                                                                                                                                     onClick={(
@@ -3402,6 +3414,7 @@ export const CourseStructureDetails = ({
                                                                                                                                         )}
                                                                                                                                     </span>
                                                                                                                                 </MyButton>
+                                                                                                                                )}
 
                                                                                                                                 {(
                                                                                                                                     chapterSlidesMap[
@@ -3527,6 +3540,7 @@ export const CourseStructureDetails = ({
                                     modules.flatMap((mod) =>
                                         mod.chapters.flatMap((ch) => [
                                             // Add Slide button for this chapter (now before slides)
+                                            ...(showAddSlide ? [
                                             <MyButton
                                                 key={`add-slide-${ch.chapter.id}`}
                                                 buttonType="text"
@@ -3555,6 +3569,7 @@ export const CourseStructureDetails = ({
                                                     )}
                                                 </span>
                                             </MyButton>,
+                                            ] : []),
                                             // Slides for this chapter
                                             ...(chapterSlidesMap[ch.chapter.id] ?? []).map(
                                                 (slide, sIdx) => (
@@ -4586,7 +4601,9 @@ export const CourseStructureDetails = ({
                         ))}
 
                     {/* Add New Folder Buttons */}
-                    {courseStructure === 5 && currentNavigationLevel === 'subjects' && (
+                    {courseStructure === 5 &&
+                        currentNavigationLevel === 'subjects' &&
+                        showAddSubject && (
                         <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
                             <AddSubjectButton
                                 isTextButton={false}
@@ -4597,7 +4614,8 @@ export const CourseStructureDetails = ({
 
                     {courseStructure === 5 &&
                         currentNavigationLevel === 'modules' &&
-                        selectedSubjectId && (
+                        selectedSubjectId &&
+                        showAddModule && (
                             <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
                                 <AddModulesButton
                                     isTextButton={false}
@@ -4612,7 +4630,8 @@ export const CourseStructureDetails = ({
                     {/* Add Module button for course structure 4 at root level */}
                     {courseStructure === 4 &&
                         currentNavigationLevel === 'subjects' &&
-                        subjects[0] && (
+                        subjects[0] &&
+                        showAddModule && (
                             <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
                                 <AddModulesButton
                                     isTextButton={false}
@@ -4635,7 +4654,8 @@ export const CourseStructureDetails = ({
                             subjects[0]) ||
                         (courseStructure === 3 &&
                             currentNavigationLevel === 'subjects' &&
-                            subjects[0])) && (
+                            subjects[0])) &&
+                        showAddChapter && (
                         <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
                             <AddChapterButton
                                 moduleId={
@@ -4664,7 +4684,8 @@ export const CourseStructureDetails = ({
                     {/* Add Slide button for Course Structure 2 */}
                     {courseStructure === 2 &&
                         currentNavigationLevel === 'subjects' &&
-                        !readOnly && (
+                        !readOnly &&
+                        showAddSlide && (
                             <div className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 transition-colors duration-200 hover:border-primary-400 hover:bg-primary-50">
                                 <div
                                     onClick={() => handleDirectSlideNavigation()}

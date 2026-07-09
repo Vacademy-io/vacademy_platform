@@ -715,6 +715,13 @@ export const ChapterSidebarAddButton = () => {
         }
     };
 
+    // Per-role visibility: when an admin hides "Add Slide" for this role from
+    // Display Settings → Course Page, hide the entire add-slide control so the
+    // role cannot add slides from inside a chapter either.
+    if (roleDisplay?.coursePage?.showAddSlide === false) {
+        return null;
+    }
+
     return (
         <div className="w-full px-1 duration-500 animate-in fade-in slide-in-from-top-2">
             <div className="flex w-full items-center gap-2">

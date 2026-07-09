@@ -1,43 +1,91 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
+import { Button } from "@/components/ui/button";
+import { DownloadSimple, SpinnerGap } from "@phosphor-icons/react";
+import { toast } from "sonner";
+import { FilePreview } from "@/components/common/file-preview";
+import { downloadFileWithName } from "@/services/upload_file";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 
 interface EvaluatedReportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pdfUrl: string | null;
+  fileUrl: string | null;
+  // Real name + MIME type from media-service so the file renders and downloads
+  // in its actual format (PDF, JPEG, PNG, …) rather than assuming a PDF.
+  fileName?: string;
+  fileType?: string;
   remark?: string | null;
   title?: string;
 }
 
 /**
- * In-app viewer for an evaluated / submitted answer PDF. Renders the PDF with
- * the react-pdf viewer (zoom, page nav) and, when provided, shows the teacher's
- * remark above it — so the learner sees both on one screen instead of opening a
- * new browser tab.
+ * In-app viewer for an evaluated / submitted answer file. Renders a PDF with the
+ * react-pdf viewer or an uploaded image inline, and — when provided — shows the
+ * teacher's remark above it, so the learner sees everything on one screen
+ * instead of opening a new browser tab (which fails in the native app for the
+ * extension-less S3 URL).
  */
 export function EvaluatedReportDialog({
   open,
   onOpenChange,
-  pdfUrl,
+  fileUrl,
+  fileName,
+  fileType,
   remark,
   title,
 }: EvaluatedReportDialogProps) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!fileUrl) return;
+    try {
+      setDownloading(true);
+      await downloadFileWithName(
+        fileUrl,
+        fileName || title || "download",
+        fileType
+      );
+    } catch {
+      toast.error("Could not download the file.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="flex max-w-5xl flex-col gap-0 overflow-hidden p-0"
-        style={{ /* design-lint-ignore: viewport-relative height for the in-app PDF viewer */ height: "90vh" }}
+        style={{ /* design-lint-ignore: viewport-relative height for the in-app viewer */ height: "90vh" }}
       >
-        <DialogHeader className="shrink-0 border-b border-neutral-200 px-4 py-3">
-          <DialogTitle className="text-base font-semibold">
+        <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 space-y-0 border-b border-neutral-200 px-4 py-3 pr-12">
+          <DialogTitle className="truncate text-base font-semibold">
             {title || "Evaluated answer"}
           </DialogTitle>
+          {fileUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownload}
+              disabled={downloading}
+              className="h-9 shrink-0 gap-1.5"
+            >
+              {downloading ? (
+                <SpinnerGap className="size-4 animate-spin" />
+              ) : (
+                <DownloadSimple className="size-4" />
+              )}
+              <span className="hidden sm:inline">
+                {downloading ? "Downloading…" : "Download"}
+              </span>
+            </Button>
+          )}
         </DialogHeader>
 
         {remark && remark.trim().length > 0 && (
@@ -52,8 +100,8 @@ export function EvaluatedReportDialog({
         )}
 
         <div className="min-h-0 flex-1 bg-neutral-100">
-          {pdfUrl ? (
-            <SimplePDFViewer pdfUrl={pdfUrl} />
+          {fileUrl ? (
+            <FilePreview url={fileUrl} fileName={fileName} fileType={fileType} />
           ) : (
             <div className="flex h-full items-center justify-center">
               <DashboardLoader />

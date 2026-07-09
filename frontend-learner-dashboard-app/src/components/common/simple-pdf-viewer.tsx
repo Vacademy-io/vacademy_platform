@@ -2,6 +2,8 @@ import React from 'react';
 import { Viewer, Worker, SpecialZoomLevel } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { fullScreenPlugin } from '@react-pdf-viewer/full-screen';
+import { getFilePlugin } from '@react-pdf-viewer/get-file';
+import type { DownloadMenuItemProps } from '@react-pdf-viewer/get-file';
 import type {
     ToolbarSlot,
     ToolbarProps,
@@ -15,11 +17,32 @@ import '@react-pdf-viewer/full-screen/lib/styles/index.css';
 const PDF_WORKER_URL =
     'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
+// Evaluated-copy / submission PDFs are served from S3 signed URLs whose object
+// keys carry no ".pdf" extension. react-pdf-viewer's default download derives
+// the filename from that URL, so the saved file has no extension and won't open
+// on the device. This viewer only ever renders PDFs, so force a ".pdf" name —
+// replacing a mislabeled image extension rather than doubling it up
+// (e.g. "answer.jpg" → "answer.pdf", not "answer.jpg.pdf").
+const ensurePdfName = (name?: string): string => {
+    const base = (name || 'document').trim() || 'document';
+    if (/\.pdf$/i.test(base)) return base;
+    const stripped = base.replace(
+        /\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif|tiff?)$/i,
+        ''
+    );
+    return `${stripped}.pdf`;
+};
+
 interface SimplePDFViewerProps {
     pdfUrl: string;
+    // Optional download filename. A ".pdf" extension is enforced regardless.
+    fileName?: string;
 }
 
-const SimplePDFViewer: React.FC<SimplePDFViewerProps> = ({ pdfUrl }) => {
+const SimplePDFViewer: React.FC<SimplePDFViewerProps> = ({
+    pdfUrl,
+    fileName,
+}) => {
     // Fit the page to width when entering/exiting fullscreen so it fills the
     // (much wider) fullscreen viewport instead of keeping its load-time scale
     // and leaving large empty side margins. defaultLayoutPlugin doesn't expose
@@ -31,11 +54,23 @@ const SimplePDFViewer: React.FC<SimplePDFViewerProps> = ({ pdfUrl }) => {
     });
     const { EnterFullScreenButton } = fullScreenPluginInstance;
 
+    // Our own get-file instance so the download filename always ends in ".pdf".
+    const getFilePluginInstance = getFilePlugin({
+        fileNameGenerator: (file) => ensurePdfName(fileName || file.name),
+    });
+    const { DownloadButton, DownloadMenuItem } = getFilePluginInstance;
+
     const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
         ...slot,
         // Use our fullscreen button (configured to fit page width on
         // enter/exit) instead of the default-layout's internal one.
         EnterFullScreen: () => <EnterFullScreenButton />,
+        // Route both the toolbar button and the more-actions menu item to our
+        // get-file instance so the forced ".pdf" filename applies everywhere.
+        Download: () => <DownloadButton />,
+        DownloadMenuItem: (props: DownloadMenuItemProps) => (
+            <DownloadMenuItem onClick={props.onClick} />
+        ),
     });
 
     const renderToolbar = (
@@ -54,6 +89,7 @@ const SimplePDFViewer: React.FC<SimplePDFViewerProps> = ({ pdfUrl }) => {
                     plugins={[
                         defaultLayoutPluginInstance,
                         fullScreenPluginInstance,
+                        getFilePluginInstance,
                     ]}
                     defaultScale={SpecialZoomLevel.PageWidth}
                 />

@@ -19,7 +19,7 @@ import {
     type SubOrgFinanceDetail,
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
-import { getInvoiceDownloadUrl } from '@/services/invoice-service';
+import { getInvoiceDownloadUrl, fetchInvoiceById, rejectInvoice, type InvoiceDTO } from '@/services/invoice-service';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
@@ -52,13 +52,23 @@ function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
     }
     return null;
 }
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Copy, Plus } from '@phosphor-icons/react';
+import { Bell, Copy, CopySimple, Plus, XCircle } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
@@ -207,6 +217,14 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
     //   markPaidTarget — opens MarkPaidDialog scoped to one invoice
     const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
     const [markPaidTarget, setMarkPaidTarget] = useState<{ id: string; number?: string } | null>(null);
+    // "Duplicate" — fetches the full invoice (line items aren't on the summary row) and
+    // opens the same Create Invoice dialog pre-filled from it.
+    const [duplicateSource, setDuplicateSource] = useState<InvoiceDTO | null>(null);
+    const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+    // Which row is currently being rejected (per-row disable while the mutation is in flight).
+    const [rejectingId, setRejectingId] = useState<string | null>(null);
+    // Pending confirm for the destructive Reject action (AlertDialog, not window.confirm).
+    const [rejectTarget, setRejectTarget] = useState<{ id: string; number: string } | null>(null);
 
     const handleCopyInvoiceLink = async (invoiceId: string, link: string) => {
         try {
@@ -277,6 +295,43 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             toast.error(err?.response?.data?.message || 'Failed to send invoice reminder');
         },
     });
+
+    // "Duplicate" — the row list only carries a summary, so fetch the full invoice
+    // (line items + notes) before opening the Create Invoice dialog pre-filled from it.
+    const handleDuplicateInvoice = async (invoiceId: string) => {
+        setDuplicatingId(invoiceId);
+        try {
+            const full = await fetchInvoiceById(invoiceId);
+            setDuplicateSource(full);
+            setCreateInvoiceOpen(true);
+        } catch {
+            toast.error('Could not load invoice to duplicate');
+        } finally {
+            setDuplicatingId(null);
+        }
+    };
+
+    // Voids a mistaken PENDING_PAYMENT invoice. Terminal — confirm before firing.
+    const rejectMutation = useMutation({
+        mutationFn: (invoiceId: string) => rejectInvoice(invoiceId, instituteId || '', undefined),
+        onMutate: (invoiceId) => setRejectingId(invoiceId),
+        onSettled: () => setRejectingId(null),
+        onSuccess: () => {
+            toast.success('Invoice rejected');
+            if (adminUserId) {
+                queryClient.invalidateQueries({ queryKey: ['sub-org-admin-invoices', adminUserId] });
+            }
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Could not reject invoice');
+        },
+    });
+
+    const handleRejectInvoice = () => {
+        if (!rejectTarget) return;
+        rejectMutation.mutate(rejectTarget.id);
+        setRejectTarget(null);
+    };
 
     // The CTAs only make sense for the parent institute admin — sub-org admins can't
     // edit their own CPO ledger or fire reminders against themselves.
@@ -846,6 +901,36 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     Mark Paid
                                                 </button>
                                             )}
+                                            {isPendingAdminInvoice && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setRejectTarget({
+                                                            id: inv.id,
+                                                            number:
+                                                                inv.invoice_number || inv.invoiceNumber || inv.id,
+                                                        })
+                                                    }
+                                                    disabled={rejectingId === inv.id}
+                                                    className="inline-flex shrink-0 items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
+                                                    title="Void this invoice — created in error, has a mistake, etc."
+                                                >
+                                                    <XCircle className="size-3" />
+                                                    {rejectingId === inv.id ? 'Rejecting…' : 'Reject'}
+                                                </button>
+                                            )}
+                                            {!isSfpRow && typeof inv.id === 'string' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleDuplicateInvoice(inv.id)}
+                                                    disabled={duplicatingId === inv.id}
+                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                    title="Create a new invoice pre-filled with this one's items"
+                                                >
+                                                    <CopySimple className="size-3" />
+                                                    {duplicatingId === inv.id ? 'Loading…' : 'Duplicate'}
+                                                </button>
+                                            )}
                                             {url ? (
                                                 <div className="flex shrink-0 items-center gap-1">
                                                     <a
@@ -930,7 +1015,11 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     userName={admin?.full_name || subOrgName || 'Sub-org admin'}
                     instituteId={instituteId}
                     open={createInvoiceOpen}
-                    onOpenChange={setCreateInvoiceOpen}
+                    onOpenChange={(o) => {
+                        setCreateInvoiceOpen(o);
+                        if (!o) setDuplicateSource(null);
+                    }}
+                    duplicateFrom={duplicateSource}
                     onSuccess={() => {
                         queryClient.invalidateQueries({
                             queryKey: ['sub-org-admin-invoices', adminUserId],
@@ -956,6 +1045,30 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     }
                 }}
             />
+
+            {/* Reject confirm — a terminal, money-voiding action, so it's gated behind an
+                explicit AlertDialog rather than a native window.confirm. */}
+            <AlertDialog open={!!rejectTarget} onOpenChange={(o) => !o && setRejectTarget(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Reject invoice {rejectTarget?.number}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This voids the invoice permanently — the payment link stops working and
+                            it can never be marked paid. This cannot be undone. To fix a mistake,
+                            use Duplicate afterward to create a corrected invoice.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleRejectInvoice}
+                            className="bg-danger-600 hover:bg-danger-700"
+                        >
+                            Reject Invoice
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

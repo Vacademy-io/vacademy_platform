@@ -16,6 +16,7 @@ import {
   SessionStatus,
 } from "./-helpers/checkSessionStatus";
 import { SessionDetails } from "../-types/types";
+import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { toast } from "sonner";
@@ -98,7 +99,13 @@ function RouteComponent() {
           });
 
           // Navigate to live session after marking attendance
-          if (
+          if (isBbbSession(session.link_type)) {
+            // BBB: open the personalized join URL (real name + userId). Checked FIRST
+            // so BBB never routes to the embed page (which can't resolve a BBB room →
+            // "Unsupported session type") or the shared generic meeting_link.
+            await openBbbJoinForLearner(session.schedule_id);
+            navigate({ to: "/study-library/live-class" });
+          } else if (
             session.session_streaming_service_type ===
             SessionStreamingServiceType.EMBED
           ) {
@@ -115,7 +122,13 @@ function RouteComponent() {
           toast.error("Failed to mark attendance");
 
           // Still proceed with navigation even if attendance marking fails
-          if (
+          if (isBbbSession(session.link_type)) {
+            // BBB: open the personalized join URL (real name + userId). Checked FIRST
+            // so BBB never routes to the embed page (which can't resolve a BBB room →
+            // "Unsupported session type") or the shared generic meeting_link.
+            await openBbbJoinForLearner(session.schedule_id);
+            navigate({ to: "/study-library/live-class" });
+          } else if (
             session.session_streaming_service_type ===
             SessionStreamingServiceType.EMBED
           ) {

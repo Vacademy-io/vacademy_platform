@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -51,4 +52,19 @@ public class AdminCreateInvoiceRequestDTO {
      * requests — they are ignored for bulk (multi-user) creation.
      */
     private Map<String, String> overrides;
+
+    /**
+     * Per-invoice override for whether tax applies at all. Null (the common case) means
+     * "use the institute's INVOICE_SETTING default" (tax applies whenever taxRate &gt; 0).
+     * {@code false} removes tax entirely for this invoice regardless of settings —
+     * total_amount == subtotal, no tax line item, no {{tax_amount}}.
+     */
+    private Boolean taxEnabled;
+
+    /**
+     * Per-invoice override for the tax rate, as a percentage (e.g. 18 for 18%). Null means
+     * "use the institute's INVOICE_SETTING taxRate". Ignored when {@link #taxEnabled} is
+     * {@code false}.
+     */
+    private BigDecimal taxRatePercent;
 }

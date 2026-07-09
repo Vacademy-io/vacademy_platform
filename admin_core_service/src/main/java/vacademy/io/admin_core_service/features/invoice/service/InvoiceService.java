@@ -80,6 +80,9 @@ public class InvoiceService {
     private InvoiceBillingProfileService invoiceBillingProfileService;
 
     @Autowired
+    private InvoiceInstituteProfileService invoiceInstituteProfileService;
+
+    @Autowired
     private TemplateService templateService;
 
     @Autowired
@@ -187,6 +190,13 @@ public class InvoiceService {
     }
     private static final String INVOICE_STATUS_PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final String INVOICE_STATUS_PAID = "PAID";
+    // Terminal "voided" status: the admin created the invoice in error (wrong amount,
+    // wrong learner, …). The payment link stops working and it can never be marked
+    // paid again; it stays in the list for record-keeping. See rejectInvoice().
+    private static final String INVOICE_STATUS_REJECTED = "REJECTED";
+    // Shared, reused for the invoice_data_json read/merge helpers below — ObjectMapper is
+    // thread-safe and expensive to construct; avoid a fresh instance per call/per invoice row.
+    private static final ObjectMapper INVOICE_JSON_MAPPER = new ObjectMapper();
     private static final String DEFAULT_INVOICE_PREFIX = "INV";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
@@ -1560,9 +1570,17 @@ public class InvoiceService {
                 ov.apply("tax_registration_number", taxRegistrationNumber));
         filled = filled.replace("{{hsn_code}}", ov.apply("hsn_code", hsnSacCode));
         filled = filled.replace("{{tax_components}}", taxComponentsHtml);
+        // Render the EFFECTIVE tax label/rate carried on invoiceData — set by the caller
+        // (createAdminInvoices/previewAdminInvoice) from the actual per-invoice tax used in
+        // the amount calculation, not a fresh institute-settings lookup. Using the settings
+        // value here would desync the displayed rate from the real math whenever an admin
+        // overrides the tax rate or disables tax for a single invoice.
         filled = filled.replace("{{tax_label}}", ov.apply("tax_label",
-                invoiceSettings.get("taxLabel") != null ? invoiceSettings.get("taxLabel").toString() : "Tax"));
-        filled = filled.replace("{{tax_rate}}", ov.apply("tax_rate", formatRate(invoiceSettings.get("taxRate"))));
+                invoiceData.getTaxLabel() != null ? invoiceData.getTaxLabel() : "Tax"));
+        filled = filled.replace("{{tax_rate}}", ov.apply("tax_rate",
+                invoiceData.getTaxRate() != null
+                        ? formatRate(invoiceData.getTaxRate().multiply(BigDecimal.valueOf(100)))
+                        : ""));
 
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
@@ -1852,6 +1870,14 @@ public class InvoiceService {
             currencySymbol = inrCurrencySymbol();
         }
 
+        // Row shape is FIXED at 4 cells — Description | Quantity | Unit Price | Amount — matching
+        // the default template's <thead>. This is plain string-templating, not a real table
+        // renderer: every {{line_items}}-consuming <thead> across ALL institutes must declare
+        // exactly these 4 columns in this order, or its data visibly misaligns. DO NOT add/reorder
+        // cells here without auditing every existing custom INVOICE template's <thead> first — a
+        // 2026-07-09 attempt to prepend a row-number cell would have fixed 3 institutes whose
+        // templates already (incorrectly) expect a leading "#" column, but broken the other 7
+        // whose templates correctly match this 4-column contract today.
         StringBuilder html = new StringBuilder();
         for (InvoiceLineItemData item : lineItems) {
             html.append("<tr>");
@@ -2078,6 +2104,24 @@ public class InvoiceService {
                 return "S$";
             case "AED":
                 return "AED "; // UAE Dirham (ASCII so it renders in the PDF font)
+            // The remaining currencies the frontend's CURRENCY_OPTIONS dropdown offers
+            // (frontend-admin-dashboard/src/constants/currencies.ts) — every currency
+            // selectable in step 1 must resolve here, or it silently falls back to ₹
+            // below. ASCII symbols throughout so no Unicode font dependency.
+            case "SAR":
+                return "SR "; // Saudi Riyal
+            case "QAR":
+                return "QR "; // Qatari Riyal
+            case "HKD":
+                return "HK$"; // Hong Kong Dollar
+            case "NZD":
+                return "NZ$"; // New Zealand Dollar
+            case "CHF":
+                return "CHF "; // Swiss Franc
+            case "ZAR":
+                return "R "; // South African Rand
+            case "MYR":
+                return "RM "; // Malaysian Ringgit
             default:
                 log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol",
                         normalizedCurrency);
@@ -2085,6 +2129,48 @@ public class InvoiceService {
                 // symbols
                 return inrCurrencySymbol();
         }
+    }
+
+    /**
+     * Strip {@code @media ... screen ... { ... }} wrappers, promoting their contained CSS rules
+     * to unconditional top-level rules. See the call site in {@link #generatePdfFromHtml} for
+     * why: openhtmltopdf never matches a "screen" media context, so a template's screen-gated
+     * rules (MJML's responsive column widths, in practice) would otherwise be silently dropped
+     * in the PDF. Non-screen media blocks (e.g. {@code @media print}) are left untouched.
+     * Best-effort: an unbalanced/malformed block is left as-is rather than risking corrupting
+     * the rest of the document.
+     */
+    private String unwrapScreenMediaQueries(String html) {
+        // Matches the "@media ... screen ..." prelude up to (not including) its opening '{'.
+        // Deliberately broad ("screen" anywhere in the prelude) so it also catches
+        // "@media screen and (min-width:480px)" and "@media only screen and (...)" variants,
+        // and comma-separated lists like "@media print, screen".
+        java.util.regex.Pattern mediaStart = java.util.regex.Pattern.compile(
+                "@media\\s+[^{]*\\bscreen\\b[^{]*\\{", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = mediaStart.matcher(html);
+        StringBuilder out = new StringBuilder();
+        int cursor = 0;
+        while (cursor <= html.length() && m.find(cursor)) {
+            int preludeStart = m.start();
+            int braceOpen = m.end() - 1; // index of the matched '{'
+            int depth = 1;
+            int i = braceOpen + 1;
+            while (i < html.length() && depth > 0) {
+                char c = html.charAt(i);
+                if (c == '{') depth++;
+                else if (c == '}') depth--;
+                i++;
+            }
+            if (depth != 0) {
+                break; // unbalanced — bail out, leave the remainder of the document untouched
+            }
+            int blockEnd = i; // index just past the matching '}'
+            out.append(html, cursor, preludeStart);
+            out.append(html, braceOpen + 1, blockEnd - 1); // the block's inner rules, unwrapped
+            cursor = blockEnd;
+        }
+        out.append(html.substring(cursor));
+        return out.toString();
     }
 
     /**
@@ -2102,6 +2188,19 @@ public class InvoiceService {
                 htmlWithCss = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"/></head><body>" +
                         htmlContent + "</body></html>";
             }
+
+            // MJML-compiled custom invoice templates (built via the admin template editor) gate
+            // their responsive column widths (e.g. .mj-column-per-50 { width:50% !important })
+            // behind `@media only screen and (min-width:480px) { ... }`. PdfRendererBuilder never
+            // sets a CSS media type, so openhtmltopdf's print/no-media context never matches
+            // "screen" and the whole block is silently skipped — the two-column FROM/BILL TO /
+            // header layout collapses to stacked 100%-width blocks in the PDF even though the
+            // identical HTML renders correctly (side-by-side) in a browser (the live preview
+            // iframe, which is NOT run through this method). A PDF page is always "wide enough",
+            // so unconditionally applying the desktop/screen variant is exactly what we want —
+            // only the PDF path is touched; the preview HTML returned to the frontend is
+            // unaffected.
+            htmlWithCss = unwrapScreenMediaQueries(htmlWithCss);
 
             // Force the embedded Unicode font everywhere so glyphs like ₹ always render,
             // regardless of the template's own font-family (an unmatched family would fall
@@ -3108,41 +3207,48 @@ public class InvoiceService {
 
         // Read institute invoice settings once for all users in this bulk request
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
-        Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
-        Double taxRateValue = invoiceSettings.get("taxRate") != null
-                ? ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
-        // taxRateValue is stored as a percentage (e.g. 18 for 18%); convert to fraction for math
-        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
-                .divide(BigDecimal.valueOf(100), 10, java.math.RoundingMode.HALF_UP);
-        String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
         // Subtotal = sum of (unitPrice * quantity) from line items
         BigDecimal subtotal = request.getLineItems().stream()
                 .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Apply tax from INVOICE_SETTING
-        BigDecimal taxAmount;
-        BigDecimal totalAmount;
-        if (taxIncluded) {
-            // Admin entered tax-inclusive prices; back-compute tax component
-            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
-            BigDecimal netSubtotal = subtotal.divide(divisor, 2, java.math.RoundingMode.HALF_UP);
-            taxAmount = subtotal.subtract(netSubtotal);
-            totalAmount = subtotal; // total == subtotal when tax is included
-        } else {
-            taxAmount = subtotal.multiply(taxRate).setScale(2, java.math.RoundingMode.HALF_UP);
-            totalAmount = subtotal.add(taxAmount);
-        }
+        // Tax: institute settings by default, overridable per-invoice via
+        // request.taxEnabled/taxRatePercent (e.g. remove tax or use a one-off rate).
+        EffectiveTax effectiveTax = computeEffectiveTax(invoiceSettings, subtotal,
+                request.getTaxEnabled(), request.getTaxRatePercent());
+        boolean taxIncluded = effectiveTax.taxIncluded();
+        BigDecimal taxRate = effectiveTax.taxRate();
+        String taxLabel = effectiveTax.taxLabel();
+        BigDecimal taxAmount = effectiveTax.taxAmount();
+        BigDecimal totalAmount = effectiveTax.totalAmount();
 
         // Per-invoice text overrides (invoice_number, party & institute details, tax label…).
         // User-scoped keys are stripped for bulk so they don't bleed across users.
         boolean singleUser = request.getUserIds().size() == 1;
         Map<String, String> baseOverrides = sanitizeOverrides(request.getOverrides(), singleUser);
-        // Notes may arrive either as the dedicated field or as an override; override wins.
-        String effectiveNotes = baseOverrides.containsKey("notes") ? baseOverrides.get("notes") : request.getNotes();
+        Map<String, String> currentInstituteProfile = invoiceInstituteProfileService.loadAsMap(invoiceSettings);
+        // Notes: an explicit override (even "") means the admin deliberately set/cleared it —
+        // never overridden by a fallback. Only absent falls through to request.notes, then the
+        // institute's remembered default notes.
+        String effectiveNotes = baseOverrides.containsKey("notes")
+                ? baseOverrides.get("notes")
+                : firstNonBlank(request.getNotes(), currentInstituteProfile.get("notes"));
         // Invoice date: admin-chosen or now.
         LocalDateTime invoiceDate = request.getInvoiceDate() != null ? request.getInvoiceDate() : LocalDateTime.now();
+
+        // Remember institute-linked details for next time (any admin, any future invoice) —
+        // institute-wide, so done once per request regardless of bulk/single. Only genuine
+        // deviations are persisted (see instituteEditsFromOverrides); own transaction, so a
+        // settings-save failure can never break invoice creation.
+        try {
+            Map<String, String> instituteEdits =
+                    instituteEditsFromOverrides(baseOverrides, institute, currentInstituteProfile);
+            invoiceInstituteProfileService.upsert(institute, invoiceSettings, instituteEdits);
+        } catch (Exception e) {
+            log.warn("Failed to persist institute invoice profile for institute {}: {}",
+                    request.getInstituteId(), e.getMessage());
+        }
 
         for (String userId : request.getUserIds()) {
             List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
@@ -3195,7 +3301,7 @@ public class InvoiceService {
                 if (StringUtils.hasText(effectiveNotes)) dataJson.put("notes", effectiveNotes);
                 if (!renderOverrides.isEmpty()) dataJson.put("overrides", renderOverrides);
                 if (!dataJson.isEmpty()) {
-                    invoice.setInvoiceDataJson(new ObjectMapper().writeValueAsString(dataJson));
+                    invoice.setInvoiceDataJson(INVOICE_JSON_MAPPER.writeValueAsString(dataJson));
                 }
             } catch (Exception ignored) {}
 
@@ -3221,8 +3327,10 @@ public class InvoiceService {
             // catch so a profile failure never breaks invoice creation.
             if (singleUser) {
                 try {
+                    Map<String, String> currentBp =
+                            invoiceBillingProfileService.loadAsMap(userId, request.getInstituteId());
                     invoiceBillingProfileService.upsert(userId, request.getInstituteId(),
-                            billingEditsFromOverrides(renderOverrides, user));
+                            billingEditsFromOverrides(renderOverrides, user, currentBp));
                 } catch (Exception e) {
                     log.warn("Failed to persist invoice billing profile for user {}: {}",
                             userId, e.getMessage());
@@ -3456,6 +3564,82 @@ public class InvoiceService {
     }
 
     /**
+     * Voids a mistaken PENDING_PAYMENT admin invoice: flips status to REJECTED so its
+     * payment link stops working and it can never be marked paid, while keeping the row
+     * (and PDF) around for record-keeping. Terminal — a REJECTED invoice cannot be
+     * un-rejected; the admin creates a corrected invoice instead (see "Duplicate" on the
+     * frontend, which prefills a new Create-Invoice dialog from this one's line items).
+     *
+     * <p>Only PENDING_PAYMENT invoices can be rejected — an already-PAID invoice
+     * represents money that actually moved and must be handled as a refund/credit
+     * instead, not silently voided.
+     */
+    @Transactional
+    public InvoiceDTO rejectInvoice(String invoiceId, String instituteId, String reason,
+            CustomUserDetails userDetails) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        if (instituteId != null && !instituteId.equals(invoice.getInstituteId())) {
+            throw new VacademyException("Invoice does not belong to this institute");
+        }
+        if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            throw new VacademyException("Only a PENDING_PAYMENT invoice can be rejected (current status: "
+                    + invoice.getStatus() + ")");
+        }
+
+        invoice.setStatus(INVOICE_STATUS_REJECTED);
+        // Audit trail: who voided it and when is always recorded — reason is merely optional
+        // free text on top of that, not a gate on capturing the actor/timestamp.
+        Map<String, Object> rejectAudit = new HashMap<>();
+        rejectAudit.put("rejectedBy", userDetails != null ? userDetails.getUserId() : "system");
+        rejectAudit.put("rejectedAt", LocalDateTime.now().toString());
+        if (StringUtils.hasText(reason)) {
+            rejectAudit.put("rejectReason", reason);
+        }
+        invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), rejectAudit));
+        invoice = invoiceRepository.save(invoice);
+
+        log.info("[InvoiceReject] invoiceId={} invoiceNumber={} rejectedBy={} reason={}",
+                invoiceId, invoice.getInvoiceNumber(),
+                userDetails != null ? userDetails.getUserId() : "system", reason);
+
+        return mapToDTO(invoice);
+    }
+
+    /**
+     * Merge additional keys into the invoice's {@code invoice_data_json} blob without
+     * clobbering whatever is already there (e.g. persisted notes/overrides from create
+     * time) — read-modify-write over the same JSON object shape {@code applyStoredOverrides}
+     * expects. Best-effort: returns the original JSON unchanged if parsing fails.
+     */
+    @SuppressWarnings("unchecked")
+    private String mergeInvoiceDataJson(String existingJson, Map<String, Object> additions) {
+        try {
+            Map<String, Object> merged = StringUtils.hasText(existingJson)
+                    ? new HashMap<>(INVOICE_JSON_MAPPER.readValue(existingJson, Map.class))
+                    : new HashMap<>();
+            merged.putAll(additions);
+            return INVOICE_JSON_MAPPER.writeValueAsString(merged);
+        } catch (Exception e) {
+            log.warn("Failed to merge invoice_data_json, leaving unchanged: {}", e.getMessage());
+            return existingJson;
+        }
+    }
+
+    /** Read a single string field out of {@code invoice_data_json}, or null if absent/unparseable. */
+    @SuppressWarnings("unchecked")
+    private String readInvoiceDataJsonField(String json, String key) {
+        if (!StringUtils.hasText(json)) return null;
+        try {
+            Map<String, Object> parsed = INVOICE_JSON_MAPPER.readValue(json, Map.class);
+            Object value = parsed.get(key);
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * Initiates gateway payment for an admin-created invoice.
      * Creates PaymentLog (userPlan=null) and links it to the invoice.
      */
@@ -3467,6 +3651,10 @@ public class InvoiceService {
 
         if (!invoice.getInstituteId().equals(instituteId)) {
             throw new VacademyException("Invoice does not belong to this institute");
+        }
+        if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            throw new VacademyException("This invoice is " + invoice.getStatus()
+                    + " and can no longer be paid");
         }
 
         // Get institute's configured gateway
@@ -3556,6 +3744,14 @@ public class InvoiceService {
             log.info("Invoice {} already marked as PAID, skipping", invoice.getId());
             return;
         }
+        if (INVOICE_STATUS_REJECTED.equals(invoice.getStatus())) {
+            // The admin voided this invoice — a late/retried gateway webhook must never
+            // resurrect it to PAID. Reject is terminal; this is the single point where money
+            // is actually recognized for admin invoices, so the guard belongs here.
+            log.warn("Ignoring PAID webhook for REJECTED invoice {} (paymentLogId={}) — invoice was voided",
+                    invoice.getId(), paymentLogId);
+            return;
+        }
 
         invoice.setStatus(INVOICE_STATUS_PAID);
         invoiceRepository.saveAndFlush(invoice);
@@ -3631,6 +3827,56 @@ public class InvoiceService {
      * visibly shows the tax the totals include). Shared by create + preview so both render
      * identically.
      */
+    /** Effective per-invoice tax outcome — see {@link #computeEffectiveTax}. */
+    private record EffectiveTax(
+            boolean taxIncluded, BigDecimal taxRate, String taxLabel,
+            BigDecimal taxAmount, BigDecimal totalAmount) {}
+
+    /**
+     * Resolve the tax actually applied to ONE admin invoice: institute settings are the
+     * default, but the request can override the rate or turn tax off entirely for just
+     * this invoice. Shared by {@link #createAdminInvoices} and {@link #previewAdminInvoice}
+     * so the rendered preview and the created invoice can never disagree on the math.
+     *
+     * @param requestTaxEnabled null/true = apply tax (rate below); false = no tax at all —
+     *                          total_amount == subtotal, taxAmount = 0.
+     * @param requestTaxRatePercent null = use the institute's INVOICE_SETTING taxRate;
+     *                          otherwise this percentage (e.g. 18 for 18%) is used instead.
+     */
+    private EffectiveTax computeEffectiveTax(Map<String, Object> invoiceSettings, BigDecimal subtotal,
+            Boolean requestTaxEnabled, BigDecimal requestTaxRatePercent) {
+        String taxLabel = invoiceSettings.get("taxLabel") != null
+                ? invoiceSettings.get("taxLabel").toString() : "Tax";
+
+        if (Boolean.FALSE.equals(requestTaxEnabled)) {
+            // Tax removed entirely for this invoice — taxRate=null (not ZERO) so
+            // replaceTemplatePlaceholders blanks {{tax_rate}}, and label is blank too, so a
+            // template with a fixed "Tax ({{tax_rate}}%)" row doesn't print "Tax (0%)" on an
+            // invoice that has no tax section at all.
+            return new EffectiveTax(false, null, "", BigDecimal.ZERO, subtotal);
+        }
+
+        boolean taxIncluded = Boolean.TRUE.equals(invoiceSettings.get("taxIncluded"));
+        BigDecimal ratePercent = requestTaxRatePercent != null
+                ? requestTaxRatePercent
+                : BigDecimal.valueOf(invoiceSettings.get("taxRate") != null
+                        ? ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0);
+        BigDecimal taxRate = ratePercent.divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
+
+        BigDecimal taxAmount;
+        BigDecimal totalAmount;
+        if (taxIncluded) {
+            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
+            BigDecimal netSubtotal = subtotal.divide(divisor, 2, RoundingMode.HALF_UP);
+            taxAmount = subtotal.subtract(netSubtotal);
+            totalAmount = subtotal;
+        } else {
+            taxAmount = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
+            totalAmount = subtotal.add(taxAmount);
+        }
+        return new EffectiveTax(taxIncluded, taxRate, taxLabel, taxAmount, totalAmount);
+    }
+
     private List<InvoiceLineItemData> buildAdminLineItemData(List<AdminInvoiceLineItemRequestDTO> lineItems,
             BigDecimal taxAmount, Boolean taxIncluded, BigDecimal taxRate, String taxLabel) {
         List<InvoiceLineItemData> lineItemData = lineItems.stream()
@@ -3657,9 +3903,11 @@ public class InvoiceService {
     }
 
     private String buildTaxLineDescription(String taxLabel, BigDecimal taxRate) {
-        BigDecimal ratePct = (taxRate != null ? taxRate : BigDecimal.ZERO)
-                .multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP);
-        return (StringUtils.hasText(taxLabel) ? taxLabel : "Tax") + " @ " + ratePct + "%";
+        // formatRate trims to a whole number when the rate IS whole (e.g. "18"), but keeps
+        // decimals otherwise (e.g. "12.5") — rounding to 0dp here would print "Tax @ 13%" for a
+        // 12.5% override while the line's actual amount is computed at 12.5%.
+        BigDecimal ratePct = (taxRate != null ? taxRate : BigDecimal.ZERO).multiply(BigDecimal.valueOf(100));
+        return (StringUtils.hasText(taxLabel) ? taxLabel : "Tax") + " @ " + formatRate(ratePct) + "%";
     }
 
     /**
@@ -3695,32 +3943,73 @@ public class InvoiceService {
 
     /**
      * From the submitted overrides, keep only the user-linked Bill-To fields that GENUINELY
-     * DEVIATE from the live user record. This is what makes the "remember" feature correct: the
-     * FE always sends the fully-seeded override map (edited or not), so persisting it verbatim
-     * would snapshot the raw user record and then permanently shadow later user-record updates.
-     * By comparing against the record, an unchanged field is omitted (→ profile untouched → future
-     * invoices track the live record) or, if it merely matches the record, emitted as "" so any
-     * previously-pinned value is cleared. Fields the template didn't surface stay untouched.
+     * DEVIATE from what the admin was actually shown (any previously-saved pin, else the live
+     * user record). The FE always sends the fully-seeded override map whether or not the admin
+     * touched anything, so this comparison is what makes the "remember" feature correct — see
+     * {@link #addDeviationEdit}.
      */
-    private Map<String, String> billingEditsFromOverrides(Map<String, String> overrides, UserDTO user) {
+    private Map<String, String> billingEditsFromOverrides(Map<String, String> overrides, UserDTO user,
+            Map<String, String> currentBp) {
         Map<String, String> edits = new HashMap<>();
         if (overrides == null || user == null) return edits;
-        addBillingEdit(edits, overrides, "user_name", user.getFullName());
-        addBillingEdit(edits, overrides, "user_email", user.getEmail());
-        addBillingEdit(edits, overrides, "user_address", user.getAddressLine());
-        addBillingEdit(edits, overrides, "user_tax_info", ""); // no user-record source
-        addBillingEdit(edits, overrides, "place_of_supply", user.getRegion());
+        addDeviationEdit(edits, overrides, "user_name", user.getFullName(), currentBp.get("user_name"));
+        addDeviationEdit(edits, overrides, "user_email", user.getEmail(), currentBp.get("user_email"));
+        addDeviationEdit(edits, overrides, "user_address", user.getAddressLine(), currentBp.get("user_address"));
+        addDeviationEdit(edits, overrides, "user_tax_info", "", currentBp.get("user_tax_info")); // no record source
+        addDeviationEdit(edits, overrides, "place_of_supply", user.getRegion(), currentBp.get("place_of_supply"));
         return edits;
     }
 
-    private void addBillingEdit(Map<String, String> edits, Map<String, String> overrides,
-            String key, String baseline) {
-        if (!overrides.containsKey(key)) return; // template didn't surface it → leave saved value
-        String submitted = overrides.get(key);
-        // Matches the live record → store "" (clears any pin); differs → remember the admin's value.
-        edits.put(key, nz(submitted).trim().equals(nz(baseline).trim()) ? "" : submitted);
+    /**
+     * From the submitted overrides, keep only the institute-linked fields (institute_name,
+     * institute_address, institute_contact, notes) that genuinely DEVIATE from what the admin
+     * was actually shown — mirrors {@link #billingEditsFromOverrides}. Notes have no external
+     * "record" to compare against (raw baseline ""), so they reduce to "differs from the
+     * previously-saved default" — {@link #addDeviationEdit} handles that uniformly.
+     */
+    private Map<String, String> instituteEditsFromOverrides(Map<String, String> overrides, Institute institute,
+            Map<String, String> currentIp) {
+        Map<String, String> edits = new HashMap<>();
+        if (overrides == null || institute == null) return edits;
+        addDeviationEdit(edits, overrides, "institute_name", institute.getInstituteName(),
+                currentIp.get("institute_name"));
+        addDeviationEdit(edits, overrides, "institute_address", institute.getAddress(),
+                currentIp.get("institute_address"));
+        addDeviationEdit(edits, overrides, "institute_contact",
+                firstNonBlank(institute.getMobileNumber(), institute.getEmail()),
+                currentIp.get("institute_contact"));
+        addDeviationEdit(edits, overrides, "notes", "", currentIp.get("notes"));
+        return edits;
     }
 
+    /**
+     * Decide whether to persist a deviation for one "remembered default" field, given what the
+     * admin submitted, the RAW source-of-truth baseline (the user/institute record — {@code ""}
+     * when no such record exists, e.g. notes), and any CURRENTLY-PINNED override that was
+     * actually shown as the default this time.
+     *
+     * <ul>
+     *   <li>Key absent from {@code overrides} → the template didn't surface it → leave storage
+     *       untouched (don't wipe a value saved via a different template).
+     *   <li>Submitted matches what was actually SHOWN (the pin if one exists, else the raw
+     *       record) → the admin didn't change anything → no-op. This is the fix for a real bug:
+     *       comparing only against the raw record (ignoring an existing pin) makes "pin matches
+     *       what's shown" look identical to "matches the record," so re-submitting an
+     *       already-corrected, unedited value would silently DELETE the correction on every
+     *       subsequent invoice.
+     *   <li>Submitted matches the RAW record (and differs from the pin) → the admin explicitly
+     *       reverted to the record → clear the pin ({@code ""}).
+     *   <li>Otherwise → a genuinely new value → pin it.
+     * </ul>
+     */
+    private void addDeviationEdit(Map<String, String> edits, Map<String, String> overrides,
+            String key, String rawBaseline, String currentPin) {
+        if (!overrides.containsKey(key)) return;
+        String submitted = overrides.get(key);
+        String shown = firstNonBlank(currentPin, rawBaseline);
+        if (nz(submitted).trim().equals(nz(shown).trim())) return; // unchanged from what was shown
+        edits.put(key, nz(submitted).trim().equals(nz(rawBaseline).trim()) ? "" : submitted);
+    }
 
     /**
      * Renders a non-persisting preview of an admin invoice: fills the institute's
@@ -3751,31 +4040,26 @@ public class InvoiceService {
                 : Collections.emptyMap();
 
         Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
-        Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
-        Double taxRateValue = invoiceSettings.get("taxRate") != null
-                ? ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
-        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
-                .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
-        String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
         BigDecimal subtotal = request.getLineItems().stream()
                 .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal taxAmount;
-        BigDecimal totalAmount;
-        if (Boolean.TRUE.equals(taxIncluded)) {
-            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
-            BigDecimal netSubtotal = subtotal.divide(divisor, 2, RoundingMode.HALF_UP);
-            taxAmount = subtotal.subtract(netSubtotal);
-            totalAmount = subtotal;
-        } else {
-            taxAmount = subtotal.multiply(taxRate).setScale(2, RoundingMode.HALF_UP);
-            totalAmount = subtotal.add(taxAmount);
-        }
+
+        // Same effective-tax resolution createAdminInvoices uses, so the preview's numbers
+        // and rendered {{tax_rate}}/{{tax_label}} can never disagree with what create persists.
+        EffectiveTax effectiveTax = computeEffectiveTax(invoiceSettings, subtotal,
+                request.getTaxEnabled(), request.getTaxRatePercent());
+        boolean taxIncluded = effectiveTax.taxIncluded();
+        BigDecimal taxRate = effectiveTax.taxRate();
+        String taxLabel = effectiveTax.taxLabel();
+        BigDecimal taxAmount = effectiveTax.taxAmount();
+        BigDecimal totalAmount = effectiveTax.totalAmount();
 
         boolean singleUser = request.getUserIds() != null && request.getUserIds().size() == 1;
         Map<String, String> userOverrides = sanitizeOverrides(request.getOverrides(), singleUser);
-        String effectiveNotes = userOverrides.containsKey("notes") ? userOverrides.get("notes") : request.getNotes();
+        String effectiveNotes = userOverrides.containsKey("notes")
+                ? userOverrides.get("notes")
+                : firstNonBlank(request.getNotes(), invoiceInstituteProfileService.loadAsMap(invoiceSettings).get("notes"));
 
         // Resolve the invoice number exactly like createAdminInvoices: honour a unique admin
         // override, else the freshly generated next number. This keeps the preview's rendered
@@ -3891,16 +4175,22 @@ public class InvoiceService {
         d.put("place_of_supply", firstNonBlank(bp.get("place_of_supply"), user != null ? user.getRegion() : null));
         d.put("user_tax_info", nz(bp.get("user_tax_info")));
 
+        // Institute-level defaults: a previously-saved override (INVOICE_SETTING) wins over
+        // the institute's raw record, so a corrected name/address/contact prefills for every
+        // future invoice from any admin — see InvoiceInstituteProfileService.
+        Map<String, String> ip = invoiceInstituteProfileService.loadAsMap(invoiceSettings);
         if (institute != null) {
-            d.put("institute_name", nz(institute.getInstituteName()));
-            d.put("institute_address", nz(institute.getAddress()));
-            d.put("institute_contact", institute.getMobileNumber() != null
-                    ? institute.getMobileNumber() : nz(institute.getEmail()));
+            d.put("institute_name", firstNonBlank(ip.get("institute_name"), institute.getInstituteName()));
+            d.put("institute_address", firstNonBlank(ip.get("institute_address"), institute.getAddress()));
+            d.put("institute_contact", firstNonBlank(ip.get("institute_contact"),
+                    institute.getMobileNumber(), institute.getEmail()));
         }
 
-        d.put("tax_label", invoiceSettings.get("taxLabel") != null
-                ? invoiceSettings.get("taxLabel").toString() : "Tax");
-        d.put("tax_rate", formatRate(invoiceSettings.get("taxRate")));
+        // Effective (possibly per-invoice-overridden) tax, not the raw institute default —
+        // matches what replaceTemplatePlaceholders renders and what create will persist.
+        d.put("tax_label", invoiceData.getTaxLabel() != null ? invoiceData.getTaxLabel() : "Tax");
+        d.put("tax_rate", invoiceData.getTaxRate() != null
+                ? formatRate(invoiceData.getTaxRate().multiply(BigDecimal.valueOf(100))) : "");
         Object countryObj = invoiceSettings.get("country");
         if (countryObj instanceof Map) {
             Map<String, Object> c = (Map<String, Object>) countryObj;
@@ -3945,16 +4235,30 @@ public class InvoiceService {
                 .collect(Collectors.toList());
 
         Map<String, Object> settings = getInvoiceSettings(institute);
-        BigDecimal taxRate = settings.get("taxRate") != null
-                ? BigDecimal.valueOf(((Number) settings.get("taxRate")).doubleValue())
-                        .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-        String taxLabel = settings.get("taxLabel") != null ? settings.get("taxLabel").toString() : "Tax";
+        // Derive the rate from the AMOUNTS ACTUALLY FROZEN on the invoice, not the institute's
+        // current settings — this invoice may have used a per-invoice tax override, or the
+        // institute's tax rate may have changed since creation. Re-deriving from settings would
+        // silently disagree with the persisted subtotal/tax_amount/total on regeneration.
+        BigDecimal subtotal = invoice.getSubtotal() != null ? invoice.getSubtotal() : BigDecimal.ZERO;
+        BigDecimal taxAmount = invoice.getTaxAmount() != null ? invoice.getTaxAmount() : BigDecimal.ZERO;
+        BigDecimal taxRate;
+        if (taxAmount.compareTo(BigDecimal.ZERO) <= 0 || subtotal.compareTo(BigDecimal.ZERO) <= 0) {
+            taxRate = null; // no tax on this invoice — matches computeEffectiveTax's "disabled" convention
+        } else if (Boolean.TRUE.equals(invoice.getTaxIncluded())) {
+            // taxAmount is the tax embedded within subtotal; rate = tax / (subtotal - tax).
+            BigDecimal netSubtotal = subtotal.subtract(taxAmount);
+            taxRate = netSubtotal.compareTo(BigDecimal.ZERO) > 0
+                    ? taxAmount.divide(netSubtotal, 10, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+        } else {
+            taxRate = taxAmount.divide(subtotal, 10, RoundingMode.HALF_UP);
+        }
+        String taxLabel = taxRate == null ? ""
+                : settings.get("taxLabel") != null ? settings.get("taxLabel").toString() : "Tax";
 
         // Persisted line items don't include the synthetic TAX row (only real items are
         // stored) — re-append it so the regenerated table matches the original PDF.
-        BigDecimal taxAmount = invoice.getTaxAmount();
-        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0
+        if (taxAmount.compareTo(BigDecimal.ZERO) > 0
                 && !Boolean.TRUE.equals(invoice.getTaxIncluded())) {
             lineItemData.add(InvoiceLineItemData.builder()
                     .itemType("TAX")
@@ -3993,7 +4297,7 @@ public class InvoiceService {
     private void applyStoredOverrides(Invoice invoice, InvoiceData data) {
         if (invoice == null || data == null || !StringUtils.hasText(invoice.getInvoiceDataJson())) return;
         try {
-            Map<String, Object> json = new ObjectMapper().readValue(invoice.getInvoiceDataJson(), Map.class);
+            Map<String, Object> json = INVOICE_JSON_MAPPER.readValue(invoice.getInvoiceDataJson(), Map.class);
             Object notes = json.get("notes");
             if (notes instanceof String && StringUtils.hasText((String) notes)) {
                 data.setNotes((String) notes);
@@ -4128,6 +4432,7 @@ public class InvoiceService {
                                                                                                                      // ID
                 .paymentLink(computePaymentLinkForListing(invoice))
                 .taxIncluded(invoice.getTaxIncluded())
+                .notes(readInvoiceDataJsonField(invoice.getInvoiceDataJson(), "notes"))
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())
                 .lineItems(lineItemDTOs)

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AcademicsSection;
+import vacademy.io.admin_core_service.features.student_analysis.service.aggregation.SubjectResolver;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 public class AcademicsCollector {
 
     private final AssessmentServiceClient assessmentServiceClient;
+    private final SubjectResolver subjectResolver;
 
     public AcademicsSection collect(String userId, String instituteId, LocalDate startDate, LocalDate endDate) {
         try {
@@ -105,11 +107,15 @@ public class AcademicsCollector {
             // whenever the assessment service didn't provide it, so grade/status/averages
             // are never blank just because the "percentage" field was absent.
             Double pct = derivePercentage(a.getPercentage(), a.getMarks(), a.getTotalMarks());
+            // Resolve subject from DB hint → keyword inference on the name, so the assessment
+            // list, subject-performance rollup, and marks-by-subject all agree. Stays null when
+            // genuinely unresolvable (callers omit it rather than showing "Unknown").
+            String resolvedSubject = subjectResolver.resolve(a.getSubject(), a.getName());
             return AcademicsSection.AssessmentItem.builder()
                 .assessmentId(a.getAssessmentId())
                 .name(a.getName() != null ? a.getName() : a.getAssessmentId())
                 .date(a.getDate())
-                .subject(a.getSubject())
+                .subject(resolvedSubject)
                 .marks(a.getMarks())
                 .totalMarks(a.getTotalMarks())
                 .percentage(pct)
@@ -139,10 +145,19 @@ public class AcademicsCollector {
     private List<AcademicsSection.SubjectPerformance> buildSubjectPerformance(
             List<AcademicsSection.AssessmentItem> assessments) {
 
-        // Group by subject (null subject → "Unknown")
-        Map<String, List<AcademicsSection.AssessmentItem>> bySubject = assessments.stream()
-                .collect(Collectors.groupingBy(
-                        a -> a.getSubject() != null ? a.getSubject() : "Unknown"));
+        // Group by RESOLVED subject (DB hint → keyword inference from the name). Items whose
+        // subject cannot be resolved are dropped from the per-subject breakdown entirely — we
+        // never surface an "Unknown" row to a parent. (Their marks still count toward the overall
+        // academics average and appear in the assessment list.)
+        Map<String, List<AcademicsSection.AssessmentItem>> bySubject = new LinkedHashMap<>();
+        for (AcademicsSection.AssessmentItem a : assessments) {
+            String subject = subjectResolver.resolve(a.getSubject(), a.getName());
+            if (subject == null) continue;   // unresolved → omit, do not label
+            bySubject.computeIfAbsent(subject, k -> new ArrayList<>()).add(a);
+        }
+        if (bySubject.isEmpty()) {
+            return null;   // no subject resolved for any item → hide the sub-section
+        }
 
         List<AcademicsSection.SubjectPerformance> result = new ArrayList<>();
 

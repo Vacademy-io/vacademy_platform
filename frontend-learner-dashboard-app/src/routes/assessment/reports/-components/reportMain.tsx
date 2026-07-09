@@ -18,8 +18,16 @@ import {
   LoadingState,
 } from "@/components/design-system/states";
 import { FileText, Eye } from "@phosphor-icons/react";
-import { getPublicUrl } from "@/services/upload_file";
+import { getFileDetail } from "@/services/upload_file";
 import { toast } from "sonner";
+import { EvaluatedReportDialog } from "@/components/common/student-test-records/evaluated-report-dialog";
+
+interface EvaluatedPreview {
+  url: string;
+  fileName?: string;
+  fileType?: string;
+  title: string;
+}
 
 const PLAY_MODE_LABELS: Record<string, string> = {
   EXAM: "Exam",
@@ -77,6 +85,14 @@ const AssessmentReportList = ({
   const observer = useRef<IntersectionObserver | null>(null);
   const loadingRef = useRef<HTMLDivElement | null>(null);
   const [instituteDetails, setInstituteDetails] = useState<any>(null);
+  // Evaluated copy is rendered in an in-app PDF viewer dialog. Opening the S3
+  // signed URL directly with window.open fails in the native app (the URL has
+  // no .pdf extension, so the webview/OS can't render it) — hence the dialog.
+  const [evaluatedPreview, setEvaluatedPreview] =
+    useState<EvaluatedPreview | null>(null);
+  const [loadingEvaluatedFor, setLoadingEvaluatedFor] = useState<string | null>(
+    null
+  );
   const { setNavHeading } = useNavHeadingStore();
 
   useEffect(() => {
@@ -118,9 +134,15 @@ const AssessmentReportList = ({
     });
   };
 
-  // Open the evaluated copy (the teacher's annotated PDF) for a manual report.
+  // Open the evaluated copy for a manual report. Rendered in the shared in-app
+  // viewer rather than window.open — the signed S3 URL carries no file
+  // extension, so the native webview can't open it on its own. The copy may be
+  // a PDF or an image (the admin uploads PDF/JPEG/PNG), so we resolve its real
+  // name + type and render/download it in that actual format.
   const handleViewEvaluated = async (report: Report) => {
+    if (loadingEvaluatedFor) return;
     try {
+      setLoadingEvaluatedFor(report.attempt_id);
       const res = await authenticatedAxiosInstance.get(STUDENT_REPORT_DETAIL_URL, {
         params: {
           assessmentId: report.assessment_id,
@@ -133,11 +155,23 @@ const AssessmentReportList = ({
         toast.error("Evaluated copy is not available yet.");
         return;
       }
-      const url = await getPublicUrl(fileId);
-      if (url) window.open(url, "_blank");
-      else toast.error("Could not open the evaluated copy.");
+      const detail = await getFileDetail(fileId);
+      if (detail?.url) {
+        setEvaluatedPreview({
+          url: detail.url,
+          fileName:
+            detail.fileName ||
+            `${report.assessment_name || "assessment"} - evaluated`,
+          fileType: detail.fileType,
+          title: `${report.assessment_name || "Evaluated copy"}`,
+        });
+      } else {
+        toast.error("Could not open the evaluated copy.");
+      }
     } catch {
       toast.error("Could not open the evaluated copy.");
+    } finally {
+      setLoadingEvaluatedFor(null);
     }
   };
 
@@ -342,11 +376,13 @@ const AssessmentReportList = ({
                       buttonType="secondary"
                       className="min-h-11 w-full sm:min-h-9 sm:w-auto"
                       onClick={() => handleViewEvaluated(report)}
-                      disable={!released}
+                      disable={!released || !!loadingEvaluatedFor}
                     >
                       <span className="inline-flex items-center gap-1.5">
                         <Eye className="size-4" />
-                        View Evaluated
+                        {loadingEvaluatedFor === report.attempt_id
+                          ? "Opening…"
+                          : "View Evaluated"}
                       </span>
                     </MyButton>
                   )}
@@ -386,6 +422,19 @@ const AssessmentReportList = ({
           }}
         />
       )}
+
+      {/* In-app evaluated-copy preview — renders the file in its actual format
+          (PDF or image) with a real-name download. */}
+      <EvaluatedReportDialog
+        open={!!evaluatedPreview}
+        onOpenChange={(open) => {
+          if (!open) setEvaluatedPreview(null);
+        }}
+        fileUrl={evaluatedPreview?.url ?? null}
+        fileName={evaluatedPreview?.fileName}
+        fileType={evaluatedPreview?.fileType}
+        title={evaluatedPreview?.title || "Evaluated copy"}
+      />
     </div>
   );
 };

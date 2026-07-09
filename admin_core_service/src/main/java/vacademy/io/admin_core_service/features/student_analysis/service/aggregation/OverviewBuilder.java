@@ -145,9 +145,14 @@ public class OverviewBuilder {
         // Assignments metric
         AssignmentsSection assignments = report.getAssignments();
         if (assignments != null && assignments.isAvailable() && assignments.getSubmitted() != null) {
-            String val = assignments.getAssigned() != null
-                    ? assignments.getSubmitted() + " / " + assignments.getAssigned()
-                    : String.valueOf(assignments.getSubmitted());
+            Integer submitted = assignments.getSubmitted();
+            Integer assigned = assignments.getAssigned();
+            // Only show "submitted / assigned" when the assigned total is a sane denominator
+            // (>= submitted and > 0). Otherwise assigned is unknown/incomplete (e.g. 0 assigned
+            // but 2 submitted) → show just the submitted count instead of a nonsensical "2 / 0".
+            String val = (assigned != null && assigned > 0 && assigned >= submitted)
+                    ? submitted + " / " + assigned
+                    : String.valueOf(submitted);
             metrics.add(OverviewSection.HeadlineMetric.builder()
                     .key("assignments")
                     .label("Assignments Done")

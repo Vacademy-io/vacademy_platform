@@ -69,6 +69,14 @@ public class ComprehensiveStudentReport {
      */
     private SubjectMarksSection subjectMarks;
 
+    /**
+     * ADDITIVE: learning insights parsed from per-attempt {@code activity_log.processed_json}
+     * (topic mastery, Bloom's taxonomy, confidence, misconceptions) — serialized as
+     * "learning_insights". Gated by the LEARNING_INSIGHTS module. Null when excluded or no
+     * processed attempts existed in the window.
+     */
+    private LearningInsightsSection learningInsights;
+
     // ── AI-powered insight lists (top-level) ──────────────────────────────────
     /** LLM-derived strengths — serialized as "strengths". */
     private List<TopicConfidence> strengths;
@@ -87,6 +95,13 @@ public class ComprehensiveStudentReport {
     // ── AI narrative ──────────────────────────────────────────────────────────
     /** Layer-2 AI insights — serialized as "ai_insights". Null until narration. */
     private AiInsightsSection aiInsights;
+
+    /**
+     * ADDITIVE: v1-style deep Markdown narrative (learning frequency, progress, efforts,
+     * topics up/down, remedial) — serialized as "narrative". Produced by the same Layer-2 LLM
+     * call as ai_insights and lifted here by the processor. Null when narration is unavailable.
+     */
+    private NarrativeSection narrative;
 
     // ── Footer ────────────────────────────────────────────────────────────────
     /** Static disclaimer notes about data sourcing and trend comparisons. */

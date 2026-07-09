@@ -87,27 +87,40 @@ export function DispositionsTab({
         return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
     }
 
-    const exportStatusMatrix = () =>
+    const exportStatusMatrix = () => {
+        const dataRows = statusRows.map((r) => {
+            const cols = statuses.map((s) => r.changes[s.status_key] ?? 0);
+            const total = cols.reduce((sum, n) => sum + n, 0);
+            return [actorName(r), ...cols, total];
+        });
+        // Totals footer row: sum each status column across all actors.
+        const footerCols = statuses.map((_, si) =>
+            dataRows.reduce((sum, row) => sum + ((row[si + 1] as number) ?? 0), 0)
+        );
+        const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
         exportCsv(
             `dispositions-status-changes_${fromDate}_${toDate}.csv`,
             ['Counsellor', ...statuses.map((s) => s.label || s.status_key), 'Total'],
-            statusRows.map((r) => [
-                actorName(r),
-                ...statuses.map((s) => r.changes[s.status_key] ?? 0),
-                r.total_changes,
-            ])
+            [...dataRows, ['TOTAL', ...footerCols, footerTotal]]
         );
+    };
 
-    const exportOutcomeMatrix = () =>
+    const exportOutcomeMatrix = () => {
+        const dataRows = outcomeRows.map((r) => [
+            actorName(r),
+            ...outcomeKeys.map((k) => r.outcomes[k] ?? 0),
+            outcomeTotal(r),
+        ]);
+        const footerCols = outcomeKeys.map((_, ki) =>
+            dataRows.reduce((sum, row) => sum + ((row[ki + 1] as number) ?? 0), 0)
+        );
+        const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
         exportCsv(
             `dispositions-call-outcomes_${fromDate}_${toDate}.csv`,
             ['Counsellor', ...outcomeKeys.map(outcomeLabel), 'Total'],
-            outcomeRows.map((r) => [
-                actorName(r),
-                ...outcomeKeys.map((k) => r.outcomes[k] ?? 0),
-                outcomeTotal(r),
-            ])
+            [...dataRows, ['TOTAL', ...footerCols, footerTotal]]
         );
+    };
 
     return (
         <div className="flex flex-col gap-6">

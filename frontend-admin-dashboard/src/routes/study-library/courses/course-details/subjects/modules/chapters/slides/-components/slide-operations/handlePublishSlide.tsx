@@ -143,7 +143,7 @@ export const handlePublishSlide = async (
             const serverMessage = response?.data?.ex || response?.data?.message;
             if (response?.status === 409 && serverMessage) {
                 const confirmed = window.confirm(
-                    `${serverMessage}\n\nDo you want to publish anyway and replace the live version?`
+                    `To prevent accidental data loss, please confirm.\n\n${serverMessage}\n\nAre you sure you want to publish this version?`
                 );
                 if (!confirmed) return;
                 try {

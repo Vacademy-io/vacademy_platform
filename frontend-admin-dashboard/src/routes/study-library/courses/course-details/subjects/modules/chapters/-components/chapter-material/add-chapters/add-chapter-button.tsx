@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { AddChapterForm } from './add-chapter-form';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 interface AddChapterButtonProps {
     isTextButton?: boolean;
@@ -55,6 +57,12 @@ export const AddChapterButton = ({
         submitFn: (() => void) | null;
         isPending: boolean;
     }>({ submitFn: null, isPending: false });
+
+    // Per-role visibility: admin can hide the "Add Chapter" button for a role
+    // from Display Settings → Course Page. Default (undefined/true) shows it.
+    const roleDisplay = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
+    if (roleDisplay?.coursePage?.showAddChapter === false) return null;
+
     const triggerButton = isTextButton ? (
         <MyButton
             scale="large"

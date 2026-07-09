@@ -6,6 +6,8 @@ import { SubjectType } from '@/stores/study-library/use-study-library-store';
 import { Plus } from '@phosphor-icons/react';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 interface AddSubjectButtonProps {
     onAddSubject: (subject: SubjectType) => void;
@@ -14,6 +16,11 @@ interface AddSubjectButtonProps {
 
 export const AddSubjectButton = ({ onAddSubject, isTextButton = false }: AddSubjectButtonProps) => {
     const [openDialog, setOpenDialog] = useState(false);
+
+    // Per-role visibility: admin can hide the "Add Subject" button for a role
+    // from Display Settings → Course Page. Default (undefined/true) shows it.
+    const roleDisplay = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
+    if (roleDisplay?.coursePage?.showAddSubject === false) return null;
     const triggerButton = isTextButton ? (
         <MyButton
             scale="large"

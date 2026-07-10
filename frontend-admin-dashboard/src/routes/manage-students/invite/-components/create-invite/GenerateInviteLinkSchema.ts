@@ -367,6 +367,25 @@ export const inviteLinkSchema = z.object({
             adminPermissions: ['FULL'],
             memberCount: null,
         }),
+    // Autopay / free-trial for paid subscription plans on this invite. When
+    // `enabled`, enrolling registers a recurring mandate and the subscription
+    // auto-renews; `trialDays > 0` gives access now with the first charge at
+    // trial end. Serialized to setting_json.setting.AUTOPAY_SETTING and read at
+    // enrollment time.
+    autopaySettings: z
+        .object({
+            enabled: z.boolean().default(false),
+            trialDays: z
+                .number()
+                .int()
+                .min(0)
+                .nullable()
+                .default(0)
+                .transform((val) => val ?? 0),
+            // Mandate cap per auto-charge. null = derive from the plan price.
+            maxAmount: z.number().min(0).nullable().default(null),
+        })
+        .default({ enabled: false, trialDays: 0, maxAmount: null }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

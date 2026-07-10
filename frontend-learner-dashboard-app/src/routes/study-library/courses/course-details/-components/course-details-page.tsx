@@ -58,6 +58,7 @@ import LocalStorageUtils from "@/utils/localstorage";
 
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 import { CourseHeader } from "./course-header";
+import { CourseSubscriptionCancel } from "./CourseSubscriptionCancel";
 import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
@@ -2218,6 +2219,13 @@ export const CourseDetailsPage = () => {
                   <>
                     {structureBlock}
                     {enrollmentBlock}
+                    {/* Cancel autopay — self-hides unless this course has an active mandate */}
+                    <CourseSubscriptionCancel
+                      instituteId={instituteId || ""}
+                      packageSessionId={
+                        packageSessionIdForCurrentLevel || undefined
+                      }
+                    />
                     {highlightsBlock}
                   </>
                 ) : (

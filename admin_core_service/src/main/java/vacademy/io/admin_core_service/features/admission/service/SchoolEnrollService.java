@@ -167,6 +167,10 @@ public class SchoolEnrollService {
                                 enrollmentStartDate);
                 log.info("UserPlan created: {}", userPlan.getId());
 
+                // Autopay/trial is applied centrally inside UserPlanService.createUserPlan
+                // (reads the invite's AUTOPAY_SETTING), so every enrollment entry point
+                // behaves consistently — nothing to do here.
+
                 // DEBUG: flush to catch any pending SQL errors at this point
                 entityManager.flush();
                 log.info("DEBUG: Flush after UserPlan creation succeeded");

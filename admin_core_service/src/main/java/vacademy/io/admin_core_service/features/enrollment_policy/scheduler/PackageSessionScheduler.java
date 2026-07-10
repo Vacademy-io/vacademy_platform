@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.PackageSessionEnrolmentService;
+import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalChargeService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
@@ -29,6 +30,7 @@ public class PackageSessionScheduler {
     private final UserPlanRepository userPlanRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final WorkflowExecutionRepository workflowExecutionRepository;
+    private final RenewalChargeService renewalChargeService;
 
     /**
      * Pre-existing manual-trigger entry point for enrolment-policy actions
@@ -149,5 +151,25 @@ public class PackageSessionScheduler {
 
         log.info("[MembershipExpiry] Done — fired={} skippedAlreadyNotified={} skippedNoInstitute={}",
                 fired, skippedAlreadyNotified, skippedNoInstitute);
+    }
+
+    // ─── Autopay auto-charge ────────────────────────────────────────────────
+    //
+    // Debits due autopay subscriptions on their next_charge_at. Runs a few
+    // hours AFTER the reminder scan so the "expiring soon" nudge always precedes
+    // the charge. Narrowly scoped to plans with auto_renewal_enabled = true
+    // (see UserPlanRepository.findDueForRenewal), so it can never touch a
+    // pre-existing / non-autopay plan — unlike processActiveEnrollments, which
+    // stays manual to avoid activating dormant destructive expiry behaviour.
+
+    /** Runs daily at 11:00 (after the 09:00 reminder scan). */
+    @Scheduled(cron = "0 0 11 * * ?")
+    public void emitRenewalCharges() {
+        log.info("[RenewalCharge] Starting autopay charge scan...");
+        try {
+            renewalChargeService.processDueRenewals();
+        } catch (Exception e) {
+            log.error("[RenewalCharge] Autopay charge scan failed", e);
+        }
     }
 }

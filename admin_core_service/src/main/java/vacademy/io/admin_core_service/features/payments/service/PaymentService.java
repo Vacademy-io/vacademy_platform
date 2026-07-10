@@ -193,6 +193,54 @@ public class PaymentService {
         }
 
         /**
+         * First payment for an autopay/trial enrollment: registers a recurring
+         * mandate (UPI Autopay / card e-mandate) via the gateway's
+         * {@code initiateMandatePayment} instead of a plain charge. Reuses the same
+         * PaymentLog + customer plumbing as {@link #handlePayment}; the returned
+         * response carries the recurring-checkout flags (e.g. Razorpay
+         * {@code recurring:1} + {@code customerId}) for the frontend. The mandate
+         * token is persisted from the webhook. For a trial pass a minimal auth
+         * {@code request.amount}; for immediate-charge autopay pass the plan price.
+         */
+        public PaymentResponseDTO handleMandatePayment(UserDTO user,
+                        String instituteId,
+                        EnrollInvite enrollInvite,
+                        UserPlan userPlan,
+                        PaymentInitiationRequestDTO request) {
+
+                String paymentLogId = createPaymentLogHelper(
+                                user.getId(),
+                                request.getAmount(),
+                                enrollInvite.getVendor(),
+                                enrollInvite.getVendorId(),
+                                enrollInvite.getCurrency(),
+                                userPlan,
+                                request.getOrderId());
+                if (!StringUtils.hasText(request.getOrderId())) {
+                        request.setOrderId(paymentLogId);
+                }
+
+                UserInstitutePaymentGatewayMapping gatewayMapping = createOrGetCustomer(
+                                instituteId, user, enrollInvite.getVendor(), request);
+                paymentGatewaySpecificPaymentDetailService.configureCustomerPaymentData(
+                                gatewayMapping, enrollInvite.getVendor(), request);
+
+                userPlan.setJsonPaymentDetails(JsonUtil.toJson(gatewayMapping));
+                userPlanService.save(userPlan);
+
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(enrollInvite.getVendor(), instituteId);
+                PaymentServiceStrategy strategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(enrollInvite.getVendor()));
+                request.setInstituteId(instituteId);
+
+                PaymentResponseDTO response = strategy.initiateMandatePayment(user, request, paymentGatewaySpecificData);
+                updatePaymentLogHelper(paymentLogId, response, request);
+                response.setOrderId(paymentLogId);
+                return response;
+        }
+
+        /**
          * Handles payment log creation without initiating gateway call.
          * Used for multi-package enrollments where one payment covers multiple plans.
          */
@@ -441,6 +489,46 @@ public class PaymentService {
                 // Update payment log with response
                 updatePaymentLogHelper(paymentLogId, response, request);
 
+                return response;
+        }
+
+        /**
+         * Off-session recurring charge against a registered mandate (autopay
+         * renewal). Reuses the same PaymentLog + gateway-credential plumbing as a
+         * normal payment, but dispatches to the strategy's {@code chargeRecurring}
+         * with the stored mandate instead of an interactive checkout. Confirmation
+         * for webhook gateways still arrives via the RENEWAL webhook; for
+         * synchronous gateways (eWay) the returned status is authoritative.
+         *
+         * @return the PaymentResponseDTO; its orderId is the new RENEWAL PaymentLog id.
+         */
+        public PaymentResponseDTO handleRecurringCharge(UserDTO user,
+                        String instituteId,
+                        String vendor,
+                        PaymentInitiationRequestDTO request,
+                        UserPlan userPlan,
+                        vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo mandate) {
+
+                String paymentLogId = createPaymentLogHelper(
+                                user.getId(),
+                                request.getAmount(),
+                                vendor,
+                                request.getVendorId(),
+                                request.getCurrency(),
+                                userPlan,
+                                request.getOrderId());
+                request.setOrderId(paymentLogId);
+                request.setInstituteId(instituteId);
+
+                Map<String, Object> paymentGatewaySpecificData = institutePaymentGatewayMappingService
+                                .findInstitutePaymentGatewaySpecifData(vendor, instituteId);
+                PaymentServiceStrategy strategy = paymentServiceFactory
+                                .getStrategy(PaymentGateway.fromString(vendor));
+
+                PaymentResponseDTO response = strategy.chargeRecurring(mandate, request, paymentGatewaySpecificData);
+
+                updatePaymentLogHelper(paymentLogId, response, request);
+                response.setOrderId(paymentLogId);
                 return response;
         }
 

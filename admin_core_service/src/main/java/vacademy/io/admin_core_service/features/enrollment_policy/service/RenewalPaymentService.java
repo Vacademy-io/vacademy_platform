@@ -66,6 +66,12 @@ public class RenewalPaymentService {
             // Extend UserPlan endDate based on subscription period
             Date newEndDate = calculateNewEndDate(userPlan);
             userPlan.setEndDate(newEndDate);
+            // Successful renewal clears the trial flag and dunning counters, and
+            // moves the next charge to the new end date so the cycle repeats.
+            userPlan.setIsTrial(false);
+            userPlan.setRenewalAttemptCount(0);
+            userPlan.setLastRenewalAttemptAt(null);
+            userPlan.setNextChargeAt(newEndDate);
             userPlanRepository.save(userPlan);
 
             log.info("Extended UserPlan {} endDate to: {}", userPlan.getId(), newEndDate);
@@ -104,25 +110,51 @@ public class RenewalPaymentService {
     }
 
     /**
-     * Calculates new end date based on subscription period
+     * Calculates the new end date from the payment plan's real validity, not a
+     * hardcoded 30 days. Extends from the current end date when it's still in
+     * the future (so consecutive cycles don't drift), otherwise from today.
      */
     private Date calculateNewEndDate(UserPlan userPlan) {
-        Date currentEndDate = userPlan.getEndDate();
-        if (currentEndDate == null) {
-            currentEndDate = new Date();
+        Date now = new Date();
+        Date base = userPlan.getEndDate();
+        if (base == null || base.before(now)) {
+            base = now;
         }
 
-        // Calculate extension period based on payment plan
-        // This is a simplified version - adjust based on your actual plan structure
-        int daysToAdd = 30; // Default 30 days
-        
-        // TODO: Extract actual period from paymentPlan or planJson
-        
+        int daysToAdd = resolveValidityDays(userPlan);
+
         Calendar calendar = Calendar.getInstance();
-        calendar.setTime(currentEndDate);
+        calendar.setTime(base);
         calendar.add(Calendar.DAY_OF_MONTH, daysToAdd);
-        
         return calendar.getTime();
+    }
+
+    /**
+     * Validity days for the plan, from the linked PaymentPlan (falling back to
+     * the plan snapshot on user_plan.plan_json), defaulting to 30 only if
+     * nothing is resolvable.
+     */
+    private int resolveValidityDays(UserPlan userPlan) {
+        if (userPlan.getPaymentPlan() != null && userPlan.getPaymentPlan().getValidityInDays() != null
+                && userPlan.getPaymentPlan().getValidityInDays() > 0) {
+            return userPlan.getPaymentPlan().getValidityInDays();
+        }
+        if (StringUtils.hasText(userPlan.getPlanJson())) {
+            try {
+                var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(userPlan.getPlanJson());
+                var v = node.get("validityInDays");
+                if (v == null) {
+                    v = node.get("validity_in_days");
+                }
+                if (v != null && v.asInt() > 0) {
+                    return v.asInt();
+                }
+            } catch (Exception e) {
+                log.debug("Could not read validityInDays from plan_json for UserPlan: {}", userPlan.getId());
+            }
+        }
+        log.warn("No validity_in_days resolvable for UserPlan: {} — defaulting to 30 days", userPlan.getId());
+        return 30;
     }
 
     /**

@@ -117,9 +117,9 @@ export function AiVideoSettingsCard({ value, onChange }: AiVideoSettingsCardProp
     const set = (patch: Partial<AiVideoSettings>) => onChange({ ...value, ...patch });
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-            <div className="mb-3 flex items-center gap-2">
-                <VideoCamera className="size-4 text-neutral-500" />
+        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <VideoCamera className="size-4 shrink-0 text-neutral-500" />
                 <span className="text-sm font-semibold text-neutral-900">AI Video Settings</span>
                 <span className="text-xs text-neutral-500">
                     applies to AI Video, AI Slides &amp; Storybook pages

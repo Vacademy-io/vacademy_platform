@@ -786,8 +786,12 @@ function RouteComponent() {
                     content={`Create courses with ${aiName} using natural language prompts.`}
                 />
             </Helmet>
-            <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-gradient-to-b from-indigo-50 via-white to-purple-50 px-4">
-                <div className="mx-auto w-full max-w-[800px]">
+            {/* min-h + my-auto centers the form when it fits and lets the page
+                scroll when it's taller than the viewport (e.g. once the AI Video
+                Settings are expanded on smaller screens) — a fixed height with
+                items-center used to clip the top and the Generate button. */}
+            <div className="flex min-h-[calc(100vh-4rem)] justify-center bg-gradient-to-b from-indigo-50 via-white to-purple-50 px-4 py-6 sm:px-6">
+                <div className="mx-auto my-auto w-full max-w-[800px]">
                     {/* Compact Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
@@ -796,8 +800,8 @@ function RouteComponent() {
                         className="mb-4 text-center"
                     >
                         <div className="mb-2 flex items-center justify-center gap-2">
-                            <Sparkles className="size-6 text-indigo-500" />
-                            <h1 className="text-2xl font-semibold text-neutral-900">
+                            <Sparkles className="size-5 text-indigo-500 sm:size-6" />
+                            <h1 className="text-xl font-semibold text-neutral-900 sm:text-2xl">
                                 Create with {aiName}
                             </h1>
                         </div>
@@ -877,7 +881,7 @@ function RouteComponent() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.15 }}
-                        className="rounded-2xl border border-indigo-100/50 bg-white/80 p-5 shadow-lg shadow-indigo-100/50 backdrop-blur-sm"
+                        className="rounded-2xl border border-indigo-100/50 bg-white/80 p-4 shadow-lg shadow-indigo-100/50 backdrop-blur-sm sm:p-5"
                     >
                         {/* Course Goal Textarea */}
                         <div className="mb-4">

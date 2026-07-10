@@ -570,19 +570,29 @@ class CourseOutlineGenerationService:
             self._content_generation_service._request_id = request_id
 
             # Ingest reference PDFs once (cache hit from the outline pass) so
-            # DOCUMENT slides can embed the document's real figures. Best-effort.
-            self._content_generation_service._document_figures = []
+            # DOCUMENT slides can embed the document's real figures. Each figure
+            # is assigned to the ONE slide it best matches (by caption↔title) so
+            # the same figure doesn't get embedded on every slide. Best-effort.
+            self._content_generation_service._document_figures_by_path = {}
             if reference_document_file_ids:
                 try:
-                    from .course_document_ingest import ingest_documents
+                    from .course_document_ingest import ingest_documents, assign_figures_to_slides
                     # Bounded like the outline pass: a slow/dead MathPix job must
                     # not stall content generation (no slides would stream).
                     ingest = await asyncio.wait_for(
                         ingest_documents(reference_document_file_ids), timeout=150
                     )
-                    self._content_generation_service._document_figures = ingest.figures
+                    doc_slides = [
+                        {"path": t.path, "title": t.title or t.name or ""}
+                        for t in content_todos
+                        if t.type == "DOCUMENT"
+                        and "assignment" not in (t.title or "").lower()
+                    ]
+                    figures_by_path = assign_figures_to_slides(ingest.figures, doc_slides)
+                    self._content_generation_service._document_figures_by_path = figures_by_path
                     logger.info(
-                        f"Content generation has {len(ingest.figures)} reference figure(s) available"
+                        f"Content generation: {len(ingest.figures)} reference figure(s) "
+                        f"assigned across {len(figures_by_path)} slide(s)"
                     )
                 except Exception as e:  # noqa: BLE001
                     logger.warning(f"Reference figure ingest failed (continuing): {str(e)}")

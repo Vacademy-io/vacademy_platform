@@ -51,9 +51,10 @@ class ContentGenerationService:
         self._user_id = user_id
         # Set per generation run by the orchestrator; keys idempotent slide charges.
         self._request_id: Optional[str] = None
-        # Real figures extracted from uploaded reference PDFs, available for
-        # DOCUMENT slides to embed verbatim (set by the orchestrator per run).
-        self._document_figures: list = []
+        # Real figures from uploaded reference PDFs, pre-assigned per slide path
+        # (each figure → its single best-matching slide) so the same figure is
+        # not embedded on every slide. Set by the orchestrator per run.
+        self._document_figures_by_path: dict = {}
         
         logger.info("[ContentGenService] Creating VideoGenerationService...")
         try:
@@ -204,7 +205,7 @@ class ContentGenerationService:
                     title=title,
                     include_diagrams=include_diagrams,
                     language=language,
-                    reference_figures=self._document_figures,
+                    reference_figures=self._document_figures_by_path.get(todo.path, []),
                 )
             
             # Generate content using the enhanced prompt and capture token usage
@@ -235,7 +236,7 @@ class ContentGenerationService:
                     token_service = TokenUsageService(self._db_session)
                     for _ in range(image_count):
                         token_service.record_usage_and_deduct_credits(
-                            api_provider=ApiProvider.GEMINI,
+                            api_provider=ApiProvider.OPENAI,  # via OpenRouter
                             prompt_tokens=0,
                             completion_tokens=0,
                             total_tokens=0,

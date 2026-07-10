@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
+import asyncio
 import uuid
 import json
 from typing import Optional
@@ -118,18 +119,46 @@ async def stream_course_outline(
 
     request_id = str(uuid.uuid4())
 
+    # Heartbeat: document grounding + the single outline LLM call can be silent
+    # for longer than a proxy idle timeout; an SSE comment keeps the connection
+    # alive (the client parser ignores non-"data:" lines).
+    _HEARTBEAT_SECONDS = 15
+
     async def event_generator():
+        # Background pump + queue so the heartbeat timeout never cancels the
+        # generator's in-flight step (see the content endpoint for rationale).
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        async def _pump():
+            try:
+                async for ev in service.stream_outline_events(internal_request, request_id):
+                    await queue.put(("data", ev))
+            except PaymentRequiredError as exc:
+                await queue.put(("402", str(exc)))
+            except Exception as exc:  # noqa: BLE001
+                await queue.put(("fatal", str(exc)))
+            finally:
+                await queue.put((_DONE, None))
+
+        task = asyncio.create_task(_pump())
         try:
-            async for event in service.stream_outline_events(internal_request, request_id):
-                # Format as SSE: "data: <content>\n\n"
-                yield f"data: {event}\n\n"
-        except PaymentRequiredError as exc:
-            error_payload = json.dumps({
-                "type": "ERROR",
-                "code": 402,
-                "message": str(exc),
-            })
-            yield f"data: {error_payload}\n\n"
+            while True:
+                try:
+                    kind, val = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if kind is _DONE:
+                    break
+                if kind == "data":
+                    yield f"data: {val}\n\n"
+                elif kind == "402":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'code': 402, 'message': val})}\n\n"
+                elif kind == "fatal":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'message': val})}\n\n"
+        finally:
+            task.cancel()
 
     return StreamingResponse(
         event_generator(),
@@ -137,6 +166,7 @@ async def stream_course_outline(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )
 

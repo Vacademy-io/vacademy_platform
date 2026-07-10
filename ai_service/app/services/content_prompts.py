@@ -99,11 +99,13 @@ The uploaded source document provides these REAL figures/diagrams/tables. When t
   - Flowcharts: `graph TD` or `graph LR`; other types: sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, pie
   - Avoid `<`, `>`, parentheses and special characters inside labels; keep the diagram simple and valid.
 
-{figures_block}**Illustrations (generated)** — up to 2 images, ONLY where a visual example truly helps AND no source figure above already covers it (real-world scenes, objects, or settings a diagram cannot show):
-- Emit EXACTLY: `<img data-img-prompt="vivid, specific English description of an educational illustration" src="placeholder.png" alt="short description" style="max-width:100%;border-radius:8px;">`
-- The pipeline generates the real image from data-img-prompt; NEVER use external URLs.
-- The data-img-prompt must ALWAYS be written in English (even when the content language is different) and describe subject, setting, and style.
-- Do not use images for anything a Mermaid diagram or table expresses better. Skip images entirely if the topic doesn't need them.
+{figures_block}**Illustrations (generated)** — these notes should be VISUAL, not walls of text. Include 1-2 images per slide:
+- If a source figure above already illustrates this slide, use it and you usually don't need a generated one.
+- Otherwise include at least ONE generated illustration that depicts the core concept of THIS slide (a labelled diagram of the mechanism, a visual example, a real-world scene). Only skip it when the slide is a tiny list/definition where an image would add nothing.
+- Emit EXACTLY: `<img data-img-prompt="vivid, specific English description of an educational illustration for this topic" src="placeholder.png" alt="short description" style="max-width:100%;border-radius:8px;">`
+- The pipeline generates the real image from data-img-prompt; NEVER use external URLs or the same description twice.
+- The data-img-prompt must ALWAYS be written in English (even when the content language is different) and describe subject, setting, and style; make each image specific to this slide's topic.
+- Do not use a generated image for something a Mermaid diagram or table expresses better.
 
 **Code** — ONLY if the topic itself is about programming, software, or another code-based skill. NEVER include code blocks for non-technical topics.
 - Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).

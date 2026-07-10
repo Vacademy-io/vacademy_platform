@@ -11,9 +11,10 @@ Two concerns, both best-effort (any failure returns the input unchanged):
 
 2. illustrate_document — finds <img data-img-prompt="..."> placeholders the
    LLM emitted (same contract as the assessment/video pipelines), generates
-   real images via the Gemini image LLM, uploads them to S3 and swaps the
-   src. Failed/over-cap placeholders are stripped so no broken images reach
-   the editor.
+   real images via OpenRouter's image API (the same billed path the video
+   pipeline uses — the direct Gemini image key is free-tier with a zero image
+   quota and 429s every call), uploads them to S3 and swaps the src.
+   Failed/over-cap placeholders are stripped so no broken images reach the editor.
 """
 from __future__ import annotations
 
@@ -25,18 +26,21 @@ import re
 from typing import Optional, Tuple
 from uuid import uuid4
 
+import httpx
+
 from ..config import get_settings
-from .image_service import ImageGenerationService
 from .s3_service import S3Service
 
 logger = logging.getLogger(__name__)
 
 # Max AI illustrations generated per document slide (flat-rate credits apply per image).
 MAX_DOC_IMAGES = 2
-# Bound concurrent Gemini image calls across parallel document todos.
+# Bound concurrent image calls across parallel document todos.
 _IMAGE_SEMAPHORE = asyncio.Semaphore(4)
-_IMAGE_TIMEOUT_SECONDS = 60.0
-DOC_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
+_IMAGE_TIMEOUT_SECONDS = 90.0
+# Image model via OpenRouter (same provider the video pipeline uses in prod).
+DOC_IMAGE_MODEL = "recraft/recraft-v4.1"
+_OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Same tag contract as automation_pipeline._process_generated_images.
 _IMG_PROMPT_RE = re.compile(r'<img[^>]+data-img-prompt=(["\'])(.*?)\1[^>]*>', re.IGNORECASE)
@@ -100,27 +104,50 @@ def normalize_code_blocks(html: str) -> str:
 
 async def _generate_one_image(prompt: str) -> Optional[str]:
     settings = get_settings()
+    key = getattr(settings, "openrouter_api_key", None)
+    if not key:
+        logger.info("OPENROUTER_API_KEY not configured; skipping document illustration")
+        return None
+    styled = (
+        f"A clean, modern educational illustration for study notes: {prompt}. "
+        "Clear, simple, and informative; flat vector style; labelled where it helps; "
+        "no watermark and no gibberish text."
+    )
+    payload = {
+        "model": DOC_IMAGE_MODEL,
+        "messages": [{"role": "user", "content": styled}],
+        "modalities": ["image"],
+        "image_config": {"aspect_ratio": "16:9"},
+    }
     try:
         async with _IMAGE_SEMAPHORE:
-            svc = ImageGenerationService(gemini_api_key=settings.gemini_api_key)
-            try:
-                image_bytes, _usage = await asyncio.wait_for(
-                    svc._call_image_generation_llm(prompt, 800, 450),
-                    timeout=_IMAGE_TIMEOUT_SECONDS,
+            async with httpx.AsyncClient(timeout=_IMAGE_TIMEOUT_SECONDS) as client:
+                resp = await client.post(
+                    _OPENROUTER_IMAGE_URL,
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json=payload,
                 )
-            finally:
-                try:
-                    await svc._http_client.aclose()
-                except Exception:  # noqa: BLE001
-                    pass
+                resp.raise_for_status()
+                data = resp.json()
+        image_bytes: Optional[bytes] = None
+        for choice in data.get("choices") or []:
+            for image in (choice.get("message") or {}).get("images", []) or []:
+                url = (image.get("image_url") or {}).get("url", "")
+                if url:
+                    b64 = url.split(",", 1)[1] if "," in url else url
+                    image_bytes = base64.b64decode(b64)
+                    break
+            if image_bytes:
+                break
         if not image_bytes:
+            logger.warning("Document illustration returned no image for prompt %r", prompt[:60])
             return None
         return await asyncio.to_thread(
             S3Service().upload_file_content,
             image_bytes,
-            "illustration.jpg",
-            f"ai-course-docs/{uuid4()}.jpg",
-            "image/jpeg",
+            "illustration.png",
+            f"ai-course-docs/{uuid4()}.png",
+            "image/png",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Document illustration failed for prompt %r: %s", prompt[:60], exc)

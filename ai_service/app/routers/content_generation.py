@@ -5,7 +5,6 @@ from fastapi.responses import StreamingResponse
 import uuid
 import json
 import asyncio
-import time
 
 from ..dependencies import get_course_outline_service
 from ..schemas.content_generation import ContentGenerationRequest
@@ -99,27 +98,59 @@ async def generate_content_from_coursetree(
     # per-slide charges; fall back to a per-request UUID for older clients.
     request_id = payload.generation_run_id or str(uuid.uuid4())
 
+    # Heartbeat interval: AI-video SCRIPT stages can go minutes between SSE
+    # events; without a keepalive the gateway/proxy idles the connection out
+    # and the client stops receiving the later slides (videos + assignments),
+    # leaving them stuck "generating" forever even though the server finished.
+    # An SSE comment line (": ...") keeps the socket warm and is ignored by the
+    # client parser (it only reads "data:" lines).
+    _HEARTBEAT_SECONDS = 15
+
     async def event_generator():
+        # Run the generator in a background task feeding a queue; the SSE loop
+        # reads with a timeout and emits a keepalive on quiet stretches. This
+        # keeps the heartbeat from cancelling the generator's in-flight step
+        # (wait_for on __anext__ would corrupt the async generator).
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        async def _pump():
+            try:
+                async for ev in service.generate_content_from_coursetree(
+                    course_tree=payload.course_tree,
+                    request_id=request_id,
+                    institute_id=payload.institute_id,
+                    user_id=payload.user_id,
+                    language=payload.language,
+                    video_settings=payload.video_settings,
+                    reference_document_file_ids=payload.reference_document_file_ids,
+                ):
+                    await queue.put(("data", ev))
+            except PaymentRequiredError as exc:
+                await queue.put(("402", str(exc)))
+            except Exception as exc:  # noqa: BLE001
+                await queue.put(("fatal", str(exc)))
+            finally:
+                await queue.put((_DONE, None))
+
+        task = asyncio.create_task(_pump())
         try:
-            last_event_time = time.monotonic()
-            async for event in service.generate_content_from_coursetree(
-                course_tree=payload.course_tree,
-                request_id=request_id,
-                institute_id=payload.institute_id,
-                user_id=payload.user_id,
-                language=payload.language,
-                video_settings=payload.video_settings,
-                reference_document_file_ids=payload.reference_document_file_ids,
-            ):
-                yield f"data: {event}\n\n"
-                last_event_time = time.monotonic()
-        except PaymentRequiredError as exc:
-            error_payload = json.dumps({
-                "type": "ERROR",
-                "code": 402,
-                "message": str(exc),
-            })
-            yield f"data: {error_payload}\n\n"
+            while True:
+                try:
+                    kind, val = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"  # keep the connection warm during quiet stretches
+                    continue
+                if kind is _DONE:
+                    break
+                if kind == "data":
+                    yield f"data: {val}\n\n"
+                elif kind == "402":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'code': 402, 'message': val})}\n\n"
+                elif kind == "fatal":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'message': val})}\n\n"
+        finally:
+            task.cancel()
 
     return StreamingResponse(
         event_generator(),
@@ -127,6 +158,7 @@ async def generate_content_from_coursetree(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )
 

@@ -223,6 +223,50 @@ async def ingest_documents(
     return result
 
 
+_STOPWORDS = {
+    "the", "a", "an", "of", "and", "or", "to", "in", "on", "for", "with", "is",
+    "are", "figure", "fig", "table", "chart", "diagram", "graph", "plate", "its",
+    "showing", "shows", "reversed", "using", "based", "into", "from", "by",
+}
+
+
+def _keywords(text: str) -> set:
+    """Significant lowercase word tokens (drops stopwords, numbers, short bits)."""
+    tokens = re.findall(r"[a-zA-Z]{3,}", (text or "").lower())
+    return {t for t in tokens if t not in _STOPWORDS}
+
+
+def assign_figures_to_slides(
+    figures: List[DocumentFigure],
+    slides: List[dict],
+    max_per_slide: int = 3,
+) -> dict:
+    """Assign each figure to the ONE slide whose title best matches its caption,
+    so a figure is embedded on a single relevant slide instead of the same
+    figure appearing on every slide (the "same image everywhere" bug).
+
+    slides: [{"path": str, "title": str}]. Returns {slide_path: [DocumentFigure]}.
+    Figures with no caption overlap, or a slide's overflow past max_per_slide,
+    are dropped (that slide falls back to a generated illustration).
+    """
+    by_path: dict = {}
+    if not figures or not slides:
+        return by_path
+    slide_kw = [(s.get("path"), _keywords(s.get("title", ""))) for s in slides]
+    for fig in figures:
+        cap_kw = _keywords(fig.caption)
+        if not cap_kw:
+            continue
+        best_path, best_score = None, 0
+        for path, kw in slide_kw:
+            score = len(cap_kw & kw)
+            if score > best_score:
+                best_score, best_path = score, path
+        if best_path and best_score > 0 and len(by_path.get(best_path, [])) < max_per_slide:
+            by_path.setdefault(best_path, []).append(fig)
+    return by_path
+
+
 def figures_manifest_text(figures: List[DocumentFigure]) -> str:
     """Compact, prompt-friendly listing of available real figures."""
     if not figures:

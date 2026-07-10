@@ -48,6 +48,10 @@ import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import {
+    ExportColumnPickerDialog,
+    type ExportColumnOption,
+} from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
@@ -699,6 +703,29 @@ const RecentLeadsContent = () => {
 
     // CSV export (shared by "Export" + "Export selected")
     const [isExporting, setIsExporting] = useState(false);
+    const [exportPickerOpen, setExportPickerOpen] = useState(false);
+    const [selectedExportCols, setSelectedExportCols] = useState<Set<string>>(new Set());
+
+    const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
+        const cols: ExportColumnOption[] = [
+            { key: 'lead_id', label: 'Lead ID' },
+            { key: 'submitted_at', label: 'Submitted At' },
+            { key: 'name', label: 'Name' },
+            { key: 'email', label: 'Email' },
+            { key: 'mobile', label: 'Mobile' },
+            { key: 'audience', label: 'Audience' },
+        ];
+        if (showOps) {
+            cols.push(
+                { key: 'lead_status', label: 'Lead Status' },
+                { key: 'counsellor', label: 'Counsellor' },
+                { key: 'activity_notes', label: 'Activity & Notes' },
+                { key: 'notes_count', label: 'Notes Count' },
+                { key: 'lead_journey', label: 'Lead Journey (disposition & notes)' }
+            );
+        }
+        return cols;
+    }, [showOps]);
     const exportLeadsCsv = async (leads: RecentLeadDetail[], prefix: string) => {
         if (leads.length === 0) {
             toast.info('No leads to export');
@@ -707,34 +734,55 @@ const RecentLeadsContent = () => {
         const ids = Array.from(
             new Set(leads.map((l) => l.user?.id || l.user_id || '').filter(Boolean))
         ) as string[];
+        const needsOps =
+            showOps &&
+            (selectedExportCols.has('lead_status') ||
+                selectedExportCols.has('counsellor') ||
+                selectedExportCols.has('activity_notes') ||
+                selectedExportCols.has('notes_count') ||
+                selectedExportCols.has('lead_journey'));
         const [prof, nts, jny] = await Promise.all([
-            showOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
-            showOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
-            showOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
+            needsOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
+            needsOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
+            needsOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);
-        const baseHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile', 'Audience'];
-        const tail = showOps
-            ? [
-                  'Lead Status',
-                  'Counsellor',
-                  'Activity & Notes',
-                  'Notes Count',
-                  'Lead journey (disposition & notes)',
-              ]
-            : [];
+        const baseHeaders: string[] = [];
+        if (selectedExportCols.has('lead_id')) baseHeaders.push('Lead ID');
+        if (selectedExportCols.has('submitted_at')) baseHeaders.push('Submitted At');
+        if (selectedExportCols.has('name')) baseHeaders.push('Name');
+        if (selectedExportCols.has('email')) baseHeaders.push('Email');
+        if (selectedExportCols.has('mobile')) baseHeaders.push('Mobile');
+        if (selectedExportCols.has('audience')) baseHeaders.push('Audience');
+        const tail: string[] = [];
+        if (showOps) {
+            if (selectedExportCols.has('lead_status')) tail.push('Lead Status');
+            if (selectedExportCols.has('counsellor')) tail.push('Counsellor');
+            if (selectedExportCols.has('activity_notes')) tail.push('Activity & Notes');
+            if (selectedExportCols.has('notes_count')) tail.push('Notes Count');
+            if (selectedExportCols.has('lead_journey'))
+                tail.push('Lead journey (disposition & notes)');
+        }
         const rows = leads.map((lead) => {
             const u = lead.user ?? {};
             const userId = u.id || lead.user_id || '';
-            const row = [
-                csvSafe(lead.response_id || lead.user_id || '-'),
-                csvSafe(
-                    lead.submitted_at_local ? convertToLocalDateTime(lead.submitted_at_local) : '-'
-                ),
-                csvSafe(u.full_name || lead.parent_name || '-'),
-                csvSafe(u.email || lead.parent_email || '-'),
-                csvSafe(u.mobile_number || lead.parent_mobile || '-'),
-                csvSafe(displayAudience(lead)),
-            ];
+            const row: string[] = [];
+            if (selectedExportCols.has('lead_id'))
+                row.push(csvSafe(lead.response_id || lead.user_id || '-'));
+            if (selectedExportCols.has('submitted_at'))
+                row.push(
+                    csvSafe(
+                        lead.submitted_at_local
+                            ? convertToLocalDateTime(lead.submitted_at_local)
+                            : '-'
+                    )
+                );
+            if (selectedExportCols.has('name'))
+                row.push(csvSafe(u.full_name || lead.parent_name || '-'));
+            if (selectedExportCols.has('email'))
+                row.push(csvSafe(u.email || lead.parent_email || '-'));
+            if (selectedExportCols.has('mobile'))
+                row.push(csvSafe(u.mobile_number || lead.parent_mobile || '-'));
+            if (selectedExportCols.has('audience')) row.push(csvSafe(displayAudience(lead)));
             if (showOps) {
                 const cName = userId
                     ? (prof as Record<string, { assigned_counselor_name?: string | null }>)[userId]
@@ -770,19 +818,18 @@ const RecentLeadsContent = () => {
                         ].join('\n');
                     })
                     .join('\n\n');
-                row.push(
-                    csvSafe(lead.lead_status ?? ''),
-                    csvSafe(cName),
-                    csvSafe(block),
-                    csvSafe(summary?.count ?? 0),
-                    csvSafe(
-                        formatJourneyForExport(
-                            userId
-                                ? (jny as Record<string, JourneyEvent[]>)[userId]
-                                : undefined
+                if (selectedExportCols.has('lead_status')) row.push(csvSafe(lead.lead_status ?? ''));
+                if (selectedExportCols.has('counsellor')) row.push(csvSafe(cName));
+                if (selectedExportCols.has('activity_notes')) row.push(csvSafe(block));
+                if (selectedExportCols.has('notes_count')) row.push(csvSafe(summary?.count ?? 0));
+                if (selectedExportCols.has('lead_journey'))
+                    row.push(
+                        csvSafe(
+                            formatJourneyForExport(
+                                userId ? (jny as Record<string, JourneyEvent[]>)[userId] : undefined
+                            )
                         )
-                    )
-                );
+                    );
             }
             return row.join(',');
         });
@@ -1098,7 +1145,12 @@ const RecentLeadsContent = () => {
                         size="sm"
                         variant="outline"
                         className="h-10"
-                        onClick={handleExportAll}
+                        onClick={() => {
+                            setSelectedExportCols(
+                                new Set(exportColumnOptions.map((c) => c.key))
+                            );
+                            setExportPickerOpen(true);
+                        }}
                         disabled={isExporting || !data?.totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
@@ -1303,6 +1355,19 @@ const RecentLeadsContent = () => {
 
             {/* Pagination */}
             <LeadPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+
+            <ExportColumnPickerDialog
+                open={exportPickerOpen}
+                onOpenChange={setExportPickerOpen}
+                columns={exportColumnOptions}
+                selected={selectedExportCols}
+                onSelectedChange={setSelectedExportCols}
+                onExport={() => {
+                    setExportPickerOpen(false);
+                    handleExportAll();
+                }}
+                isExporting={isExporting}
+            />
         </div>
     );
 };

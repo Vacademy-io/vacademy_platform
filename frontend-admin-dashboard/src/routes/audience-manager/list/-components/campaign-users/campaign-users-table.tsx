@@ -4,6 +4,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import {
+    ExportColumnPickerDialog,
+    type ExportColumnOption,
+} from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
@@ -211,6 +215,8 @@ const CampaignUsersContent = ({
     } | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [exportPickerOpen, setExportPickerOpen] = useState(false);
+    const [selectedExportCols, setSelectedExportCols] = useState<Set<string>>(new Set());
 
     // Debounce search input → appliedSearch (drives the query key).
     useEffect(() => {
@@ -291,6 +297,39 @@ const CampaignUsersContent = ({
         });
         return map;
     }, [customFields]);
+
+    // Columns available for the export picker — built from known fields so the
+    // user can toggle them before the async fetch runs.
+    const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
+        const cols: ExportColumnOption[] = [
+            { key: 'lead_id', label: 'Lead ID' },
+            { key: 'submitted_at', label: 'Submitted At' },
+            { key: 'name', label: 'Name' },
+            { key: 'email', label: 'Email' },
+            { key: 'mobile', label: 'Mobile' },
+        ];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const seenNames = new Set<string>();
+        (customFields as any[]).forEach((cf) => {
+            const fieldId = cf.custom_field?.id || cf.id || cf._id || cf.field_id;
+            if (!fieldId) return;
+            const meta = cf.custom_field || {};
+            const fieldName = meta.fieldName || meta.field_name || cf.field_name || '';
+            if (!fieldName || seenNames.has(fieldName)) return;
+            seenNames.add(fieldName);
+            cols.push({ key: `cf__${fieldId}`, label: fieldName });
+        });
+        if (showOps) {
+            cols.push(
+                { key: 'lead_status', label: 'Lead Status' },
+                { key: 'counsellor', label: 'Counsellor' },
+                { key: 'activity_notes', label: 'Activity & Notes' },
+                { key: 'notes_count', label: 'Notes Count' },
+                { key: 'lead_journey', label: 'Lead Journey (disposition & notes)' }
+            );
+        }
+        return cols;
+    }, [customFields, showOps]);
 
     // ── Server query ─────────────────────────────────────────
     const leadsPayload = useMemo(() => {
@@ -667,7 +706,8 @@ const CampaignUsersContent = ({
                 return;
             }
 
-            // Batch-resolve counsellor + latest-note for the full export set.
+            // Batch-resolve counsellor + notes + journey only for the ops columns the
+            // user selected in the picker — skip the fetches if none are selected.
             const exportUserIds = Array.from(
                 new Set(
                     response.content
@@ -690,7 +730,14 @@ const CampaignUsersContent = ({
                 }
             > = {};
             let exportJourney: Record<string, JourneyEvent[]> = {};
-            if (showOps && exportUserIds.length > 0) {
+            const needsOps =
+                showOps &&
+                (selectedExportCols.has('lead_status') ||
+                    selectedExportCols.has('counsellor') ||
+                    selectedExportCols.has('activity_notes') ||
+                    selectedExportCols.has('notes_count') ||
+                    selectedExportCols.has('lead_journey'));
+            if (needsOps && exportUserIds.length > 0) {
                 try {
                     [exportProfiles, exportNotes, exportJourney] = await Promise.all([
                         fetchBatchProfiles(exportUserIds),
@@ -702,8 +749,7 @@ const CampaignUsersContent = ({
                 }
             }
 
-            // Discover all custom-field IDs present in this export so the CSV
-            // captures every collected field even if a given row is missing some.
+            // Discover all custom-field IDs; only include those the user picked.
             const allFieldIds = new Set<string>();
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             customFields.forEach((field: any) => {
@@ -715,9 +761,24 @@ const CampaignUsersContent = ({
                 const customValues = lead.custom_field_values || {};
                 Object.keys(customValues).forEach((key) => allFieldIds.add(key));
             });
-            const fieldIdsArray = Array.from(allFieldIds);
+            // For fields the picker knew about, respect the user's selection.
+            // For fields discovered from the data only (not in picker), always include them.
+            const knownCfKeys = new Set(
+                exportColumnOptions.filter((c) => c.key.startsWith('cf__')).map((c) => c.key)
+            );
+            const fieldIdsArray = Array.from(allFieldIds).filter((fieldId) => {
+                const colKey = `cf__${fieldId}`;
+                return knownCfKeys.has(colKey) ? selectedExportCols.has(colKey) : true;
+            });
 
-            const csvHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile'];
+            // Build headers respecting column selection.
+            const csvHeaders: string[] = [];
+            if (selectedExportCols.has('lead_id')) csvHeaders.push('Lead ID');
+            if (selectedExportCols.has('submitted_at')) csvHeaders.push('Submitted At');
+            if (selectedExportCols.has('name')) csvHeaders.push('Name');
+            if (selectedExportCols.has('email')) csvHeaders.push('Email');
+            if (selectedExportCols.has('mobile')) csvHeaders.push('Mobile');
+
             const fieldIdToHeaderNameMap: Record<string, string> = {};
             fieldIdsArray.forEach((fieldId) => {
                 let headerName = fieldId;
@@ -729,16 +790,12 @@ const CampaignUsersContent = ({
                 fieldIdToHeaderNameMap[fieldId] = headerName;
                 csvHeaders.push(headerName.includes(',') ? `"${headerName}"` : headerName);
             });
-            const tailHeaders = showOps
-                ? [
-                      'Lead Status',
-                      'Counsellor',
-                      'Activity & Notes',
-                      'Notes Count',
-                      'Lead journey (disposition & notes)',
-                  ]
-                : [];
-            csvHeaders.push(...tailHeaders);
+            if (showOps && selectedExportCols.has('lead_status')) csvHeaders.push('Lead Status');
+            if (showOps && selectedExportCols.has('counsellor')) csvHeaders.push('Counsellor');
+            if (showOps && selectedExportCols.has('activity_notes')) csvHeaders.push('Activity & Notes');
+            if (showOps && selectedExportCols.has('notes_count')) csvHeaders.push('Notes Count');
+            if (showOps && selectedExportCols.has('lead_journey'))
+                csvHeaders.push('Lead journey (disposition & notes)');
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const csvRows = response.content.map((lead: any) => {
@@ -747,16 +804,19 @@ const CampaignUsersContent = ({
                 const submittedAt = lead.submitted_at_local
                     ? convertToLocalDateTime(lead.submitted_at_local)
                     : '-';
-                const row = [
-                    csvSafe(lead.response_id || lead.user_id || '-'),
-                    csvSafe(submittedAt),
-                    csvSafe(user.full_name || user.name || '-'),
-                    csvSafe(user.email || '-'),
-                    csvSafe(user.mobile_number || '-'),
-                ];
+                const row: string[] = [];
+                if (selectedExportCols.has('lead_id'))
+                    row.push(csvSafe(lead.response_id || lead.user_id || '-'));
+                if (selectedExportCols.has('submitted_at')) row.push(csvSafe(submittedAt));
+                if (selectedExportCols.has('name'))
+                    row.push(csvSafe(user.full_name || user.name || '-'));
+                if (selectedExportCols.has('email')) row.push(csvSafe(user.email || '-'));
+                if (selectedExportCols.has('mobile')) row.push(csvSafe(user.mobile_number || '-'));
+
                 fieldIdsArray.forEach((fieldId) => {
                     row.push(csvSafe(customValues[fieldId]));
                 });
+
                 if (showOps) {
                     const userId = user.id || lead.user_id || '';
                     const counsellor = userId
@@ -781,13 +841,16 @@ const CampaignUsersContent = ({
                             ].join('\n');
                         })
                         .join('\n\n');
-                    row.push(
-                        csvSafe(lead.lead_status ?? ''),
-                        csvSafe(counsellor),
-                        csvSafe(notesBlock),
-                        csvSafe(summary?.count ?? 0),
-                        csvSafe(formatJourneyForExport(userId ? exportJourney[userId] : undefined))
-                    );
+                    if (selectedExportCols.has('lead_status'))
+                        row.push(csvSafe(lead.lead_status ?? ''));
+                    if (selectedExportCols.has('counsellor')) row.push(csvSafe(counsellor));
+                    if (selectedExportCols.has('activity_notes')) row.push(csvSafe(notesBlock));
+                    if (selectedExportCols.has('notes_count'))
+                        row.push(csvSafe(summary?.count ?? 0));
+                    if (selectedExportCols.has('lead_journey'))
+                        row.push(
+                            csvSafe(formatJourneyForExport(userId ? exportJourney[userId] : undefined))
+                        );
                 }
                 return row.join(',');
             });
@@ -976,7 +1039,12 @@ const CampaignUsersContent = ({
                         variant="outline"
                         size="sm"
                         className="h-10"
-                        onClick={handleExport}
+                        onClick={() => {
+                            setSelectedExportCols(
+                                new Set(exportColumnOptions.map((c) => c.key))
+                            );
+                            setExportPickerOpen(true);
+                        }}
                         disabled={isExporting || !totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
@@ -1201,6 +1269,18 @@ const CampaignUsersContent = ({
                 instituteId={instituteId || ''}
                 customFields={bulkImportCustomFields}
                 leadCount={totalElements}
+            />
+            <ExportColumnPickerDialog
+                open={exportPickerOpen}
+                onOpenChange={setExportPickerOpen}
+                columns={exportColumnOptions}
+                selected={selectedExportCols}
+                onSelectedChange={setSelectedExportCols}
+                onExport={() => {
+                    setExportPickerOpen(false);
+                    handleExport();
+                }}
+                isExporting={isExporting}
             />
         </div>
     );

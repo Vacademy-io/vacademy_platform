@@ -16,9 +16,8 @@ import {
     type CounselorPerformance,
     type CounselorRow,
 } from '../-services/get-lead-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -80,34 +79,6 @@ export function CounsellorsTab({
 
     const performance = counsellorQuery.data;
 
-    const exportRows = () => {
-        if (!performance) return;
-        exportCsv(
-            `counsellor-performance_${fromDate}_${toDate}.csv`,
-            [
-                'Counsellor',
-                'Assigned',
-                'Responded',
-                'Conversions',
-                'Conv. rate %',
-                'Avg response (min)',
-                'TAT met %',
-                'Open',
-                'Overdue',
-            ],
-            performance.rows.map((r) => [
-                r.counselor_name,
-                r.leads_assigned,
-                r.leads_responded,
-                r.conversions,
-                r.conversion_rate,
-                r.avg_response_minutes,
-                r.tat_met_rate,
-                r.open_leads,
-                r.overdue_leads,
-            ])
-        );
-    };
 
     return (
         <ReportSection
@@ -139,9 +110,33 @@ export function CounsellorsTab({
                             )}
                         </span>
                     )}
-                    <ExportCsvButton
-                        onClick={exportRows}
+                    <ExportWithColumnPickerButton
+                        filename={`counsellor-performance_${fromDate}_${toDate}.csv`}
                         disabled={!performance || performance.rows.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: [
+                                'Counsellor',
+                                'Assigned',
+                                'Responded',
+                                'Conversions',
+                                'Conv. rate %',
+                                'Avg response (min)',
+                                'TAT met %',
+                                'Open',
+                                'Overdue',
+                            ],
+                            rows: (performance?.rows ?? []).map((r) => [
+                                r.counselor_name,
+                                r.leads_assigned,
+                                r.leads_responded,
+                                r.conversions,
+                                r.conversion_rate,
+                                r.avg_response_minutes,
+                                r.tat_met_rate,
+                                r.open_leads,
+                                r.overdue_leads,
+                            ]),
+                        })}
                     />
                 </div>
             }

@@ -24,10 +24,9 @@ import {
     type DispositionCallOutcomeRow,
     type DispositionStatusMeta,
 } from '../-services/get-crm-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -87,7 +86,7 @@ export function DispositionsTab({
         return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
     }
 
-    const exportStatusMatrix = () => {
+    const getStatusExportData = () => {
         const dataRows = statusRows.map((r) => {
             const cols = statuses.map((s) => r.changes[s.status_key] ?? 0);
             const total = cols.reduce((sum, n) => sum + n, 0);
@@ -97,15 +96,17 @@ export function DispositionsTab({
             dataRows.reduce((sum, row) => sum + ((row[si + 1] as number) ?? 0), 0)
         );
         const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
-        const footerPending = dataRows.reduce((sum, row) => sum + ((row[row.length - 1] as number) ?? 0), 0);
-        exportCsv(
-            `dispositions-status-changes_${fromDate}_${toDate}.csv`,
-            ['Counsellor', ...statuses.map((s) => s.label || s.status_key), 'Total', 'Pending'],
-            [...dataRows, ['TOTAL', ...footerCols, footerTotal, footerPending]]
+        const footerPending = dataRows.reduce(
+            (sum, row) => sum + ((row[row.length - 1] as number) ?? 0),
+            0
         );
+        return {
+            headers: ['Counsellor', ...statuses.map((s) => s.label || s.status_key), 'Total', 'Pending'],
+            rows: [...dataRows, ['TOTAL', ...footerCols, footerTotal, footerPending]],
+        };
     };
 
-    const exportOutcomeMatrix = () => {
+    const getOutcomeExportData = () => {
         const dataRows = outcomeRows.map((r) => [
             actorName(r),
             ...outcomeKeys.map((k) => r.outcomes[k] ?? 0),
@@ -115,11 +116,10 @@ export function DispositionsTab({
             dataRows.reduce((sum, row) => sum + ((row[ki + 1] as number) ?? 0), 0)
         );
         const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
-        exportCsv(
-            `dispositions-call-outcomes_${fromDate}_${toDate}.csv`,
-            ['Counsellor', ...outcomeKeys.map(outcomeLabel), 'Total'],
-            [...dataRows, ['TOTAL', ...footerCols, footerTotal]]
-        );
+        return {
+            headers: ['Counsellor', ...outcomeKeys.map(outcomeLabel), 'Total'],
+            rows: [...dataRows, ['TOTAL', ...footerCols, footerTotal]],
+        };
     };
 
     return (
@@ -129,9 +129,10 @@ export function DispositionsTab({
                 title="Status changes by counsellor"
                 icon={<ArrowsLeftRight size={18} />}
                 actions={
-                    <ExportCsvButton
-                        onClick={exportStatusMatrix}
+                    <ExportWithColumnPickerButton
+                        filename={`dispositions-status-changes_${fromDate}_${toDate}.csv`}
                         disabled={statusRows.length === 0 || statuses.length === 0}
+                        getHeadersAndRows={getStatusExportData}
                     />
                 }
             >
@@ -202,9 +203,10 @@ export function DispositionsTab({
                 title="Call outcomes by counsellor"
                 icon={<Phone size={18} />}
                 actions={
-                    <ExportCsvButton
-                        onClick={exportOutcomeMatrix}
+                    <ExportWithColumnPickerButton
+                        filename={`dispositions-call-outcomes_${fromDate}_${toDate}.csv`}
                         disabled={outcomeRows.length === 0 || outcomeKeys.length === 0}
+                        getHeadersAndRows={getOutcomeExportData}
                     />
                 }
             >

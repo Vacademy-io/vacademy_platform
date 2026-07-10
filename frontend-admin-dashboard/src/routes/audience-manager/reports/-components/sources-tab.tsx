@@ -18,10 +18,9 @@ import {
     sourcePerformanceQueryKey,
     type SourcePerformanceRow,
 } from '../-services/get-crm-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -101,42 +100,46 @@ export function SourcesTab({
         }
     };
 
-    const exportRows = () => {
-        const exportable = totals ? [...rows, totals] : rows;
-        exportCsv(
-            `source-performance_${fromDate}_${toDate}.csv`,
-            [
-                'Source',
-                'Leads',
-                'Connected',
-                'Interested',
-                'Won',
-                'Conv %',
-                'Revenue',
-                'Spend',
-                'CPL',
-                'ROI',
-            ],
-            exportable.map((r) => [
-                r.source_type ?? 'TOTAL',
-                r.leads,
-                r.connected_leads,
-                r.interested,
-                r.won,
-                r.conversion_rate,
-                r.revenue,
-                r.spend,
-                r.cpl,
-                r.roi,
-            ])
-        );
-    };
 
     return (
         <ReportSection
             title="Source performance"
             icon={<Megaphone size={18} />}
-            actions={<ExportCsvButton onClick={exportRows} disabled={rows.length === 0} />}
+            actions={
+                <ExportWithColumnPickerButton
+                    filename={`source-performance_${fromDate}_${toDate}.csv`}
+                    disabled={rows.length === 0}
+                    getHeadersAndRows={() => {
+                        const exportable = totals ? [...rows, totals] : rows;
+                        return {
+                            headers: [
+                                'Source',
+                                'Leads',
+                                'Connected',
+                                'Interested',
+                                'Won',
+                                'Conv %',
+                                'Revenue',
+                                'Spend',
+                                'CPL',
+                                'ROI',
+                            ],
+                            rows: exportable.map((r) => [
+                                r.source_type ?? 'TOTAL',
+                                r.leads,
+                                r.connected_leads,
+                                r.interested,
+                                r.won,
+                                r.conversion_rate,
+                                r.revenue,
+                                r.spend,
+                                r.cpl,
+                                r.roi,
+                            ]),
+                        };
+                    }}
+                />
+            }
         >
             {rows.length === 0 ? (
                 <EmptyHint message="No leads in this range." />

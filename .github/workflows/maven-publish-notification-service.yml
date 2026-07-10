@@ -150,6 +150,7 @@ jobs:
             INBOUND_EMAIL_AWS_SECRET_KEY=${{ secrets.INBOUND_EMAIL_AWS_SECRET_KEY }} \
             INBOUND_EMAIL_SQS_QUEUE_NAME=${{ secrets.INBOUND_EMAIL_SQS_QUEUE_NAME }} \
             INBOUND_EMAIL_S3_BUCKET=${{ secrets.INBOUND_EMAIL_S3_BUCKET }} \
+            SES_VERIFICATION_ENABLED=${{ secrets.SES_VERIFICATION_ENABLED }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 

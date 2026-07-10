@@ -26,6 +26,14 @@ public class WhiteLabelSetupResponse {
     @JsonProperty("dns_records_configured")
     private List<DnsRecordResult> dnsRecordsConfigured;
 
+    /**
+     * Cloudflare Pages custom domains that were attached to the SPA projects.
+     * This is what actually makes the host SERVE the app — a DNS CNAME alone is
+     * not enough. Empty when Pages provisioning is not configured on the deployment.
+     */
+    @JsonProperty("pages_domains_configured")
+    private List<PagesDomainResult> pagesDomainsConfigured;
+
     /** Non-fatal warnings (e.g. teacher domain skipped because not supplied). */
     @JsonProperty("warnings")
     private List<String> warnings;
@@ -50,5 +58,38 @@ public class WhiteLabelSetupResponse {
 
         @JsonProperty("action")
         private String action; // "CREATED" or "UPDATED"
+    }
+
+    @Data
+    @Builder
+    public static class PagesDomainResult {
+        /** Cloudflare Pages project the domain was attached to. */
+        @JsonProperty("project")
+        private String project;
+
+        /** The host attached, e.g. "learn.myschool.com". */
+        @JsonProperty("name")
+        private String name;
+
+        /**
+         * Cloudflare's activation status for the custom domain, e.g.
+         * "active", "pending", "initializing". Custom (external) domains stay
+         * "pending" until the customer points DNS and Cloudflare validates.
+         */
+        @JsonProperty("status")
+        private String status;
+
+        /** "CREATED" (newly attached) or "EXISTS" (already attached). */
+        @JsonProperty("action")
+        private String action;
+
+        /**
+         * CNAME target the customer must set at their DNS provider for an
+         * external custom domain (i.e. "<project>.pages.dev"). For in-zone
+         * *.vacademy.io hosts Cloudflare creates the DNS record automatically,
+         * so this is informational only.
+         */
+        @JsonProperty("pages_cname_target")
+        private String pagesCnameTarget;
     }
 }

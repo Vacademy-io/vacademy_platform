@@ -78,4 +78,21 @@ public interface LiveSessionLogsRepository extends JpaRepository<LiveSessionLogs
     default boolean hasFeedbackBeenSubmitted(String scheduleId, String userId) {
         return !findFeedbackByScheduleAndUser(scheduleId, userId).isEmpty();
     }
+
+    /**
+     * Batched attendance + engagement lookup for the learner "Past Sessions"
+     * endpoint — one query for the whole page of schedule_ids instead of one
+     * query per card (avoids N+1). Feeds both attendance_status and the
+     * activity block (engagement_data + provider_total_duration_minutes) from
+     * the same rows.
+     */
+    @Query("""
+        SELECT l FROM LiveSessionLogs l
+        WHERE l.scheduleId IN :scheduleIds
+          AND l.userSourceId = :userId
+          AND l.logType = 'ATTENDANCE_RECORDED'
+    """)
+    List<LiveSessionLogs> findAttendanceLogsForScheduleIdsAndUser(
+            @Param("scheduleIds") List<String> scheduleIds,
+            @Param("userId") String userId);
 }

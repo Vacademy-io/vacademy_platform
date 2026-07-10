@@ -158,5 +158,11 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         enabled: true,
         generationThresholdPercent: 80,
     },
+    liveClasses: {
+        showPastSessions: false,
+        showRecordings: false,
+        showAttendance: false,
+        showActivityStats: false,
+    },
     postLoginRedirectRoute: '/dashboard',
 };

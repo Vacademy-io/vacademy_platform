@@ -7,11 +7,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.live_session.dto.GetSessionDetailsBySessionIdResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionsResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.SessionSearchResponse;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
+import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
@@ -25,6 +27,7 @@ public class GetSessionsListController {
 
     private final GetLiveSessionService getLiveSessionService;
     private final GetSessionByIdService getSessionByIdService;
+    private final LearnerPastSessionService learnerPastSessionService;
 
     @GetMapping("/live")
     @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-Institute-Id", "X-User-Id"})
@@ -60,6 +63,29 @@ public class GetSessionsListController {
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
                 batchId, userId, page, size, startDate, endDate, user));
+    }
+
+    /**
+     * Learner "Past Sessions" — see docs/LIVE_CLASS_PAST_SESSIONS_AND_CONTENT_LINKING_PLAN.md
+     * section A2. Institute-governed via LIVE_SESSION_SETTING's learnerDisplay
+     * flags (enforced server-side in LearnerPastSessionService, not just the
+     * FE): the master flag gates the whole query; recordings/attendance/activity
+     * are each independently gated and omitted from the response when off.
+     * Deliberately NOT @ClientCacheable — recordings land asynchronously and a
+     * stale "no recording yet" response is a support headache.
+     */
+    @GetMapping("/learner/past")
+    ResponseEntity<LearnerPastSessionsResponseDTO> getPastSessionsForLearner(
+            @RequestParam(required = false, name = "batchId") String batchId,
+            @RequestParam(value = "userId", required = false) String userId,
+            @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "page", required = false, defaultValue = "0") int page,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(learnerPastSessionService.getPastSessions(
+                batchId, userId, instituteId, page, size, startDate, endDate));
     }
 
     @GetMapping("/by-user-id")

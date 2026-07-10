@@ -93,6 +93,9 @@ import {
 } from '@/components/ui/table';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { StreamingPlatform } from '../-constants/enums';
+import { AddRecordingToCourseCard } from '../-components/content-linking/AddRecordingToCourseCard';
+import { ClassMaterialsCard } from '../-components/content-linking/ClassMaterialsCard';
+import type { DestinationBatch } from '../-components/content-linking/SessionContentDestinationPicker';
 
 export const Route = createFileRoute('/study-library/live-session/view/$sessionId')({
     component: ViewLiveSession,
@@ -462,6 +465,25 @@ function ViewLiveSession() {
         });
         return recordings;
     }, [groupedSchedules, refreshedRecordings]);
+
+    // Track B — the live class's linked batches, pre-known from the session so
+    // the teacher only picks Subject → Module → Chapter, never course/level/session.
+    const contentLinkBatches = useMemo<DestinationBatch[]>(() => {
+        const details = sessionData?.schedule?.package_session_details ?? [];
+        return details.map((d) => ({
+            packageSessionId: d.package_session_id,
+            displayName: [d.package_name, d.level_name, d.session_name]
+                .filter(Boolean)
+                .join(' · '),
+        }));
+    }, [sessionData]);
+
+    // A single-schedule (non-recurring) session has one unambiguous scheduleId
+    // to stamp on session-level materials; recurring sessions omit it.
+    const soleScheduleId =
+        groupedSchedules.length === 1 && groupedSchedules[0]?.sessions.length === 1
+            ? groupedSchedules[0].sessions[0]!.id
+            : undefined;
 
     // Resolve fileId to public URLs for recordings that have no playbackUrl
     useEffect(() => {
@@ -1247,8 +1269,9 @@ function ViewLiveSession() {
                                         return (
                                             <div
                                                 key={rec.recordingId || idx}
-                                                className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                                                className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30"
                                             >
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                                                 {/* Info column */}
                                                 <div className="flex min-w-0 items-center gap-3">
                                                     <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500">
@@ -1377,6 +1400,21 @@ function ViewLiveSession() {
                                                     />
                                                 </div>
                                             </div>
+
+                                                {contentLinkBatches.length > 0 && (
+                                                    <AddRecordingToCourseCard
+                                                        sessionId={sessionId}
+                                                        scheduleId={rec.scheduleId}
+                                                        sessionTitle={sessionData?.schedule?.title}
+                                                        recording={rec}
+                                                        batches={contentLinkBatches}
+                                                        needsSaveToLibraryFirst={canSaveToLibrary}
+                                                        onSaveToLibrary={() =>
+                                                            handleSyncToS3(rec.scheduleId)
+                                                        }
+                                                    />
+                                                )}
+                                            </div>
                                         );
                                     })}
                                 </CardContent>
@@ -1445,6 +1483,16 @@ function ViewLiveSession() {
                                     )}
                                 </CardContent>
                             </Card>
+                        )}
+
+                        {/* Class Materials — always visible, not tied to a recording */}
+                        {contentLinkBatches.length > 0 && (
+                            <ClassMaterialsCard
+                                sessionId={sessionId}
+                                scheduleId={soleScheduleId}
+                                sessionTitle={sessionData?.schedule?.title}
+                                batches={contentLinkBatches}
+                            />
                         )}
 
                         {/* Calendar View for Recurring Sessions */}

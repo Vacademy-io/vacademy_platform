@@ -227,6 +227,16 @@ function mergeWithDefaults(
                 incoming?.certificates?.generationThresholdPercent ??
                 d.certificates.generationThresholdPercent,
         },
+        liveClasses: {
+            showPastSessions:
+                incoming?.liveClasses?.showPastSessions ?? d.liveClasses.showPastSessions,
+            showRecordings:
+                incoming?.liveClasses?.showRecordings ?? d.liveClasses.showRecordings,
+            showAttendance:
+                incoming?.liveClasses?.showAttendance ?? d.liveClasses.showAttendance,
+            showActivityStats:
+                incoming?.liveClasses?.showActivityStats ?? d.liveClasses.showActivityStats,
+        },
         postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
     };
 

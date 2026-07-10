@@ -177,6 +177,15 @@ export interface StudentCertificateSettings {
     generationThresholdPercent: number;
 }
 
+// Live classes — what learners may see about PAST live sessions. All default
+// false; enforced server-side by the learner past-sessions endpoint.
+export interface StudentLiveClassesSettings {
+    showPastSessions: boolean;
+    showRecordings: boolean;
+    showAttendance: boolean;
+    showActivityStats: boolean;
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
@@ -199,5 +208,6 @@ export interface StudentDisplaySettingsData {
         allowBatchStream: boolean;
     };
     certificates: StudentCertificateSettings;
+    liveClasses: StudentLiveClassesSettings;
     postLoginRedirectRoute: string;
 }

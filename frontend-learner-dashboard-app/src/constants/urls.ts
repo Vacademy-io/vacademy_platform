@@ -147,6 +147,7 @@ export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/lea
 export const CATALOGUE_LEAD_SUBMIT_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-catalogue`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
+export const LIVE_SESSION_GET_PAST = `${BASE_URL}/admin-core-service/get-sessions/learner/past`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
 export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;

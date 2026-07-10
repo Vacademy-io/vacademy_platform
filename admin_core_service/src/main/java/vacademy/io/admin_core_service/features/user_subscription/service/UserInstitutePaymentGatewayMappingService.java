@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserInstitutePaymentGatewayMappingRepository;
 
@@ -173,10 +174,128 @@ public class UserInstitutePaymentGatewayMappingService {
         }
     }
 
+    // ── Recurring-payment mandates (stored per userPlanId in the same JSON) ──
+    //
+    // Layout inside payment_gateway_customer_data:
+    //   { "customerId": "...", "mandates": { "<userPlanId>": { ...MandateInfo } } }
+    // Read as a Map (parseCustomerDataJson), so adding this key never breaks the
+    // existing bare-token / saved-card reads.
+
+    private static final String MANDATES_KEY = "mandates";
+
+    /**
+     * Insert or replace the mandate for a given plan. A learner can hold one
+     * mandate per plan in the same institute (multiple paid courses → multiple
+     * mandates), so they are keyed by userPlanId and never overwrite each other.
+     */
+    @Transactional
+    public void upsertMandate(String userId, String instituteId, String vendor,
+                              String userPlanId, MandateInfo mandate) {
+        Optional<UserInstitutePaymentGatewayMapping> mappingOptional =
+                findByUserIdAndInstituteId(userId, instituteId, vendor);
+        if (mappingOptional.isEmpty()) {
+            logger.warn("No payment gateway mapping for user: {}, institute: {}, vendor: {} — cannot save mandate for plan {}",
+                    userId, instituteId, vendor, userPlanId);
+            return;
+        }
+        UserInstitutePaymentGatewayMapping mapping = mappingOptional.get();
+        try {
+            Map<String, Object> customerData = parseCustomerDataJson(mapping.getPaymentGatewayCustomerData());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mandates = (Map<String, Object>) customerData
+                    .computeIfAbsent(MANDATES_KEY, k -> new HashMap<String, Object>());
+            mandate.setUpdatedAt(LocalDateTime.now().toString());
+            mandates.put(userPlanId, objectMapper.convertValue(mandate, Map.class));
+            mapping.setPaymentGatewayCustomerData(objectMapper.writeValueAsString(customerData));
+            userInstitutePaymentGatewayMappingRepository.save(mapping);
+            logger.info("Saved mandate (status={}) for user: {}, plan: {}", mandate.getStatus(), userId, userPlanId);
+        } catch (Exception e) {
+            logger.error("Failed to save mandate for user: {}, plan: {}", userId, userPlanId, e);
+        }
+    }
+
+    /** Returns the mandate for a plan, or null if none / not parseable. */
+    public MandateInfo getMandate(String userId, String instituteId, String vendor, String userPlanId) {
+        Optional<UserInstitutePaymentGatewayMapping> mappingOptional =
+                findByUserIdAndInstituteId(userId, instituteId, vendor);
+        if (mappingOptional.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> customerData = parseCustomerDataJson(mappingOptional.get().getPaymentGatewayCustomerData());
+        Object mandates = customerData.get(MANDATES_KEY);
+        if (!(mandates instanceof Map)) {
+            return null;
+        }
+        Object entry = ((Map<?, ?>) mandates).get(userPlanId);
+        if (entry == null) {
+            return null;
+        }
+        try {
+            return objectMapper.convertValue(entry, MandateInfo.class);
+        } catch (Exception e) {
+            logger.error("Failed to parse mandate for user: {}, plan: {}", userId, userPlanId, e);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve a chargeable mandate for a plan, falling back to a pre-existing
+     * saved token for providers whose stored customer id IS the chargeable token
+     * (eWay TokenCustomerID). This lets existing autopay-enabled eWay customers —
+     * who have a token in the bare payment_gateway_customer_id column but no
+     * per-plan mandate JSON yet — be auto-renewed without a fresh registration.
+     *
+     * For token/e-mandate providers (Razorpay) the bare customer id is NOT
+     * chargeable on its own (a token_id is required), so no fallback is returned;
+     * those must have a real registered mandate.
+     */
+    public MandateInfo getMandateOrLegacyToken(String userId, String instituteId, String vendor, String userPlanId) {
+        MandateInfo mandate = getMandate(userId, instituteId, vendor, userPlanId);
+        if (mandate != null) {
+            return mandate;
+        }
+        // Fallback only for card-on-file providers where customerId == the chargeable token.
+        if (vendor == null || !"EWAY".equalsIgnoreCase(vendor)) {
+            return null;
+        }
+        Optional<UserInstitutePaymentGatewayMapping> mappingOptional =
+                findByUserIdAndInstituteId(userId, instituteId, vendor);
+        if (mappingOptional.isEmpty()) {
+            return null;
+        }
+        String tokenCustomerId = mappingOptional.get().getPaymentGatewayCustomerId();
+        if (tokenCustomerId == null || tokenCustomerId.trim().isEmpty()) {
+            return null;
+        }
+        logger.info("Using legacy eWay TokenCustomerID as mandate for user: {}, plan: {}", userId, userPlanId);
+        return MandateInfo.builder()
+                .vendor(vendor)
+                .customerId(tokenCustomerId)
+                .providerRef(tokenCustomerId)
+                .status(MandateInfo.STATUS_ACTIVE)
+                .build();
+    }
+
+    /**
+     * Mark a plan's mandate as REVOKED (learner cancelled autopay). Does NOT
+     * touch the plan's access window — the caller keeps access until end_date.
+     * No-op if there is no mandate for the plan.
+     */
+    @Transactional
+    public void revokeMandate(String userId, String instituteId, String vendor, String userPlanId) {
+        MandateInfo mandate = getMandate(userId, instituteId, vendor, userPlanId);
+        if (mandate == null) {
+            logger.info("No mandate to revoke for user: {}, plan: {}", userId, userPlanId);
+            return;
+        }
+        mandate.setStatus(MandateInfo.STATUS_REVOKED);
+        upsertMandate(userId, instituteId, vendor, userPlanId, mandate);
+    }
+
     /**
      * Helper method to parse customer data JSON string into a Map.
      * Returns empty map if JSON is null, empty, or invalid.
-     * 
+     *
      * @param customerDataJson JSON string
      * @return Map representation of JSON
      */

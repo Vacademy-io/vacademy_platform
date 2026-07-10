@@ -133,6 +133,79 @@ public class UserPlanService {
                 paymentOption, paymentInitiationRequestDTO, status, null, null, null);
     }
 
+    /**
+     * Overlays autopay / free-trial state onto a freshly created subscription
+     * UserPlan (P3). Call this right after createUserPlan for paid subscription
+     * enrollments when autopay is enabled. Safe no-op when autopay is off, so it
+     * can be called unconditionally.
+     *
+     * <ul>
+     *   <li>Marks the plan for the auto-charge scheduler (auto_renewal_enabled).</li>
+     *   <li>Trial (trialDays &gt; 0): access now, NO first charge; end_date and
+     *       next_charge_at = now + trialDays. The FIRST real debit happens on
+     *       the trial-end date via RenewalChargeService.</li>
+     *   <li>No trial: next_charge_at = end_date (already set to start+validity by
+     *       createUserPlan), so the first renewal fires at the end of cycle 1.</li>
+     * </ul>
+     *
+     * The mandate itself is registered by the payment step (initiateMandatePayment
+     * / the gateway checkout) and persisted from the webhook — this method only
+     * sets the plan's scheduler state.
+     */
+    /**
+     * Reads the invite's AUTOPAY_SETTING (setting_json.setting.AUTOPAY_SETTING)
+     * and, for a SUBSCRIPTION plan, applies autopay + trial. Central hook so
+     * every enrollment entry point (school, direct, product page, applicant,
+     * bulk, learner-request) gets consistent autopay behaviour via createUserPlan.
+     */
+    private void applyAutopayFromInvite(UserPlan userPlan, EnrollInvite enrollInvite, PaymentOption paymentOption) {
+        if (userPlan == null || enrollInvite == null || paymentOption == null) {
+            return;
+        }
+        if (!vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType.SUBSCRIPTION
+                .name().equalsIgnoreCase(paymentOption.getType())) {
+            return;
+        }
+        String settingJson = enrollInvite.getSettingJson();
+        if (settingJson == null || settingJson.isBlank()) {
+            return;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
+            if (ap.path("ENABLED").asBoolean(false)) {
+                Integer trialDays = ap.has("TRIAL_DAYS") ? ap.get("TRIAL_DAYS").asInt(0) : null;
+                applyAutopaySetup(userPlan, true, trialDays);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not apply autopay for plan {}: {}", userPlan.getId(), e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void applyAutopaySetup(UserPlan userPlan, boolean autopayEnabled, Integer trialDays) {
+        if (userPlan == null || !autopayEnabled) {
+            return;
+        }
+        userPlan.setAutoRenewalEnabled(true);
+
+        if (trialDays != null && trialDays > 0) {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            c.add(java.util.Calendar.DAY_OF_MONTH, trialDays);
+            java.util.Date trialEnd = new java.sql.Timestamp(c.getTimeInMillis());
+            userPlan.setIsTrial(true);
+            userPlan.setEndDate(trialEnd);
+            userPlan.setNextChargeAt(trialEnd);
+        } else {
+            userPlan.setIsTrial(false);
+            userPlan.setNextChargeAt(userPlan.getEndDate());
+        }
+        userPlan.setRenewalAttemptCount(0);
+        userPlanRepository.save(userPlan);
+        logger.info("Autopay set on UserPlan {} (trialDays={}, nextChargeAt={})",
+                userPlan.getId(), trialDays, userPlan.getNextChargeAt());
+    }
+
     @Transactional
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
@@ -270,6 +343,10 @@ public class UserPlanService {
         logger.debug("Saving UserPlan with details: {}", userPlan);
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
+
+        // Autopay (centralized for ALL enrollment entry points): SUBSCRIPTION plans
+        // whose invite enabled AUTOPAY_SETTING opt into auto-renewal + free trial.
+        applyAutopayFromInvite(saved, enrollInvite, paymentOption);
 
         // If a prior plan was detected and we stacked onto it, this is a
         // re-enrolment — fire the LEARNER_RE_ENROLLMENT trigger so the admin

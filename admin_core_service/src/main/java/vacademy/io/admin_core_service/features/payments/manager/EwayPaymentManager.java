@@ -127,6 +127,29 @@ public class EwayPaymentManager implements PaymentServiceStrategy {
     // Public Methods specific to EwayPaymentManager
     // ===================================================================================
 
+    /**
+     * Off-session recurring charge for eWay. The saved TokenCustomerID is
+     * charged with {@code TransactionType="Recurring"} and NO CVN — eWay allows
+     * unattended stored-card recurring charges without CVN (a manual renewal
+     * would supply one; the scheduler cannot). Delegates to the existing
+     * {@link #chargeToken} path. The mandate's {@code max_amount} is enforced
+     * app-side before hitting eWay (eWay card-on-file has no native limit).
+     */
+    @Override
+    public PaymentResponseDTO chargeRecurring(vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo mandate,
+                                              PaymentInitiationRequestDTO request,
+                                              Map<String, Object> paymentGatewaySpecificData) {
+        if (mandate == null || !StringUtils.hasText(mandate.getCustomerId())) {
+            throw new VacademyException("eWay recurring charge requires a saved TokenCustomerID mandate");
+        }
+        if (mandate.getMaxAmount() != null && request.getAmount() > mandate.getMaxAmount()) {
+            throw new VacademyException("eWay recurring amount " + request.getAmount()
+                    + " exceeds mandate max_amount " + mandate.getMaxAmount());
+        }
+        LOGGER.info("eWay recurring charge: tokenCustomerId={}, amount={}", mandate.getCustomerId(), request.getAmount());
+        return chargeToken(mandate.getCustomerId(), request.getAmount(), null, paymentGatewaySpecificData);
+    }
+
     public PaymentResponseDTO chargeToken(String tokenCustomerId, double amount, String cvn, Map<String, Object> paymentGatewaySpecificData) {
         EwayApiResponseDTO.Transaction transaction = createTokenTransactionPayload(
                 tokenCustomerId,

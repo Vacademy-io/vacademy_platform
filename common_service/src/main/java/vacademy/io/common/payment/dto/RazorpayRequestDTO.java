@@ -17,4 +17,9 @@ public class RazorpayRequestDTO {
     private String razorpayPaymentId;
     private String razorpayOrderId;
     private String razorpaySignature;
+
+    // Autopay / e-mandate registration (major units; converted to paise server-side).
+    // If null, the mandate max_amount defaults to the charge amount.
+    private Double mandateMaxAmount;
+    private String mandateFrequency;   // as_presented | monthly | ...
 }

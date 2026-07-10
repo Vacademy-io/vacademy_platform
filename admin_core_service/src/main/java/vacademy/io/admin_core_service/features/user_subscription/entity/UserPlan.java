@@ -108,4 +108,28 @@ private String id;
 
     @Column(name = "end_date")
     private Date endDate;
+
+    // ── Autopay / recurring-mandate (V367) ────────────────────────────────
+    // The mandate itself (token id, max_amount, status) lives in
+    // user_institute_payment_gateway_mapping.payment_gateway_customer_data
+    // JSON, keyed by this plan's id. These columns only drive the scheduler.
+
+    /** Only plans with this true are picked up by the auto-charge scheduler. */
+    @Column(name = "auto_renewal_enabled")
+    private Boolean autoRenewalEnabled;
+
+    /** Next date the scheduler should attempt a renewal charge (usually = endDate). */
+    @Column(name = "next_charge_at")
+    private Date nextChargeAt;
+
+    /** True while in the free-trial window (access granted, no real charge yet). */
+    @Column(name = "is_trial")
+    private Boolean isTrial;
+
+    /** Dunning: number of renewal charge attempts in the current cycle. */
+    @Column(name = "renewal_attempt_count")
+    private Integer renewalAttemptCount;
+
+    @Column(name = "last_renewal_attempt_at")
+    private Date lastRenewalAttemptAt;
 }

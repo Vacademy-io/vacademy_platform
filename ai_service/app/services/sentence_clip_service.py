@@ -1363,8 +1363,17 @@ class SentenceClipService:
         if record is None:
             raise ValueError(f"video {video_id} not found")
         s3_urls = dict(record.s3_urls or {})
+        meta = dict(record.extra_metadata or {})
         if not s3_urls.get("timeline"):
             raise ValueError("video is missing timeline S3 URL; cannot insert shot")
+
+        # Minutes of LLM/S3 work follow with zero DB access. End the injected
+        # request session's transaction (opened by the read above) NOW —
+        # otherwise the connection sits idle-in-transaction until PgBouncer /
+        # Postgres culls it, and FastAPI's end-of-request commit fails with
+        # ProtocolViolation AFTER the shot was successfully inserted.
+        # Everything needed from `record` was copied into plain dicts above.
+        self._release_repository_txn()
 
         gap_start = float(gap_start)
         gap_end = float(gap_end)
@@ -1399,9 +1408,8 @@ class SentenceClipService:
                 s3_urls.get("words"), gap_start, gap_end, tmp / "words.json",
             )
 
-            # Read voice/style config for this video so the generated
-            # shot matches the surrounding video's design.
-            meta = dict(record.extra_metadata or {})
+            # Voice/style config (copied out of `record` before the txn
+            # release above) so the generated shot matches the video's design.
             video_width, video_height = _resolve_dimensions(meta)
             quality_tier = str(meta.get("quality_tier") or "ultra")
             style_guide = self._load_style_guide_checkpoint(video_id, tmp / "style_guide.json")
@@ -1774,6 +1782,24 @@ class SentenceClipService:
     @staticmethod
     def _versioned_audio_key(video_id: str, version_tag: str) -> str:
         return f"ai-videos/{video_id}/audio/narration-{version_tag}.mp3"
+
+    def _release_repository_txn(self) -> None:
+        """Roll back the repository's injected request session (if any) so its
+        connection returns to the pool before a long-running generation. The
+        rollback expires ORM instances, so callers must copy what they need
+        from loaded records into plain dicts BEFORE calling this. No-op for
+        repositories that create per-operation sessions (session=None)."""
+        sess = getattr(self.repository, "session", None)
+        if sess is None:
+            return
+        try:
+            sess.rollback()
+        except Exception:
+            logger.warning(
+                "failed to release repository session before long generation; "
+                "continuing — the end-of-request commit may hit a stale connection",
+                exc_info=True,
+            )
 
     def _ensure_video_gen_on_path(self) -> None:
         """sys.path injection — same trick used by VideoGenerationService for

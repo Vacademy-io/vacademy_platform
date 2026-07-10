@@ -2851,6 +2851,16 @@ async def insert_shot_external(
     html_model = _resolve_html_model(db, quality_tier)
 
     _ensure_video_access(payload.video_id, institute_id, db)
+
+    # All DB reads are done (api-key check, model resolve, access check —
+    # they share this one cached request session). End its transaction so
+    # the connection goes back to the pool during the minutes-long
+    # generation; otherwise PgBouncer culls the idle-in-transaction
+    # connection and the end-of-request commit 500s a successful insert.
+    # insert_shot re-reads the record on this session and releases it again
+    # itself (see SentenceClipService._release_repository_txn).
+    db.rollback()
+
     try:
         # Off the event loop — runs LLM/HTML generation + S3 I/O.
         result = await asyncio.to_thread(

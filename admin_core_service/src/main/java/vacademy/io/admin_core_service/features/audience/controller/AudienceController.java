@@ -318,7 +318,8 @@ public class AudienceController {
         String oldStatus = userLeadProfileService.getProfileDTO(userId, instituteId)
                 .map(p -> p.getConversionStatus())
                 .orElse(null);
-        userLeadProfileService.updateConversionStatus(userId, instituteId, status);
+        userLeadProfileService.updateConversionStatus(userId, instituteId, status,
+                user != null ? user.getUserId() : null);
         try {
             LeadJourneyActionType actionType = "CONVERTED".equals(status) ? LeadJourneyActionType.LEAD_CONVERTED
                     : "LOST".equals(status) ? LeadJourneyActionType.LEAD_LOST

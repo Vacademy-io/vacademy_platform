@@ -34,6 +34,9 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         userId: userId || '',
     });
     const password = credentials?.password || (isCredentialsLoading ? 'Loading...' : 'password not found');
+    // Submission-tab rows don't carry `username`; fall back to the credentials
+    // API (which returns it) so the field isn't stuck on "N/A".
+    const username = selectedStudent?.username || credentials?.username || '';
 
     // For multi-enrollment learners: admin picks which batch's package the portal redirect /
     // reset-password email is scoped to. Defaults to the row's primary (latest) ps_id.
@@ -202,16 +205,12 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
                                 <span className="font-medium text-neutral-600">Username: </span>
                                 <span className="group/value relative inline-flex items-center text-neutral-800">
-                                    <span>{selectedStudent?.username || 'N/A'}</span>
-                                    {selectedStudent?.username && (
+                                    <span>{username || 'N/A'}</span>
+                                    {username && (
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                selectedStudent.username &&
-                                                    handleCopy(
-                                                        selectedStudent.username,
-                                                        'Username'
-                                                    );
+                                                username && handleCopy(username, 'Username');
                                             }}
                                             className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
                                             style={{ pointerEvents: 'auto' }}

@@ -56,8 +56,14 @@ function mergeArrayById<T extends { id: string }>(
     (partial || []).forEach((p) => {
         if (!p.id) return;
         if (!merged.some((m) => m.id === p.id)) {
-            // Only preserve if explicitly custom; otherwise likely a stale default
-            if ((p as any).isCustom) {
+            // Preserve explicitly-custom items (custom top-level tabs carry
+            // isCustom) AND admin-added custom sub-tabs. Sub-tabs have no
+            // isCustom flag, but both custom tabs ("custom-…") and custom
+            // sub-tabs ("custom-sub-…") use a "custom" id prefix — so without
+            // this, every saved sub-tab was stripped on the post-save cache
+            // write and on every reload. Anything else absent from defaults is
+            // treated as a stale default and dropped.
+            if ((p as any).isCustom || (typeof p.id === 'string' && p.id.startsWith('custom'))) {
                 merged.push(p as T);
             }
         }
@@ -363,6 +369,10 @@ function mergeDisplayWithDefaults(
         canDeleteCourseStructure: false,
         showAdvancedCourseIds: false,
         showBulkUpload: false,
+        showAddSubject: true,
+        showAddModule: true,
+        showAddChapter: true,
+        showAddSlide: true,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -396,6 +406,14 @@ function mergeDisplayWithDefaults(
             false,
         showBulkUpload:
             incoming?.coursePage?.showBulkUpload ?? defCoursePage.showBulkUpload ?? false,
+        showAddSubject:
+            incoming?.coursePage?.showAddSubject ?? defCoursePage.showAddSubject ?? true,
+        showAddModule:
+            incoming?.coursePage?.showAddModule ?? defCoursePage.showAddModule ?? true,
+        showAddChapter:
+            incoming?.coursePage?.showAddChapter ?? defCoursePage.showAddChapter ?? true,
+        showAddSlide:
+            incoming?.coursePage?.showAddSlide ?? defCoursePage.showAddSlide ?? true,
     };
 
     // Redirect

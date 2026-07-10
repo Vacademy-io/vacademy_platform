@@ -28,10 +28,9 @@ import {
     type ActivityDayPoint,
     type ActivityReportParams,
 } from './activity-reports-service';
-import { buildCsv, downloadCsv } from './activity-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -76,29 +75,6 @@ export function ActivityTab({
 
     const dailyTotal = daily.reduce((s, d) => s + d.total, 0);
 
-    const exportRows = () => {
-        const csv = buildCsv(
-            [
-                'Counsellor',
-                'Notes',
-                'Calls',
-                'Status changes',
-                'Follow-ups created',
-                'Follow-ups closed',
-                'Total',
-            ],
-            rows.map((r) => [
-                r.name ?? r.user_id,
-                r.notes,
-                r.calls,
-                r.status_changes,
-                r.followups_created,
-                r.followups_closed,
-                r.total,
-            ])
-        );
-        downloadCsv(`activity-timeline-${fromDate}-to-${toDate}.csv`, csv);
-    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -123,7 +99,32 @@ export function ActivityTab({
             <ReportSection
                 title="Counsellor activity"
                 icon={<ListChecks size={18} />}
-                actions={<ExportCsvButton onClick={exportRows} disabled={rows.length === 0} />}
+                actions={
+                    <ExportWithColumnPickerButton
+                        filename={`activity-timeline-${fromDate}-to-${toDate}.csv`}
+                        disabled={rows.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: [
+                                'Counsellor',
+                                'Notes',
+                                'Calls',
+                                'Status changes',
+                                'Follow-ups created',
+                                'Follow-ups closed',
+                                'Total',
+                            ],
+                            rows: rows.map((r) => [
+                                r.name ?? r.user_id,
+                                r.notes,
+                                r.calls,
+                                r.status_changes,
+                                r.followups_created,
+                                r.followups_closed,
+                                r.total,
+                            ]),
+                        })}
+                    />
+                }
             >
                 {rows.length === 0 ? (
                     <EmptyHint message="No counsellor activity in this range." />

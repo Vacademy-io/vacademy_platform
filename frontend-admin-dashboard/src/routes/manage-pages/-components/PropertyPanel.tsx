@@ -897,6 +897,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         videoEmbed: 'Video', buyRentSection: 'Buy/Rent', policyRenderer: 'Policy',
         cartComponent: 'Cart', courseDetails: 'Course Details', bookDetails: 'Book Details',
         spacer: 'Spacer', tabsAccordion: 'Tabs/Accordion', logoCloud: 'Logo Cloud', trustChip: 'Trust Chip',
+        sectionHeading: 'Section Heading',
         mapEmbed: 'Map', countdownTimer: 'Countdown', textBlock: 'Text Block',
         featureGrid: 'Feature Grid', imageBlock: 'Image', buttonBlock: 'Button',
         newsletterSignup: 'Newsletter', stepsProcess: 'Steps/Process',
@@ -928,7 +929,7 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                 <div>
                     <Label className="text-xs">Column Gap</Label>
                     <div className="mt-1 flex gap-1.5">
-                        {(['none', 'sm', 'md', 'lg'] as const).map((g) => (
+                        {(['none', 'sm', 'md', 'lg', 'xl', '2xl'] as const).map((g) => (
                             <button
                                 key={g}
                                 onClick={() => updateProp('gap', g)}
@@ -983,6 +984,37 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </div>
 
+                {/* Precise 2-column ratio — writes columnFr (true track sizes),
+                    which beats the legacy width fractions on both renderers */}
+                {slots.length === 2 && (
+                    <div>
+                        <Label className="text-xs">Width Ratio (precise)</Label>
+                        <div className="mt-1 flex gap-1.5">
+                            {[
+                                { label: 'Auto', fr: undefined as string[] | undefined },
+                                { label: '50/50', fr: ['1fr', '1fr'] },
+                                { label: '60/40', fr: ['3fr', '2fr'] },
+                                { label: '40/60', fr: ['2fr', '3fr'] },
+                                { label: '66/33', fr: ['2fr', '1fr'] },
+                                { label: '33/66', fr: ['1fr', '2fr'] },
+                            ].map((o) => {
+                                const active = o.fr
+                                    ? JSON.stringify(component.props.columnFr) === JSON.stringify(o.fr)
+                                    : !component.props.columnFr;
+                                return (
+                                    <button
+                                        key={o.label}
+                                        onClick={() => updateProp('columnFr', o.fr)}
+                                        className={`flex-1 rounded border px-1 py-1 text-caption font-medium transition-colors ${active ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                    >
+                                        {o.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Stack on mobile */}
                 <div className="flex items-center justify-between">
                     <Label className="text-xs">Stack on mobile</Label>
@@ -991,6 +1023,15 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                         onCheckedChange={(v) => updateProp('stackOnMobile', v)}
                     />
                 </div>
+                {stackOnMobile && (
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs">Reverse order on mobile</Label>
+                        <Switch
+                            checked={component.props.reverseOnMobile || false}
+                            onCheckedChange={(v) => updateProp('reverseOnMobile', v || undefined)}
+                        />
+                    </div>
+                )}
             </div>
 
             {/* Slot Contents */}
@@ -1162,6 +1203,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
 
         case 'trustChip':
             return <TrustChipEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'sectionHeading':
+            return <SectionHeadingEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'spacer':
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
@@ -3434,6 +3477,79 @@ const TrustChipEditor = ({ component, pageId, updateComponent }: any) => {
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => updateProp('avatars', avatars.filter((_: string, j: number) => j !== i))} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Section Heading Editor ───────────────────────────────────────────── */
+const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div>
+                <Label className="text-xs">Eyebrow (small label above the title)</Label>
+                <Input value={props.eyebrow || ''} onChange={(e) => updateProp('eyebrow', e.target.value || undefined)} placeholder="e.g. Why choose us" />
+            </div>
+            <div>
+                <Label className="text-xs">Title</Label>
+                <Input value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Section title" />
+            </div>
+            <div className="rounded border bg-gray-50 p-3 space-y-2">
+                <Label className="text-xs font-medium">Highlight a phrase</Label>
+                <Input
+                    value={props.highlight?.text || ''}
+                    onChange={(e) =>
+                        updateProp(
+                            'highlight',
+                            e.target.value
+                                ? { ...(props.highlight || {}), text: e.target.value, style: props.highlight?.style || 'gradient' }
+                                : undefined,
+                        )
+                    }
+                    placeholder="Exact words from the title"
+                />
+                {props.highlight?.text && (
+                    <div className="flex gap-1">
+                        {['gradient', 'underline', 'mark'].map((s) => (
+                            <button
+                                key={s}
+                                onClick={() => updateProp('highlight', { ...props.highlight, style: s })}
+                                className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.highlight?.style || 'gradient') === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+                            >
+                                {s}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {props.highlight?.text && !(props.title || '').includes(props.highlight.text) && (
+                    <p className="text-caption text-warning-600">Not found in the title — the highlight will not show.</p>
+                )}
+            </div>
+            <div>
+                <Label className="text-xs">Lead (supporting line)</Label>
+                <Textarea value={props.lead || ''} onChange={(e) => updateProp('lead', e.target.value || undefined)} rows={2} placeholder="One-sentence supporting copy under the title" />
+            </div>
+            <div>
+                <Label className="text-xs">Alignment</Label>
+                <div className="flex gap-1 mt-1">
+                    {['center', 'left'].map((a) => (
+                        <button key={a} onClick={() => updateProp('align', a === 'center' ? undefined : a)}
+                            className={`rounded px-3 py-1 text-caption font-medium capitalize ${(props.align || 'center') === a ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{a}</button>
+                    ))}
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Size</Label>
+                <div className="flex gap-1 mt-1">
+                    {['md', 'lg', 'xl'].map((s) => (
+                        <button key={s} onClick={() => updateProp('size', s === 'lg' ? undefined : s)}
+                            className={`rounded px-3 py-1 text-caption font-medium uppercase ${(props.size || 'lg') === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s}</button>
                     ))}
                 </div>
             </div>

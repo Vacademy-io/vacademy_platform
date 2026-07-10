@@ -160,6 +160,44 @@ export interface RegistrationStatusResponse {
   completion_redirect_url?: string | null;
 }
 
+/**
+ * POST /resume — re-opens an in-flight registration for this link by email
+ * (the door out of /start's "already exists" rejection). Sends a fresh OTP to
+ * that address; 4xx when there is nothing to resume ("No registration found
+ * for this email on this link").
+ */
+export interface ResumeRegistrationRequest {
+  institute_id: string;
+  code: string;
+  admin_email: string;
+}
+
+/** Saved details snapshot returned by /resume-verify (prefills the wizard). */
+export interface ResumeRegistrationDetails {
+  org_name?: string | null;
+  org_logo_file_id?: string | null;
+  admin_name?: string | null;
+  admin_email?: string | null;
+  admin_phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+}
+
+/**
+ * POST /resume-verify — strict OTP check (wrong code is a 4xx). `status`
+ * tells the wizard where the registration left off: OTP_VERIFIED → next
+ * wizard step, PENDING_PAYMENT → payment retry, COMPLETED → success panel.
+ */
+export interface ResumeVerifyResponse {
+  registration_id: string;
+  status: string;
+  kyc_status?: KycStatus | null;
+  details?: ResumeRegistrationDetails | null;
+}
+
 export interface CustomFieldValuePayload {
   custom_field_id: string;
   value: string;
@@ -201,6 +239,17 @@ export interface CompleteRegistrationResponse {
   /** Paid templates only — used for the Cashfree user-plan-payment call. */
   user_plan_id?: string;
   payment_response?: CompletePaymentResponse;
+}
+
+/**
+ * POST /retry-payment — re-initiates payment for a PENDING_PAYMENT
+ * registration. Amount/currency/vendor/plan are server-stamped from the
+ * locked registration; the client's payment_initiation_request only matters
+ * for the vendor sub-request (e.g. cashfree_request.return_url).
+ */
+export interface RetryPaymentRequest {
+  registration_id: string;
+  payment_initiation_request: PaymentInitiationRequest;
 }
 
 // ─── KYC (DigiLocker identity verification) types ────────────────────────────
@@ -334,6 +383,56 @@ export const resendSubOrgRegistrationOtp = async ({
   await axios.post(`${SUB_ORG_REGISTRATION_BASE}/resend-otp`, {
     registration_id: registrationId,
   });
+};
+
+/**
+ * Resumes an in-flight registration for this link (fresh OTP to that email).
+ * Also the resume-mode "resend code" — /resend-otp guards on row status
+ * (COMPLETED throws) which we can't know before verifying, while /resume
+ * always re-sends for a resumable registration.
+ */
+export const resumeSubOrgRegistration = async (
+  payload: ResumeRegistrationRequest
+): Promise<StartRegistrationResponse> => {
+  const response = await axios.post<StartRegistrationResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/resume`,
+    payload
+  );
+  return response?.data;
+};
+
+/**
+ * Verifies the resume OTP (strict — wrong code is a 4xx) and returns the
+ * registration's saved details + where it left off so the wizard can prefill
+ * and route (OTP_VERIFIED / PENDING_PAYMENT / COMPLETED).
+ */
+export const resumeVerifySubOrgOtp = async ({
+  registrationId,
+  otp,
+}: {
+  registrationId: string;
+  otp: string;
+}): Promise<ResumeVerifyResponse> => {
+  const response = await axios.post<ResumeVerifyResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/resume-verify`,
+    { registration_id: registrationId, otp }
+  );
+  return response?.data;
+};
+
+/**
+ * Re-initiates payment for a PENDING_PAYMENT registration. Response mirrors
+ * /complete; a COMPLETED status means the webhook already confirmed the
+ * payment while the user was away — show the completion panel, no gateway.
+ */
+export const retrySubOrgPayment = async (
+  payload: RetryPaymentRequest
+): Promise<CompleteRegistrationResponse> => {
+  const response = await axios.post<CompleteRegistrationResponse>(
+    `${SUB_ORG_REGISTRATION_BASE}/retry-payment`,
+    payload
+  );
+  return response?.data;
 };
 
 export const completeSubOrgRegistration = async (

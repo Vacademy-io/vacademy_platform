@@ -24,10 +24,9 @@ import {
     type DispositionCallOutcomeRow,
     type DispositionStatusMeta,
 } from '../-services/get-crm-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -87,25 +86,27 @@ export function DispositionsTab({
         return <ReportErrorState error={query.error} onRetry={() => query.refetch()} />;
     }
 
-    const exportStatusMatrix = () => {
+    const getStatusExportData = () => {
         const dataRows = statusRows.map((r) => {
             const cols = statuses.map((s) => r.changes[s.status_key] ?? 0);
             const total = cols.reduce((sum, n) => sum + n, 0);
-            return [actorName(r), ...cols, total];
+            return [actorName(r), ...cols, total, r.pending_count ?? 0];
         });
-        // Totals footer row: sum each status column across all actors.
         const footerCols = statuses.map((_, si) =>
             dataRows.reduce((sum, row) => sum + ((row[si + 1] as number) ?? 0), 0)
         );
         const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
-        exportCsv(
-            `dispositions-status-changes_${fromDate}_${toDate}.csv`,
-            ['Counsellor', ...statuses.map((s) => s.label || s.status_key), 'Total'],
-            [...dataRows, ['TOTAL', ...footerCols, footerTotal]]
+        const footerPending = dataRows.reduce(
+            (sum, row) => sum + ((row[row.length - 1] as number) ?? 0),
+            0
         );
+        return {
+            headers: ['Counsellor', ...statuses.map((s) => s.label || s.status_key), 'Total', 'Pending'],
+            rows: [...dataRows, ['TOTAL', ...footerCols, footerTotal, footerPending]],
+        };
     };
 
-    const exportOutcomeMatrix = () => {
+    const getOutcomeExportData = () => {
         const dataRows = outcomeRows.map((r) => [
             actorName(r),
             ...outcomeKeys.map((k) => r.outcomes[k] ?? 0),
@@ -115,11 +116,10 @@ export function DispositionsTab({
             dataRows.reduce((sum, row) => sum + ((row[ki + 1] as number) ?? 0), 0)
         );
         const footerTotal = footerCols.reduce((sum, n) => sum + n, 0);
-        exportCsv(
-            `dispositions-call-outcomes_${fromDate}_${toDate}.csv`,
-            ['Counsellor', ...outcomeKeys.map(outcomeLabel), 'Total'],
-            [...dataRows, ['TOTAL', ...footerCols, footerTotal]]
-        );
+        return {
+            headers: ['Counsellor', ...outcomeKeys.map(outcomeLabel), 'Total'],
+            rows: [...dataRows, ['TOTAL', ...footerCols, footerTotal]],
+        };
     };
 
     return (
@@ -129,9 +129,10 @@ export function DispositionsTab({
                 title="Status changes by counsellor"
                 icon={<ArrowsLeftRight size={18} />}
                 actions={
-                    <ExportCsvButton
-                        onClick={exportStatusMatrix}
+                    <ExportWithColumnPickerButton
+                        filename={`dispositions-status-changes_${fromDate}_${toDate}.csv`}
                         disabled={statusRows.length === 0 || statuses.length === 0}
+                        getHeadersAndRows={getStatusExportData}
                     />
                 }
             >
@@ -150,6 +151,9 @@ export function DispositionsTab({
                                             <StatusHeaderCell key={s.status_key} status={s} />
                                         ))}
                                         <th className="py-2 pl-3 text-right">Total</th>
+                                        <th className="py-2 pl-3 text-right text-warning-600">
+                                            Pending
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -170,6 +174,16 @@ export function DispositionsTab({
                                             <td className="py-2.5 pl-3 text-right font-semibold text-neutral-900">
                                                 {fmtNumber(r.total_changes)}
                                             </td>
+                                            <td
+                                                className={cn(
+                                                    'py-2.5 pl-3 text-right tabular-nums font-semibold',
+                                                    (r.pending_count ?? 0) > 0
+                                                        ? 'text-warning-600'
+                                                        : 'text-neutral-300'
+                                                )}
+                                            >
+                                                {r.pending_count ?? 0}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -177,7 +191,8 @@ export function DispositionsTab({
                         </div>
                         <p className="text-xs text-neutral-400">
                             Each cell counts transitions into that status made by the counsellor in
-                            this range. System / workflow automation is grouped under its own actor.
+                            this range. Pending = assigned leads with no status change recorded
+                            at any time (never worked on).
                         </p>
                     </>
                 )}
@@ -188,9 +203,10 @@ export function DispositionsTab({
                 title="Call outcomes by counsellor"
                 icon={<Phone size={18} />}
                 actions={
-                    <ExportCsvButton
-                        onClick={exportOutcomeMatrix}
+                    <ExportWithColumnPickerButton
+                        filename={`dispositions-call-outcomes_${fromDate}_${toDate}.csv`}
                         disabled={outcomeRows.length === 0 || outcomeKeys.length === 0}
+                        getHeadersAndRows={getOutcomeExportData}
                     />
                 }
             >

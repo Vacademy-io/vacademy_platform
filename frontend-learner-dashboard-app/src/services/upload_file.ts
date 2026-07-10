@@ -239,12 +239,20 @@ const splitExtension = (name: string): { base: string; ext: string | null } => {
 };
 
 /**
- * Download a file to the device in its true format. The file's real content
- * type is authoritative for the extension — the stored filename can carry a
- * stale/wrong extension, so we normalise the saved name to match the actual
- * bytes: media-service file_type first, then the downloaded blob's own S3
- * Content-Type. Fetching via a Blob is also what lets the download carry any
- * extension at all (the S3 signed URL has none).
+ * Download an evaluated-copy / submission file to the device in its true format.
+ * The stored filename can carry a stale/wrong/no extension, so we normalise the
+ * saved name to match the actual bytes, resolving the extension in order of
+ * trust:
+ *   1. media-service file_type (the real content type)
+ *   2. the fetched blob's own S3 Content-Type
+ *   3. a known extension already on the filename
+ *   4. default to PDF — the admin evaluation tool uploads the annotated copy
+ *      WITHOUT a MIME type (empty file_type, octet-stream on S3) and with an
+ *      extension-less name, so nothing above resolves; those files are (and
+ *      render as) PDFs. Real image submissions always carry a browser MIME
+ *      type, so they never fall through to this default.
+ * Fetching via a Blob is also what lets the download carry any extension at all
+ * (the S3 signed URL has none).
  */
 export const downloadFileWithName = async (
     url: string,
@@ -255,13 +263,15 @@ export const downloadFileWithName = async (
     const blob: Blob = response.data;
     let name = (fileName || "download").trim() || "download";
 
-    const trueExt = extensionFromType(fileType) || extensionFromType(blob?.type);
-    if (trueExt) {
-        const { base, ext } = splitExtension(name);
-        // Replace a missing or format-mismatched extension; keep an equivalent one.
-        if (!ext || canonicalExt(ext) !== canonicalExt(trueExt)) {
-            name = `${base}.${trueExt}`;
-        }
+    const { base, ext: nameExt } = splitExtension(name);
+    const ext =
+        extensionFromType(fileType) ||
+        extensionFromType(blob?.type) ||
+        (nameExt && KNOWN_EXTS.has(nameExt) ? canonicalExt(nameExt) : undefined) ||
+        "pdf";
+    // Replace a missing or format-mismatched extension; keep an equivalent one.
+    if (!nameExt || canonicalExt(nameExt) !== canonicalExt(ext)) {
+        name = `${base}.${ext}`;
     }
 
     const objectUrl = window.URL.createObjectURL(blob);

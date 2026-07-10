@@ -43,7 +43,11 @@ import java.util.UUID;
 public class ComprehensiveReportLLMService {
 
     private static final String API_URL = "https://openrouter.ai";
-    private static final int RESPONSE_TIMEOUT_SECONDS = 90;
+    // Narration asks for a large JSON (all insights + 6 rich-markdown narrative fields). On slow
+    // free-tier OpenRouter models this routinely exceeds a tight timeout, causing the whole
+    // ai_insights (and narrative) to fall back to deterministic text. This is a background @Async
+    // job with no user waiting synchronously, so a generous per-request timeout is safe.
+    private static final int RESPONSE_TIMEOUT_SECONDS = 170;
     private static final int MAX_RETRIES_PER_MODEL = 2;
 
     private final WebClient webClient;

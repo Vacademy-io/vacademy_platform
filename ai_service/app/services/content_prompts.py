@@ -10,111 +10,77 @@ class ContentGenerationPrompts:
     @staticmethod
     def build_document_prompt(text_prompt: str, title: str, include_diagrams: bool = False, language: str = "English") -> str:
         """
-        Build document generation prompt.
-        - If include_diagrams is True, generates markdown with Mermaid diagrams
-        - Otherwise, generates HTML format (default behavior)
+        Build document generation prompt. Always produces HTML (the only format
+        the slide editor round-trips losslessly); Mermaid diagrams are emitted
+        as <div class="mermaid"> blocks inside the HTML.
         """
-        # Check if prompt contains diagram-related keywords
+        # Diagram-related keywords strengthen the diagram instruction from
+        # "only where genuinely useful" to "include at least one".
         diagram_keywords = ["include diagrams", "include diagram", "with diagrams", "with diagram",
                            "add diagrams", "add diagram", "diagrams", "mermaid"]
         prompt_lower = text_prompt.lower()
         should_include_diagrams = include_diagrams or any(keyword in prompt_lower for keyword in diagram_keywords)
 
-        if should_include_diagrams:
-            return f"""**Task**: Generate educational content as Markdown with Mermaid diagrams
+        diagram_emphasis = (
+            "The course planner asked for diagrams — include at least ONE Mermaid diagram."
+            if should_include_diagrams
+            else "Include a Mermaid diagram ONLY where it genuinely aids understanding; skip it otherwise."
+        )
 
-**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
+        return f"""You are an expert educator and instructional designer writing premium study notes for students. The notes must be complete enough to learn from without any other material — clear, accurate, engaging, and visually well-organized.
+
+**Language**: Write ALL student-facing content in {language}. Do NOT use English if a different language is specified.
 
 **Topic**: {title}
 
-**Content Requirements**:
+**Content Requirements** (from the course planner):
 {text_prompt}
 
-**Output Format**:
-- Generate the content in Markdown format (.md)
-- Keep content SHORT, CRISP, and ENGAGING for students (aim for 50-100 words)
-- Use proper Markdown syntax:
-  - Headings: `#`, `##`, `###`
-  - Bold: `**text**`, Italic: `*text*`
-  - Lists: `-` for unordered, `1.` for ordered
-  - Code blocks: ` ```language ` for syntax highlighting
-  - Inline code: `` `code` ``
-- Structure the content with clear headings and concise paragraphs
-- Make it engaging and easy to understand for learners
+**Depth & quality bar**:
+- Aim for roughly 300-600 words of real substance (more if the topic demands it). Never thin, never padded with filler.
+- Explain concepts step by step. For every important idea give a concrete example, analogy, or real-world application.
+- Call out common mistakes or misconceptions where relevant.
+- Write in a clear, student-friendly tone; keep paragraphs short (2-4 sentences).
 
-**Mermaid Diagrams**:
-- Include Mermaid diagrams where they help explain concepts visually
-- Generate Mermaid diagrams using standard markdown code blocks for client-side Mermaid.js rendering
-- Use the following format for Mermaid diagrams:
-  ````markdown
-  ```mermaid
+**Structure**:
+1. Start with `<h1>{title}</h1>`, then a short engaging introduction: what this is and why it matters.
+2. Organize the body into logical sections with `<h2>` (and `<h3>` for sub-points).
+3. Use `<table>` for comparisons, `<ol>` for step sequences, `<ul>` for enumerations, and `<blockquote>` for key insights, tips, or "common mistake" callouts.
+4. End with a short "Key Takeaways" section (`<h2>` + a compact `<ul>`).
+
+**Formatting contract (STRICT — this HTML is parsed by a block editor)**:
+- Return ONLY HTML. No markdown syntax anywhere (no `**bold**`, no `#` headings, no ``` fences), no `<html>`/`<head>`/`<body>` wrapper, no commentary outside the HTML.
+- Allowed tags: h1, h2, h3, p, ul, ol, li, strong, em, table, thead, tbody, tr, th, td, blockquote, pre, code, img, div, hr.
+- Every element must be properly closed and top-level elements must each start on their own line.
+
+**Mermaid diagrams** — {diagram_emphasis}
+- Emit each diagram EXACTLY as:
+  <div class="mermaid">
   graph TD
       A[Start] --> B[Process]
       B --> C[End]
-  ```
-  ````
-- **Frontend Rendering**: The frontend uses Mermaid.js to automatically detect and render ` ```mermaid ` code blocks client-side
-- Common Mermaid diagram types:
-  - Flowcharts: `graph TD` (top-down) or `graph LR` (left-right)
-  - Sequence diagrams: `sequenceDiagram`
-  - Class diagrams: `classDiagram`
-  - State diagrams: `stateDiagram-v2`
-  - ER diagrams: `erDiagram`
-  - Gantt charts: `gantt`
-  - Pie charts: `pie`
-- **CRITICAL Mermaid Syntax Rules** (for Mermaid.js compatibility):
-  - Use ASCII arrows ONLY: `-->` (NOT Unicode arrows like → or ⇒)
-  - Node IDs must be alphanumeric only: `A`, `Node1`, `Process_1` (NO spaces, NO special chars except underscore)
-  - Labels must be in brackets: `A[Label]` or `A("Label with spaces")`
-  - Keep diagram syntax simple, clean, and valid
-  - Avoid nested parentheses in node IDs (use quotes for labels with special chars)
-  - For flowcharts, use: `graph TD` (top-down) or `graph LR` (left-right)
-  - Each line should be properly formatted (no trailing spaces)
-  - Example valid syntax:
-    ````markdown
-    ```mermaid
-    graph TD
-        A[Start] --> B{{Decision}}
-        B -->|Yes| C[Action 1]
-        B -->|No| D[Action 2]
-    ```
-    ````
-  - For decision nodes (diamond shape), use curly braces: `B{{Decision}}`
-  - For process nodes (rectangles), use square brackets: `A[Process]`
-  - For start/end nodes (rounded rectangles), use parentheses: `Start(("Start"))`
-- Only include diagrams that enhance understanding of the topic
-- Place diagrams strategically within the content where they add value
-- Each diagram should be self-contained with a clear purpose
-- Add a brief description before each diagram explaining what it shows
-- Ensure diagrams are properly formatted and can be rendered by Mermaid.js without errors
+  </div>
+- Plain Mermaid text inside the div — no other tags, no escaping, no backticks.
+- Add one short `<p>` immediately before each diagram that finishes its own sentence and explains what the diagram shows. Never split a sentence across the diagram.
+- CRITICAL Mermaid syntax rules (Mermaid.js compatibility):
+  - ASCII arrows ONLY: `-->` (never Unicode arrows like → or ⇒)
+  - Node IDs alphanumeric/underscore only; labels in brackets: `A[Label]` or `A("Label with spaces")`
+  - Decision nodes: `B{{Decision}}`; edge labels: `B -->|Yes| C`
+  - Flowcharts: `graph TD` or `graph LR`; other types: sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, pie
+  - Avoid `<`, `>`, parentheses and special characters inside labels; keep the diagram simple and valid.
 
-**Content Style**:
-- Write in a clear, student-friendly tone
-- Use examples and analogies to make concepts relatable
-- Break complex topics into digestible sections
-- Use bullet points and lists for clarity
-- Keep paragraphs short (2-3 sentences max)
+**Illustrations** — up to 2 images, ONLY where a visual example truly helps (real-world scenes, objects, or settings a diagram cannot show):
+- Emit EXACTLY: `<img data-img-prompt="vivid, specific English description of an educational illustration" src="placeholder.png" alt="short description" style="max-width:100%;border-radius:8px;">`
+- The pipeline generates the real image from data-img-prompt; NEVER use external URLs.
+- The data-img-prompt must ALWAYS be written in English (even when the content language is different) and describe subject, setting, and style.
+- Do not use images for anything a Mermaid diagram or table expresses better. Skip images entirely if the topic doesn't need them.
 
-**Important**: Return ONLY the Markdown content with embedded Mermaid diagrams. No explanations, no code block wrappers around the entire response, just the markdown content.
-"""
-        else:
-            return f"""**Task**: Generate educational content as HTML
+**Code** — ONLY if the topic itself is about programming, software, or another code-based skill. NEVER include code blocks for non-technical topics.
+- Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).
+- Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
+- Preserve real indentation and newlines exactly as in an IDE; code must be complete and runnable.
 
-**Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
-
-**Topic**: {title}
-
-**Content Requirements**:
-{text_prompt}
-
-**Output Format**:
-- Generate the content in HTML format
-- Use proper HTML tags like `<p>`, `<h1>`, `<h2>`, `<h3>`, `<ul>`, `<ol>`, `<li>`, `<strong>`, `<em>`, etc.
-- Structure the content with appropriate headings and paragraphs
-- Make it well-formatted and readable
-- Include examples and explanations where appropriate
-
-**Important**: Return ONLY the HTML content, no markdown, no explanations, just the HTML.
+**Important**: Return ONLY the HTML content. Start directly with `<h1>`.
 """
 
     @staticmethod
@@ -264,10 +230,10 @@ Explanation of the code output or key concepts.
     @staticmethod
     def build_homework_prompt(text_prompt: str, title: str, language: str = "English") -> str:
         """
-        Build prompt for homework slides. Content should be coding-focused: mini projects,
-        setup tasks, implementations—not simple question-answer type.
+        Build prompt for homework slides. Hands-on and applied — the task type
+        adapts to the chapter's subject (coding ONLY for technical chapters).
         """
-        return f"""**Task**: Generate HOMEWORK for a chapter. The homework must be CODING- and TASK-oriented, NOT simple Q&A.
+        return f"""**Task**: Generate the ASSIGNMENT (homework) for a chapter. It must be hands-on and applied — something the student actively DOES, not recall-style Q&A.
 
 **Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
 
@@ -276,31 +242,32 @@ Explanation of the code output or key concepts.
 **Context**:
 {text_prompt}
 
+**FIRST, choose the task type from the chapter's subject matter**:
+- If (and ONLY if) the chapter teaches programming, software tools, or another code-based technical skill → create ONE coding task: a mini project, an implementation task, a setup/configuration task, or a debugging task.
+- For every other subject (humanities, sciences, business, language, academic skills, arts, etc.) → create ONE practical non-coding task, for example:
+  - Analyze a realistic case, document, or dataset provided inside the assignment
+  - Create a deliverable (e.g. a properly formatted reference list, an essay outline, a lesson plan, a labeled diagram, a comparison sheet)
+  - Perform a structured exercise on provided materials (e.g. "correct the errors in these 5 examples", "classify the following items and justify each")
+  - Solve realistic scenario problems step by step
+- NEVER force a coding task onto a non-technical chapter, and never invent a programming angle for a non-programming topic.
+
 **Content requirements**:
 - Do NOT create simple "what is X?" or short-answer conceptual questions.
-- DO create hands-on tasks such as:
-  - Mini projects (e.g. "Build a small CLI calculator", "Create a REST endpoint that...")
-  - Setup/configuration tasks (e.g. "Set up a local dev environment for...", "Configure X to do Y")
-  - Implementation tasks (e.g. "Implement a function that...", "Write a script that...")
-  - Debugging/fix tasks (e.g. "The following code has a bug; find and fix it")
-  - Integration tasks (e.g. "Connect component A to B and handle errors")
-- Include exactly ONE task per chapter (one mini project, setup, or implementation task—not multiple).
-- The single task should have: clear title, brief context, concrete instructions, and expected outcome or acceptance criteria.
-- Where code is part of the question, use proper code blocks or placeholders so the student knows what to implement or fix.
+- Exactly ONE task, with: a clear title, brief context, concrete instructions, the materials to work on (embed them in the assignment — e.g. the sample text, data, or starter code), and the expected outcome or acceptance criteria.
+- The task must be doable using ONLY what this chapter covered.
 
-**Output format**:
-- HTML only.
-- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment</h1>`.
-- Use <h2> for the single task title, <p> for instructions, <pre><code class="language-xxx"> for code snippets or starter code.
-- Structure: Main heading ("Assignment"), task title, short introduction paragraph, then one section for the single homework task.
+**Output format (STRICT — this HTML is parsed by a block editor)**:
+- HTML only. No markdown syntax anywhere, no commentary outside the HTML.
+- The content MUST start with the main heading `<h1>Assignment</h1>`.
+- Use `<h2>` for the task title, `<p>` for instructions, `<ul>`/`<ol>` for steps and criteria, `<blockquote>` for provided materials or examples.
 
-**Code Formatting (CRITICAL)**:
-- All code inside <pre><code> MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
-- Do NOT flatten or minify the code. Each nested block (function body, loop body, if-else body) must be indented properly.
-- Include ALL necessary imports at the top of each code snippet.
-- Starter code must be syntactically valid — no `...`, `pass`, or pseudo-code unless explicitly marking a section for the student to fill in (use `# TODO: implement this` with a clear comment).
+**Code formatting (ONLY when the task is a coding task)**:
+- Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).
+- Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
+- Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
+- Include ALL necessary imports; starter code must be syntactically valid — mark student sections with a clear `# TODO: implement this` comment.
 
-**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Start with <h1>Assignment</h1>."""
+**Important**: Return ONLY the HTML content. Start with <h1>Assignment</h1>."""
 
     @staticmethod
     def build_solution_prompt(text_prompt: str, title: str, homework_content: str | None = None, language: str = "English") -> str:
@@ -328,26 +295,26 @@ Explanation of the code output or key concepts.
 
 **Structure** (exactly one homework task per chapter):
 1. **Hint** (first):
-   - One or more hints that guide the student without giving the full answer (e.g. "Think about which data structure fits.", "Check the order of arguments in the API.")
+   - One or more hints that guide the student without giving the full answer (e.g. "Start by identifying the author and year.", "Check the order of arguments in the API.")
    - Keep hints short and actionable.
 2. **Solution** (after the hint):
-   - Full, correct solution: complete code (if coding), step-by-step commands (if setup), or full explanation (if implementation).
-   - Code must be complete, runnable, and formatted in code blocks.
-   - For mini projects or setup tasks, include any necessary files/commands and expected output or verification steps.
+   - Full, correct solution matching the task type: complete code (ONLY if the homework was a coding task), a complete worked deliverable (for creation/analysis tasks), or full step-by-step working (for exercises and scenario problems).
+   - For non-coding tasks show the finished result the student should have produced (e.g. the corrected examples, the completed reference list, the full analysis) — not just a description of it.
+   - For coding or setup tasks, include any necessary files/commands and expected output or verification steps.
 
-**Output format**:
-- HTML only.
-- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
+**Output format (STRICT — this HTML is parsed by a block editor)**:
+- HTML only. No markdown syntax anywhere, no commentary outside the HTML.
+- The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
 - Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
-- Use <pre><code class="language-xxx"> for all code. Use <ol> or <p> for step-by-step instructions where appropriate.
+- Use `<ol>` or `<p>` for step-by-step working, `<blockquote>` for the worked deliverable where it reads better.
 
-**Code Formatting (CRITICAL)**:
-- All code inside <pre><code> MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
-- Do NOT flatten or minify the code. Each nested block (function body, loop body, if-else body) must be indented properly.
-- Solution code must be **complete and runnable** — include all imports, a main entry point, and expected output as a comment.
-- Do NOT use placeholder code like `pass` or `...` in the solution — every function must have a real implementation.
+**Code formatting (ONLY when the homework was a coding task)**:
+- Emit code EXACTLY as: `<pre data-language="python"><code class="language-python">...code...</code></pre>` (use the correct language name).
+- Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
+- Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
+- Solution code must be **complete and runnable** — all imports, a main entry point, and expected output as a comment; no `pass` or `...` placeholders.
 
-**Important**: Return ONLY the HTML content. No markdown, no explanations outside the HTML. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
+**Important**: Return ONLY the HTML content. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
 
 
 __all__ = ["ContentGenerationPrompts"]

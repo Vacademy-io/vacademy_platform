@@ -348,9 +348,14 @@ const FollowUpsContent = () => {
                 </div>
                 {canFilterCounsellors && (
                     <CounsellorFilter
-                        value={counsellorFilter}
-                        onChange={setCounsellorFilter}
-                        allValue={ALL_COUNSELLORS_VALUE}
+                        values={
+                            counsellorFilter === ALL_COUNSELLORS_VALUE ? [] : [counsellorFilter]
+                        }
+                        onChange={(vals) =>
+                            setCounsellorFilter(
+                                vals.length > 0 ? vals[vals.length - 1]! : ALL_COUNSELLORS_VALUE
+                            )
+                        }
                         options={counsellorOptions}
                         isLoading={counsellorOptionsLoading}
                     />

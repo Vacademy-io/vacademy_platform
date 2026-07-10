@@ -139,7 +139,10 @@ export default function Evaluation({ questionData, totalPages, pagesVisited }: E
     };
 
     return (
-        <div className="flex h-full w-full flex-col gap-4">
+        // Natural (content) height, not h-full: the parent panel body scrolls,
+        // so blocks flow top-to-bottom instead of compressing and overlapping on
+        // short/small screens.
+        <div className="flex w-full flex-col gap-4">
             {/* Running total — the figure the evaluator most wants to track */}
             <div className="flex items-center justify-between rounded-md border border-primary-100 bg-primary-50 px-3 py-2">
                 <span className="text-xs font-medium text-neutral-600">Total awarded</span>
@@ -267,16 +270,17 @@ export default function Evaluation({ questionData, totalPages, pagesVisited }: E
                 </Tabs>
             )}
 
-            {/* Remarks for the learner (optional). Grows to absorb the panel's free
-                height so there's no dead gap above the action buttons. */}
-            <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-lg border border-neutral-200 p-3">
+            {/* Remarks for the learner (optional). Fixed minimum height so it never
+                collapses into / overlaps the stats footer on short screens; the
+                panel body scrolls when everything doesn't fit. */}
+            <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
                 <span className="text-sm font-medium text-neutral-700">Remarks</span>
                 <Textarea
                     value={primaryFeedback}
                     onChange={(e) => handleFeedbackChange(e.target.value)}
                     placeholder="Add remarks…"
                     disabled={!primaryQuestion}
-                    className="min-h-24 flex-1 resize-none"
+                    className="min-h-24 resize-none"
                 />
             </div>
 

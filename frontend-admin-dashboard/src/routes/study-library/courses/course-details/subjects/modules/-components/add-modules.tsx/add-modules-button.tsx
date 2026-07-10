@@ -6,6 +6,8 @@ import { Module } from '@/stores/study-library/use-modules-with-chapters-store';
 import { Plus } from '@phosphor-icons/react';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
 
 interface AddModuleButtonProps {
     onAddModule?: (module: Module) => void;
@@ -21,6 +23,11 @@ export const AddModulesButton = ({
     subjectId,
 }: AddModuleButtonProps) => {
     const [openDialog, setOpenDialog] = useState(false);
+
+    // Per-role visibility: admin can hide the "Add Module" button for a role
+    // from Display Settings → Course Page. Default (undefined/true) shows it.
+    const roleDisplay = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
+    if (roleDisplay?.coursePage?.showAddModule === false) return null;
 
     const triggerButton = isTextButton ? (
         <MyButton

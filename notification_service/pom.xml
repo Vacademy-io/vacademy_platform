@@ -69,6 +69,13 @@
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
         </dependency>
+        <!-- AWS SES SDK (v1) — used only for sender-identity verification
+             (verifyEmailIdentity / verifyDomainDkim / getIdentityVerificationAttributes).
+             Sending itself still goes over SMTP via JavaMailSender. Version managed by aws-java-sdk-bom. -->
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-ses</artifactId>
+        </dependency>
         <!-- Spring Cloud AWS for SQS integration (includes AWS SDK v2) -->
         <dependency>
             <groupId>io.awspring.cloud</groupId>

@@ -17,6 +17,13 @@ public class NotificationConstants {
     public static final String USERNAME = "username";
     public static final String PASSWORD = "password";
 
+    // SES sender-identity verification fields (stored inside each EMAIL_SETTING.data.<type> node)
+    public static final String VERIFIED = "verified";                       // boolean: SES identity confirmed
+    public static final String VERIFICATION_STATUS = "verification_status"; // NOT_STARTED | PENDING | VERIFIED | FAILED
+    public static final String VERIFICATION_MODE = "verification_mode";     // EMAIL | DOMAIN
+    public static final String VERIFICATION_IDENTITY = "verification_identity"; // the email or domain sent to SES
+    public static final String VERIFIED_AT = "verified_at";                 // epoch millis when it became VERIFIED
+
     // WhatsApp constants
     public static final String WHATSAPP_SETTING = "WHATSAPP_SETTING";
     public static final String UTILITY_WHATSAPP = "UTILITY_WHATSAPP";

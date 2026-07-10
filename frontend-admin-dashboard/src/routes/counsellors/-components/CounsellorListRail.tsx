@@ -92,7 +92,10 @@ function CounsellorCard({
                 );
             }
         },
-        onError: () => toast.error('Status update failed'),
+        onError: (e) => {
+            const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
+            toast.error(msg ?? 'Status update failed');
+        },
     });
 
     return (

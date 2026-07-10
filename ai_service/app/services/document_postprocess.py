@@ -172,7 +172,11 @@ async def illustrate_document(html: str, slide_path: str = "") -> Tuple[str, int
         return _PLACEHOLDER_IMG_RE.sub("", html), 0
 
     urls: list[Optional[str]] = [None] * len(matches)
-    if settings.gemini_api_key:
+    # Gate on the OpenRouter key — image gen was moved off the direct Gemini
+    # image API (free-tier, zero image quota) to OpenRouter. Gating on
+    # gemini_api_key here would strip every illustration once that key is
+    # retired, even though OpenRouter can still generate them.
+    if settings.openrouter_api_key:
         capped = matches[:MAX_DOC_IMAGES]
         if len(matches) > MAX_DOC_IMAGES:
             logger.info(
@@ -184,7 +188,7 @@ async def illustrate_document(html: str, slide_path: str = "") -> Tuple[str, int
         )
         urls[: len(generated)] = list(generated)
     else:
-        logger.info("GEMINI_API_KEY not configured; stripping document image placeholders")
+        logger.info("OPENROUTER_API_KEY not configured; stripping document image placeholders")
 
     generated_count = 0
     # Replace from the end so match offsets stay valid.

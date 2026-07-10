@@ -1615,78 +1615,95 @@ class OpenRouterClient:
         last_error = None
         for _model_idx, model_to_use in enumerate(models_to_try):
             try:
-                payload: Dict[str, Any] = {
-                    "model": model_to_use,
-                    "messages": cached_messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                }
-                if response_format is not None:
-                    payload["response_format"] = response_format
-                request = urllib.request.Request(
-                    self.base_url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers=self.headers,
-                    method="POST",
-                )
-                _t_start = time.perf_counter()
-                with urllib.request.urlopen(request, timeout=120) as response:
-                    raw = response.read().decode("utf-8")
-                    # Parse JSON response and return content
-                    data = json.loads(raw)
-                    _choice = data["choices"][0]
-                    _message = _choice.get("message", {}) or {}
-                    content = _message.get("content")
-                    _finish = _choice.get("finish_reason")
+                # A thinking model (e.g. claude-sonnet-5) can spend its entire
+                # budget reasoning and get cut off (finish_reason "length")
+                # before emitting any `content`. Rather than immediately failing
+                # over to the next model, retry the SAME model ONCE with a
+                # doubled budget — which is exactly what the code's own hint
+                # ("raise max_tokens for this model") recommends.
+                _effective_max_tokens = max_tokens
+                for _length_bump in range(2):
+                    payload: Dict[str, Any] = {
+                        "model": model_to_use,
+                        "messages": cached_messages,
+                        "temperature": temperature,
+                        "max_tokens": _effective_max_tokens,
+                    }
+                    if response_format is not None:
+                        payload["response_format"] = response_format
+                    request = urllib.request.Request(
+                        self.base_url,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers=self.headers,
+                        method="POST",
+                    )
+                    _t_start = time.perf_counter()
+                    with urllib.request.urlopen(request, timeout=180) as response:
+                        raw = response.read().decode("utf-8")
+                        # Parse JSON response and return content
+                        data = json.loads(raw)
+                        _choice = data["choices"][0]
+                        _message = _choice.get("message", {}) or {}
+                        content = _message.get("content")
+                        _finish = _choice.get("finish_reason")
 
-                    # Reasoning / "thinking" models (e.g. MiniMax M-series) often
-                    # return an empty `content` with the actual text in
-                    # `reasoning` / `reasoning_content`, OR they spend the whole
-                    # token budget thinking and get cut off (finish_reason
-                    # "length") before emitting any `content`. Salvage the
-                    # reasoning text so a thinking model isn't treated as a hard
-                    # failure. JSON callers then pull the object out of it via the
-                    # tolerant `_extract_json_blob`; if it's a truncated
-                    # half-thought, parsing fails and the fallback chain kicks in.
-                    if not content or not content.strip():
-                        _reasoning = _message.get("reasoning_content") or _message.get("reasoning")
-                        if _reasoning and str(_reasoning).strip():
-                            content = str(_reasoning)
+                        # Reasoning / "thinking" models (e.g. MiniMax M-series)
+                        # often return an empty `content` with the actual text in
+                        # `reasoning` / `reasoning_content`. Salvage it so a
+                        # thinking model isn't treated as a hard failure; JSON
+                        # callers pull the object out via `_extract_json_blob`.
+                        if not content or not content.strip():
+                            _reasoning = _message.get("reasoning_content") or _message.get("reasoning")
+                            if _reasoning and str(_reasoning).strip():
+                                content = str(_reasoning)
 
-                    if not content or not content.strip():
-                        _hint = (
-                            " (finish_reason=length — model hit max_tokens before emitting"
-                            " content; raise max_tokens for this model)"
-                            if _finish == "length" else ""
-                        )
-                        raise ValueError(f"Model returned an empty string.{_hint}")
-
-                    usage = data.get("usage", {})
-                    # Expose cache hit metrics when available (OpenRouter passes these through)
-                    cache_read = usage.get("cache_read_input_tokens", 0)
-                    cache_write = usage.get("cache_creation_input_tokens", 0)
-                    if cache_read or cache_write:
-                        usage["cache_read_input_tokens"] = cache_read
-                        usage["cache_creation_input_tokens"] = cache_write
-                    self.current_model = model_to_use
-
-                    # Pillar 1 — per-event cost tracking. Phase/stage come from
-                    # ContextVars set by the caller (default "base"/"unknown").
-                    # Failures don't raise — observability must not break the run.
-                    if self.cost_events is not None:
-                        try:
-                            self.cost_events.record_llm(
-                                stage=_llm_stage.get(),
-                                model=model_to_use,
-                                usage=usage,
-                                phase=_llm_phase.get(),
-                                duration_ms=int((time.perf_counter() - _t_start) * 1000),
-                                source=_stage_routed_source,
+                        if not content or not content.strip():
+                            # Empty because the model exhausted its budget before
+                            # emitting content → retry the same model once with a
+                            # bigger budget before failing over to the next one.
+                            if _finish == "length" and _length_bump == 0:
+                                _effective_max_tokens = min(_effective_max_tokens * 2, 64000)
+                                print(
+                                    f"   ↻ {model_to_use} hit max_tokens with empty content at "
+                                    f"stage '{_llm_stage.get()}' — retrying same model with "
+                                    f"max_tokens={_effective_max_tokens}"
+                                )
+                                continue
+                            _hint = (
+                                " (finish_reason=length — model hit max_tokens before emitting"
+                                " content even after a budget bump)"
+                                if _finish == "length" else ""
                             )
-                        except Exception:
-                            pass
+                            raise ValueError(f"Model returned an empty string.{_hint}")
 
-                    return content, usage
+                        usage = data.get("usage", {})
+                        # Expose cache hit metrics when available (OpenRouter passes these through)
+                        cache_read = usage.get("cache_read_input_tokens", 0)
+                        cache_write = usage.get("cache_creation_input_tokens", 0)
+                        if cache_read or cache_write:
+                            usage["cache_read_input_tokens"] = cache_read
+                            usage["cache_creation_input_tokens"] = cache_write
+                        self.current_model = model_to_use
+
+                        # Pillar 1 — per-event cost tracking. Phase/stage come from
+                        # ContextVars set by the caller (default "base"/"unknown").
+                        # Failures don't raise — observability must not break the run.
+                        if self.cost_events is not None:
+                            try:
+                                self.cost_events.record_llm(
+                                    stage=_llm_stage.get(),
+                                    model=model_to_use,
+                                    usage=usage,
+                                    phase=_llm_phase.get(),
+                                    duration_ms=int((time.perf_counter() - _t_start) * 1000),
+                                    source=_stage_routed_source,
+                                )
+                            except Exception:
+                                pass
+
+                        return content, usage
+                # inner budget-retry loop exhausted without returning
+                raise ValueError("Model returned an empty string after a max_tokens retry.")
             except Exception as exc:
                 if isinstance(exc, urllib.error.HTTPError):
                     detail = exc.read().decode("utf-8", errors="ignore")
@@ -2200,6 +2217,52 @@ class VideoGenerationPipeline:
                 print(f"🔎 Serper: {len(self._serper_service._keys)} API key(s) configured")
             except ImportError:
                 print("⚠️ serper_service.py not found — Serper disabled")
+
+        # ── Per-run state safe defaults ────────────────────────────────
+        # run() re-initializes all of these from its parameters; they must
+        # ALSO exist right after construction because some callers drive a
+        # single method on a fresh instance without ever calling run() —
+        # e.g. single_shot_generator's insert-shot path calls
+        # _generate_html_per_shot directly, whose call closure reads every
+        # attribute below (audited via AST 2026-07-10). Values mirror the
+        # inert defaults run() starts from.
+        self._stop_event = None  # cooperative-cancel Event (None = no cancel)
+        # Vision-review / bbox-lint per-run state.
+        self._vision_review_banner_shown = False
+        self._vision_review_run_cost_usd = 0.0
+        self._vision_review_passed_first = 0
+        self._vision_review_regen_passed = 0
+        self._vision_review_ship_original = 0
+        self._vision_review_issue_codes: Dict[str, int] = {}
+        self._vision_review_skipped_count = 0
+        self._review_thumbnails: Dict[int, bytes] = {}
+        self._screenshot_client = None
+        # Input asset contexts (source clips / images).
+        self._input_video_contexts = None
+        self._input_video_context = None
+        self._input_image_contexts = None
+        self._routing_config: Dict[str, Any] = {}
+        # Progress + thread-safe token accounting.
+        self._progress_callback = None
+        self._token_lock = threading.Lock()
+        self._cumulative_tokens: dict = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        # AI-video / dialogue-scene clients — built lazily when those
+        # features are enabled; None/inert means "feature off".
+        self._fal_veo_client = None
+        self._ai_video_cost_tracker = None
+        self._fal_seedance_client = None
+        self._dialogue_cost_tracker = None
+        self._dialogue_ledger: Any = None
+        self._dialogue_institute_id = None
+        self._dialogue_mode: str = "storybook"
+        self._dialogue_characters: List[Dict[str, Any]] = []
+        self._dialogue_init_lock = threading.Lock()
+        self._dialogue_cast_sheet_url: Optional[str] = None
+        self._character_sheet_urls: Optional[Dict[str, str]] = None
 
     # Keywords that hint the asset is illustration-y / educational — route
     # Pixabay first when no explicit provider hint is given.

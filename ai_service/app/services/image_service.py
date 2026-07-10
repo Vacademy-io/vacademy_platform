@@ -23,6 +23,28 @@ from .image_prompts import (
 
 logger = logging.getLogger(__name__)
 
+# All image generation goes through OpenRouter (billed account) using this
+# model. The direct Google Generative Language API was dropped — its free-tier
+# key had a zero image quota and 429'd every call.
+IMAGE_MODEL = "google/gemini-3.1-flash-image"
+_OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _aspect_ratio_for(width: int, height: int) -> str:
+    """Map pixel dims to the nearest OpenRouter image_config aspect ratio."""
+    if not width or not height:
+        return "1:1"
+    r = width / height
+    if r >= 1.45:
+        return "16:9"
+    if r >= 1.2:
+        return "4:3"
+    if r >= 0.85:
+        return "1:1"
+    if r >= 0.7:
+        return "3:4"
+    return "9:16"
+
 
 class ImageGenerationService:
     """
@@ -315,114 +337,80 @@ class ImageGenerationService:
             return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     
     async def _call_image_generation_llm(
-        self, 
-        prompt: str, 
-        width: int, 
-        height: int, 
+        self,
+        prompt: str,
+        width: int,
+        height: int,
         gemini_key: Optional[str] = None
     ) -> Tuple[Optional[bytes], Dict[str, int]]:
         """
-        Generate image using Google Generative AI (Gemini).
+        Generate an image via OpenRouter using IMAGE_MODEL (google/gemini-3.1-flash-image).
+
+        Switched off the direct Google Generative Language API — its free-tier
+        key had a zero image quota (429 on every call). OpenRouter routes the
+        same Google image model through the billed account.
 
         Args:
             prompt: Image generation prompt
-            width: Image width
-            height: Image height
-            gemini_key: Optional Gemini API key (overrides instance default)
+            width/height: used to pick the aspect ratio
+            gemini_key: kept for signature compatibility (unused)
 
         Returns:
-            Tuple of (image_bytes, usage_dict) where usage_dict contains:
-            - prompt_tokens: int
-            - completion_tokens: int (usually 0 for image generation)
-            - total_tokens: int
+            Tuple of (image_bytes, usage_dict).
         """
+        empty_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         try:
-            # Use provided key or fall back to instance default
-            effective_key = gemini_key or self._gemini_api_key
-            if not effective_key:
-                return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            from ..config import get_settings
+            key = self._openrouter_api_key or get_settings().openrouter_api_key
+            if not key:
+                logger.warning("No OpenRouter API key configured for image generation")
+                return None, empty_usage
 
-            # Use the shared HTTP client for connection pooling
             response = await self._http_client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key={effective_key}",
+                _OPENROUTER_IMAGE_URL,
                 headers={
-                    "Content-Type": "application/json"
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
                 },
                 json={
-                    "contents": [
-                        {
-                            "parts": [
-                                {
-                                    "text": prompt
-                                }
-                            ]
-                        }
-                    ],
-                    "generationConfig": {
-                        "imageConfig": {
-                            "aspectRatio": "16:9"
-                        },
-                        "responseModalities": ["IMAGE"]
-                    }
+                    "model": IMAGE_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "modalities": ["image"],
+                    "image_config": {"aspect_ratio": _aspect_ratio_for(width, height)},
                 },
-                timeout=60.0  # Increased timeout for image generation
+                timeout=90.0,
             )
 
             if response.status_code != 200:
-                logger.error(f"Gemini API error: {response.text}")
-                return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                logger.error(f"OpenRouter image API error {response.status_code}: {response.text[:300]}")
+                return None, empty_usage
 
             data = response.json()
-            
-            # Extract usage information if available
-            usage_info = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            if "usageMetadata" in data:
-                usage_meta = data["usageMetadata"]
-                usage_info = {
-                    "prompt_tokens": usage_meta.get("promptTokenCount", 0),
-                    "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
-                    "total_tokens": usage_meta.get("totalTokenCount", 0),
-                }
+            usage_meta = data.get("usage", {}) or {}
+            usage_info = {
+                "prompt_tokens": usage_meta.get("prompt_tokens", 0),
+                "completion_tokens": usage_meta.get("completion_tokens", 0),
+                "total_tokens": usage_meta.get("total_tokens", 0),
+            }
 
-            # Check if response has inlineData directly
-            if "inlineData" in data:
-                inline_data = data["inlineData"]
-                mime_type = inline_data.get("mimeType", "")
-                data_b64 = inline_data.get("data", "")
+            import base64
+            for choice in data.get("choices") or []:
+                for image in (choice.get("message") or {}).get("images", []) or []:
+                    url = (image.get("image_url") or {}).get("url", "")
+                    if url:
+                        b64 = url.split(",", 1)[1] if "," in url else url
+                        try:
+                            return base64.b64decode(b64), usage_info
+                        except Exception as decode_err:
+                            logger.error(f"Image base64 decode error: {decode_err}")
+                            return None, usage_info
 
-                if mime_type and data_b64 and mime_type.startswith("image/"):
-                    import base64
-                    try:
-                        image_bytes = base64.b64decode(data_b64)
-                        return image_bytes, usage_info
-                    except Exception as decode_err:
-                        logger.error(f"Base64 decode error: {decode_err}")
-                        return None, usage_info
-
-            # Fallback: Gemini API returns candidates with content parts
-            if "candidates" in data and len(data["candidates"]) > 0:
-                candidate = data["candidates"][0]
-                if "content" in candidate and "parts" in candidate["content"]:
-                    for part in candidate["content"]["parts"]:
-                        if "inlineData" in part:
-                            inline_data = part["inlineData"]
-                            mime_type = inline_data.get("mimeType", "")
-                            data_b64 = inline_data.get("data", "")
-
-                            if mime_type and data_b64 and mime_type.startswith("image/"):
-                                import base64
-                                try:
-                                    image_bytes = base64.b64decode(data_b64)
-                                    return image_bytes, usage_info
-                                except Exception as decode_err:
-                                    logger.error(f"Base64 decode error: {decode_err}")
-                                    return None, usage_info
-
+            logger.warning("OpenRouter image response contained no image")
             return None, usage_info
 
         except Exception as e:
-            logger.error(f"Gemini image generation failed: {str(e)}")
-            return None, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            logger.error(f"OpenRouter image generation failed: {str(e)}")
+            return None, empty_usage
 
     async def _get_image_search_keyword(self, course_name: str, about_course: str) -> str:
         """

@@ -38,8 +38,8 @@ MAX_DOC_IMAGES = 2
 # Bound concurrent image calls across parallel document todos.
 _IMAGE_SEMAPHORE = asyncio.Semaphore(4)
 _IMAGE_TIMEOUT_SECONDS = 90.0
-# Image model via OpenRouter (same provider the video pipeline uses in prod).
-DOC_IMAGE_MODEL = "recraft/recraft-v4.1"
+# Image model via OpenRouter (Google's image model through the billed account).
+DOC_IMAGE_MODEL = "google/gemini-3.1-flash-image"
 _OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Same tag contract as automation_pipeline._process_generated_images.
@@ -172,7 +172,11 @@ async def illustrate_document(html: str, slide_path: str = "") -> Tuple[str, int
         return _PLACEHOLDER_IMG_RE.sub("", html), 0
 
     urls: list[Optional[str]] = [None] * len(matches)
-    if settings.gemini_api_key:
+    # Gate on the OpenRouter key — image gen was moved off the direct Gemini
+    # image API (free-tier, zero image quota) to OpenRouter. Gating on
+    # gemini_api_key here would strip every illustration once that key is
+    # retired, even though OpenRouter can still generate them.
+    if settings.openrouter_api_key:
         capped = matches[:MAX_DOC_IMAGES]
         if len(matches) > MAX_DOC_IMAGES:
             logger.info(
@@ -184,7 +188,7 @@ async def illustrate_document(html: str, slide_path: str = "") -> Tuple[str, int
         )
         urls[: len(generated)] = list(generated)
     else:
-        logger.info("GEMINI_API_KEY not configured; stripping document image placeholders")
+        logger.info("OPENROUTER_API_KEY not configured; stripping document image placeholders")
 
     generated_count = 0
     # Replace from the end so match offsets stay valid.

@@ -3457,7 +3457,16 @@ class VideoGenerationService:
                     "avatar": ["avatar_video_path"],
                     "render": ["video_path"],
                 }
-                _expected = _required_outputs.get(stage_pipeline_name, [])
+                _expected = list(_required_outputs.get(stage_pipeline_name, []))
+                # No-audio content types (SLIDES) intentionally skip TTS — the
+                # tts stage runs as a no-op (do_tts=False) and produces no
+                # audio_path, so its absence is NOT a silent failure. Without
+                # this, every SLIDES slide died at the tts stage with
+                # "missing required outputs: ['audio_path']". Keep in sync with
+                # NO_AUDIO_TYPES in automation_pipeline.py.
+                _NO_AUDIO_CONTENT_TYPES = {"SLIDES"}
+                if stage_pipeline_name == "tts" and content_type in _NO_AUDIO_CONTENT_TYPES:
+                    _expected = [k for k in _expected if k != "audio_path"]
                 _missing = [k for k in _expected if not outputs or not outputs.get(k)]
                 if _missing and not pipeline_error:
                     pipeline_error = (

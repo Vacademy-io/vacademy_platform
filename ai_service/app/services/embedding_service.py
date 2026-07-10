@@ -1,10 +1,10 @@
 """
 Service for generating text embeddings.
 
-Uses gemini-embedding-001 in both paths so all vectors live in one embedding
-space, compatible with the existing content_embeddings rows:
-1. OpenRouter (primary) — pay-per-token, no free-tier daily quota
-2. Google Gemini API direct (fallback)
+Uses google/gemini-embedding-001 through OpenRouter (pay-per-token, no
+free-tier daily quota) so all vectors live in one embedding space,
+compatible with the existing content_embeddings rows. The direct-Gemini
+fallback was retired — embeddings run exclusively through OpenRouter.
 """
 from __future__ import annotations
 
@@ -24,17 +24,16 @@ CHUNK_OVERLAP = 200
 
 OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
 OPENROUTER_EMBED_MODEL = "google/gemini-embedding-001"
-GEMINI_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001"
 EMBEDDING_DIM = 768
-# Gemini batchEmbedContents accepts at most 100 requests per call
+# Batch at most 100 inputs per embeddings call.
 BATCH_LIMIT = 100
 MAX_RETRIES = 3
 MAX_RETRY_DELAY_SECONDS = 30.0
 
-# (gemini taskType, openrouter input_type)
+# task -> openrouter input_type
 TASK_TYPES = {
-    "document": ("RETRIEVAL_DOCUMENT", "search_document"),
-    "query": ("RETRIEVAL_QUERY", "search_query"),
+    "document": "search_document",
+    "query": "search_query",
 }
 
 # Module-level so the cache survives per-request EmbeddingService instances.
@@ -110,51 +109,30 @@ class EmbeddingService:
         if len(items) != len(texts):
             raise ValueError(f"OpenRouter returned {len(items)} embeddings for {len(texts)} inputs")
         embeddings = [item["embedding"] for item in items]
-        # If the provider ignored `dimensions`, raising here triggers the
-        # Gemini fallback instead of inserting vectors pgvector will reject.
+        # If the provider ignored `dimensions`, raising here drops the batch
+        # (returns None) instead of inserting vectors pgvector will reject.
         if embeddings and len(embeddings[0]) != EMBEDDING_DIM:
             raise ValueError(f"OpenRouter returned {len(embeddings[0])}-dim embeddings, expected {EMBEDDING_DIM}")
         return embeddings
 
-    async def _embed_gemini(self, texts: List[str], task_type: str, api_key: str) -> List[List[float]]:
-        """Embed texts via the Gemini API directly (batchEmbedContents)."""
-        payload = {
-            "requests": [
-                {
-                    "model": "models/gemini-embedding-001",
-                    "content": {"parts": [{"text": t}]},
-                    "taskType": task_type,
-                    "outputDimensionality": EMBEDDING_DIM,
-                }
-                for t in texts
-            ]
-        }
-        headers = {"x-goog-api-key": api_key}
-        data = await self._post_with_retry(f"{GEMINI_MODEL_URL}:batchEmbedContents", payload, headers)
-        return [e["values"] for e in data["embeddings"]]
-
     async def _embed_with_providers(
         self, texts: List[str], task: str, institute_id: str
     ) -> List[Optional[List[float]]]:
-        """Embed up to BATCH_LIMIT texts, trying OpenRouter then Gemini direct."""
-        openrouter_key, gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
-        gemini_task, openrouter_input_type = TASK_TYPES[task]
+        """Embed up to BATCH_LIMIT texts via OpenRouter."""
+        openrouter_key, _gemini_key, _ = self.api_key_resolver.resolve_keys(institute_id=institute_id)
+        openrouter_input_type = TASK_TYPES[task]
 
-        if openrouter_key:
-            try:
-                return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key)
-            except Exception as e:
-                logger.warning(f"OpenRouter embedding failed, falling back to Gemini: {e}")
+        if not openrouter_key:
+            logger.error("No embedding provider available (OPENROUTER_API_KEY not configured)")
+            return [None] * len(texts)
 
-        if gemini_key:
-            try:
-                return await self._embed_gemini(texts, gemini_task, gemini_key)
-            except Exception as e:
-                logger.warning(f"Gemini embedding failed: {e}")
-
-        if not openrouter_key and not gemini_key:
-            logger.error("No embedding provider available")
-        return [None] * len(texts)
+        try:
+            return await self._embed_openrouter(texts, openrouter_input_type, openrouter_key)
+        except Exception as e:
+            # No cross-provider fallback anymore — a failure means these
+            # chunks go un-embedded (logged so it's diagnosable, not silent).
+            logger.error(f"OpenRouter embedding failed, batch dropped: {e}")
+            return [None] * len(texts)
 
     async def embed_text(self, text: str, institute_id: str = "default") -> Optional[List[float]]:
         """Generate embedding for a single document text."""

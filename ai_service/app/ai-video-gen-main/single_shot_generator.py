@@ -206,11 +206,16 @@ def _attach_minimal_state(pipeline, *, video_width: int, video_height: int) -> N
         "coverage_min_pct": 0,
     }
     pipeline._routing_plan = {}
-    # No source-clip context for inserted shots (a SOURCE_CLIP shot in
-    # a gap doesn't make sense; the heuristic above never picks it).
+    # No source-clip/image context for inserted shots (a SOURCE_CLIP or
+    # IMAGE_CLIP shot in a gap doesn't make sense; the heuristic above
+    # never picks them).
     pipeline._input_video_contexts = None
     pipeline._input_video_context = None
+    pipeline._input_image_contexts = None
     pipeline._mute_tts_on_source_clips = False
+    # No cooperative cancel for a single-shot request — the per-shot path
+    # reads this directly (set by run() on full-pipeline runs).
+    pipeline._stop_event = None
     # Sound effects off — inserted shots don't get whoosh/sfx because we
     # don't run the Sound Planner here. The user can add cues manually
     # via the existing SFX UI if they want.

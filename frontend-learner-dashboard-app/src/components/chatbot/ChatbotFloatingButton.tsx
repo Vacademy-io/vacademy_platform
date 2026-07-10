@@ -4,6 +4,7 @@ import { useLocation } from "@tanstack/react-router";
 import { Capacitor } from "@capacitor/core";
 import { useChatbotContext } from "./useChatbotContext";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
+import { useQuizActiveStore } from "@/stores/study-library/quiz-active-store";
 import { cn } from "@/lib/utils";
 import { avatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion } from "framer-motion";
@@ -20,6 +21,7 @@ export const ChatbotFloatingButton = () => {
   const { isOpen, setIsOpen, shouldShowChatbot, chatbotSettings } =
     useChatbotContext();
   const isDoubtSidebarOpen = useDoubtSidebarStore((state) => state.isOpen);
+  const isQuizActive = useQuizActiveStore((state) => state.isActive);
   const location = useLocation();
 
   // Move button higher on video/slide pages to avoid overlapping player controls
@@ -106,10 +108,12 @@ export const ChatbotFloatingButton = () => {
   return (
     <div className={cn(
       "fixed right-6 z-50 flex flex-col items-end gap-3 pointer-events-none",
-      isOnVideoPage ? "bottom-20" : "bottom-6",
+      // While a quiz is being taken, float higher so the button never covers
+      // the quiz Next/Finish controls in the bottom-right corner
+      isQuizActive ? "bottom-40" : isOnVideoPage ? "bottom-20" : "bottom-6",
       isNativePlatform && "mb-10"
     )}>
-      
+
       {/* Long Prompt Bubble (appears above) */}
       <AnimatePresence>
         {showLongPrompt && !isHovered && (

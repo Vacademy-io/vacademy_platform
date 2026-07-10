@@ -33,6 +33,7 @@ import {
 } from '@/routes/evaluation/evaluations/-services/evaluation-service';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getPublicUrl } from '@/services/upload_file';
+import { downloadFileFromUrl, ensureFileHasExtension } from '@/lib/file-download';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { convertToLocalDateTime } from '@/constants/helper';
@@ -281,8 +282,14 @@ const AssessmentAttemptActivity = ({
     const handleViewEvaluated = async () => {
         if (!evaluatedFileId) return;
         const url = await getPublicUrl(evaluatedFileId);
-        if (url) window.open(url, '_blank');
-        else toast.error('No evaluated copy found yet.');
+        if (url) {
+            // Download with a correct, `.pdf`-carrying name — the public URL's
+            // basename comes from the original upload name, which for
+            // quick-evaluated copies can lack an extension.
+            await downloadFileFromUrl(url, `Evaluated-Copy-${attempt?.full_name ?? attemptId ?? ''}`);
+        } else {
+            toast.error('No evaluated copy found yet.');
+        }
     };
 
     const handleOpenTool = () => {
@@ -318,7 +325,9 @@ const AssessmentAttemptActivity = ({
             if (file) {
                 fileId =
                     (await uploadFile({
-                        file,
+                        // Ensure the evaluated copy carries a correct extension so it
+                        // later downloads as e.g. `.pdf` rather than an extension-less file.
+                        file: ensureFileHasExtension(file),
                         setIsUploading: setUploading,
                         userId: tokenData?.user ?? '',
                         source: instituteId,

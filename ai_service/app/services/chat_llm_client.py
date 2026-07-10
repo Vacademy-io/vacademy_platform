@@ -1,5 +1,7 @@
 """
-LLM client with provider priority fallback (OpenRouter -> Gemini).
+LLM client. All completions run through OpenRouter (the direct-Gemini
+fallback was retired — that key was free-tier with a zero image quota, and
+text now runs exclusively through the billed OpenRouter account).
 """
 from __future__ import annotations
 
@@ -15,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 class ChatLLMClient:
     """
-    Handles LLM calls with provider priority: OpenRouter -> Gemini.
-    Supports tool calling for agentic behavior.
+    Handles LLM calls through OpenRouter. Supports tool calling for
+    agentic behavior.
     """
     
     def __init__(self, api_key_resolver: ApiKeyResolver):
@@ -50,8 +52,8 @@ class ChatLLMClient:
         Returns:
             Response dict with content, tool_calls, finish_reason, etc.
         """
-        # Resolve all keys at once
-        openrouter_key, gemini_key, resolved_model = self.api_key_resolver.resolve_keys(
+        # Resolve keys. gemini_key is ignored — the Gemini fallback was retired.
+        openrouter_key, _gemini_key, resolved_model = self.api_key_resolver.resolve_keys(
             institute_id=institute_id or "default",
             user_id=user_id
         )
@@ -74,17 +76,6 @@ class ChatLLMClient:
                 failures.append(f"OpenRouter: {e}")
         else:
             failures.append("OpenRouter: no key configured")
-
-        # Try Gemini as fallback
-        if gemini_key:
-            try:
-                logger.info("Attempting Gemini API call")
-                return await self._call_gemini(messages, tools, temperature, max_tokens, gemini_key)
-            except Exception as e:
-                logger.error(f"Gemini failed: {e}")
-                failures.append(f"Gemini: {e}")
-        else:
-            failures.append("Gemini: no key configured")
 
         raise Exception("All LLM providers failed - " + "; ".join(failures))
     
@@ -113,61 +104,6 @@ class ChatLLMClient:
                 converted.append(clean_msg)
         return converted
 
-    # Gemini model used for fallback completions. Kept in sync with the model
-    # transcript_notes uses directly — google retired gemini-1.5-flash on
-    # v1beta and now returns 404 for it.
-    _GEMINI_MODEL = "gemini-2.5-flash"
-
-    async def _call_gemini(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]],
-        temperature: float,
-        max_tokens: int,
-        api_key: str,
-    ) -> Dict[str, Any]:
-        """Call Gemini API (converted format)."""
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self._GEMINI_MODEL}:generateContent?key={api_key}"
-        )
-
-        # Convert messages to Gemini format
-        gemini_contents = []
-        for msg in messages:
-            role = "user" if msg["role"] in ["user", "system"] else "model"
-            gemini_contents.append({
-                "role": role,
-                "parts": [{"text": msg.get("content", "")}]
-            })
-
-        payload = {
-            "contents": gemini_contents,
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_tokens,
-            }
-        }
-
-        # Note: Gemini tool calling has different format - simplified for now
-        # Full tool support would need format conversion
-
-        response = await self.http_client.post(url, json=payload)
-        response.raise_for_status()
-
-        data = response.json()
-        candidate = data["candidates"][0]
-        content = candidate["content"]["parts"][0]["text"]
-
-        return {
-            "content": content,
-            "tool_calls": None,  # Gemini tool format needs conversion
-            "finish_reason": candidate.get("finishReason"),
-            "provider": "gemini",
-            "usage": data.get("usageMetadata"),
-            "model": self._GEMINI_MODEL,
-        }
-    
     async def _call_openrouter(
         self,
         messages: List[Dict[str, Any]],
@@ -245,7 +181,7 @@ class ChatLLMClient:
         Yields dicts: {"type": "token", "content": "..."} or {"type": "tool_calls", "tool_calls": [...]} or {"type": "done", "usage": {...}}
         Falls back to non-streaming if streaming fails.
         """
-        openrouter_key, gemini_key, model = self.api_key_resolver.resolve_keys(
+        openrouter_key, _gemini_key, model = self.api_key_resolver.resolve_keys(
             institute_id=institute_id or "default",
             user_id=user_id
         )

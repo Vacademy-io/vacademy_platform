@@ -230,6 +230,17 @@ public class EmailService {
                         logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse,
                                 instituteId);
 
+                        // If this sender was set up via the SES self-serve flow but its identity
+                        // is not verified yet, sending from it would be rejected by SES. Fall back
+                        // to the platform default sender so mail still goes out. Backward compatible:
+                        // legacy configs have no "verified" field, so this never triggers for them.
+                        JsonNode verifiedNode = emailConfig.path(NotificationConstants.VERIFIED);
+                        if (verifiedNode.isBoolean() && !verifiedNode.asBoolean()) {
+                            logger.warn("Sender for type {} in institute {} is not SES-verified yet; "
+                                    + "falling back to default sender {}", emailTypeToUse, instituteId, from);
+                            return new AbstractMap.SimpleEntry<>(mailSender, from);
+                        }
+
                         // Check if SMTP credentials are real or dummy placeholders
                         String username = emailConfig.path(NotificationConstants.USERNAME).asText("");
                         String password = emailConfig.path(NotificationConstants.PASSWORD).asText("");

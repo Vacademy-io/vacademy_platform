@@ -339,6 +339,15 @@ public class CounsellorWorkbenchService {
         // response so the dialog can pre-populate.
         List<CounselorPoolMember> rows = counselorPoolMemberRepository
                 .findByInstituteAndCounselor(instituteId, userId);
+        if (rows.isEmpty()) {
+            // Nothing to flip — this counsellor has never been added as a member of
+            // any lead pool (the workbench roster is role-derived and independent of
+            // pool membership, so they can still show up here with zero rows). Without
+            // this check the call was a silent no-op that still returned 200, so the
+            // UI showed "Marked active" even though is_active stayed false forever.
+            throw new VacademyException(
+                    "This counsellor is not part of any lead pool yet. Add them to a pool from Settings > Leads > Pools before changing their status.");
+        }
         Set<String> affectedPoolIds = new HashSet<>();
         String upper = status.toUpperCase(Locale.ROOT);
         for (CounselorPoolMember m : rows) {

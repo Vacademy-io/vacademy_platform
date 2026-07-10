@@ -109,7 +109,7 @@ private String id;
     @Column(name = "end_date")
     private Date endDate;
 
-    // ── Autopay / recurring-mandate (V367) ────────────────────────────────
+    // ── Autopay / recurring-mandate (V369) ────────────────────────────────
     // The mandate itself (token id, max_amount, status) lives in
     // user_institute_payment_gateway_mapping.payment_gateway_customer_data
     // JSON, keyed by this plan's id. These columns only drive the scheduler.

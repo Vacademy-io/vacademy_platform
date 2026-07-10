@@ -243,7 +243,7 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         List<String> statuses);
 
         /**
-         * Auto-charge scheduler due-query (V367 autopay). Returns ACTIVE plans
+         * Auto-charge scheduler due-query (V369 autopay). Returns ACTIVE plans
          * that have opted into autopay and whose next_charge_at has arrived.
          * Only plans with auto_renewal_enabled = true are ever selected, so
          * pre-existing (non-migrated) plans are never auto-charged. EnrollInvite +

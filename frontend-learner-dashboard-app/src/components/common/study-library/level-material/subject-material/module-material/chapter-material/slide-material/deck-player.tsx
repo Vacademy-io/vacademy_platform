@@ -147,10 +147,15 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
   }, [index, steps]);
 
   const toggleFullscreen = useCallback(() => {
+    // Both APIs return a Promise that rejects (with a TypeError) when the browser
+    // refuses the request — e.g. fullscreen blocked by Permissions Policy in an
+    // embedded/iframe context, or without a qualifying user gesture. A denied
+    // fullscreen is benign here, so swallow the rejection instead of letting it
+    // bubble up as an unhandled promise rejection (surfaced to Sentry).
     if (document.fullscreenElement) {
-      document.exitFullscreen?.();
+      document.exitFullscreen?.().catch(() => {});
     } else {
-      containerRef.current?.requestFullscreen?.();
+      containerRef.current?.requestFullscreen?.().catch(() => {});
     }
   }, []);
 

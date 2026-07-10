@@ -909,13 +909,17 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
     if (!playerContainerRef.current) return;
 
     if (!document.fullscreenElement) {
+      // requestFullscreen() rejects (with a TypeError) when the browser refuses —
+      // e.g. fullscreen blocked by Permissions Policy in an embedded context, or
+      // without a qualifying user gesture. Catch it so it doesn't bubble up as an
+      // unhandled promise rejection (surfaced to Sentry).
       playerContainerRef.current.requestFullscreen().then(() => {
         setIsFullscreen(true);
-      });
+      }).catch(() => {});
     } else {
       document.exitFullscreen().then(() => {
         setIsFullscreen(false);
-      });
+      }).catch(() => {});
     }
   };
 

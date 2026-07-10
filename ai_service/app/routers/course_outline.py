@@ -37,17 +37,20 @@ async def generate_course_outline(
     based on user prompt, optional existing course tree, and optional course
     metadata from admin-core-service.
     """
-    # Pre-flight credit check
+    # Pre-flight credit check (parametric course_outline price; None = allow)
     if payload.institute_id:
-        from ..services.credit_service import CreditService
-        from ..schemas.credits import CreditCheckRequest
-        check = CreditService(db).check_credits(CreditCheckRequest(
-            institute_id=payload.institute_id,
-            request_type="outline",
-            estimated_tokens=1000,
-        ))
-        if not check.has_sufficient_credits:
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+        from ..services.ai_billing import preflight_tool_credits
+        estimate = preflight_tool_credits(
+            db, tool_key="course_outline", tool_params={}, institute_id=payload.institute_id
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: course outline needs ≈{estimate.get('estimated_credits')} "
+                    f"credits, balance is {estimate.get('current_balance')}. Please top up."
+                ),
+            )
     try:
         return await service.generate_outline(payload)
     except PaymentRequiredError as exc:
@@ -80,17 +83,20 @@ async def stream_course_outline(
         model: Optional LLM model to use. Defaults to database default or LLM_DEFAULT_MODEL from environment.
         payload: Request containing user prompt, course tree, and course depth.
     """
-    # Pre-flight credit check
+    # Pre-flight credit check (parametric course_outline price; None = allow)
     if institute_id:
-        from ..services.credit_service import CreditService
-        from ..schemas.credits import CreditCheckRequest
-        check = CreditService(db).check_credits(CreditCheckRequest(
-            institute_id=institute_id,
-            request_type="outline",
-            estimated_tokens=1000,
-        ))
-        if not check.has_sufficient_credits:
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+        from ..services.ai_billing import preflight_tool_credits
+        estimate = preflight_tool_credits(
+            db, tool_key="course_outline", tool_params={}, institute_id=institute_id
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: course outline needs ≈{estimate.get('estimated_credits')} "
+                    f"credits, balance is {estimate.get('current_balance')}. Please top up."
+                ),
+            )
 
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     from ..services.ai_models_service import AIModelsService

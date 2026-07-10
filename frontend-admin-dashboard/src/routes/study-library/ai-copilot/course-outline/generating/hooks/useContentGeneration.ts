@@ -38,6 +38,27 @@ export const useContentGeneration = (
         // Read language that was stored during outline generation
         const language = sessionStorage.getItem('courseLanguage') || 'English';
 
+        // Read course-level AI-video settings (model/voice/duration/tier)
+        // stored during outline generation; applied server-side to every
+        // AI Video / AI Slides / AI Storybook todo.
+        let videoSettings: Record<string, string> | undefined;
+        try {
+            const storedVideoSettings = sessionStorage.getItem('courseVideoSettings');
+            if (storedVideoSettings) {
+                const parsed = JSON.parse(storedVideoSettings);
+                videoSettings = {
+                    voice_gender: parsed.voiceGender || 'female',
+                    tts_provider: parsed.ttsProvider || 'standard',
+                    quality_tier: parsed.qualityTier || 'ultra',
+                    target_duration: parsed.targetDuration || '2-3 minutes',
+                };
+                if (parsed.model && parsed.model !== 'auto') videoSettings.model = parsed.model;
+                if (parsed.voiceId) videoSettings.voice_id = parsed.voiceId;
+            }
+        } catch (e) {
+            console.warn('Failed to parse courseVideoSettings, using defaults:', e);
+        }
+
         setIsGeneratingContent(true);
         setContentGenerationProgress('Starting content generation...');
 
@@ -1005,7 +1026,9 @@ export const useContentGeneration = (
                     setContentGenerationProgress(progress);
                 },
                 0, // retryCount
-                language
+                language,
+                undefined, // generationRunId — minted inside generateContent
+                videoSettings
             );
 
             // Mark content generation as complete (fallback)

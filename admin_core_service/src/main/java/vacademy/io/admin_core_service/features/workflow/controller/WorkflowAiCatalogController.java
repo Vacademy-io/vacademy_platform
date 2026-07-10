@@ -125,8 +125,8 @@ public class WorkflowAiCatalogController {
                 "{\"delay\":{\"value\":3,\"unit\":\"DAYS\"},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
                 "Nested delay.{value,unit}. Units SECONDS/MINUTES/HOURS/DAYS."));
         nodes.add(node("CONDITION", "Boolean SpEL branch.", true, false,
-                "{\"condition\":\"#ctx['enrolled'] == false\",\"routing\":[{\"type\":\"conditional\",\"trueNodeId\":\"...\",\"falseNodeId\":\"...\"}]}",
-                "Sets conditionResult; routes on trueNodeId/falseNodeId."));
+                "{\"condition\":\"#ctx['enrolled'] == false\",\"routing\":[{\"type\":\"conditional\",\"condition\":\"#ctx['enrolled'] == false\",\"label\":\"true\",\"trueNodeId\":\"<node>\",\"falseNodeId\":\"<node>\"}]}",
+                "The SpEL 'condition' MUST also be inside the routing entry (that is what the engine evaluates); routes to trueNodeId when true, falseNodeId when false. Both branch targets must be real node ids."));
         nodes.add(node("FILTER", "Filters a list by a per-item SpEL predicate.", true, false,
                 "{\"source\":\"#ctx['leads']\",\"condition\":\"#item['age'] > 18\",\"resultKey\":\"adults\",\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
                 "Output under resultKey (FILTER does honor it)."));
@@ -149,7 +149,7 @@ public class WorkflowAiCatalogController {
                 List.of("instituteId"), List.of("audienceId", "daysAgo", "startDate", "endDate"),
                 List.of("leads"),
                 "leads[]: email, parentEmail, parentName, mobileNumber, userId, instituteName + all custom fields in RAW case"));
-        q.add(query("fetch_audience_responses_by_day_difference",
+        q.add(query("getAudienceResponsesByDayDifference",
                 List.of("instituteId", "audienceId", "daysAgo"), List.of("conversionStatus"),
                 List.of("leads"),
                 "leads[]: same as filtered but custom-field keys are LOWERCASED. Matches responses exactly N days ago."));
@@ -181,7 +181,7 @@ public class WorkflowAiCatalogController {
                 List.of("userId"), List.of("packageSessionId", "packageSessionIds", "instituteId"),
                 List.of("(flat enrollment + payment fields)"),
                 "flat camelCase map of the learner's enrollment + payment status; used to gate abandoned-cart / webhook flows"));
-        q.add(query("fetch_upcoming_fee_installments",
+        q.add(query("getUpcomingFeeInstallments",
                 List.of("instituteId"), List.of("daysBeforeWindow", "daysAfterWindow"),
                 List.of("feePaymentList"),
                 "feePaymentList[]: learner fee installments due in the window (camelCase)"));

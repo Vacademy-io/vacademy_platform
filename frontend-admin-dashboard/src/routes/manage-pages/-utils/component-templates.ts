@@ -475,6 +475,19 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         },
     },
 
+    sectionHeading: {
+        type: 'sectionHeading',
+        enabled: true,
+        props: {
+            eyebrow: 'Why choose us',
+            title: 'Learning that actually sticks',
+            highlight: { text: 'actually sticks', style: 'gradient' },
+            lead: 'Programs designed around outcomes — not just content.',
+            align: 'center',
+            size: 'lg',
+        },
+    },
+
     mapEmbed: {
         type: 'mapEmbed',
         enabled: true,

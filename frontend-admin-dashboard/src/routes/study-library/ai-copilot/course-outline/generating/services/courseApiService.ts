@@ -55,7 +55,16 @@ export async function generateCourseOutline(
         console.error('Error Body:', errorText);
 
         if (response.status === 402) {
-            throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+            let detail = '';
+            try {
+                detail = JSON.parse(errorText)?.detail || '';
+            } catch {
+                /* non-JSON body */
+            }
+            throw new Error(
+                detail ||
+                    "Your institute's AI credits are insufficient. Please top up credits to continue."
+            );
         }
 
         throw new Error(`HTTP ${response.status}: ${response.statusText}. ${errorText}`);

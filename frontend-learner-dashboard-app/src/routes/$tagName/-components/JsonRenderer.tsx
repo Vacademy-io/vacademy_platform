@@ -8,6 +8,7 @@ import {
   buildSectionShellStyles,
   type ComponentStyle,
 } from "../-utils/style-utils";
+import { SectionDecorations, hasDecorations } from "../-utils/catalogue-decorations";
 import { CatalogueLink } from "./CatalogueLink";
 import {
   GraduationCap,
@@ -71,6 +72,28 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
   selectedComponentId = null,
   onComponentClick,
 }) => {
+  /** Slot-child rendering (columnLayout columns, accordion/tab slots): same
+   *  ComponentStyle treatment as top-level components — children previously
+   *  went through bare renderComponent and silently lost their style. */
+  const renderChild = (child: any): React.ReactNode => {
+    const rendered = renderComponent(child);
+    if (!rendered) return null;
+    const hasStyle = child.style && Object.keys(child.style).length > 0;
+    if (!hasStyle) return <React.Fragment key={child.id}>{rendered}</React.Fragment>;
+    return (
+      <ComponentStyleWrapper
+        key={child.id}
+        component={child}
+        componentStyle={buildComponentStyle(child.style)}
+        responsiveCSS={buildResponsiveCSS(child.id, child.style)}
+        hoverClass={getHoverClass(child.style)}
+        motionOff={(globalSettings as any)?.motion?.personality === 'none'}
+      >
+        {rendered}
+      </ComponentStyleWrapper>
+    );
+  };
+
   const renderComponent = (component: any) => {
     const { type, props, id, enabled = true, showCondition } = component;
 
@@ -206,11 +229,13 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           <TabsAccordionRenderer
             key={id}
             {...props}
-            renderSlot={(comps: any[]) => comps.map(renderComponent)}
+            renderSlot={(comps: any[]) => comps.map(renderChild)}
           />
         );
       case "trustChip":
         return <TrustChipRenderer key={id} {...props} />;
+      case "sectionHeading":
+        return <SectionHeadingRenderer key={id} {...props} />;
       case "logoCloud":
         return <LogoCloudRenderer key={id} {...props} />;
       case "mapEmbed":
@@ -255,24 +280,30 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         const {
           slots = [] as any[][],
           columnWidths = [] as string[],
+          columnFr = undefined as string[] | undefined,
           gap = 'md',
           align = 'top',
           stackOnMobile = true,
+          reverseOnMobile = false,
         } = props;
-        const gapMap: Record<string, string> = { none: '0', sm: '0.5rem', md: '1rem', lg: '2rem' };
+        const gapMap: Record<string, string> = { none: '0', sm: '0.5rem', md: '1rem', lg: '2rem', xl: '3rem', '2xl': '4rem' };
         const alignMap: Record<string, string> = { top: 'start', center: 'center', bottom: 'end', stretch: 'stretch' };
         const widthToFr = (w?: string) => {
           const map: Record<string, string> = { '1/2': '1fr', '1/3': '1fr', '2/3': '2fr', '1/4': '1fr', '3/4': '3fr' };
           return map[w ?? ''] || '1fr';
         };
-        const gridCols = slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
+        // columnFr (true per-column track sizes, e.g. ['3fr','2fr']) takes
+        // precedence over the legacy lossy columnWidths fractions.
+        const gridCols = columnFr?.length === slots.length && columnFr.every(Boolean)
+          ? columnFr.join(' ')
+          : slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
         // Use a CSS custom property so the @media rule in index.css can override it
         // on mobile (inline styles can't be overridden by regular rules, but CSS
         // custom properties cascade normally and can be overridden with !important).
         return (
           <div
             key={id}
-            className={stackOnMobile ? 'grid-layout-responsive' : ''}
+            className={`${stackOnMobile ? 'grid-layout-responsive' : ''} ${stackOnMobile && reverseOnMobile ? 'grid-layout-reverse' : ''}`}
             style={{
               '--catalogue-grid-cols': gridCols,
               display: 'grid',
@@ -283,7 +314,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           >
             {slots.map((slotComponents: any[], slotIndex: number) => (
               <div key={slotIndex} className="min-w-0">
-                {slotComponents.map((child: any) => renderComponent(child))}
+                {slotComponents.map((child: any) => renderChild(child))}
               </div>
             ))}
           </div>
@@ -322,6 +353,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           const shell = hasSectionShell(component.style);
           const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
           const outerStyle = shellStyles ? shellStyles.canvasStyle : componentStyle;
+          const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
           return (
             <div
               key={component.id}
@@ -330,17 +362,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
               data-cid={component.id}
               onClick={() => onComponentClick?.(component.id, page.id)}
               className={`relative ${component.style?.customClass || ''} ${hoverClass} ${isSelected ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]' : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'}`}
-              style={{ cursor: 'pointer', ...outerStyle }}
+              style={{ cursor: 'pointer', ...outerStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
             >
               {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
               {hasOverlay && (
                 <div style={{ position: 'absolute', inset: 0, backgroundColor: component.style!.backgroundOverlay, zIndex: 0, borderRadius: outerStyle.borderRadius }} />
               )}
+              {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
               <div
                 style={
                   shellStyles
                     ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
-                    : { pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }
+                    : { pointerEvents: 'none', position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
                 }
               >
                 {rendered}
@@ -886,6 +919,49 @@ const TrustChipRenderer: React.FC<any> = ({ text, rating, avatars = [], alignmen
   );
 };
 
+/* ─── Section Heading (D7 primitive) ───────────────────────────────────── */
+
+/** Standalone premium heading block: eyebrow + title (with optional styled
+ *  highlight substring) + lead. Drop it above any section that lacks its own
+ *  header — one consistent heading voice across the page. */
+const SectionHeadingRenderer: React.FC<any> = ({
+  eyebrow, title = '', highlight, lead, align = 'center', size = 'lg', backgroundColor,
+}) => {
+  const txt = sectionText(backgroundColor);
+  const sizeClass = size === 'xl' ? 'catalogue-display' : size === 'md' ? 'catalogue-h3' : 'catalogue-h2';
+
+  // Wrap the first occurrence of highlight.text inside the title.
+  let titleNode: React.ReactNode = title;
+  if (highlight?.text && typeof title === 'string' && title.includes(highlight.text)) {
+    const idx = title.indexOf(highlight.text);
+    const before = title.slice(0, idx);
+    const after = title.slice(idx + highlight.text.length);
+    const hlClass =
+      highlight.style === 'underline'
+        ? 'underline decoration-primary-400 decoration-4 underline-offset-8'
+        : highlight.style === 'mark'
+          ? 'rounded-md bg-primary-100 px-2 text-gray-900' // design-lint-ignore: fixed dark text — primary-100 highlighter stays light in both modes
+          : 'catalogue-text-gradient';
+    titleNode = (
+      <>
+        {before}
+        <span className={hlClass}>{highlight.text}</span>
+        {after}
+      </>
+    );
+  }
+
+  return (
+    <section style={sectionBg(backgroundColor)} className="px-4 pt-14 pb-4 bg-catalogue-bg">
+      <div className={`mx-auto max-w-3xl ${align === 'left' ? 'text-left' : 'text-center'}`}>
+        {eyebrow && <span className="catalogue-eyebrow">{eyebrow}</span>}
+        <h2 className={`${eyebrow ? 'mt-3' : ''} font-bold ${sizeClass} ${txt.heading}`}>{titleNode}</h2>
+        {lead && <p className={`mt-4 catalogue-lead ${txt.muted}`}>{lead}</p>}
+      </div>
+    </section>
+  );
+};
+
 /* ─── Map Embed ────────────────────────────────────────────────────────── */
 
 const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRadius = '8px', title }) => (
@@ -1345,6 +1421,9 @@ const ComponentStyleWrapper: React.FC<{
   const hasEntrance = !prefersReducedMotion && !motionOff && entrance?.type && entrance.type !== 'none';
   const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
   const shell = hasSectionShell(component.style);
+  const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
+  // Ornaments can bleed past the box (blobs at negative offsets) — clip them.
+  const decorClip = component.style?.ornaments?.length ? { overflow: 'hidden' as const } : {};
 
   useEffect(() => {
     if (!hasEntrance || !ref.current) {
@@ -1410,7 +1489,7 @@ const ComponentStyleWrapper: React.FC<{
         id={component.anchorId || undefined}
         data-cid={component.id}
         className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
-        style={{ ...canvasStyle, ...animationStyle }}
+        style={{ ...canvasStyle, ...animationStyle, ...decorClip }}
       >
         {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
         {staggerCSS && <style dangerouslySetInnerHTML={{ __html: staggerCSS }} />}
@@ -1425,6 +1504,7 @@ const ComponentStyleWrapper: React.FC<{
             }}
           />
         )}
+        {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
         <div style={{ ...contentStyle, position: 'relative', zIndex: 1 }}>
           {children}
         </div>
@@ -1438,7 +1518,14 @@ const ComponentStyleWrapper: React.FC<{
       id={component.anchorId || undefined}
       data-cid={component.id}
       className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
-      style={{ ...componentStyle, ...animationStyle, position: hasOverlay ? 'relative' : undefined }}
+      style={{
+        ...componentStyle,
+        ...animationStyle,
+        // Preserve engine-emitted position (sticky rails); otherwise only go
+        // positioned when overlay/decoration children need an anchor.
+        position: (componentStyle.position as React.CSSProperties['position']) ?? (hasOverlay || decor ? 'relative' : undefined),
+        ...decorClip,
+      }}
     >
       {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
       {staggerCSS && <style dangerouslySetInnerHTML={{ __html: staggerCSS }} />}
@@ -1453,7 +1540,8 @@ const ComponentStyleWrapper: React.FC<{
           }}
         />
       )}
-      <div style={{ position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }}>
+      {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
+      <div style={{ position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }}>
         {children}
       </div>
     </div>

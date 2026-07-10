@@ -36,6 +36,13 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { toast } from 'sonner';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
+import {
+    AiVideoSettingsCard,
+    DEFAULT_AI_VIDEO_SETTINGS,
+    type AiVideoSettings,
+} from './shared/components/AiVideoSettingsCard';
 import {
     X,
     FileText,
@@ -209,10 +216,15 @@ function RouteComponent() {
     const [referenceUrls, setReferenceUrls] = useState<PrerequisiteUrl[]>([]);
     const [newReferenceUrl, setNewReferenceUrl] = useState('');
     const [selectedModel, setSelectedModel] = useState('auto');
+    const [aiVideoSettings, setAiVideoSettings] = useState<AiVideoSettings>(
+        DEFAULT_AI_VIDEO_SETTINGS
+    );
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [usageData, setUsageData] = useState<any>(null);
+    // Parametric cost preview for one outline generation (DB-tunable rate)
+    const outlineCost = useToolCostPreview('course_outline', {}, showConfirmDialog);
 
     // ... (previous code)
 
@@ -678,6 +690,7 @@ function RouteComponent() {
             courseDepth: courseDepth,
             language: language || 'English',
             model: selectedModel,
+            aiVideoSettings: aiVideoSettings,
             userId: userId,
             instituteId: instituteId,
             references: {
@@ -1052,6 +1065,16 @@ function RouteComponent() {
                                         ? 'success'
                                         : 'default'
                                 }
+                            />
+                        </div>
+
+                        {/* AI Video settings (model / voice / duration / tier) —
+                            applied to every AI Video / Slides / Storybook page */}
+                        <div className="mb-4">
+                            <AiVideoSettingsCard
+                                value={aiVideoSettings}
+                                onChange={setAiVideoSettings}
+                                language={language || 'English'}
                             />
                         </div>
 
@@ -1760,7 +1783,13 @@ function RouteComponent() {
                         </div>
                     </div>
 
-                    <DialogFooter className="shrink-0 border-t border-neutral-200 bg-white px-6 py-4">
+                    <DialogFooter className="shrink-0 gap-3 border-t border-neutral-200 bg-white px-6 py-4 sm:items-center">
+                        <ToolCostBadge
+                            credits={outlineCost.credits}
+                            sufficient={outlineCost.sufficient}
+                            loading={outlineCost.isLoading}
+                            className="max-sm:self-start sm:mr-auto"
+                        />
                         <MyButton
                             buttonType="secondary"
                             onClick={() => setShowConfirmDialog(false)}

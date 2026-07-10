@@ -10,6 +10,13 @@ from ..ports.llm_client import OutlineLLMClient
 from ..schemas.course_outline import Todo
 from .youtube_service import YouTubeService
 from .content_prompts import ContentGenerationPrompts
+from .document_postprocess import (
+    DOC_IMAGE_MODEL,
+    illustrate_document,
+    normalize_code_blocks,
+    strip_wrapping_fence,
+)
+from ..core.exceptions import PaymentRequiredError
 from .video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
@@ -42,6 +49,8 @@ class ContentGenerationService:
         self._db_session = db_session
         self._institute_id = institute_id
         self._user_id = user_id
+        # Set per generation run by the orchestrator; keys idempotent slide charges.
+        self._request_id: Optional[str] = None
         
         logger.info("[ContentGenService] Creating VideoGenerationService...")
         try:
@@ -57,6 +66,78 @@ class ContentGenerationService:
         # Use the same model as outline generation
         self._content_model = "google/gemini-2.5-flash"
         logger.info("[ContentGenService] ContentGenerationService fully initialized")
+
+    @staticmethod
+    def _video_voice_kwargs(todo: Todo) -> dict:
+        """Voice + quality-tier settings for the video pipeline, read from
+        todo.metadata (populated from the course wizard's AI-video settings via
+        the request-level video_settings). Absent keys keep pipeline defaults."""
+        metadata = todo.metadata or {}
+        return {
+            "voice_gender": metadata.get("voice_gender", "female"),
+            "tts_provider": metadata.get("tts_provider", "standard"),
+            "voice_id": metadata.get("voice_id"),
+            "quality_tier": metadata.get("quality_tier", "ultra"),
+        }
+
+    def _bill_slide(self, *, tool_key: str, todo: Todo, model: str, usage_info: Optional[dict] = None) -> None:
+        """Parametric per-slide charge = max(DB rate for tool_key, actual token
+        cost). Best-effort on a fresh session; idempotent per request+slide so a
+        retried/duplicated event never double-charges."""
+        from .ai_billing import record_tool_billing
+
+        usage_info = usage_info or {}
+        record_tool_billing(
+            tool_key=tool_key,
+            tool_params={},
+            request_type=RequestType.CONTENT,
+            model=model,
+            prompt_tokens=usage_info.get("prompt_tokens", 0),
+            completion_tokens=usage_info.get("completion_tokens", 0),
+            institute_id=self._institute_id,
+            user_id=self._user_id,
+            request_id=self._request_id,
+            idempotency_key=(
+                f"course_slide:{self._request_id}:{todo.path}" if self._request_id else None
+            ),
+        )
+
+    async def _generate_with_model_fallback(self, prompt: str, model: str):
+        """Run one LLM generation, falling back to the service default model when
+        an outline-authored model fails (the outline LLM writes todo.model and can
+        name an unavailable model; an explicit model gets no client-side fallback).
+
+        Returns (generated_content, usage_info, used_model).
+        """
+        has_usage = hasattr(self._llm_client, 'generate_outline_with_usage')
+        try:
+            if has_usage:
+                content, usage = await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt, model=model
+                )
+            else:
+                content = await self._llm_client.generate_outline(prompt=prompt, model=model)
+                usage = {}
+            return content, usage, model
+        except PaymentRequiredError:
+            # Out-of-credits is fatal by design — no fallback model will help.
+            raise
+        except Exception as e:
+            if model == self._content_model:
+                raise
+            logger.warning(
+                f"Model '{model}' failed ({e}); retrying with default '{self._content_model}'"
+            )
+            if has_usage:
+                content, usage = await self._llm_client.generate_outline_with_usage(
+                    prompt=prompt, model=self._content_model
+                )
+            else:
+                content = await self._llm_client.generate_outline(
+                    prompt=prompt, model=self._content_model
+                )
+                usage = {}
+            return content, usage, self._content_model
 
     async def generate_document_content(
         self, todo: Todo, prompt: str, homework_content: Optional[str] = None
@@ -83,6 +164,9 @@ class ContentGenerationService:
             is_homework_solutions = "homework solutions" in title_lower or "assignment solutions" in title_lower
 
             language = (todo.metadata or {}).get("language", "English")
+            # Honor the model chosen at outline time (same resolution as AI_VIDEO);
+            # fall back to the service default.
+            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
 
             if is_homework_questions:
                 logger.info(f"Using homework (coding/task-focused) prompt for slide: {todo.path}")
@@ -107,9 +191,9 @@ class ContentGenerationService:
                 include_diagrams = any(keyword in prompt_lower for keyword in diagram_keywords)
 
                 if include_diagrams:
-                    logger.info(f"Detected diagram request in prompt for slide: {todo.path}, generating markdown with Mermaid diagrams")
+                    logger.info(f"Detected diagram request in prompt for slide: {todo.path}, requiring Mermaid diagrams in HTML output")
 
-                # Build document prompt (will generate markdown if diagrams requested, HTML otherwise)
+                # Build document prompt (always HTML; Mermaid emitted as div.mermaid blocks)
                 document_prompt = ContentGenerationPrompts.build_document_prompt(
                     text_prompt=prompt,
                     title=title,
@@ -118,37 +202,46 @@ class ContentGenerationService:
                 )
             
             # Generate content using the enhanced prompt and capture token usage
-            usage_info = {}
-            if hasattr(self._llm_client, 'generate_outline_with_usage'):
-                generated_content, usage_info = await self._llm_client.generate_outline_with_usage(
-                    prompt=document_prompt,
-                    model=self._content_model,
+            generated_content, usage_info, used_model = await self._generate_with_model_fallback(
+                document_prompt, model
+            )
+
+            # Parametric per-slide charge: max(course_slide_document DB rate,
+            # actual token cost). Best-effort; idempotent per request+slide.
+            if usage_info:
+                self._bill_slide(
+                    tool_key="course_slide_document",
+                    todo=todo,
+                    model=used_model,
+                    usage_info=usage_info,
                 )
-                
-                # Record token usage for content generation
-                if self._db_session and usage_info:
-                    try:
-                        token_service = TokenUsageService(self._db_session)
-                        # Determine provider based on model
-                        api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
+
+            # Unwrap a whole-payload ```html fence (common model slip), then
+            # normalize <pre><code> blocks into the editor's lossless form and
+            # generate any requested illustrations. All best-effort.
+            generated_content = strip_wrapping_fence(generated_content)
+            generated_content = normalize_code_blocks(generated_content)
+            generated_content, image_count = await illustrate_document(
+                generated_content, slide_path=todo.path
+            )
+            if image_count and self._db_session:
+                try:
+                    token_service = TokenUsageService(self._db_session)
+                    for _ in range(image_count):
                         token_service.record_usage_and_deduct_credits(
-                            api_provider=api_provider,
-                            prompt_tokens=usage_info.get("prompt_tokens", 0),
-                            completion_tokens=usage_info.get("completion_tokens", 0),
-                            total_tokens=usage_info.get("total_tokens", 0),
-                            request_type=RequestType.CONTENT,
+                            api_provider=ApiProvider.GEMINI,
+                            prompt_tokens=0,
+                            completion_tokens=0,
+                            total_tokens=0,
+                            request_type=RequestType.IMAGE,
                             institute_id=self._institute_id,
                             user_id=self._user_id,
-                            model=self._content_model,
+                            model=DOC_IMAGE_MODEL,
+                            metadata={"slide_path": todo.path, "feature": "document_illustration"},
                         )
-                    except Exception as e:
-                        logger.warning(f"Failed to record content generation token usage: {str(e)}")
-            else:
-                generated_content = await self._llm_client.generate_outline(
-                    prompt=document_prompt,
-                    model=self._content_model,
-                )
-            
+                except Exception as e:
+                    logger.warning(f"Failed to record document illustration usage: {str(e)}")
+
             # Format response matching media-service DocumentContentGenerationStrategy
             return {
                 "type": "SLIDE_CONTENT_UPDATE",
@@ -201,45 +294,30 @@ class ContentGenerationService:
             logger.info(f"Generating assessment content for slide: {todo.path}")
             
             language = (todo.metadata or {}).get("language", "English")
+            # Honor the model chosen at outline time; fall back to the service default.
+            model = (todo.metadata or {}).get("model") or todo.model or self._content_model
             # Build assessment prompt using template similar to media-service PROMPT_TO_QUESTIONS
             assessment_prompt = ContentGenerationPrompts.build_assessment_prompt(
                 text_prompt=prompt,
                 title=todo.title or todo.name,
                 language=language,
             )
-            
+
             # Generate content and capture token usage
-            usage_info = {}
-            if hasattr(self._llm_client, 'generate_outline_with_usage'):
-                generated_content, usage_info = await self._llm_client.generate_outline_with_usage(
-                    prompt=assessment_prompt,
-                    model=self._content_model,
+            generated_content, usage_info, used_model = await self._generate_with_model_fallback(
+                assessment_prompt, model
+            )
+
+            # Parametric per-slide charge: max(course_slide_assessment DB rate,
+            # actual token cost). Best-effort; idempotent per request+slide.
+            if usage_info:
+                self._bill_slide(
+                    tool_key="course_slide_assessment",
+                    todo=todo,
+                    model=used_model,
+                    usage_info=usage_info,
                 )
-                
-                # Record token usage for content generation
-                if self._db_session and usage_info:
-                    try:
-                        token_service = TokenUsageService(self._db_session)
-                        # Determine provider based on model
-                        api_provider = ApiProvider.GEMINI if "gemini" in self._content_model.lower() else ApiProvider.OPENAI
-                        token_service.record_usage_and_deduct_credits(
-                            api_provider=api_provider,
-                            prompt_tokens=usage_info.get("prompt_tokens", 0),
-                            completion_tokens=usage_info.get("completion_tokens", 0),
-                            total_tokens=usage_info.get("total_tokens", 0),
-                            request_type=RequestType.CONTENT,
-                            institute_id=self._institute_id,
-                            user_id=self._user_id,
-                            model=self._content_model,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to record content generation token usage: {str(e)}")
-            else:
-                generated_content = await self._llm_client.generate_outline(
-                    prompt=assessment_prompt,
-                    model=self._content_model,
-                )
-            
+
             # Extract and parse JSON from the response
             content_json = self._extract_json_from_response(generated_content)
             
@@ -276,7 +354,7 @@ class ContentGenerationService:
             }
 
     async def generate_video_content(
-        self, todo: Todo
+        self, todo: Todo, bill: bool = True
     ) -> dict:
         """
         Generate video content for a VIDEO type todo by searching YouTube.
@@ -318,7 +396,13 @@ class ContentGenerationService:
                 title=todo.title or todo.name,
                 description=f"Video related to: {search_query}"
             )
-            
+
+            # Parametric per-slide charge (flat course_slide_video DB rate; no
+            # LLM call on this path). VIDEO_CODE reuses this method and bills
+            # itself only after its code leg also succeeds.
+            if bill:
+                self._bill_slide(tool_key="course_slide_video", todo=todo, model="youtube-search")
+
             return {
                 "type": "SLIDE_CONTENT_UPDATE",
                 "path": todo.path,
@@ -388,8 +472,8 @@ class ContentGenerationService:
             logger.info(f"[AI_VIDEO] Generating video till SCRIPT stage for {video_id}")
             
             event_count = 0
-            script_generated = False
-            
+            pipeline_error: Optional[str] = None
+
             async for event in self._video_gen_service.generate_till_stage(
                 video_id=video_id,
                 prompt=prompt,
@@ -401,17 +485,20 @@ class ContentGenerationService:
                 model=todo.metadata.get("model") or todo.model,  # Use model from metadata or todo
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                **self._video_voice_kwargs(todo),
                 db_session=self._db_session,
                 institute_id=self._institute_id,
                 user_id=self._user_id
             ):
                 event_count += 1
                 logger.info(f"[AI_VIDEO] Received event #{event_count} for {video_id}: {event.get('type', 'unknown')}, stage={event.get('stage', 'N/A')}")
-                
-                # Check if script stage is completed
-                if event.get("stage") == "SCRIPT" and event.get("type") == "completed":
-                    script_generated = True
-                
+
+                # The pipeline reports failures as events, not exceptions —
+                # never wrap them as a status-true progress update.
+                if event.get("type") == "error":
+                    pipeline_error = event.get("message") or "Video generation failed"
+                    break
+
                 # Wrap progress events inside a slide update envelope
                 wrapped_event = {
                     "type": "SLIDE_CONTENT_UPDATE",
@@ -435,15 +522,32 @@ class ContentGenerationService:
                 yield json.dumps(wrapped_event)
             
             logger.info(f"[AI_VIDEO] Script generation completed for {video_id}. Total events: {event_count}")
-            
+
             # Get video status after script generation
             video_status = self._video_gen_service.get_video_status(video_id)
-            
+
             if not video_status:
                 raise ValueError(f"Video generation failed: no status found for {video_id}")
-            
+
+            # A failed/cancelled pipeline must surface as an error — never as a
+            # "COMPLETED" slide pointing at a dead video (and never spawn the
+            # background HTML leg for it).
+            if pipeline_error or video_status.get("status") in ("FAILED", "CANCELLED"):
+                error_msg = pipeline_error or f"Video generation {video_status.get('status', 'FAILED').lower()}"
+                logger.error(f"[AI_VIDEO] Pipeline failed for {todo.path} ({video_id}): {error_msg}")
+                yield json.dumps({
+                    "type": "SLIDE_CONTENT_ERROR",
+                    "path": todo.path,
+                    "status": False,
+                    "actionType": todo.action_type,
+                    "slideType": "AI_VIDEO",
+                    "errorMessage": f"Failed to generate AI video: {error_msg}",
+                    "contentData": f"Error generating AI video: {error_msg}",
+                })
+                return
+
             logger.info(f"AI video script generated for {todo.path}. Status: {video_status['status']}, Stage: {video_status['current_stage']}")
-            
+
             # Format response with script data (HTML generation will continue in background)
             ai_video_details = {
                 "videoId": video_id,
@@ -504,8 +608,8 @@ class ContentGenerationService:
                         resume=True,  # Resume from current stage (SCRIPT)
                         model=todo.metadata.get("model") or todo.model,
                         target_audience=todo.metadata.get("target_audience", "General/Adult"),
-
                         target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                        **self._video_voice_kwargs(todo),
                         db_session=self._db_session,
                         institute_id=self._institute_id,
                         user_id=self._user_id
@@ -537,7 +641,9 @@ class ContentGenerationService:
                 bg_task = loop.create_task(continue_html_generation())
                 # Add done callback to log completion/errors
                 def task_done_callback(task):
-                    if task.exception():
+                    if task.cancelled():
+                        logger.warning(f"[AI_VIDEO] Background task for {video_id} was cancelled")
+                    elif task.exception():
                         logger.error(f"[AI_VIDEO] Background task for {video_id} raised exception: {task.exception()}")
                     else:
                         logger.info(f"[AI_VIDEO] Background task for {video_id} completed successfully")
@@ -598,6 +704,7 @@ class ContentGenerationService:
             }
             yield json.dumps(started_event)
 
+            pipeline_error: Optional[str] = None
             # SLIDES skips TTS/WORDS — target HTML directly
             async for event in self._video_gen_service.generate_till_stage(
                 video_id=video_id,
@@ -611,10 +718,14 @@ class ContentGenerationService:
                 model=todo.metadata.get("model") or todo.model,
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                **self._video_voice_kwargs(todo),
                 db_session=self._db_session,
                 institute_id=self._institute_id,
                 user_id=self._user_id,
             ):
+                if event.get("type") == "error":
+                    pipeline_error = event.get("message") or "Slides generation failed"
+                    break
                 wrapped_event = {
                     "type": "SLIDE_CONTENT_UPDATE",
                     "path": todo.path,
@@ -635,6 +746,11 @@ class ContentGenerationService:
             video_status = self._video_gen_service.get_video_status(video_id)
             if not video_status:
                 raise ValueError(f"AI Slides generation failed: no status found for {video_id}")
+            if pipeline_error or video_status.get("status") in ("FAILED", "CANCELLED"):
+                raise ValueError(
+                    pipeline_error
+                    or f"AI Slides generation {video_status.get('status', 'FAILED').lower()}"
+                )
 
             ai_slides_details = {
                 "videoId": video_id,
@@ -706,6 +822,7 @@ class ContentGenerationService:
             }
             yield json.dumps(started_event)
 
+            pipeline_error: Optional[str] = None
             async for event in self._video_gen_service.generate_till_stage(
                 video_id=video_id,
                 prompt=prompt,
@@ -718,10 +835,14 @@ class ContentGenerationService:
                 model=todo.metadata.get("model") or todo.model,
                 target_audience=todo.metadata.get("target_audience", "General/Adult"),
                 target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                **self._video_voice_kwargs(todo),
                 db_session=self._db_session,
                 institute_id=self._institute_id,
                 user_id=self._user_id,
             ):
+                if event.get("type") == "error":
+                    pipeline_error = event.get("message") or "Storybook generation failed"
+                    break
                 wrapped_event = {
                     "type": "SLIDE_CONTENT_UPDATE",
                     "path": todo.path,
@@ -742,6 +863,11 @@ class ContentGenerationService:
             video_status = self._video_gen_service.get_video_status(video_id)
             if not video_status:
                 raise ValueError(f"AI Storybook generation failed: no status found for {video_id}")
+            if pipeline_error or video_status.get("status") in ("FAILED", "CANCELLED"):
+                raise ValueError(
+                    pipeline_error
+                    or f"AI Storybook generation {video_status.get('status', 'FAILED').lower()}"
+                )
 
             ai_storybook_details = {
                 "videoId": video_id,
@@ -783,6 +909,7 @@ class ContentGenerationService:
                         model=todo.metadata.get("model") or todo.model,
                         target_audience=todo.metadata.get("target_audience", "General/Adult"),
                         target_duration=todo.metadata.get("target_duration", "2-3 minutes"),
+                        **self._video_voice_kwargs(todo),
                         db_session=self._db_session,
                         institute_id=self._institute_id,
                         user_id=self._user_id,
@@ -798,7 +925,13 @@ class ContentGenerationService:
                 loop = asyncio.get_event_loop()
                 bg_task = loop.create_task(continue_storybook_html())
                 bg_task.add_done_callback(
-                    lambda t: logger.error(f"[AI_STORYBOOK] Background task error: {t.exception()}") if t.exception() else logger.info(f"[AI_STORYBOOK] Background task done for {video_id}")
+                    lambda t: logger.warning(f"[AI_STORYBOOK] Background task cancelled for {video_id}")
+                    if t.cancelled()
+                    else (
+                        logger.error(f"[AI_STORYBOOK] Background task error: {t.exception()}")
+                        if t.exception()
+                        else logger.info(f"[AI_STORYBOOK] Background task done for {video_id}")
+                    )
                 )
                 logger.info(f"[AI_STORYBOOK] Background HTML task started for {video_id}")
             except Exception as task_error:
@@ -843,8 +976,9 @@ class ContentGenerationService:
         try:
             logger.info(f"Generating video+code content for slide: {todo.path}")
             
-            # Step 1: Generate YouTube video content
-            video_content = await self.generate_video_content(todo)
+            # Step 1: Generate YouTube video content (billed below, only after
+            # the code leg also succeeds — a half-delivered slide isn't charged)
+            video_content = await self.generate_video_content(todo, bill=False)
             if not video_content.get("status") or video_content.get("type") == "SLIDE_CONTENT_ERROR":
                 raise ValueError(f"Failed to generate video: {video_content.get('errorMessage', 'Unknown error')}")
             
@@ -866,10 +1000,13 @@ class ContentGenerationService:
 
             # Extract code language from prompt or default to python
             code_language = self._extract_code_language(todo.prompt) or "python"
-            
+
             # Step 3: Determine layout (default: split-left)
             layout = self._extract_layout_preference(todo.prompt) or "split-left"
-            
+
+            # Parametric per-slide charge, now that both legs succeeded.
+            self._bill_slide(tool_key="course_slide_video", todo=todo, model=self._content_model)
+
             # Format response
             return {
                 "type": "SLIDE_CONTENT_UPDATE",
@@ -921,7 +1058,12 @@ class ContentGenerationService:
             # If we break early, the generator never completes and the background task never starts.
             async for event_str in self.generate_ai_video_content(todo):
                 event = json.loads(event_str)
-                
+
+                # A terminal pipeline error ends the video leg — surface the
+                # real message (its contentData is a string, not a dict).
+                if event.get("type") == "SLIDE_CONTENT_ERROR":
+                    raise ValueError(event.get("errorMessage") or "AI video generation failed")
+
                 # Extract video_id from events
                 if event.get("slideType") == "AI_VIDEO":
                     content_data = event.get("contentData", {})
@@ -1143,7 +1285,7 @@ class ContentGenerationService:
             homework_content = None
             if todo.type == "DOCUMENT":
                 title_lower = (todo.title or todo.name or "").lower()
-                if "homework solutions" in title_lower:
+                if "homework solutions" in title_lower or "assignment solutions" in title_lower:
                     homework_path = self._get_homework_path_for_solution(todo.path)
                     if homework_path:
                         homework_content = generated_content_by_path.get(homework_path)

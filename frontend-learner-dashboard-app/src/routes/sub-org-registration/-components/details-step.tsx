@@ -3,7 +3,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Buildings, Image as ImageIcon, Trash, SpinnerGap } from "@phosphor-icons/react";
+import {
+  Buildings,
+  Image as ImageIcon,
+  Info,
+  Trash,
+  SpinnerGap,
+} from "@phosphor-icons/react";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
 import { ModernCard } from "@/components/design-system/modern-card";
@@ -63,6 +69,16 @@ interface DetailsStepProps {
    * registration (no fresh code unless the email changed).
    */
   isEditingAfterVerification?: boolean;
+  /**
+   * /start rejected this email because a registration is already in flight —
+   * shows the inline "Resume registration" panel under the form.
+   */
+  resumeEmail?: string | null;
+  /** Sends a fresh OTP via /resume and moves the wizard to resume-mode OTP. */
+  onResume?: () => void;
+  isResuming?: boolean;
+  /** /resume failure surfaced inside the panel (not a toast). */
+  resumeError?: string | null;
 }
 
 /** Step 1 — organization + admin details, POSTs /start (or /update-details) on continue. */
@@ -73,6 +89,10 @@ const DetailsStep = ({
   orgNameHint,
   collectAddress = false,
   isEditingAfterVerification = false,
+  resumeEmail = null,
+  onResume,
+  isResuming = false,
+  resumeError = null,
 }: DetailsStepProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadFilePublic, isUploading } = useFileUpload();
@@ -499,6 +519,52 @@ const DetailsStep = ({
           </div>
         </form>
       </Form>
+
+      {/* Dead-end → door: /start said this email already has an in-flight
+          registration — offer to resume it instead of blocking. */}
+      {resumeEmail && onResume && (
+        <div className="mt-5 space-y-3 rounded-lg border border-primary-200 bg-primary-50 p-4">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 size-5 flex-shrink-0 text-primary-500" />
+            <div>
+              <p className="text-sm font-medium text-neutral-700">
+                A registration with this email is already in progress.
+              </p>
+              <p className="mt-1 text-sm text-neutral-500">
+                Resume it to pick up where you left off — we&apos;ll send a
+                verification code to{" "}
+                <span className="font-medium text-neutral-700">
+                  {resumeEmail}
+                </span>
+                .
+              </p>
+            </div>
+          </div>
+          {resumeError && (
+            <p className="text-sm text-danger-600">{resumeError}</p>
+          )}
+          <div className="flex justify-end">
+            <MyButton
+              type="button"
+              buttonType="primary"
+              scale="medium"
+              layoutVariant="default"
+              onClick={onResume}
+              disable={isResuming || isSubmitting || isUploading}
+              className="w-full sm:w-auto"
+            >
+              {isResuming ? (
+                <>
+                  <SpinnerGap className="mr-2 size-4 animate-spin" />
+                  Sending code...
+                </>
+              ) : (
+                "Resume registration"
+              )}
+            </MyButton>
+          </div>
+        </div>
+      )}
     </ModernCard>
   );
 };

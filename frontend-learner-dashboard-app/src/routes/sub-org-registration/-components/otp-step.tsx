@@ -20,6 +20,12 @@ interface OtpStepProps {
   onEditDetails: () => void;
   isVerifying: boolean;
   isResending: boolean;
+  /**
+   * Resuming an in-flight registration — the code came from /resume and
+   * verification goes through /resume-verify (copy tweak only; the endpoints
+   * are wired by the wizard's callbacks).
+   */
+  resumeMode?: boolean;
 }
 
 /**
@@ -35,6 +41,7 @@ const OtpStep = ({
   onEditDetails,
   isVerifying,
   isResending,
+  resumeMode = false,
 }: OtpStepProps) => {
   const [otp, setOtp] = useState("");
 
@@ -62,7 +69,9 @@ const OtpStep = ({
           Verify Your Email
         </h2>
         <p className="text-sm text-neutral-500">
-          We&apos;ve sent a verification code to
+          {resumeMode
+            ? "We've sent a code to resume your registration to"
+            : "We've sent a verification code to"}
         </p>
         <p className="mt-1 text-sm font-medium text-neutral-700">{email}</p>
       </div>

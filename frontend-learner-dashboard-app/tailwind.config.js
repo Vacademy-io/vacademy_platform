@@ -21,7 +21,7 @@ module.exports = {
   // Catalogue type-scale utilities are defined in catalogue-tokens.css @layer
   // utilities; safelist them so Tailwind never purges classes referenced only
   // via tenant JSON customClass values or cross-app markup.
-  safelist: ["catalogue-display", "catalogue-h1", "catalogue-h2", "catalogue-h3", "catalogue-lead", "catalogue-card-glass", "catalogue-card-gradient-border", "catalogue-card-tinted"],
+  safelist: ["catalogue-display", "catalogue-h1", "catalogue-h2", "catalogue-h3", "catalogue-lead", "catalogue-card-glass", "catalogue-card-gradient-border", "catalogue-card-tinted", "catalogue-text-gradient", "catalogue-eyebrow"],
   content: [
     "./pages/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",

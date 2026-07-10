@@ -921,21 +921,29 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                     codeText = htmlBlock.innerText || htmlBlock.textContent || '';
                 }
 
-                const trimmedCode = codeText.trim().toLowerCase();
-
-                const isMermaid =
-                    trimmedCode.includes('graph') ||
-                    trimmedCode.includes('flowchart') ||
-                    trimmedCode.includes('sequencediagram') ||
-                    trimmedCode.includes('classdiagram') ||
-                    trimmedCode.includes('gantt') ||
-                    trimmedCode.includes('pie') ||
-                    trimmedCode.includes('erdiagram') ||
-                    trimmedCode.includes('journey');
-
                 // Only treat as block if it's a PRE tag or inside PRE tag
                 // content inside simple <code> tags inline should be left as HTML
                 const isBlock = block.tagName === 'PRE' || block.parentElement?.tagName === 'PRE';
+
+                const containerEl = (block.tagName === 'CODE' && block.parentElement?.tagName === 'PRE'
+                    ? block.parentElement
+                    : block) as HTMLElement;
+                // data-code / data-language IS the code-block contract from the
+                // AI generator — such a block is never a mermaid diagram, even
+                // if the code mentions "graph"/"pie" (e.g. graph = {...}).
+                const isContractedCodeBlock =
+                    !!containerEl.getAttribute('data-code') || !!containerEl.getAttribute('data-language');
+
+                // A real Mermaid header sits ALONE on the first line (graph TD,
+                // sequenceDiagram, pie title X). Substring matching used to
+                // hijack ordinary code/text containing "graph"/"pie"/"journey"
+                // and the failed mermaid render deleted the block entirely.
+                const firstLine = (codeText.trim().split('\n')[0] || '').trim();
+                const isMermaid =
+                    !isContractedCodeBlock &&
+                    /^(graph|flowchart)\s+(TD|TB|BT|RL|LR)\s*$|^(sequenceDiagram|classDiagram|stateDiagram-v2|stateDiagram|erDiagram|gantt|journey|gitGraph|mindmap|requirementDiagram|c4Context)\s*$|^pie(\s+showData)?(\s+title\s+.+)?\s*$/i.test(
+                        firstLine
+                    );
 
                 if (isMermaid) {
                     // Avoid duplicates if we already caught this via div.mermaid

@@ -136,6 +136,14 @@ html, body {
   .grid-layout-responsive {
     --catalogue-grid-cols: 1fr !important;
   }
+
+  /* Opt-in: stack columns bottom-up on mobile (e.g. image-right heroes where
+     the image should lead on phones). Flex replaces grid only under 640px;
+     gap carries over. */
+  .grid-layout-responsive.grid-layout-reverse {
+    display: flex !important;
+    flex-direction: column-reverse;
+  }
 }
 
 @layer base {

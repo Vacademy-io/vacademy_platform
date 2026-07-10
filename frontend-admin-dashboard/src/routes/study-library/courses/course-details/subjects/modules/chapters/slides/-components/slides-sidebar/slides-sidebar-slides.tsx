@@ -48,11 +48,14 @@ const getSlideTypeDisplay = (slide: Slide): string => {
         return 'AI Content';
     }
 
-    // For DOCUMENT slides with specific sub-types (not DOC), show just the sub-type
+    // For DOCUMENT slides with specific sub-types, show just the sub-type.
+    // DOC and HTML are both plain documents to the user (the editor behind
+    // them is an implementation detail), so they fall through to "document".
     if (
         sourceType === 'DOCUMENT' &&
         slide.document_slide?.type &&
-        slide.document_slide.type !== 'DOC'
+        slide.document_slide.type !== 'DOC' &&
+        slide.document_slide.type !== 'HTML'
     ) {
         return (slide.document_slide.type ?? '').toLowerCase().replace('_', ' ');
     }
@@ -125,6 +128,7 @@ export const getIcon = (
             return <PlayCircle className={`${iconClass} text-green-500`} />;
         case 'DOC':
         case 'DOCX':
+        case 'HTML':
             return <FileDoc className={`${iconClass} text-blue-600`} />;
         case 'QUESTION':
             return <Question className={`${iconClass} text-purple-500`} />;

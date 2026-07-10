@@ -14,7 +14,7 @@ import {
     ChevronRight,
 } from 'lucide-react';
 import { SlideGeneration, SlideType, QuizQuestion } from '../../../shared/types';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
+import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
 import Editor from '@monaco-editor/react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -380,7 +380,7 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                         <div className="h-full overflow-y-auto">
                             {isEditing ? (
                                 <div className="h-full px-6 py-4 sm:px-8 sm:py-6">
-                                    <YooptaEditorWrapper
+                                    <TipTapEditor
                                         value={documentContent}
                                         onChange={(content) => setDocumentContent(content)}
                                         className="h-full"

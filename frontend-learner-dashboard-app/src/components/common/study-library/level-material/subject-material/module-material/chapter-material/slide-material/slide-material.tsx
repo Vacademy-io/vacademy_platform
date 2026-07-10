@@ -781,14 +781,21 @@ export const SlideMaterial = ({
                 </div>
               </div>
             );
-          } else if (activeItem.document_slide?.type === "DOC") {
+          } else if (
+            activeItem.document_slide?.type === "DOC" ||
+            activeItem.document_slide?.type === "HTML"
+          ) {
+            // 'HTML' (Tiptap-authored) docs ALWAYS store inline HTML — no
+            // file-id sniffing needed. Legacy 'DOC' may hold either HTML or
+            // a DOCX file id, so keep the content sniff for those.
             const isHtml =
-              activeItem.document_slide.published_data &&
-              (activeItem.document_slide.published_data.includes("<html") ||
-                activeItem.document_slide.published_data.includes("<body") ||
-                activeItem.document_slide.published_data
-                  .trim()
-                  .startsWith("<"));
+              activeItem.document_slide?.type === "HTML" ||
+              (activeItem.document_slide.published_data &&
+                (activeItem.document_slide.published_data.includes("<html") ||
+                  activeItem.document_slide.published_data.includes("<body") ||
+                  activeItem.document_slide.published_data
+                    .trim()
+                    .startsWith("<")));
             if (isHtml) {
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">

@@ -693,7 +693,10 @@ async function createDocumentSlide(params: CreateSlideParams): Promise<void> {
         slide_order: slideOrder,
         document_slide: {
             id: crypto.randomUUID(),
-            type: 'DOC', // Use 'DOC' type for HTML content
+            // 'HTML' = the Tiptap-based document type. AI content is generated
+            // as HTML, so it round-trips losslessly here (the legacy Yoopta
+            // 'DOC' type re-parsed the HTML through a lossy deserializer).
+            type: 'HTML',
             data: slideContent, // Now in HTML format
             title: slide.slideTitle,
             cover_file_id: '',

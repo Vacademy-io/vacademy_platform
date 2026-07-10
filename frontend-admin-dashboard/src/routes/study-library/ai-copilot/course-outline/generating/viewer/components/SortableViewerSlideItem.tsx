@@ -35,174 +35,21 @@ import {
     cleanQuizContent,
     parseVideoContent,
 } from '../utils/contentParsers';
-// import { DocumentWithMermaidSimple } from '../../../../shared/components/DocumentWithMermaid'; // Removed - using YooptaViewer
+import { DocumentWithMermaidSimple } from '../../../../shared/components/DocumentWithMermaid';
 import { markdownToHtml } from '../../../../shared/utils/markdownToHtml';
 import type { SlideGeneration, SlideType, QuizQuestion } from '../../../../shared/types';
 import { AIVideoPlayer } from '@/components/ai-video-player';
+import { cn } from '@/lib/utils';
 
-// Yoopta Imports for Viewer
-import { createYooptaEditor } from '@yoopta/editor';
-import YooptaEditor from '@yoopta/editor';
-import { html } from '@yoopta/exports';
-import { plugins, TOOLS, MARKS } from '@/constants/study-library/yoopta-editor-plugins-tools';
 
-// Internal YooptaViewer component to mimic the "Finished" course view
-const YooptaViewer = ({ content, className }: { content: string; className?: string }) => {
-    const editor = useMemo(() => createYooptaEditor(), []);
-    const selectionRef = useRef(null);
-    const [isMounted, setIsMounted] = useState(false);
-
-    // Wait for editor to fully mount
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setIsMounted(true);
-        }, 600);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
-        if (!content || !isMounted) return;
-
-        const deserializeContent = () => {
-            try {
-                // 1. Parse HTML string to DOM
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(content, 'text/html');
-
-                // If parsing fails or body is empty, fallback
-                if (!doc.body) {
-                    const fallback = html.deserialize(editor, content);
-                    editor.setEditorValue(fallback);
-                    return;
-                }
-
-                const blocks: Record<string, any> = {};
-
-                // Helper to generate simple ID
-                const generateId = () => `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-                // 2. Iterate through top-level children and process
-                // We create a wrapper div first to handle potential top-level text nodes or fragments
-                const wrapper = document.createElement('div');
-                wrapper.innerHTML = doc.body.innerHTML;
-
-                // Unwrap single-child wrapper if standard behavior (matches SlideMaterial)
-                // But generally we want to process the *children* of the content
-                // If content is just text, wrapper.children might be empty (if text node),
-                // so we handle that case by checking childNodes.
-
-                const processNodes = (nodes: NodeListOf<ChildNode>) => {
-                    Array.from(nodes).forEach((node) => {
-                        // Handle Element Nodes
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            const element = node as Element;
-
-                            // Check for Mermaid DIV
-                            const isMermaid =
-                                element.tagName === 'DIV' &&
-                                (element.classList.contains('mermaid') || element.getAttribute('class')?.includes('mermaid'));
-
-                            if (isMermaid) {
-                                // MANUALLY Construct Mermaid Block
-                                const id = generateId();
-                                blocks[id] = {
-                                    id,
-                                    type: 'mermaid',
-                                    props: {
-                                        code: element.textContent?.trim() || '',
-                                        timestamp: Date.now() // Ensure render trigger
-                                    },
-                                    children: [{ text: '' }]
-                                };
-                            } else {
-                                // Standard HTML Element -> Use Yoopta Deserializer
-                                try {
-                                    const partialBlocks = html.deserialize(editor, element.outerHTML);
-                                    if (partialBlocks && typeof partialBlocks === 'object') {
-                                        Object.assign(blocks, partialBlocks);
-                                    }
-                                } catch (e) {
-                                    console.warn('Failed to deserialize chunk:', element.outerHTML);
-                                }
-                            }
-                        }
-                        // Handle Text Nodes (non-empty)
-                        else if (node.nodeType === Node.TEXT_NODE) {
-                            const text = node.textContent?.trim();
-                            if (text) {
-                                try {
-                                    // Wrap text in p tag for deserializer
-                                    const partialBlocks = html.deserialize(editor, `<p>${text}</p>`);
-                                    if (partialBlocks && typeof partialBlocks === 'object') {
-                                        Object.assign(blocks, partialBlocks);
-                                    }
-                                } catch (e) { }
-                            }
-                        }
-                    });
-                };
-
-                processNodes(wrapper.childNodes);
-
-                // If result is empty but we had content, fallback to direct full deserialization
-                if (Object.keys(blocks).length === 0 && content.trim()) {
-                    console.warn('Manual parsing yielded no blocks, falling back to full deserialize');
-                    const fallback = html.deserialize(editor, content);
-                    editor.setEditorValue(fallback);
-                } else {
-                    editor.setEditorValue(blocks);
-                }
-
-            } catch (error) {
-                console.error('Failed to manually deserialize content:', error);
-                // Last resort fallback
-                try {
-                    const fallbackContent = html.deserialize(editor, content);
-                    editor.setEditorValue(fallbackContent);
-                } catch (e) {
-                    console.error('Critical failure in content rendering:', e);
-                }
-            }
-        };
-
-        deserializeContent();
-    }, [content, editor, isMounted]);
-
-    return (
-        <div
-            className={className}
-            ref={selectionRef}
-            // Use CSS to simulate read-only but allow text selection
-            style={{
-                width: '100%',
-                pointerEvents: 'none',
-                userSelect: 'text',
-                position: 'relative'
-            }}
-        >
-            <style>{`
-                .yoopta-editor .yoopta-block {
-                    margin-bottom: 0.5rem;
-                }
-                /* Ensure mermaid blocks are visible */
-                .yoopta-mermaid-block {
-                    pointer-events: auto !important; /* Allow interactions within mermaid if needed */
-                }
-            `}</style>
-            <YooptaEditor
-                editor={editor}
-                plugins={plugins}
-                tools={TOOLS}
-                marks={MARKS}
-                value={editor.children}
-                readOnly={true}
-                selectionBoxRoot={selectionRef}
-                style={{ width: '100%' }}
-                autoFocus={false}
-            />
-        </div>
-    );
-};
+// Read-only HTML viewer for AI-generated document content. The content is
+// plain HTML end-to-end, so render it directly (with mermaid support) instead
+// of round-tripping through Yoopta's lossy deserializer.
+const HtmlContentViewer = ({ content, className }: { content: string; className?: string }) => (
+    <div className={cn('w-full', className)}>
+        <DocumentWithMermaidSimple htmlContent={content} />
+    </div>
+);
 
 
 interface SortableSlideItemProps {
@@ -971,10 +818,9 @@ export const SortableViewerSlideItem = React.memo(({ slide, onEdit, onDelete, ge
                             )}
                         </div>
                     </div>
-                    {/* Render using YooptaViewer based on SlideMaterial logic */}
-                    {/* This uses the same plugins and deserialization as the finished course view */}
-                    <div className="min-h-[400px] p-4 bg-white rounded border border-neutral-200">
-                        <YooptaViewer
+                    {/* Render the HTML content directly (mermaid-aware) */}
+                                        <div className="min-h-[400px] p-4 bg-white rounded border border-neutral-200">
+                        <HtmlContentViewer
                             content={displayContent}
                             className="w-full"
                         />

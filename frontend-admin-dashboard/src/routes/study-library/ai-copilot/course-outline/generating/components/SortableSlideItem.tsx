@@ -24,7 +24,7 @@ import {
 import { Editor } from '@monaco-editor/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
+import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
 import { CircularProgress } from './CircularProgress';
 import { AIVideoPlayer } from '@/components/ai-video-player/AIVideoPlayer';
 import { MermaidDiagram } from '../../../shared/components/MermaidDiagram';
@@ -1567,7 +1567,7 @@ export const SortableSlideItem = React.memo(
                                                 </button>
                                             )}
                                         </div>
-                                        <YooptaEditorWrapper
+                                        <TipTapEditor
                                             value={displayScript}
                                             onChange={handleVideoScriptChange}
                                             minHeight={300}
@@ -1687,7 +1687,7 @@ export const SortableSlideItem = React.memo(
                                         </button>
                                     )}
                                 </div>
-                                <YooptaEditorWrapper
+                                <TipTapEditor
                                     value={videoScriptContent || ''}
                                     onChange={handleVideoScriptChange}
                                     minHeight={300}
@@ -1777,7 +1777,7 @@ export const SortableSlideItem = React.memo(
                                             </button>
                                         )}
                                     </div>
-                                    <YooptaEditorWrapper
+                                    <TipTapEditor
                                         value={videoScriptContent || ''}
                                         onChange={handleVideoScriptChange}
                                         minHeight={300}
@@ -2876,7 +2876,7 @@ export const SortableSlideItem = React.memo(
                                     className="rounded-lg border border-neutral-200 bg-white p-4"
                                     style={{ maxWidth: '100%', overflow: 'hidden' }}
                                 >
-                                    <YooptaEditorWrapper
+                                    <TipTapEditor
                                         value={content}
                                         onChange={handleContentChange}
                                         minHeight={400}
@@ -2911,7 +2911,7 @@ export const SortableSlideItem = React.memo(
                                 )}
                             </div>
                             <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                                <YooptaEditorWrapper
+                                <TipTapEditor
                                     value={quizHTML}
                                     onChange={handleQuizContentChange}
                                     minHeight={400}
@@ -2949,7 +2949,7 @@ export const SortableSlideItem = React.memo(
                                     </button>
                                 )}
                             </div>
-                            <YooptaEditorWrapper
+                            <TipTapEditor
                                 value={slide.content || ''}
                                 onChange={handleContentChange}
                                 minHeight={300}
@@ -3135,7 +3135,7 @@ export const SortableSlideItem = React.memo(
                                 </Label>
                             </div>
                             <div className="rounded-lg border border-purple-200 bg-white p-4">
-                                <YooptaEditorWrapper
+                                <TipTapEditor
                                     value={slide.prompt}
                                     onChange={() => {}} // Read-only in outline mode
                                     minHeight={200}

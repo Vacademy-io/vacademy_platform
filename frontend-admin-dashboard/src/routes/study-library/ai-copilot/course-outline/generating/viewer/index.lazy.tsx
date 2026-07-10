@@ -44,7 +44,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import Editor from '@monaco-editor/react';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
+import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
 import {
     DndContext,
     closestCenter,
@@ -1084,7 +1084,7 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
                             )}
                         </div>
                     </div>
-                    <YooptaEditorWrapper
+                    <TipTapEditor
                         value={processedContent}
                         onChange={handleDocumentChange}
                         minHeight={400}

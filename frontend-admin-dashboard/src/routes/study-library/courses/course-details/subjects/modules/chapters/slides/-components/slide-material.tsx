@@ -49,6 +49,8 @@ import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
 import { flattenSemanticWrappers, detectDeserializeLoss } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
+import { HtmlDocEditor } from './html-doc/html-doc-editor';
+import { HTML_DOC_TYPE, isHtmlDocEmpty } from './html-doc/html-doc-utils';
 const SlideEditor = React.lazy(() =>
     import('./SlideEditor').then((module) => ({ default: module.default }))
 );
@@ -440,6 +442,14 @@ export const SlideMaterial = ({
     // re-deserialize once with the proper maps. Reset to false on the warm
     // path so the re-apply is a no-op there.
     const usedManualPluginInitRef = useRef(false);
+    // Latest HTML for the ACTIVE 'HTML' (Tiptap) document slide. Unlike the
+    // Yoopta DOC path there is no serialize step — the editor hands us final
+    // HTML on every change; Save Draft / Publish read from here.
+    const htmlDocRef = useRef<{ slideId: string | null; html: string | null }>({
+        slideId: null,
+        html: null,
+    });
+    const htmlDocAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const searchParams = router.state.location.search;
     const { courseId, levelId, chapterId, slideId, moduleId, subjectId, sessionId, openDoubt } =
@@ -2401,6 +2411,25 @@ export const SlideMaterial = ({
                 return;
             }
 
+            // 'HTML' — the Tiptap-based document type. Content is a plain HTML
+            // string, so no Yoopta deserialize/plugin machinery is involved.
+            if (documentType === HTML_DOC_TYPE) {
+                // Same-slide re-run (e.g. autosave flipped status DRAFT→UNSYNC,
+                // a loadContent dep): the mounted editor already holds the
+                // user's live edits — remounting would revert them.
+                if (isSameSlideRerun) return;
+                htmlDocRef.current = { slideId: activeItem.id, html: null };
+                setContent(
+                    <HtmlDocEditor
+                        key={activeItem.id}
+                        slide={activeItem}
+                        isLearnerView={isLearnerView}
+                        onHtmlChange={handleHtmlDocChange}
+                    />
+                );
+                return;
+            }
+
             // 🔁 Then handle DOC
             if (documentType === 'DOC') {
                 // Same slide, non-navigation re-run (e.g. Save Draft flipped
@@ -2510,6 +2539,124 @@ export const SlideMaterial = ({
             </div>
         );
     };
+
+    /**
+     * Persist an 'HTML' (Tiptap) document slide. Draft-only semantics: a
+     * PUBLISHED slide flips to UNSYNC (the published snapshot is preserved) —
+     * publishing is always an explicit action.
+     * silent=true (autosave) never toasts and skips the 409 confirm dialog;
+     * the explicit Save Draft path surfaces both.
+     */
+    const saveHtmlDocDraft = async (
+        slide: Slide,
+        htmlString: string,
+        { silent }: { silent: boolean }
+    ): Promise<boolean> => {
+        if (!htmlString || isHtmlDocEmpty(htmlString)) {
+            if (!silent) toast.error('Could not read editor content. Please try again.');
+            return false;
+        }
+        const status =
+            slide.status === 'PUBLISHED' || slide.status === 'UNSYNC' ? 'UNSYNC' : 'DRAFT';
+
+        // Same base64-image hoisting as the DOC path — pasted images become
+        // S3 files so the stored HTML stays lean.
+        let processedHtmlString = htmlString;
+        if (containsBase64Images(htmlString)) {
+            const { processedHtml, failedUploads } = await processHtmlImages(htmlString);
+            processedHtmlString = processedHtml;
+            if (failedUploads > 0 && !silent) {
+                toast.error(`Warning: ${failedUploads} images failed to upload`);
+            }
+        }
+
+        const doSave = (force: boolean) =>
+            addUpdateDocumentSlide({
+                id: slide.id,
+                title: slide.title || '',
+                image_file_id: '',
+                description: slide.description || '',
+                slide_order: null,
+                document_slide: {
+                    id: slide.document_slide?.id || '',
+                    type: HTML_DOC_TYPE,
+                    data: processedHtmlString,
+                    title: slide.document_slide?.title || '',
+                    cover_file_id: '',
+                    total_pages: estimatePageCount(processedHtmlString),
+                    // Preserve the published snapshot — a draft save must never
+                    // wipe the last-published content.
+                    published_data: slide.document_slide?.published_data || null,
+                    published_document_total_pages:
+                        slide.document_slide?.published_document_total_pages || 1,
+                    force_overwrite: force,
+                },
+                status,
+                new_slide: false,
+                notify: false,
+            });
+
+        try {
+            await doSave(false);
+            return true;
+        } catch (error) {
+            const response = (
+                error as {
+                    response?: { status?: number; data?: { ex?: string; message?: string } };
+                }
+            )?.response;
+            const serverMessage = response?.data?.ex || response?.data?.message;
+            if (response?.status === 409 && serverMessage) {
+                if (silent) {
+                    // Autosave never force-overwrites — the explicit Save
+                    // button will surface the confirm dialog.
+                    console.warn('[html-doc] autosave blocked by content guard:', serverMessage);
+                    return false;
+                }
+                const confirmed = window.confirm(
+                    `To prevent accidental data loss, please confirm.\n\n${serverMessage}\n\nAre you sure you want to continue and save?`
+                );
+                if (!confirmed) return false;
+                await doSave(true);
+                return true;
+            }
+            if (!silent) toast.error(serverMessage || 'Error in saving the slide');
+            else console.error('[html-doc] autosave failed:', error);
+            return false;
+        }
+    };
+
+    // onChange from HtmlDocEditor: stash latest HTML + schedule the debounced
+    // autosave. The slide object is captured at schedule time so a pending
+    // save can never write into a different (newly-selected) slide.
+    const handleHtmlDocChange = useCallback(
+        (slideId: string, htmlString: string) => {
+            htmlDocRef.current = { slideId, html: htmlString };
+            if (isLearnerView) return;
+            const slideForSave = useContentStore
+                .getState()
+                .items?.find((s) => s.id === slideId) as Slide | undefined;
+            if (htmlDocAutosaveTimerRef.current) clearTimeout(htmlDocAutosaveTimerRef.current);
+            htmlDocAutosaveTimerRef.current = setTimeout(() => {
+                const target =
+                    slideForSave ??
+                    ((useContentStore.getState().activeItem?.id === slideId
+                        ? useContentStore.getState().activeItem
+                        : null) as Slide | null);
+                if (!target || target.document_slide?.type !== HTML_DOC_TYPE) return;
+                void saveHtmlDocDraft(target, htmlString, { silent: true });
+            }, 4000);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [isLearnerView]
+    );
+
+    // Clear any pending HTML-doc autosave on unmount.
+    useEffect(() => {
+        return () => {
+            if (htmlDocAutosaveTimerRef.current) clearTimeout(htmlDocAutosaveTimerRef.current);
+        };
+    }, []);
 
     const SaveDraft = async (slideToSave?: Slide | null) => {
         setIsSaving(true);
@@ -2910,6 +3057,27 @@ export const SlideMaterial = ({
                         `Error saving ${activeItem.document_slide.type.toLowerCase()} slide`
                     );
                 }
+                return;
+            }
+
+            // 'HTML' (Tiptap) documents: latest HTML lives in htmlDocRef (set on
+            // every editor change); fall back to stored data when the editor
+            // hasn't been touched. Draft/409 semantics live in saveHtmlDocDraft.
+            if (
+                slide?.source_type === 'DOCUMENT' &&
+                slide?.document_slide?.type === HTML_DOC_TYPE
+            ) {
+                if (htmlDocAutosaveTimerRef.current) {
+                    clearTimeout(htmlDocAutosaveTimerRef.current);
+                    htmlDocAutosaveTimerRef.current = null;
+                }
+                const htmlString =
+                    (htmlDocRef.current.slideId === slide.id ? htmlDocRef.current.html : null) ||
+                    slide.document_slide?.data ||
+                    slide.document_slide?.published_data ||
+                    '';
+                const saved = await saveHtmlDocDraft(slide, htmlString, { silent: false });
+                if (saved) toast.success('slide saved in draft successfully!');
                 return;
             }
 
@@ -3373,7 +3541,24 @@ export const SlideMaterial = ({
     // Update the refs whenever these functions change
     useEffect(() => {
         setHeading(activeItem?.title || '');
-        setGetCurrentEditorHTMLContent(getCurrentEditorHTMLContent);
+        // Parent-facing content getter must be slide-type aware: 'HTML'
+        // (Tiptap) slides read from htmlDocRef — asking the Yoopta editor
+        // would return its empty wrapper and clobber the slide (the
+        // non-admin publish path saves whatever this returns).
+        setGetCurrentEditorHTMLContent(() => {
+            const current = useContentStore.getState().activeItem;
+            if (current?.document_slide?.type === HTML_DOC_TYPE) {
+                return (
+                    (htmlDocRef.current.slideId === current.id
+                        ? htmlDocRef.current.html
+                        : null) ||
+                    current.document_slide?.data ||
+                    current.document_slide?.published_data ||
+                    ''
+                );
+            }
+            return getCurrentEditorHTMLContent();
+        });
         setSaveDraft(SaveDraft);
     }, [editor]);
 
@@ -3511,7 +3696,8 @@ export const SlideMaterial = ({
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2 md:gap-3">
                             <div className="flex items-center gap-1 sm:gap-2 md:gap-3">
                                 {activeItem.source_type === 'DOCUMENT' &&
-                                    activeItem?.document_slide?.type === 'DOC' && (
+                                    (activeItem?.document_slide?.type === 'DOC' ||
+                                        activeItem?.document_slide?.type === HTML_DOC_TYPE) && (
                                         <MyButton
                                             layoutVariant="icon"
                                             onClick={async () => {
@@ -3693,6 +3879,46 @@ export const SlideMaterial = ({
                                                         const { processedHtml } =
                                                             await processHtmlImages(currentHtml);
                                                         currentHtml = processedHtml;
+                                                    }
+                                                    itemToPublish = {
+                                                        ...activeItem,
+                                                        document_slide: {
+                                                            ...activeItem.document_slide!,
+                                                            data: currentHtml,
+                                                            total_pages:
+                                                                estimatePageCount(currentHtml),
+                                                        },
+                                                    };
+                                                }
+                                                // 'HTML' (Tiptap) docs: publish the live
+                                                // editor HTML (htmlDocRef), falling back to
+                                                // the stored draft.
+                                                if (
+                                                    activeItem?.source_type === 'DOCUMENT' &&
+                                                    activeItem?.document_slide?.type ===
+                                                        HTML_DOC_TYPE
+                                                ) {
+                                                    let currentHtml =
+                                                        (htmlDocRef.current.slideId ===
+                                                        activeItem.id
+                                                            ? htmlDocRef.current.html
+                                                            : null) ||
+                                                        activeItem.document_slide?.data ||
+                                                        '';
+                                                    if (containsBase64Images(currentHtml)) {
+                                                        const { processedHtml } =
+                                                            await processHtmlImages(currentHtml);
+                                                        currentHtml = processedHtml;
+                                                    }
+                                                    if (
+                                                        !currentHtml ||
+                                                        isHtmlDocEmpty(currentHtml)
+                                                    ) {
+                                                        toast.error(
+                                                            'Could not read editor content. Please try again.'
+                                                        );
+                                                        setIsPublishDialogOpen(false);
+                                                        return;
                                                     }
                                                     itemToPublish = {
                                                         ...activeItem,

@@ -24,6 +24,7 @@ import {
     viewStudentReport,
 } from '../../-services/assessment-details-services';
 import { getPublicUrl } from '@/services/upload_file';
+import { downloadFileFromUrl } from '@/lib/file-download';
 import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
@@ -470,10 +471,11 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
         },
         onSuccess: (url) => {
             if (url) {
-                const evaluatedTab = window.open(url, '_blank');
-                if (!evaluatedTab) {
-                    toast.error('Please allow pop-ups to view the evaluated copy.');
-                }
+                // Download with a correct, `.pdf`-carrying name. The public URL's
+                // basename is derived from the original upload name, which for
+                // quick-evaluated copies can lack an extension — so we resolve
+                // the real extension from the file itself before saving.
+                void downloadFileFromUrl(url, `Evaluated-Copy-${student.full_name}`);
             } else {
                 toast.error('No evaluated copy found for this attempt.');
             }

@@ -19,6 +19,7 @@ import {
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
 import { submitEvlauationMarks } from '@/routes/evaluation/evaluations/-services/evaluation-service';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { ensureFileHasExtension } from '@/lib/file-download';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 
@@ -214,7 +215,9 @@ const AssessmentSubmissionsPanel = ({
             if (file) {
                 fileId =
                     (await uploadFile({
-                        file,
+                        // Ensure the evaluated copy carries a correct extension so it
+                        // later downloads as e.g. `.pdf` rather than an extension-less file.
+                        file: ensureFileHasExtension(file),
                         setIsUploading: setUploading,
                         userId: tokenData?.user ?? '',
                         source: instituteId,

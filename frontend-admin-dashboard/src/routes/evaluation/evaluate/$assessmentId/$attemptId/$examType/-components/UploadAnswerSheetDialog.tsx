@@ -7,6 +7,7 @@ import { MyButton } from '@/components/design-system/button';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { Form } from '@/components/ui/form';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { ensureFileHasExtension } from '@/lib/file-download';
 import { handleUpdateAttempt } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -61,7 +62,9 @@ export const UploadAnswerSheetDialog = ({
         setIsProcessing(true);
         try {
             const newFileId = await uploadFile({
-                file: selectedFile,
+                // Ensure the answer sheet carries a correct extension so it later
+                // downloads/opens as e.g. `.pdf` rather than an extension-less file.
+                file: ensureFileHasExtension(selectedFile),
                 setIsUploading: setIsProcessing,
                 userId,
                 source: instituteId,

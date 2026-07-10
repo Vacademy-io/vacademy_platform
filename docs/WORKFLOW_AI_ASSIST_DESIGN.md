@@ -18,6 +18,21 @@
 
 **Deploy prerequisites:** (1) add `OPENROUTER_API_KEY` to the admin_core pod env (same value ai-service uses); (2) optionally set `workflow.ai.draft.model` (default `anthropic/claude-sonnet-4.5`; `anthropic/claude-sonnet-5`/`opus-4.8` also available on the account).
 
+## Review + hardening (2026-07-07)
+
+Adversarial multi-agent code review (45 agents) + adversarial LLM pseudo-tests (6/6 passed — the model asks instead of guessing, refuses SEND_PUSH/mutating queries, uses correct field casing, and resists a prompt-injection goal). **Fixes applied this pass** (backend BUILD SUCCESS, FE tsc + design-lint clean):
+- **Grounding accuracy:** corrected two non-existent query keys in ai-catalog (`fetch_audience_responses_by_day_difference`→`getAudienceResponsesByDayDifference`, `fetch_upcoming_fee_installments`→`getUpcomingFeeInstallments`); fixed the CONDITION example so the SpEL `condition` sits inside the routing entry (what the engine evaluates) — a drafted conditional branch would otherwise misroute.
+- **Security (P1):** `/ai-draft` now requires `@RequestAttribute("user")` + `InstituteAccessValidator.validateUserAccess` (was: any authenticated user could bill LLM spend to any institute); the requesting user is attributed on the LLM usage row.
+- **Robustness:** detect `finish_reason=="length"` (truncated JSON) and retry compactly instead of burning attempts; `safeValidate` now fails **closed** (validator exception surfaces an error, not a false-clean); drop any model-invented `workflow.id`.
+- **Frontend:** clear stale draft/answers when the goal is edited; surface clarifying questions even when a partial draft is returned (was silently dropped); 150s request timeout so the panel can't hang forever.
+- **Docs:** un-marked `fetch_expiring_memberships` as BROKEN (now fixed + institute-scoped).
+
+**Still open (recommended follow-ups):**
+- **P1 — LLM call has no HTTP timeout:** `LLMService` uses the shared `new RestTemplate()` bean (infinite connect/read), so a stalled OpenRouter response blocks the servlet thread forever; each admin retry leaks another Tomcat worker. Give `LLMService` a dedicated `RestTemplate`/`RestClient` with ~5s connect / ~120s read (don't mutate the shared bean — other clients depend on it). The 150s FE timeout only bounds the browser side.
+- **P1 — no rate limit / credit gate:** each `/ai-draft` is up to 3 Sonnet completions with a large prompt; add a per-institute rate limit (reuse `notification_rate_limit` or the AI-credits path). The membership check limits *who* can call it but not *how often*.
+- **P2/P3 (grounding polish):** verify + correct `producedContextKeys` for a few triggers (AUDIENCE_LEAD_SUBMISSION `lead`, PAYMENT_FAILED `user`, ABANDONED_CART eventId meaning), the FILTER `outputKey` vs `resultKey`, and `fetch_ssigm_by_package` status param name; make `extractJson` robust to fences-inside-strings / two JSON objects; keep `rationale` when the model emits an array-of-strings.
+- **P3:** `findActivePlansExpiringSoonByInstitute` (like the MEMBERSHIP_EXPIRY scheduler) skips plans with NULL `enroll_invite_id` (some sub-org plans) — documented, not a regression, but a coverage gap if sub-org expiry reminders are needed.
+
 **Not yet done:** in-cluster end-to-end test of the deployed `/ai-draft` endpoint (the LLM path itself is verified; the Spring wiring is not exercised until deployed); institute-entity grounding injection (real audiences/batches/templates into the prompt — currently the drafter asks clarifying questions for IDs); `ai_workflow_draft` audit table + eval harness (Phase 2); conversational refinement (Phase 3).
 
 > Companion to [WORKFLOW_PLATFORM_PROGRESS.md](WORKFLOW_PLATFORM_PROGRESS.md) (the verified engine reference). Every constraint in this doc is grounded in the 2026-07-07 code+prod audit — read that doc first if a term here is unfamiliar.

@@ -251,12 +251,16 @@ export const validateWorkflow = async (
  * the builder canvas for review, then publishes via createWorkflow.
  */
 export const draftWorkflowWithAi = async (
-    request: AiDraftRequest
+    request: AiDraftRequest,
+    signal?: AbortSignal
 ): Promise<AiDraftResponse> => {
     const response = await authenticatedAxiosInstance<AiDraftResponse>({
         method: 'POST',
         url: `${WORKFLOW_SERVICE_BASE}/ai-draft`,
         data: request,
+        // The backend does up to 3 sequential LLM calls; cap the wait so the UI can't hang forever.
+        timeout: 150000,
+        signal,
     });
     return response.data;
 };

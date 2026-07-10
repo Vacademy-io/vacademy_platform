@@ -4,7 +4,10 @@ import { Helmet } from "react-helmet";
 import { useEffect, useState, useLayoutEffect, useCallback, useMemo } from "react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useLiveSessions } from "./-hooks/useLiveSessions";
-import { SessionDetails } from "./-types/types";
+import { usePastSessions } from "./-hooks/usePastSessions";
+import { useCalendarPastSessions } from "./-hooks/useCalendarPastSessions";
+import { SessionDetails, PastSessionDetails } from "./-types/types";
+import { PastSessionCard } from "./-components/PastSessionCard";
 
 import { useNavigate } from "@tanstack/react-router";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
@@ -27,14 +30,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
 import { calculateDuration } from "@/lib/live-class/utils";
 import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import {
@@ -62,6 +57,7 @@ function RouteComponent() {
   const [selectedDayData, setSelectedDayData] = useState<{
     date: Date;
     sessions: SessionDetails[];
+    pastSessions: PastSessionDetails[];
   } | null>(null);
 
 
@@ -72,6 +68,7 @@ function RouteComponent() {
   const [activeFilterType, setActiveFilterType] = useState<FilterChangePayload["filterType"]>("none");
   const [apiPage, setApiPage] = useState<number>(0);
   const [upcomingPage, setUpcomingPage] = useState<number>(0); // Client-side pagination for upcoming sessions
+  const [pastPage, setPastPage] = useState<number>(0); // Server-side pagination for past sessions
   const SESSIONS_PER_PAGE = 5;
 
   /**
@@ -141,6 +138,30 @@ function RouteComponent() {
     size: 500,
     page: selectedView === "list" ? apiPage : 0,
   });
+
+  const {
+    sessions: pastSessions,
+    displayFlags: pastDisplayFlags,
+    totalPages: pastTotalPages,
+    isLoading: isPastLoading,
+    isFetching: isPastFetching,
+  } = usePastSessions(batchIds.length > 0 ? batchIds : null, {
+    page: pastPage,
+    size: 5,
+  });
+
+  // Calendar View's month-scoped past sessions — bounded to the visible
+  // month's past-date window (not the List View's flat page), so any past
+  // day shown on the grid/day-modal is fully loaded. Reuses the
+  // `show_past_sessions` flag from the List View's usePastSessions call
+  // above instead of fetching settings twice.
+  const {
+    sessions: calendarPastSessions,
+  } = useCalendarPastSessions(
+    batchIds.length > 0 ? batchIds : null,
+    selectedDate,
+    selectedView === "calendar" && pastDisplayFlags.show_past_sessions
+  );
 
 
 
@@ -350,6 +371,7 @@ function RouteComponent() {
   // Reset pagination when filters change
   useEffect(() => {
     setApiPage(0);
+    setPastPage(0);
   }, [startDateFilter, endDateFilter, selectedView]);
 
   // Helper function to determine if a session is currently live (in waiting room or active)
@@ -717,12 +739,28 @@ function RouteComponent() {
     ].filter((session) => session.meeting_date === formattedDate);
   };
 
+  // Month-scoped past sessions for a given calendar day — sourced from
+  // useCalendarPastSessions, which already fetched exactly this month's
+  // past-date window, so any past day on the visible grid is fully loaded.
+  const getPastSessionsForDate = (date: Date): PastSessionDetails[] => {
+    if (selectedView !== "calendar" || !pastDisplayFlags.show_past_sessions) return [];
+    const formattedDate = formatDateToISO(date);
+    return calendarPastSessions.filter((s) => s.meeting_date === formattedDate);
+  };
 
-  const handleDayClick = (date: Date, sessionsForDay: SessionDetails[]) => {
+  const handleDayClick = (
+    date: Date,
+    sessionsForDay: SessionDetails[],
+    pastSessionsForDay: PastSessionDetails[]
+  ) => {
     const isToday = date.toDateString() === new Date().toDateString();
     const hasDefaultClass = !!(sessions as any)?.defaultDayConfig?.defaultClassLink;
-    if (sessionsForDay.length > 0 || (isToday && hasDefaultClass)) {
-      setSelectedDayData({ date, sessions: sessionsForDay });
+    if (
+      sessionsForDay.length > 0 ||
+      pastSessionsForDay.length > 0 ||
+      (isToday && hasDefaultClass)
+    ) {
+      setSelectedDayData({ date, sessions: sessionsForDay, pastSessions: pastSessionsForDay });
       setDayModalOpen(true);
     }
   };
@@ -736,6 +774,11 @@ function RouteComponent() {
     const upcomingSessions = selectedDayData.sessions.filter((session) =>
       sessions?.upcoming_sessions?.includes(session)
     );
+
+    // Past Sessions for this day — month-scoped data from
+    // useCalendarPastSessions, already loaded for the whole visible month,
+    // so no "list not loaded" fallback is needed here.
+    const pastSessionsForDay = selectedDayData.pastSessions;
 
     // const defaultDayConfig = (sessions as any)?.defaultDayConfig;
     // const isToday = selectedDayData.date.toDateString() === new Date().toDateString();
@@ -895,7 +938,21 @@ function RouteComponent() {
               </div>
             )}
 
-            {selectedDayData.sessions.length === 0 && (
+            {pastSessionsForDay.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-3 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-neutral-400"></div>
+                  Past Sessions
+                </h3>
+                <div className="space-y-3">
+                  {pastSessionsForDay.map((session) => (
+                    <PastSessionCard key={session.schedule_id} session={session} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedDayData.sessions.length === 0 && pastSessionsForDay.length === 0 && (
               <div className="text-center py-8">
                 <Clock size={48} className="mx-auto text-neutral-400 mb-3" />
                 <p className="text-neutral-600 dark:text-neutral-300">
@@ -948,13 +1005,39 @@ function RouteComponent() {
     for (let day = 1; day <= daysInMonth; day++) {
       const currentDate = new Date(year, month, day);
       const sessionsForDay = getSessionsForDate(currentDate);
+      const pastSessionsForDay = getPastSessionsForDate(currentDate);
       const isToday = currentDate.toDateString() === new Date().toDateString();
       const hasLive = sessionsForDay.some((session) =>
         sessions?.live_sessions?.includes(session)
       );
+      const hasUpcoming = sessionsForDay.length > 0 && !hasLive;
       const hasDefaultClass = isToday && !!(sessions as any)?.defaultDayConfig?.defaultClassLink && !hasLive;
-      const sessionCount = sessionsForDay.length;
+      const sessionCount = sessionsForDay.length + pastSessionsForDay.length;
       const isClickable = sessionCount > 0 || hasDefaultClass;
+      // Combined preview: Live/Upcoming first, then Past — used for the
+      // day-cell's single-line preview and the dot color below.
+      const previewItems = [
+        ...sessionsForDay.map((session) => ({
+          key: session.schedule_id,
+          title: session.title,
+          time: formatSessionTimeInUserTimezone(
+            session.meeting_date,
+            session.start_time,
+            session.timezone
+          ).slice(0, 5),
+          kind: sessions?.live_sessions?.includes(session) ? ("live" as const) : ("upcoming" as const),
+        })),
+        ...pastSessionsForDay.map((session) => ({
+          key: session.schedule_id,
+          title: session.title,
+          time: formatSessionTimeInUserTimezone(
+            session.meeting_date,
+            session.start_time,
+            session.timezone
+          ).slice(0, 5),
+          kind: "past" as const,
+        })),
+      ];
 
       days.push(
         <div
@@ -963,7 +1046,7 @@ function RouteComponent() {
             ? "bg-primary-50/50 border-primary-200 dark:bg-primary-950/30 dark:border-primary-700"
             : "bg-white dark:bg-neutral-900"
             } ${isClickable ? "hover:shadow-sm" : ""}`}
-          onClick={() => handleDayClick(currentDate, sessionsForDay)}
+          onClick={() => handleDayClick(currentDate, sessionsForDay, pastSessionsForDay)}
         >
           <div
             className={`text-sm font-medium mb-1 flex items-center justify-between ${isToday
@@ -976,11 +1059,17 @@ function RouteComponent() {
               <div
                 className={`flex items-center gap-1 ${hasLive
                   ? "text-red-600 dark:text-red-400"
-                  : "text-blue-600 dark:text-blue-400"
+                  : hasUpcoming
+                    ? "text-blue-600 dark:text-blue-400"
+                    : "text-neutral-500 dark:text-neutral-400"
                   }`}
               >
                 <div
-                  className={`w-2 h-2 rounded-full ${hasLive ? "bg-danger-600 animate-pulse" : "bg-info-600"
+                  className={`w-2 h-2 rounded-full ${hasLive
+                    ? "bg-danger-600 animate-pulse"
+                    : hasUpcoming
+                      ? "bg-info-600"
+                      : "bg-neutral-400"
                     }`}
                 ></div>
                 <span className="text-xs font-semibold">{sessionCount}</span>
@@ -990,30 +1079,20 @@ function RouteComponent() {
 
           {/* Compact session indicators */}
           <div className="space-y-1">
-            {sessionsForDay.slice(0, 1).map((session) => {
-              const isLive = sessions?.live_sessions?.includes(session);
-              return (
-                <div
-                  key={session.schedule_id}
-                  className={`text-xs p-1 rounded truncate transition-all duration-200 ${isLive
-                    ? "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
-                    : "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
-                    }`}
-                  title={`${session.title} - ${session.start_time}${session.timezone
-                    ? ` (${getTimezoneDisplayInfo(session.timezone).sessionTz
-                    })`
-                    : ""
-                    }`}
-                >
-                  {formatSessionTimeInUserTimezone(
-                    session.meeting_date,
-                    session.start_time,
-                    session.timezone
-                  ).slice(0, 5)}{" "}
-                  {session.title}
-                </div>
-              );
-            })}
+            {previewItems.slice(0, 1).map((item) => (
+              <div
+                key={item.key}
+                className={`text-xs p-1 rounded truncate transition-all duration-200 ${item.kind === "live"
+                  ? "bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
+                  : item.kind === "upcoming"
+                    ? "bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                    : "bg-neutral-100 text-neutral-600 border border-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700"
+                  }`}
+                title={item.title}
+              >
+                {item.time} {item.title}
+              </div>
+            ))}
 
             {/* Default class indicator for today */}
             {hasDefaultClass && sessionCount === 0 && (
@@ -1029,7 +1108,9 @@ function RouteComponent() {
               <div
                 className={`text-xs text-center font-medium rounded py-1 ${hasLive
                   ? "bg-red-100/80 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900"
-                  : "bg-blue-100/80 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                  : hasUpcoming
+                    ? "bg-blue-100/80 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900"
+                    : "bg-neutral-100/80 text-neutral-600 border border-neutral-200 dark:bg-neutral-800/60 dark:text-neutral-300 dark:border-neutral-700"
                   }`}
               >
                 +{sessionCount - 1} more
@@ -1104,6 +1185,14 @@ function RouteComponent() {
               Upcoming Sessions
             </span>
           </div>
+          {pastDisplayFlags.show_past_sessions && (
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-neutral-100 border border-neutral-300 dark:bg-neutral-800 dark:border-neutral-600"></div>
+              <span className="text-neutral-600 dark:text-neutral-300">
+                Past Sessions
+              </span>
+            </div>
+          )}
           <div className="text-neutral-500 dark:text-neutral-400 text-xs italic">
             Click on a day to view all classes
           </div>
@@ -1366,6 +1455,75 @@ function RouteComponent() {
                   );
                 })()}
               </div>
+
+              {/* Past Sessions Section — admin-governed; rendered only when the
+                  institute has turned on "Show past sessions to learners". */}
+              {pastDisplayFlags.show_past_sessions && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
+                      Past {getTerminology(ContentTerms.Session, SystemTerms.Session)}s
+                    </h2>
+                  </div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                    Classes that already happened for your batch.
+                  </p>
+
+                  {isPastLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                    </div>
+                  ) : pastSessions.length > 0 ? (
+                    <>
+                      <div
+                        className={`space-y-4 w-full transition-opacity duration-200 ${isPastFetching ? "opacity-50" : "opacity-100"
+                          }`}
+                      >
+                        {pastSessions.map((session) => (
+                          <PastSessionCard key={session.schedule_id} session={session} />
+                        ))}
+                      </div>
+
+                      {pastTotalPages > 1 && (
+                        <div className="mt-6 flex items-center justify-center gap-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPastPage((p) => Math.max(0, p - 1))}
+                            disabled={pastPage === 0}
+                          >
+                            Previous
+                          </Button>
+                          <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                            Page {pastPage + 1} of {pastTotalPages}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPastPage((p) => Math.min(pastTotalPages - 1, p + 1))}
+                            disabled={pastPage >= pastTotalPages - 1}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-neutral-600 dark:text-neutral-300 p-4 sm:p-6 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-900/60 rounded-lg w-full border border-neutral-200 dark:border-neutral-800">
+                      <div className="text-center">
+                        <Clock
+                          size={48}
+                          className="mx-auto text-neutral-400 dark:text-neutral-500 mb-3"
+                        />
+                        <p className="font-medium">No past sessions yet</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+                          Classes will show up here once they&apos;ve happened.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* API Pagination - To navigate through the sized results */}
               {(sessions as any)?.totalReturned >= 500 || apiPage > 0 ? (

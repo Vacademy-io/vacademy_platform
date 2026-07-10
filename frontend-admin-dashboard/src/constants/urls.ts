@@ -796,6 +796,13 @@ export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: stri
 export const RECORDING_PUBLISH_ASSESSMENT = (recordingId: string, artifactId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/recording/${recordingId}/assessment/${artifactId}/publish`;
 
+// Track B — Teacher flow: link a recording/upload/YouTube video to one or more
+// course chapters as a slide directly from the session view page.
+export const LIVE_SESSION_CONTENT_LINK = `${BASE_URL}/admin-core-service/live-sessions/content/link`;
+export const LIVE_SESSION_CONTENT_LINKS = `${BASE_URL}/admin-core-service/live-sessions/content/links`;
+export const LIVE_SESSION_CONTENT_UNLINK = (linkId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/content/link/${linkId}`;
+
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
 

@@ -1123,6 +1123,68 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                 </div>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Live Classes</CardTitle>
+                    <CardDescription>
+                        What learners can see about past live sessions
+                    </CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showPastSessions: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Past Sessions</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showRecordings}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showRecordings: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Recordings</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showAttendance}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showAttendance: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Attendance</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showActivityStats}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showActivityStats: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Activity Stats</Label>
+                    </div>
+                </div>
+            </Card>
             </section>
 
             <section id="grp-notifications" className="space-y-6">

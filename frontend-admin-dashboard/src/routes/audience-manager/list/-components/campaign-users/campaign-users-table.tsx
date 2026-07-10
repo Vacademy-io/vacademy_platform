@@ -298,6 +298,11 @@ const CampaignUsersContent = ({
         return map;
     }, [customFields]);
 
+    // Declared here (before exportColumnOptions) so the memo can reference it
+    // without a temporal dead zone error — the hook call is order-safe.
+    const leadSettings = useLeadSettings();
+    const showOps = !leadSettings.isLoading && leadSettings.enabled;
+
     // Columns available for the export picker — built from known fields so the
     // user can toggle them before the async fetch runs.
     const exportColumnOptions = useMemo<ExportColumnOption[]>(() => {
@@ -397,8 +402,6 @@ const CampaignUsersContent = ({
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
     // ── Settings + per-row data ──────────────────────────────
-    const leadSettings = useLeadSettings();
-    const showOps = !leadSettings.isLoading && leadSettings.enabled;
     const showScore = showOps && leadSettings.showScoreInEnquiryTable;
     const { statuses: leadStatusCatalog } = useLeadStatuses();
 

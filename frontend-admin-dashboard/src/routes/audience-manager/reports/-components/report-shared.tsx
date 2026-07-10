@@ -512,10 +512,10 @@ export function ExportWithColumnPickerButton({
     };
 
     const handleExport = () => {
-        const indices = headers.map((_, i) => i).filter((i) => selected.has(headers[i]));
+        const indices = headers.map((_, i) => i).filter((i) => selected.has(headers[i]!));
         exportCsv(
             filename,
-            indices.map((i) => headers[i]),
+            indices.map((i) => headers[i]!),
             rows.map((row) => indices.map((i) => row[i]))
         );
         setOpen(false);

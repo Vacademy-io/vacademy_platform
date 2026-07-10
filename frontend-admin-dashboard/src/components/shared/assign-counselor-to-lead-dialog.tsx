@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
-import { useEligibleAssigneesDebounced } from '@/services/user-autosuggest';
+import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { X } from 'lucide-react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ASSIGN_COUNSELOR_TO_LEAD } from '@/constants/urls';
@@ -70,11 +70,15 @@ export const AssignCounselorToLeadDialog = ({
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? '';
 
-    // RBAC-scoped: the backend intersects with the caller's user-to-user
-    // descendants when the institute has configured a leads team and the
-    // caller is in it. Outside that gate it falls back to institute-wide,
-    // so this is a safe drop-in replacement for the old role-based hook.
-    const { data: counselors, isLoading } = useEligibleAssigneesDebounced(searchQuery, 300);
+    // Load the full assignable counsellor roster up-front (RBAC-scoped via
+    // the assignable=true flag), then filter client-side. This avoids the
+    // 10-result cap of the autosuggest endpoint.
+    const { options: allCounsellors, isLoading } = useLeadCounsellorOptions({ assignable: true });
+    const counselors = searchQuery.trim()
+        ? allCounsellors.filter((c) =>
+              c.full_name.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : allCounsellors;
 
     const invalidateAll = () => {
         queryClient.invalidateQueries({ queryKey: ['contacts'] });
@@ -137,14 +141,14 @@ export const AssignCounselorToLeadDialog = ({
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Type to search by name..."
                                 className="mt-1"
-                                autoComplete="off"
+                                autoComplete="new-password"
                                 name="counselor-search-nofill"
                                 autoFocus
                             />
                             {isLoading && (
-                                <p className="mt-2 text-sm text-gray-500">Searching...</p>
+                                <p className="mt-2 text-sm text-gray-500">Loading counsellors...</p>
                             )}
-                            {counselors && counselors.length > 0 && (
+                            {!isLoading && counselors.length > 0 && (
                                 <div className="mt-2 max-h-48 overflow-y-auto rounded-md border">
                                     {counselors.map((c) => (
                                         <button
@@ -157,13 +161,12 @@ export const AssignCounselorToLeadDialog = ({
                                             className="w-full border-b p-3 text-left transition-colors last:border-0 hover:bg-gray-50"
                                         >
                                             <div className="font-medium">{c.full_name}</div>
-                                            <div className="text-sm text-gray-500">{c.email}</div>
                                         </button>
                                     ))}
                                 </div>
                             )}
-                            {searchQuery && counselors && counselors.length === 0 && !isLoading && (
-                                <p className="mt-2 text-sm text-gray-500">No counselors found</p>
+                            {!isLoading && searchQuery && counselors.length === 0 && (
+                                <p className="mt-2 text-sm text-gray-500">No counsellors found</p>
                             )}
                         </div>
                     ) : (

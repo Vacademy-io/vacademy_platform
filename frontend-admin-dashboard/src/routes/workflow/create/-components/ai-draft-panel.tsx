@@ -116,8 +116,10 @@ export function AiDraftPanel({
     };
 
     const questions = result?.clarifyingQuestions ?? [];
-    const needsAnswers = !result?.workflow && questions.length > 0;
-    const hasDraft = !!result?.workflow;
+    // If the model asks anything — even alongside a partial draft — resolve the questions first
+    // rather than silently loading an under-specified draft.
+    const needsAnswers = questions.length > 0;
+    const hasDraft = !!result?.workflow && questions.length === 0;
 
     return (
         <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
@@ -137,7 +139,14 @@ export function AiDraftPanel({
 
             <Textarea
                 value={goal}
-                onChange={(e) => setGoal(e.target.value)}
+                onChange={(e) => {
+                    setGoal(e.target.value);
+                    // Editing the goal invalidates any prior draft/questions.
+                    if (result) {
+                        setResult(null);
+                        setAnswers({});
+                    }
+                }}
                 placeholder="e.g. 3 days after someone fills the JEE lead form, if they haven't enrolled, WhatsApp them the brochure."
                 className="min-h-20 bg-white text-body"
                 disabled={loading}

@@ -194,6 +194,11 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             ) opt_users ON opt_users.user_id = ar.user_id
             WHERE a.institute_id = :instituteId
                 AND (COALESCE(:status, '') = '' OR a.status = :status)
+                -- Exclude centers an admin has switched off (INACTIVE) or removed
+                -- (DELETED) so they drop out of the heatmap and center dropdowns.
+                -- Status is the explicit on/off switch: a live center with zero
+                -- leads in the selected window still shows because it stays ACTIVE.
+                AND UPPER(TRIM(a.status)) NOT IN ('INACTIVE', 'DELETED')
             GROUP BY a.id, a.campaign_name, a.campaign_type, a.description,
                      a.campaign_objective, a.status, a.start_date, a.end_date
             ORDER BY COUNT(ar.id) DESC

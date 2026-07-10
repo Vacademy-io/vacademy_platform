@@ -2218,6 +2218,12 @@ class VideoGenerationPipeline:
             except ImportError:
                 print("⚠️ serper_service.py not found — Serper disabled")
 
+        # Cooperative-cancel flag. run() overwrites this with the caller's
+        # threading.Event; it must also exist on instances whose methods are
+        # called without run() (e.g. single_shot_generator's insert-shot path
+        # drives _generate_html_per_shot directly, which reads it).
+        self._stop_event = None
+
     # Keywords that hint the asset is illustration-y / educational — route
     # Pixabay first when no explicit provider hint is given.
     _PIXABAY_FIRST_KEYWORDS = (

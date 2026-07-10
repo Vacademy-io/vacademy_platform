@@ -5,7 +5,7 @@
  *
  * Everything here is purely presentational; data fetching stays in the tabs.
  */
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
     CaretDown,
     CaretRight,
@@ -15,8 +15,17 @@ import {
     DownloadSimple,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { isReportEndpointMissing } from '../-services/get-crm-reports';
+import { type CsvCell, exportCsv } from '../-utils/export-csv';
 
 // ── Tab props contract ─────────────────────────────────────────────────
 
@@ -470,6 +479,127 @@ export function ExportCsvButton({
             <DownloadSimple size={14} />
             {label}
         </Button>
+    );
+}
+
+/**
+ * Drop-in upgrade for ExportCsvButton that shows a column-selection dialog
+ * before downloading. `getHeadersAndRows` is called lazily when the user
+ * opens the picker so no computation happens until they click Export.
+ */
+export function ExportWithColumnPickerButton({
+    filename,
+    getHeadersAndRows,
+    disabled,
+    label = 'Export CSV',
+}: {
+    filename: string;
+    getHeadersAndRows: () => { headers: string[]; rows: CsvCell[][] };
+    disabled?: boolean;
+    label?: string;
+}) {
+    const [open, setOpen] = useState(false);
+    const [headers, setHeaders] = useState<string[]>([]);
+    const [rows, setRows] = useState<CsvCell[][]>([]);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+
+    const handleOpen = () => {
+        const { headers: h, rows: r } = getHeadersAndRows();
+        setHeaders(h);
+        setRows(r);
+        setSelected(new Set(h));
+        setOpen(true);
+    };
+
+    const handleExport = () => {
+        const indices = headers.map((_, i) => i).filter((i) => selected.has(headers[i]!));
+        exportCsv(
+            filename,
+            indices.map((i) => headers[i]!),
+            rows.map((row) => indices.map((i) => row[i]))
+        );
+        setOpen(false);
+    };
+
+    const toggleCol = (h: string, checked: boolean) =>
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (checked) next.add(h);
+            else next.delete(h);
+            return next;
+        });
+
+    return (
+        <>
+            <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={handleOpen}
+                disabled={disabled}
+            >
+                <DownloadSimple size={14} />
+                {label}
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Choose export columns</DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3 py-1">
+                        <div className="flex items-center gap-1.5 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setSelected(new Set(headers))}
+                                className="text-primary-600 hover:underline"
+                            >
+                                Select all
+                            </button>
+                            <span className="text-neutral-300">·</span>
+                            <button
+                                type="button"
+                                onClick={() => setSelected(new Set())}
+                                className="text-primary-600 hover:underline"
+                            >
+                                Deselect all
+                            </button>
+                        </div>
+                        <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto rounded-md border border-neutral-200 p-2">
+                            {headers.map((h) => (
+                                <label
+                                    key={h}
+                                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-neutral-100"
+                                >
+                                    <Checkbox
+                                        checked={selected.has(h)}
+                                        onCheckedChange={(chk) => toggleCol(h, chk === true)}
+                                    />
+                                    {h}
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <DialogFooter className="items-center sm:justify-between">
+                        <span className="text-xs text-neutral-500">
+                            {selected.size} / {headers.length} columns
+                        </span>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={handleExport}
+                                disabled={selected.size === 0}
+                            >
+                                <DownloadSimple size={14} className="mr-1" />
+                                Export
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 

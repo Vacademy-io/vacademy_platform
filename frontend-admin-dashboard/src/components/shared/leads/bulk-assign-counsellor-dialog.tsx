@@ -267,9 +267,30 @@ export function BulkAssignCounsellorDialog({
                 {/* ROUND_ROBIN: participant checkboxes (all pre-checked) */}
                 {mode === 'ROUND_ROBIN' && (
                     <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-body font-medium text-neutral-700">
-                            <UsersThree className="size-4 text-neutral-500" />
-                            Counsellors in rotation
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-body font-medium text-neutral-700">
+                                <UsersThree className="size-4 text-neutral-500" />
+                                Counsellors in rotation
+                            </div>
+                            <div className="flex items-center gap-1.5 text-caption">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setRrChecked(new Set(counsellorOptions.map((c) => c.id)))
+                                    }
+                                    className="text-primary-600 hover:underline"
+                                >
+                                    Select all
+                                </button>
+                                <span className="text-neutral-300">·</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setRrChecked(new Set())}
+                                    className="text-primary-600 hover:underline"
+                                >
+                                    Deselect all
+                                </button>
+                            </div>
                         </div>
                         <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
                             {counsellorOptions.length === 0 && (

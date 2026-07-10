@@ -131,7 +131,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -146,13 +146,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
-                                            ELSE 'COLD' END)))
+                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
                               AND (COALESCE(:assignedCounselorId, '') = ''
-                                   OR lu.user_id = :assignedCounselorId
-                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
                               -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
                               -- caller + everyone reporting up to them through parent_user_id
                               -- chains in the leads-team subtree.
@@ -189,7 +189,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
                               AND (COALESCE(:slaFilter, '') = ''
-                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
@@ -199,7 +199,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'TAT_BEFORE'
+                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
@@ -210,7 +210,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
@@ -218,14 +218,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time > NOW()
                                              AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
-                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
                                              AND lf.is_closed = false
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time < NOW()))
-                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND (
                                            (:tatHours IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
@@ -269,7 +269,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -284,13 +284,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
-                                            ELSE 'COLD' END)))
+                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
                               AND (COALESCE(:assignedCounselorId, '') = ''
-                                   OR lu.user_id = :assignedCounselorId
-                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
                               -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
                               -- caller + everyone reporting up to them through parent_user_id
                               -- chains in the leads-team subtree.
@@ -327,7 +327,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
                               AND (COALESCE(:slaFilter, '') = ''
-                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
@@ -337,7 +337,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'TAT_BEFORE'
+                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
@@ -348,7 +348,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
@@ -356,14 +356,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time > NOW()
                                              AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
-                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
                                              AND lf.is_closed = false
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time < NOW()))
-                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND (
                                            (:tatHours IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
@@ -445,7 +445,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -455,13 +455,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (COALESCE(:searchUserIdsCsv, '') != ''
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
-                                            ELSE 'COLD' END)))
+                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
                               AND (COALESCE(:assignedCounselorId, '') = ''
-                                   OR lu.user_id = :assignedCounselorId
-                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
                               -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
                               -- caller + everyone reporting up to them through parent_user_id
                               -- chains inside the leads-team subtree. ANDed with the single-id
@@ -499,7 +499,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
                               AND (COALESCE(:slaFilter, '') = ''
-                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
@@ -509,7 +509,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'TAT_BEFORE'
+                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
@@ -520,7 +520,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
@@ -528,14 +528,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time > NOW()
                                              AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
-                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
                                              AND lf.is_closed = false
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time < NOW()))
-                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND (
                                            (:tatHours IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL
@@ -570,7 +570,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -580,13 +580,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (COALESCE(:searchUserIdsCsv, '') != ''
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
                                        CASE WHEN ulp.best_score >= 80 THEN 'HOT'
                                             WHEN ulp.best_score >= 50 THEN 'WARM'
-                                            ELSE 'COLD' END)))
+                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
                               AND (COALESCE(:assignedCounselorId, '') = ''
-                                   OR lu.user_id = :assignedCounselorId
-                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
                               -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
                               -- caller + everyone reporting up to them through parent_user_id
                               -- chains inside the leads-team subtree. ANDed with the single-id
@@ -624,7 +624,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               --     only), matching the Follow up at column which is now purely
                               --     counsellor-scheduled callbacks.
                               AND (COALESCE(:slaFilter, '') = ''
-                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
@@ -634,7 +634,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'TAT_BEFORE'
+                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND :tatHours IS NOT NULL
                                        AND ar.submitted_at IS NOT NULL
                                        AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
@@ -645,7 +645,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
                                                    OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
                                                    OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
@@ -653,14 +653,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time > NOW()
                                              AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
-                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND EXISTS (
                                            SELECT 1 FROM lead_followup lf
                                            WHERE lf.audience_response_id = ar.id
                                              AND lf.is_closed = false
                                              AND lf.schedule_time IS NOT NULL
                                              AND lf.schedule_time < NOW()))
-                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
                                        AND (
                                            (:tatHours IS NOT NULL
                                             AND ar.submitted_at IS NOT NULL

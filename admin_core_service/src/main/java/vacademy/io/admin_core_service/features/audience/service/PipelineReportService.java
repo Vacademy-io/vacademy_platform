@@ -246,6 +246,30 @@ public class PipelineReportService {
             """;
 
     /**
+     * Leads assigned to each counsellor that have never had a status change recorded — i.e.
+     * zero rows in lead_status_history across any of their audience_responses in this institute.
+     * No date window: "pending" means never touched, not just untouched in the report period.
+     * audienceId filter is honoured so the count scopes to a single campaign when selected.
+     */
+    private static final String PENDING_LEADS_SQL = """
+            SELECT ulp.assigned_counselor_id AS actor_id,
+                   COUNT(DISTINCT ulp.user_id) AS pending_count
+            FROM user_lead_profile ulp
+            WHERE ulp.institute_id = :instituteId
+              AND ulp.assigned_counselor_id IS NOT NULL
+              AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM audience_response ar
+                  JOIN lead_status_history lsh ON lsh.audience_response_id = ar.id
+                  WHERE (ar.user_id = ulp.user_id OR ar.student_user_id = ulp.user_id)
+                    AND lsh.institute_id = :instituteId
+                    AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+              )
+            GROUP BY ulp.assigned_counselor_id
+            """;
+
+    /**
      * Call outcomes per counsellor × call status. created_at (NOT NULL) is the window column —
      * start_time is null for calls that never left the provider queue and those outcomes
      * (FAILED / NO_ANSWER / …) are exactly what this report is for.
@@ -291,6 +315,12 @@ public class PipelineReportService {
                 .merge(rs.getString("status_key"), rs.getLong("n"), Long::sum);
         jdbc.query(STATUS_CHANGES_SQL, p, changesCollector);
 
+        // counsellor → pending count (assigned leads with no history at all)
+        Map<String, Long> pendingByActor = new LinkedHashMap<>();
+        RowCallbackHandler pendingCollector = rs ->
+                pendingByActor.put(rs.getString("actor_id"), rs.getLong("pending_count"));
+        jdbc.query(PENDING_LEADS_SQL, p, pendingCollector);
+
         // counsellor → (CALL_STATUS → count)
         Map<String, Map<String, Long>> outcomesByActor = new LinkedHashMap<>();
         RowCallbackHandler outcomesCollector = rs -> {
@@ -324,6 +354,7 @@ public class PipelineReportService {
                         .name(displayName(e.getKey(), nameById))
                         .totalChanges(e.getValue().values().stream().mapToLong(Long::longValue).sum())
                         .changes(e.getValue())
+                        .pendingCount(pendingByActor.getOrDefault(e.getKey(), 0L))
                         .build())
                 .sorted((a, b) -> Long.compare(b.getTotalChanges(), a.getTotalChanges()))
                 .collect(Collectors.toList());

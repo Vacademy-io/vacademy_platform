@@ -21,6 +21,8 @@ import {
   updateSubOrgRegistrationDetails,
   verifySubOrgRegistrationOtp,
   resendSubOrgRegistrationOtp,
+  resumeSubOrgRegistration,
+  resumeVerifySubOrgOtp,
   completeSubOrgRegistration,
   getSubOrgApiErrorMessage,
 } from "../-services/sub-org-registration-services";
@@ -116,10 +118,21 @@ const RegistrationWizard = ({
   // TNC was accepted once this session — re-entering the step via Back keeps
   // the checkboxes pre-checked.
   const [tncAcceptedOnce, setTncAcceptedOnce] = useState(false);
+  // Resume flow: /start rejected this email as already in flight — the details
+  // step shows the inline "Resume registration" door for it.
+  const [resumeEmail, setResumeEmail] = useState<string | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  // OTP phase verifies via /resume-verify (code sent by /resume) instead of
+  // /verify-otp; cleared once verification succeeds or a fresh /start lands.
+  const [isResumeMode, setIsResumeMode] = useState(false);
+  // Resumed registration is PENDING_PAYMENT — the payment step skips plan
+  // selection and re-initiates via /retry-payment (plan is locked server-side).
+  const [isPaymentRetry, setIsPaymentRetry] = useState(false);
 
   const [isStarting, setIsStarting] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
 
   // ─── Branding (same sync as audience-response) ─────────────────────────────
@@ -267,6 +280,9 @@ const RegistrationWizard = ({
 
   const handleDetailsSubmit = async (values: DetailsStepValues) => {
     setIsStarting(true);
+    // Any (re)submit supersedes a pending resume offer for the previous email.
+    setResumeEmail(null);
+    setResumeError(null);
     try {
       if (registrationId && otpVerified) {
         // Already OTP-verified — edit the SAME registration via
@@ -305,20 +321,120 @@ const RegistrationWizard = ({
       });
       setRegistrationId(response.registration_id);
       setDetailsValues(values);
+      setIsResumeMode(false);
+      setIsPaymentRetry(false);
       setPhase("OTP");
       toast.success("Verification code sent to your email");
     } catch (error) {
       // Duplicate email (and other 4xx) messages come from the backend
-      toast.error(
+      const message = getSubOrgApiErrorMessage(
+        error,
+        isEditingAfterVerification
+          ? "Failed to save your details. Please try again"
+          : "Failed to start registration. Please try again"
+      );
+      // /start's in-flight-duplicate rejection gets a door, not a dead end:
+      // keep the typed values and offer to resume that registration inline.
+      if (!isEditingAfterVerification && /already exists/i.test(message)) {
+        setDetailsValues(values);
+        setResumeEmail(values.adminEmail.trim());
+        return;
+      }
+      toast.error(message);
+    } finally {
+      setIsStarting(false);
+    }
+  };
+
+  /** Sends (or re-sends) the resume OTP and tracks the resumed registration. */
+  const sendResumeCode = async (email: string) => {
+    const response = await resumeSubOrgRegistration({
+      institute_id: instituteId,
+      code,
+      admin_email: email,
+    });
+    setRegistrationId(response.registration_id);
+  };
+
+  /** Details-step "Resume registration" — fresh OTP via /resume, then OTP phase. */
+  const handleResume = async () => {
+    if (!resumeEmail) return;
+    setIsResuming(true);
+    setResumeError(null);
+    try {
+      await sendResumeCode(resumeEmail);
+      setIsResumeMode(true);
+      setOtpVerified(false);
+      setPhase("OTP");
+      toast.success("Verification code sent to your email");
+    } catch (error) {
+      // e.g. "No registration found for this email on this link"
+      setResumeError(
         getSubOrgApiErrorMessage(
           error,
-          isEditingAfterVerification
-            ? "Failed to save your details. Please try again"
-            : "Failed to start registration. Please try again"
+          "Could not resume this registration. Please try again"
         )
       );
     } finally {
-      setIsStarting(false);
+      setIsResuming(false);
+    }
+  };
+
+  /**
+   * Resume-mode OTP verification — /resume-verify returns the saved details
+   * plus where the registration left off; prefill, then route there:
+   * OTP_VERIFIED → first post-OTP step (KYC self-detects VERIFIED on mount),
+   * PENDING_PAYMENT → payment retry, COMPLETED → success panel.
+   */
+  const handleResumeVerify = async (otp: string) => {
+    if (!registrationId) {
+      toast.error("Registration session missing. Please start again");
+      setPhase("DETAILS");
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      const response = await resumeVerifySubOrgOtp({ registrationId, otp });
+      const details = response.details;
+      const restoredEmail =
+        details?.admin_email?.trim() ||
+        resumeEmail ||
+        detailsValues?.adminEmail ||
+        "";
+      setDetailsValues({
+        orgName: details?.org_name ?? detailsValues?.orgName ?? "",
+        orgLogoFileId: details?.org_logo_file_id ?? null,
+        adminName: details?.admin_name ?? detailsValues?.adminName ?? "",
+        adminEmail: restoredEmail,
+        adminPhone: details?.admin_phone ?? "",
+        addressLine1: details?.address_line1 ?? "",
+        addressLine2: details?.address_line2 ?? "",
+        city: details?.city ?? "",
+        state: details?.state ?? "",
+        pincode: details?.pincode ?? "",
+      });
+      setOtpVerified(true);
+      setIsResumeMode(false);
+      setResumeEmail(null);
+      setResumeError(null);
+      toast.success("Email verified successfully!");
+
+      const status = (response.status || "").toUpperCase();
+      const isRetry = status === "PENDING_PAYMENT" && hasPaymentStep;
+      setIsPaymentRetry(isRetry);
+      if (status === "COMPLETED") {
+        // Payment webhook (or free completion) landed while the user was away.
+        setCompletedEmail(restoredEmail);
+        setPhase("SUCCESS");
+      } else if (isRetry) {
+        setPhase("PAYMENT");
+      } else {
+        await advanceAfter("OTP", customFieldValues);
+      }
+    } catch (error) {
+      toast.error(getSubOrgApiErrorMessage(error, "Invalid or expired OTP"));
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -345,7 +461,13 @@ const RegistrationWizard = ({
     if (!registrationId) return;
     setIsResending(true);
     try {
-      await resendSubOrgRegistrationOtp({ registrationId });
+      if (isResumeMode && resumeEmail) {
+        // /resend-otp guards on row status (COMPLETED throws) which is unknown
+        // before verification — /resume always re-sends for a resumable row.
+        await sendResumeCode(resumeEmail);
+      } else {
+        await resendSubOrgRegistrationOtp({ registrationId });
+      }
       toast.success("Verification code resent");
     } catch (error) {
       toast.error(
@@ -528,17 +650,22 @@ const RegistrationWizard = ({
               orgNameHint={template.org_name_hint}
               collectAddress={collectAddress}
               isEditingAfterVerification={isEditingAfterVerification}
+              resumeEmail={resumeEmail}
+              onResume={handleResume}
+              isResuming={isResuming}
+              resumeError={resumeError}
             />
           )}
 
           {phase === "OTP" && detailsValues && (
             <OtpStep
               email={detailsValues.adminEmail}
-              onVerify={handleVerifyOtp}
+              onVerify={isResumeMode ? handleResumeVerify : handleVerifyOtp}
               onResend={handleResendOtp}
               onEditDetails={() => setPhase("DETAILS")}
               isVerifying={isVerifying || isCompleting}
               isResending={isResending}
+              resumeMode={isResumeMode}
             />
           )}
 
@@ -601,12 +728,17 @@ const RegistrationWizard = ({
                   adminName={detailsValues.adminName}
                   adminEmail={detailsValues.adminEmail}
                   adminPhone={detailsValues.adminPhone ?? ""}
+                  retryMode={isPaymentRetry}
                   onRegistered={(email) => {
                     setCompletedEmail(email || detailsValues.adminEmail || "");
                     setPhase("SUCCESS");
                   }}
                   onSessionMissing={() => setPhase("DETAILS")}
-                  onBack={() => goBackFrom("PAYMENT")}
+                  onBack={
+                    // A resumed PENDING_PAYMENT session has no earlier wizard
+                    // steps to go back to — the plan is locked server-side.
+                    isPaymentRetry ? undefined : () => goBackFrom("PAYMENT")
+                  }
                 />
               </PaymentGatewayWrapper>
             </Suspense>

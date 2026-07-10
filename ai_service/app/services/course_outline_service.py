@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 from typing import Optional, AsyncGenerator
+from uuid import uuid4
 
 from ..domain.course_metadata import CourseMetadata
 from ..ports.course_metadata_port import CourseMetadataPort
@@ -58,9 +59,58 @@ class CourseOutlineGenerationService:
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
+    async def _apply_reference_grounding(self, request: CourseOutlineRequest) -> None:
+        """If reference PDFs were uploaded, ingest them and append their extracted
+        text/tables to the user prompt so the outline is built from the actual
+        document. Best-effort — a failure leaves the prompt unchanged."""
+        file_ids = getattr(request, "reference_document_file_ids", None)
+        if not file_ids:
+            return
+        try:
+            from .course_document_ingest import ingest_documents, MAX_GROUNDING_CHARS_OUTLINE
+            # Bound the wait: MathPix polling can take minutes on a slow/large
+            # PDF, and grounding must not block the outline stream indefinitely.
+            # On timeout we proceed ungrounded — the conversion keeps caching, so
+            # the content step still gets the figures (cache hit).
+            # Outline only needs the text — skip figure re-hosting (the content
+            # pass re-hosts them when it actually embeds them).
+            ingest = await asyncio.wait_for(
+                ingest_documents(file_ids, rehost_figures=False), timeout=150
+            )
+            if not ingest.grounding_text:
+                return
+            source = ingest.grounding_text[:MAX_GROUNDING_CHARS_OUTLINE]
+            truncated = " (truncated)" if len(ingest.grounding_text) > len(source) else ""
+            figure_note = (
+                f"\n\nThe document also contains {len(ingest.figures)} figures/diagrams that will be "
+                "embedded into the generated slides — structure the course so its slides follow the "
+                "document's sections, so those figures land in the right context."
+                if ingest.figures else ""
+            )
+            request.user_prompt = (
+                f"{request.user_prompt}\n\n"
+                f"===== SOURCE DOCUMENT{truncated} — build the ENTIRE course strictly from this uploaded "
+                "material: use its real structure, section order, facts, terminology, definitions, tables, "
+                "and examples. Do NOT pad with generic outside content. =====\n"
+                f"{source}\n"
+                "===== END SOURCE DOCUMENT ====="
+                f"{figure_note}"
+            )
+            logger.info(
+                f"Grounded outline in {len(file_ids)} reference document(s): "
+                f"{len(source)} chars, {len(ingest.figures)} figures"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Reference grounding failed (continuing without it): {str(e)}")
+
     async def generate_outline(
         self, request: CourseOutlineRequest
     ) -> CourseOutlineResponse:
+        # Homework-slide injection keys off the user's OWN words — capture them
+        # before grounding appends the document text (which almost always
+        # contains "exercise"/"assignment" and would spuriously trigger it).
+        original_user_prompt = request.user_prompt
+        await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
         if request.course_id:
@@ -123,23 +173,24 @@ class CourseOutlineGenerationService:
                 model=model,
                 api_key=openai_key,
             )
-            
-            # Record token usage
-            if self._db_session and usage_info:
-                try:
-                    token_service = TokenUsageService(self._db_session)
-                    token_service.record_usage_and_deduct_credits(
-                        api_provider=ApiProvider.OPENAI,
-                        prompt_tokens=usage_info.get("prompt_tokens", 0),
-                        completion_tokens=usage_info.get("completion_tokens", 0),
-                        total_tokens=usage_info.get("total_tokens", 0),
-                        request_type=RequestType.OUTLINE,
-                        institute_id=request.institute_id,
-                        user_id=request.user_id,
-                        model=model,
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to record token usage: {str(e)}")
+
+            # Parametric course_outline charge: max(flat DB rate, actual tokens).
+            # Best-effort on a fresh session; idempotent per request.
+            if usage_info:
+                from .ai_billing import record_tool_billing
+                request_id = str(uuid4())
+                record_tool_billing(
+                    tool_key="course_outline",
+                    tool_params={},
+                    request_type=RequestType.OUTLINE,
+                    model=model,
+                    prompt_tokens=usage_info.get("prompt_tokens", 0),
+                    completion_tokens=usage_info.get("completion_tokens", 0),
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_id=request_id,
+                    idempotency_key=f"course_outline:{request_id}",
+                )
         else:
             # Fallback for clients that don't support usage tracking
             raw_output = await self._llm_client.generate_outline(
@@ -151,7 +202,7 @@ class CourseOutlineGenerationService:
         outline_response = self._parser.parse(raw_output)
 
         # Check if practice problems/solutions are requested and add homework slides
-        outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
+        outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
 
         # Generate images if requested AND parsing was successful
         # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -203,6 +254,14 @@ class CourseOutlineGenerationService:
         self, request: CourseOutlineRequest, request_id: str
     ) -> AsyncGenerator[str, None]:
         """Generate outline using streaming and return SSE events (matches media-service pattern)."""
+        # Emit the requestId first so the client gets a first byte before the
+        # (possibly slow) document grounding — otherwise a proxy/EventSource
+        # first-byte timeout could drop the connection during MathPix ingestion.
+        yield f"```json {{\"requestId\": \"{request_id}\"}}```"
+        # Capture the user's own words before grounding appends document text
+        # (which would spuriously trigger homework-slide injection).
+        original_user_prompt = request.user_prompt
+        await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
         if request.course_id:
@@ -258,8 +317,7 @@ class CourseOutlineGenerationService:
             gemini_key = settings.gemini_api_key
             model = request.model or settings.llm_default_model
 
-        # Send initial metadata event (matches media-service)
-        yield f"```json {{\"requestId\": \"{request_id}\"}}```"
+        # (requestId already emitted at the top, before grounding)
 
         # For now, get the complete response and yield it as a single event
         # This simulates streaming but uses non-streaming API call
@@ -271,24 +329,23 @@ class CourseOutlineGenerationService:
                     model=model,
                     api_key=openai_key,
                 )
-                
-                # Record token usage
-                if self._db_session and usage_info:
-                    try:
-                        token_service = TokenUsageService(self._db_session)
-                        token_service.record_usage_and_deduct_credits(
-                            api_provider=ApiProvider.OPENAI,
-                            prompt_tokens=usage_info.get("prompt_tokens", 0),
-                            completion_tokens=usage_info.get("completion_tokens", 0),
-                            total_tokens=usage_info.get("total_tokens", 0),
-                            request_type=RequestType.OUTLINE,
-                            institute_id=request.institute_id,
-                            user_id=request.user_id,
-                            model=model,
-                            request_id=request_id,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to record token usage: {str(e)}")
+
+                # Parametric course_outline charge: max(flat DB rate, actual
+                # tokens). Best-effort on a fresh session; idempotent per request.
+                if usage_info:
+                    from .ai_billing import record_tool_billing
+                    record_tool_billing(
+                        tool_key="course_outline",
+                        tool_params={},
+                        request_type=RequestType.OUTLINE,
+                        model=model,
+                        prompt_tokens=usage_info.get("prompt_tokens", 0),
+                        completion_tokens=usage_info.get("completion_tokens", 0),
+                        institute_id=request.institute_id,
+                        user_id=request.user_id,
+                        request_id=request_id,
+                        idempotency_key=f"course_outline:{request_id}",
+                    )
             else:
                 # Fallback for clients that don't support usage tracking
                 full_content = await self._llm_client.generate_outline(
@@ -306,7 +363,7 @@ class CourseOutlineGenerationService:
             outline_response = self._parser.parse(full_content)
 
             # Check if practice problems/solutions are requested and add homework slides
-            outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
+            outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
 
             # Generate images if requested AND parsing was successful
             # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -406,7 +463,14 @@ class CourseOutlineGenerationService:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None, language: Optional[str] = "English"
+        self,
+        course_tree: dict,
+        request_id: str,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        language: Optional[str] = "English",
+        video_settings: Optional[dict] = None,
+        reference_document_file_ids: Optional[list] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -502,6 +566,36 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._institute_id = extracted_institute_id or self._content_generation_service._institute_id
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
+            # Keys idempotent per-slide charges for this generation run
+            self._content_generation_service._request_id = request_id
+
+            # Ingest reference PDFs once (cache hit from the outline pass) so
+            # DOCUMENT slides can embed the document's real figures. Each figure
+            # is assigned to the ONE slide it best matches (by caption↔title) so
+            # the same figure doesn't get embedded on every slide. Best-effort.
+            self._content_generation_service._document_figures_by_path = {}
+            if reference_document_file_ids:
+                try:
+                    from .course_document_ingest import ingest_documents, assign_figures_to_slides
+                    # Bounded like the outline pass: a slow/dead MathPix job must
+                    # not stall content generation (no slides would stream).
+                    ingest = await asyncio.wait_for(
+                        ingest_documents(reference_document_file_ids), timeout=150
+                    )
+                    doc_slides = [
+                        {"path": t.path, "title": t.title or t.name or ""}
+                        for t in content_todos
+                        if t.type == "DOCUMENT"
+                        and "assignment" not in (t.title or "").lower()
+                    ]
+                    figures_by_path = assign_figures_to_slides(ingest.figures, doc_slides)
+                    self._content_generation_service._document_figures_by_path = figures_by_path
+                    logger.info(
+                        f"Content generation: {len(ingest.figures)} reference figure(s) "
+                        f"assigned across {len(figures_by_path)} slide(s)"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Reference figure ingest failed (continuing): {str(e)}")
             
             # Inject request-level language into todo metadata if not already set
             effective_language = language or "English"
@@ -510,6 +604,26 @@ class CourseOutlineGenerationService:
                     todo.metadata = {}
                 if not todo.metadata.get("language"):
                     todo.metadata["language"] = effective_language
+
+            # Inject course-level AI-video settings (from the wizard) into the
+            # video-pipeline todos' metadata. These are the user's EXPLICIT
+            # per-course choices for video pages, so they override the auto-
+            # injected defaults (e.g. the "language" above) for video todos.
+            # "language" here is the video-narration language (may differ from
+            # the document language) and drives the TTS voice.
+            if video_settings:
+                _video_types = {"AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"}
+                _video_setting_keys = (
+                    "model", "voice_gender", "voice_id",
+                    "tts_provider", "quality_tier", "target_duration", "language",
+                )
+                for todo in content_todos:
+                    if todo.type not in _video_types:
+                        continue
+                    for key in _video_setting_keys:
+                        value = video_settings.get(key)
+                        if value:
+                            todo.metadata[key] = value
 
             # ── Parallel content generation with dependency awareness ──
             # Separate independent todos from dependent homework→solution pairs.
@@ -555,10 +669,14 @@ class CourseOutlineGenerationService:
                 logger.info(f"Phase 1: Processing {len(independent_todos)} independent todos in parallel...")
                 event_queue: asyncio.Queue = asyncio.Queue()
                 _SENTINEL = object()  # Signals all tasks are done
+                # Paths whose worker actually started generating (left the
+                # semaphore queue) — see the disconnect handling below.
+                started_paths: set = set()
 
                 async def _process_todo_to_queue(todo: Todo):
                     """Generate content for one todo and push events to the queue."""
                     async with semaphore:
+                        started_paths.add(todo.path)
                         try:
                             logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
                             async for content_update in self._content_generation_service.generate_content_for_todo(
@@ -580,10 +698,11 @@ class CourseOutlineGenerationService:
                             await event_queue.put(error_response)
 
                 # Start all tasks
-                tasks = [
-                    asyncio.create_task(_process_todo_to_queue(todo))
+                task_todo_pairs = [
+                    (asyncio.create_task(_process_todo_to_queue(todo)), todo)
                     for todo in independent_todos
                 ]
+                tasks = [task for task, _ in task_todo_pairs]
 
                 # Watchdog: wait for all tasks, then push sentinel
                 async def _signal_done():
@@ -592,23 +711,46 @@ class CourseOutlineGenerationService:
 
                 asyncio.create_task(_signal_done())
 
-                # Yield events in real-time as they arrive from any task
-                while True:
-                    event = await event_queue.get()
-                    if event is _SENTINEL:
-                        break
-                    yield event
-                    # Accumulate generated content for potential downstream use
-                    try:
-                        data = json.loads(event)
+                # Yield events in real-time as they arrive from any task.
+                # If the client disconnects, the generator is closed here —
+                # cancel the pure-LLM workers so orphaned generations (and
+                # their credit charges) don't keep running for a stream nobody
+                # receives. Video-pipeline workers must NOT be hard-cancelled:
+                # a CancelledError inside generate_till_stage bypasses its
+                # `except Exception` cleanup (row stuck IN_PROGRESS, no refund)
+                # and unwinds a `with ThreadPoolExecutor()` whose shutdown
+                # blocks the whole event loop until the stage thread finishes.
+                # Those runs complete in the background instead (their DB rows
+                # and S3 artifacts stay usable, billed as actual usage).
+                _video_pipeline_types = {"AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"}
+                try:
+                    while True:
+                        event = await event_queue.get()
+                        if event is _SENTINEL:
+                            break
+                        yield event
+                        # Accumulate generated content for potential downstream use
+                        try:
+                            data = json.loads(event)
+                            if (
+                                data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                and data.get("status")
+                                and "contentData" in data
+                            ):
+                                generated_content_by_path[data["path"]] = data["contentData"]
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                finally:
+                    for task, todo in task_todo_pairs:
+                        # Video-family workers that already entered the pipeline
+                        # must finish (see comment above); ones still queued on
+                        # the semaphore have no DB row/charges yet and are safe
+                        # (and cheap) to cancel.
                         if (
-                            data.get("type") == "SLIDE_CONTENT_UPDATE"
-                            and data.get("status")
-                            and "contentData" in data
+                            todo.type not in _video_pipeline_types
+                            or todo.path not in started_paths
                         ):
-                            generated_content_by_path[data["path"]] = data["contentData"]
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                            task.cancel()
 
             # ── Phase 2: Process dependent homework→solution pairs sequentially ──
             if dependent_pairs:
@@ -842,15 +984,16 @@ class CourseOutlineGenerationService:
                 type="DOCUMENT",
                 path=homework_path,
                 action_type="ADD",
-                prompt=f"""Create homework tasks based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
+                model=chapter_document_slides[0].model,
+                prompt=f"""Create the homework assignment based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
 
-IMPORTANT: These homework tasks should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
+IMPORTANT: The assignment should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
 
-The homework must be CODING- and TASK-oriented, NOT simple question-answer type. Include exactly ONE task per chapter, such as:
-- One mini project (e.g. build a small app, implement a feature, create a script), or
-- One setup/configuration task (e.g. set up environment, configure a tool), or
-- One implementation task (e.g. implement a function, write code that does X)
-The single task must have: clear title, brief context, concrete instructions, and expected outcome. Include code snippets or starter code where relevant. Base it on THIS chapter only: {slide_references}. Format as HTML with headings, paragraphs, and code blocks.""",
+The homework must be hands-on and applied — something the student actively DOES, not recall-style question-answer. Choose the task type from the chapter's subject matter:
+- ONLY if the chapter teaches programming or another code-based technical skill: one coding task (mini project, implementation, setup, or debugging task)
+- For any other subject: one practical non-coding task (e.g. analyze a provided case or examples, create a deliverable like a properly formatted document or plan, correct provided flawed examples, or solve realistic scenario problems)
+Never force a coding task onto a non-technical chapter.
+Include exactly ONE task, with: clear title, brief context, concrete instructions, the materials to work on embedded in the assignment, and the expected outcome. Base it on THIS chapter only: {slide_references}.""",
                 order=last_order + 1,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,
@@ -864,16 +1007,15 @@ The single task must have: clear title, brief context, concrete instructions, an
                 type="DOCUMENT",
                 path=solutions_path,
                 action_type="ADD",
-                prompt=f"""Create solutions for the homework tasks from the previous slide in {chapter_name}. For EACH task you MUST give: (1) HINT first, (2) then the EXACT solution.
+                model=chapter_document_slides[0].model,
+                prompt=f"""Create solutions for the homework task from the previous slide in {chapter_name}. You MUST give: (1) HINT first, (2) then the full solution.
 
-IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework tasks are based on these slides: {slide_references}.
+IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework task is based on these slides: {slide_references}.
 
-For every homework item:
+For the homework task:
 - First provide one or more HINTs (short, actionable, without giving the full answer).
-- Then provide the full EXACT solution: complete code (if coding), step-by-step commands (if setup), or full implementation with explanation.
-- Code must be complete and runnable; for setup tasks include commands and how to verify. Reference concepts only from: {slide_references}.
-
-Format as HTML: for each task use a heading, then a "Hint" subsection, then a "Solution" subsection with code in <pre><code> and steps in lists/paragraphs.""",
+- Then provide the full solution matching the task type: complete runnable code ONLY if the homework was a coding task; otherwise the complete worked deliverable or step-by-step working (e.g. the corrected examples, the finished document, the full analysis).
+- Reference concepts only from: {slide_references}.""",
                 order=last_order + 2,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,

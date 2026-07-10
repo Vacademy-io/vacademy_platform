@@ -4070,6 +4070,11 @@ class VideoGenerationService:
                 except Exception:
                     pass
 
+            # Clear the cooperative-stop registry BEFORE the terminal yield —
+            # consumers may break on the error event, in which case GeneratorExit
+            # lands at this yield and code after it never runs.
+            cancellation_registry.clear(video_id)
+
             yield {
                 "type": "error",
                 "message": f"Video generation encountered an error: {pipeline_error}. Partial files may have been saved.",

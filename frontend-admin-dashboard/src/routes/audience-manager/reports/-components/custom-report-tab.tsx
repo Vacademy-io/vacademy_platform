@@ -17,10 +17,9 @@ import {
     runCustomReport,
     type CustomReportFilter,
 } from '../-services/get-custom-report';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -79,16 +78,6 @@ export function CustomReportTab({
 
     const result = run.data ?? null;
 
-    const exportResult = () => {
-        if (!result) return;
-        exportCsv(
-            `custom-report_${fromDate}_${toDate}.csv`,
-            result.columns.map((c) => c.label),
-            result.rows.map((row) =>
-                row.map((cell, i) => formatCell(cell, result.columns[i]?.type))
-            )
-        );
-    };
 
     if (catalog.isLoading) return <ReportTabSkeleton />;
     if (catalog.isError)
@@ -172,9 +161,17 @@ export function CustomReportTab({
                     title="Result"
                     icon={<TableIcon size={18} />}
                     actions={
-                        <ExportCsvButton
-                            onClick={exportResult}
+                        <ExportWithColumnPickerButton
+                            filename={`custom-report_${fromDate}_${toDate}.csv`}
                             disabled={result.rows.length === 0}
+                            getHeadersAndRows={() => ({
+                                headers: result.columns.map((c) => c.label),
+                                rows: result.rows.map((row) =>
+                                    row.map((cell, i) =>
+                                        formatCell(cell, result.columns[i]?.type)
+                                    )
+                                ),
+                            })}
                         />
                     }
                 >

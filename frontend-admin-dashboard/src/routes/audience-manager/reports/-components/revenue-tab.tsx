@@ -14,10 +14,9 @@ import {
     type RevenueCounsellorRow,
     type RevenueSourceRow,
 } from '../-services/get-revenue-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     KpiCard,
     ReportErrorState,
     ReportSection,
@@ -86,30 +85,6 @@ export function RevenueTab({
         }
     };
 
-    const exportSources = () =>
-        exportCsv(
-            `revenue-by-source_${fromDate}_${toDate}.csv`,
-            ['Source', 'Revenue', 'Paying leads', 'Payments', 'Avg deal value'],
-            sources.map((r) => [
-                r.source_type,
-                r.revenue,
-                r.paying_leads,
-                r.payments,
-                r.avg_deal_value,
-            ])
-        );
-    const exportCounsellors = () =>
-        exportCsv(
-            `revenue-by-counsellor_${fromDate}_${toDate}.csv`,
-            ['Counsellor', 'Revenue', 'Paying leads', 'Payments', 'Avg deal value'],
-            counsellors.map((r) => [
-                r.name ?? r.user_id,
-                r.revenue,
-                r.paying_leads,
-                r.payments,
-                r.avg_deal_value,
-            ])
-        );
 
     return (
         <div className="flex flex-col gap-6">
@@ -172,7 +147,20 @@ export function RevenueTab({
                 title="Revenue by source"
                 icon={<Megaphone size={18} />}
                 actions={
-                    <ExportCsvButton onClick={exportSources} disabled={sources.length === 0} />
+                    <ExportWithColumnPickerButton
+                        filename={`revenue-by-source_${fromDate}_${toDate}.csv`}
+                        disabled={sources.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: ['Source', 'Revenue', 'Paying leads', 'Payments', 'Avg deal value'],
+                            rows: sources.map((r) => [
+                                r.source_type,
+                                r.revenue,
+                                r.paying_leads,
+                                r.payments,
+                                r.avg_deal_value,
+                            ]),
+                        })}
+                    />
                 }
             >
                 {sources.length === 0 ? (
@@ -253,9 +241,19 @@ export function RevenueTab({
                 title="Revenue by counsellor"
                 icon={<Users size={18} />}
                 actions={
-                    <ExportCsvButton
-                        onClick={exportCounsellors}
+                    <ExportWithColumnPickerButton
+                        filename={`revenue-by-counsellor_${fromDate}_${toDate}.csv`}
                         disabled={counsellors.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: ['Counsellor', 'Revenue', 'Paying leads', 'Payments', 'Avg deal value'],
+                            rows: counsellors.map((r) => [
+                                r.name ?? r.user_id,
+                                r.revenue,
+                                r.paying_leads,
+                                r.payments,
+                                r.avg_deal_value,
+                            ]),
+                        })}
                     />
                 }
             >

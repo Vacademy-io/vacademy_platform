@@ -18,37 +18,39 @@ interface CounsellorOption {
 }
 
 interface CounsellorFilterProps {
-    /** Currently selected counsellor userId, or one of the sentinel values. */
-    value: string;
-    onChange: (value: string) => void;
-    /** Sentinel value used when no counsellor filter is active. */
-    allValue: string;
+    /** Currently selected counsellor userIds. Empty array = all counsellors (no filter). */
+    values: string[];
+    onChange: (values: string[]) => void;
     /** Counsellor list — usually from `fetchCounselors`. */
     options: CounsellorOption[];
     isLoading?: boolean;
-    /** When provided, renders an "Unassigned" entry that selects this sentinel —
-     *  for narrowing to leads no counsellor owns. Omit to hide the option. */
+    /** When provided, renders an "Unassigned" entry that can be toggled alongside
+     *  specific counsellors. */
     unassignedValue?: string;
 }
 
-/** Searchable + scrollable counsellor combobox used in the leads filter bar.
- *  - Type to filter the list by counsellor name (cmdk handles fuzzy match).
- *  - Internal scrollable region caps at ~10 rows so long lists don't overflow. */
+/** Searchable + scrollable multi-select counsellor combobox used in the leads
+ *  filter bar. Stays open while the user checks items; shows a count badge on
+ *  the trigger. Selecting "Unassigned" can be combined with other selections. */
 export function CounsellorFilter({
-    value,
+    values,
     onChange,
-    allValue,
     options,
     isLoading,
     unassignedValue,
 }: CounsellorFilterProps) {
     const [open, setOpen] = useState(false);
-    const selectedLabel =
-        value === allValue
-            ? 'All counsellors'
-            : unassignedValue && value === unassignedValue
-              ? 'Unassigned'
-              : (options.find((c) => c.id === value)?.full_name ?? 'Selected counsellor');
+
+    const toggle = (id: string) => {
+        if (values.includes(id)) {
+            onChange(values.filter((v) => v !== id));
+        } else {
+            onChange([...values, id]);
+        }
+    };
+
+    const count = values.length;
+    const triggerLabel = count > 0 ? `Counsellors · ${count}` : 'All counsellors';
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -60,11 +62,14 @@ export function CounsellorFilter({
                     role="combobox"
                     aria-expanded={open}
                     aria-label="Filter by counsellor"
-                    className="h-10 w-48 justify-between"
+                    className={cn(
+                        'h-10 w-48 justify-between',
+                        count > 0 && 'border-primary-300 bg-primary-50'
+                    )}
                 >
                     <span className="flex min-w-0 items-center gap-1.5">
                         <UserPlus className="size-4 shrink-0 text-neutral-400" />
-                        <span className="truncate text-sm font-normal">{selectedLabel}</span>
+                        <span className="truncate text-sm font-normal">{triggerLabel}</span>
                     </span>
                     <CaretDown className="size-4 shrink-0 text-neutral-400" />
                 </Button>
@@ -76,36 +81,28 @@ export function CounsellorFilter({
                         <CommandEmpty>
                             {isLoading ? 'Loading counsellors…' : 'No counsellor found.'}
                         </CommandEmpty>
-                        <CommandGroup>
+                        {count > 0 && (
                             <CommandItem
-                                value="All counsellors"
-                                onSelect={() => {
-                                    onChange(allValue);
-                                    setOpen(false);
-                                }}
-                                className="cursor-pointer"
+                                value="__clear__"
+                                onSelect={() => onChange([])}
+                                className="cursor-pointer text-neutral-500"
                             >
-                                <Check
-                                    className={cn(
-                                        'mr-2 size-4',
-                                        value === allValue ? 'opacity-100' : 'opacity-0'
-                                    )}
-                                />
-                                All counsellors
+                                Clear selection
                             </CommandItem>
+                        )}
+                        <CommandGroup>
                             {unassignedValue && (
                                 <CommandItem
                                     value="Unassigned"
-                                    onSelect={() => {
-                                        onChange(unassignedValue);
-                                        setOpen(false);
-                                    }}
+                                    onSelect={() => toggle(unassignedValue)}
                                     className="cursor-pointer"
                                 >
                                     <Check
                                         className={cn(
                                             'mr-2 size-4',
-                                            value === unassignedValue ? 'opacity-100' : 'opacity-0'
+                                            values.includes(unassignedValue)
+                                                ? 'opacity-100'
+                                                : 'opacity-0'
                                         )}
                                     />
                                     Unassigned
@@ -115,16 +112,13 @@ export function CounsellorFilter({
                                 <CommandItem
                                     key={c.id}
                                     value={c.full_name}
-                                    onSelect={() => {
-                                        onChange(c.id);
-                                        setOpen(false);
-                                    }}
+                                    onSelect={() => toggle(c.id)}
                                     className="cursor-pointer"
                                 >
                                     <Check
                                         className={cn(
                                             'mr-2 size-4',
-                                            value === c.id ? 'opacity-100' : 'opacity-0'
+                                            values.includes(c.id) ? 'opacity-100' : 'opacity-0'
                                         )}
                                     />
                                     {c.full_name}

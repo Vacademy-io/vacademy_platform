@@ -144,7 +144,10 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
             customer.put("customer_email", email);
         }
 
-        String phone = user != null ? user.getMobileNumber() : null;
+        // Cashfree rejects the whole order on a malformed customer_phone (user
+        // records can hold junk like "323"); send it only when it looks like a
+        // real number, normalized to digits with an optional +country prefix.
+        String phone = sanitizePhone(user != null ? user.getMobileNumber() : null);
         if (StringUtils.hasText(phone)) {
             customer.put("customer_phone", phone);
         }
@@ -183,6 +186,34 @@ public class CashfreePaymentManager implements PaymentServiceStrategy {
         }
 
         return payload;
+    }
+
+    /**
+     * Returns the phone normalized to Cashfree's accepted shapes (10-digit Indian
+     * or +<country><number>), or null when it can't be salvaged — omitting the
+     * field beats failing the entire order create on validation.
+     */
+    private String sanitizePhone(String rawPhone) {
+        if (!StringUtils.hasText(rawPhone)) {
+            return null;
+        }
+        boolean hadPlus = rawPhone.trim().startsWith("+");
+        String digits = rawPhone.replaceAll("[^0-9]", "");
+        // Strip Indian trunk/country prefixes down to the 10-digit national number.
+        if (!hadPlus && digits.length() == 11 && digits.startsWith("0")) {
+            digits = digits.substring(1);
+        }
+        if (digits.length() == 12 && digits.startsWith("91")) {
+            return "+".concat(digits);
+        }
+        if (digits.length() == 10) {
+            return hadPlus ? null : digits;
+        }
+        // International: keep only when it was explicitly +prefixed and plausible.
+        if (hadPlus && digits.length() >= 8 && digits.length() <= 15) {
+            return "+".concat(digits);
+        }
+        return null;
     }
 
     private String constructWebhookCallbackUrl(String instituteId) {

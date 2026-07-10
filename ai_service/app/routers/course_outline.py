@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from fastapi.responses import StreamingResponse
+import asyncio
 import uuid
 import json
 from typing import Optional
@@ -37,17 +38,20 @@ async def generate_course_outline(
     based on user prompt, optional existing course tree, and optional course
     metadata from admin-core-service.
     """
-    # Pre-flight credit check
+    # Pre-flight credit check (parametric course_outline price; None = allow)
     if payload.institute_id:
-        from ..services.credit_service import CreditService
-        from ..schemas.credits import CreditCheckRequest
-        check = CreditService(db).check_credits(CreditCheckRequest(
-            institute_id=payload.institute_id,
-            request_type="outline",
-            estimated_tokens=1000,
-        ))
-        if not check.has_sufficient_credits:
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+        from ..services.ai_billing import preflight_tool_credits
+        estimate = preflight_tool_credits(
+            db, tool_key="course_outline", tool_params={}, institute_id=payload.institute_id
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: course outline needs ≈{estimate.get('estimated_credits')} "
+                    f"credits, balance is {estimate.get('current_balance')}. Please top up."
+                ),
+            )
     try:
         return await service.generate_outline(payload)
     except PaymentRequiredError as exc:
@@ -80,17 +84,20 @@ async def stream_course_outline(
         model: Optional LLM model to use. Defaults to database default or LLM_DEFAULT_MODEL from environment.
         payload: Request containing user prompt, course tree, and course depth.
     """
-    # Pre-flight credit check
+    # Pre-flight credit check (parametric course_outline price; None = allow)
     if institute_id:
-        from ..services.credit_service import CreditService
-        from ..schemas.credits import CreditCheckRequest
-        check = CreditService(db).check_credits(CreditCheckRequest(
-            institute_id=institute_id,
-            request_type="outline",
-            estimated_tokens=1000,
-        ))
-        if not check.has_sufficient_credits:
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+        from ..services.ai_billing import preflight_tool_credits
+        estimate = preflight_tool_credits(
+            db, tool_key="course_outline", tool_params={}, institute_id=institute_id
+        )
+        if estimate.get("sufficient") is False:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits: course outline needs ≈{estimate.get('estimated_credits')} "
+                    f"credits, balance is {estimate.get('current_balance')}. Please top up."
+                ),
+            )
 
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     from ..services.ai_models_service import AIModelsService
@@ -105,24 +112,53 @@ async def stream_course_outline(
         model=final_model,
         course_depth=payload.course_depth,
         generation_options=payload.generation_options,
-        user_id=user_id  # Extracted from query parameter for waterfall key resolution
+        user_id=user_id,  # Extracted from query parameter for waterfall key resolution
+        reference_document_file_ids=payload.reference_document_file_ids,
         # NOTE: Keys are NOT accepted from frontend - resolved automatically from DB (user → institute) or env
     )
 
     request_id = str(uuid.uuid4())
 
+    # Heartbeat: document grounding + the single outline LLM call can be silent
+    # for longer than a proxy idle timeout; an SSE comment keeps the connection
+    # alive (the client parser ignores non-"data:" lines).
+    _HEARTBEAT_SECONDS = 15
+
     async def event_generator():
+        # Background pump + queue so the heartbeat timeout never cancels the
+        # generator's in-flight step (see the content endpoint for rationale).
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        async def _pump():
+            try:
+                async for ev in service.stream_outline_events(internal_request, request_id):
+                    await queue.put(("data", ev))
+            except PaymentRequiredError as exc:
+                await queue.put(("402", str(exc)))
+            except Exception as exc:  # noqa: BLE001
+                await queue.put(("fatal", str(exc)))
+            finally:
+                await queue.put((_DONE, None))
+
+        task = asyncio.create_task(_pump())
         try:
-            async for event in service.stream_outline_events(internal_request, request_id):
-                # Format as SSE: "data: <content>\n\n"
-                yield f"data: {event}\n\n"
-        except PaymentRequiredError as exc:
-            error_payload = json.dumps({
-                "type": "ERROR",
-                "code": 402,
-                "message": str(exc),
-            })
-            yield f"data: {error_payload}\n\n"
+            while True:
+                try:
+                    kind, val = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if kind is _DONE:
+                    break
+                if kind == "data":
+                    yield f"data: {val}\n\n"
+                elif kind == "402":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'code': 402, 'message': val})}\n\n"
+                elif kind == "fatal":
+                    yield f"data: {json.dumps({'type': 'ERROR', 'message': val})}\n\n"
+        finally:
+            task.cancel()
 
     return StreamingResponse(
         event_generator(),
@@ -130,6 +166,7 @@ async def stream_course_outline(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         }
     )
 

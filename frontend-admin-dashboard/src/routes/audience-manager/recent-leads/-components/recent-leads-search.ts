@@ -33,15 +33,15 @@ export const CUSTOM_DATE_VALUE = 'CUSTOM';
 export const DEFAULT_RANGE_DAYS = '30';
 
 export const RecentLeadsSearchSchema = z.object({
-    /** Lead-status filter — a lead_status.status_key or one of the sentinels above. */
+    /** Lead-status filter — comma-separated status_keys or sentinels (ALL_ACTIVE / ALL_CONVERTED). */
     status: z.string().optional(),
-    /** Tier filter — HOT / WARM / COLD. */
+    /** Tier filter — comma-separated HOT/WARM/COLD values. */
     tier: z.string().optional(),
-    /** SLA filter — TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE / ANY_OVERDUE. */
+    /** SLA filter — comma-separated SLA stage values. */
     sla: z.string().optional(),
-    /** Assigned counsellor's userId. */
+    /** Assigned counsellor userIds — comma-separated, may include __UNASSIGNED__. */
     counsellor: z.string().optional(),
-    /** Audience (campaign) id. */
+    /** Audience (campaign) ids — comma-separated. */
     audience: z.string().optional(),
     /** Free-text search query (applied, not the live input). */
     search: z.string().optional(),

@@ -44,7 +44,17 @@ export async function generateContent(
     onError: (error: string) => void,
     onProgress?: (message: string) => void,
     retryCount = 0,
-    language = 'English'
+    language = 'English',
+    // Stable across transport retries of the same run — the backend keys
+    // idempotent per-slide credit charges on it, so a retry never re-bills
+    // slides that were already generated.
+    generationRunId: string = crypto.randomUUID(),
+    // Course-level AI-video settings (model/voice/tier/duration) applied
+    // server-side to AI_VIDEO / AI_SLIDES / AI_STORYBOOK todos.
+    videoSettings?: Record<string, string>,
+    // Media fileIds of uploaded reference PDFs — the backend embeds their real
+    // figures into DOCUMENT slides.
+    referenceDocumentFileIds?: string[]
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
     
@@ -81,6 +91,15 @@ export async function generateContent(
                     course_tree: { todos },
                     institute_id: instituteId,
                     language: language,
+                    generation_run_id: generationRunId,
+                    video_settings:
+                        videoSettings && Object.keys(videoSettings).length > 0
+                            ? videoSettings
+                            : undefined,
+                    reference_document_file_ids:
+                        referenceDocumentFileIds && referenceDocumentFileIds.length > 0
+                            ? referenceDocumentFileIds
+                            : undefined,
                 }),
                 signal: controller.signal,
             });
@@ -109,9 +128,18 @@ export async function generateContent(
             console.error('Status Text:', response.statusText);
             console.error('Error Body:', errorText);
 
-            // Special handling for 402 errors (credits exhausted)
+            // Special handling for 402 errors (institute AI credits exhausted)
             if (response.status === 402) {
-                throw new Error('Your OpenRouter credits have been exhausted. Please recharge your credits to continue using AI features.');
+                let detail = '';
+                try {
+                    detail = JSON.parse(errorText)?.detail || '';
+                } catch {
+                    /* non-JSON body */
+                }
+                throw new Error(
+                    detail ||
+                        "Your institute's AI credits are insufficient for this generation. Please top up credits to continue."
+                );
             }
 
             // Special handling for 500 errors
@@ -143,19 +171,38 @@ export async function generateContent(
         const maxBufferSize = 1024 * 1024; // 1MB buffer limit
         const maxChunkSize = 10 * 1024 * 1024; // 10MB chunk limit
         let totalProcessed = 0;
-        const startTime = Date.now();
-        const maxDuration = 5 * 60 * 1000; // 5 minutes max
+        // Inactivity-based timeout, NOT total duration: a large course with AI
+        // video/slides legitimately streams for far longer than 5 minutes —
+        // slides complete progressively, so only a silent gap means trouble.
+        // The timer must race the read itself (a loop-top check can never see
+        // a stale clock — reader.read() would block it forever on a dead
+        // connection that is never closed).
+        const streamStartTime = Date.now();
+        const maxInactivity = 5 * 60 * 1000; // 5 minutes without any bytes
+        const readWithInactivityTimeout = async () => {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeout = new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                    controller.abort();
+                    reject(
+                        new Error(
+                            `Stream timed out after ${maxInactivity / 1000} seconds of inactivity`
+                        )
+                    );
+                }, maxInactivity);
+            });
+            try {
+                return await Promise.race([reader.read(), timeout]);
+            } finally {
+                clearTimeout(timer);
+            }
+        };
 
         console.log('🔄 Starting SSE stream processing...');
 
         try {
             while (true) {
-                // Check for timeout
-                if (Date.now() - startTime > maxDuration) {
-                    throw new Error(`Stream processing timed out after ${maxDuration / 1000} seconds`);
-                }
-
-                const { done, value } = await reader.read();
+                const { done, value } = await readWithInactivityTimeout();
                 if (done) {
                     console.log('✅ SSE stream completed');
                     break;
@@ -252,7 +299,7 @@ export async function generateContent(
 
                 // Periodic buffer cleanup and heartbeat
                 if (totalProcessed % 10 === 0) {
-                    const elapsed = Date.now() - startTime;
+                    const elapsed = Date.now() - streamStartTime;
                     console.log(`🔄 Processed ${totalProcessed} updates in ${elapsed}ms, buffer size: ${buffer.length} bytes`);
 
                     // Send progress update every 10 updates
@@ -286,6 +333,15 @@ export async function generateContent(
 
             throw new Error(`Stream processing failed: ${errorMessage}`);
         } finally {
+            // Cancel the stream so the connection is actually torn down — a
+            // timed-out/failed run must not keep generating (and billing) into
+            // a stream nobody reads, especially before a retry starts.
+            try {
+                await reader.cancel();
+                console.log('🛑 Reader cancelled');
+            } catch (e) {
+                console.warn('⚠️ Failed to cancel reader:', e);
+            }
             // Ensure reader is properly closed
             try {
                 reader.releaseLock();
@@ -331,7 +387,18 @@ export async function generateContent(
             }
 
             await new Promise(resolve => setTimeout(resolve, delay));
-            return generateContent(todos, instituteId, onUpdate, onError, onProgress, retryCount + 1);
+            return generateContent(
+                todos,
+                instituteId,
+                onUpdate,
+                onError,
+                onProgress,
+                retryCount + 1,
+                language,
+                generationRunId,
+                videoSettings,
+                referenceDocumentFileIds
+            );
         }
 
         // Strip "Stream processing failed: " prefix for cleaner error display

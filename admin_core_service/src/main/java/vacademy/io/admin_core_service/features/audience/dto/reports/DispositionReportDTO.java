@@ -58,6 +58,7 @@ public class DispositionReportDTO {
         private String name;              // hydrated via auth-service batch; "System/Workflow" for SYSTEM
         private long totalChanges;
         private Map<String, Long> changes; // status_key → transition count
+        private long pendingCount;        // assigned leads with no status-change history (never touched)
     }
 
     @Data

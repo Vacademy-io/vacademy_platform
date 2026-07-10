@@ -218,6 +218,8 @@ export interface DispositionActorRow {
     total_changes: number;
     /** status_key → transition count. */
     changes: Record<string, number>;
+    /** Assigned leads with no status-change history — never worked on. */
+    pending_count: number;
 }
 
 export interface DispositionCallOutcomeRow {

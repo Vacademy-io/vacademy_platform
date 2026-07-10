@@ -42,13 +42,23 @@ public class PlivoIvrRenderer {
     /** Full {@code <Response>} for an inbound call positioned at {@code start}. */
     public String render(IvrNode start, String callLogId, String instituteId,
                          boolean record, String webhookToken) {
+        return render(start, callLogId, instituteId, record, webhookToken, 0);
+    }
+
+    /**
+     * {@code dialHop} is the length of the DIAL fallback chain traversed so far (0 for a
+     * fresh render). It rides the {@code /dial-next} URL so a mis-configured DIAL cycle
+     * (A→B→A via next_node_id) can't ring forever — the endpoint bails after a few hops.
+     */
+    public String render(IvrNode start, String callLogId, String instituteId,
+                         boolean record, String webhookToken, int dialHop) {
         StringBuilder body = new StringBuilder();
-        appendNode(body, start, callLogId, instituteId, record, webhookToken, 0);
+        appendNode(body, start, callLogId, instituteId, record, webhookToken, 0, dialHop);
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>" + body + "</Response>";
     }
 
     private void appendNode(StringBuilder b, IvrNode node, String corr, String instituteId,
-                            boolean record, String token, int depth) {
+                            boolean record, String token, int depth, int dialHop) {
         if (node == null || depth > 12) {
             b.append("<Hangup/>");
             return;
@@ -63,7 +73,7 @@ public class PlivoIvrRenderer {
                 speak(b, node);
                 IvrNode next = node.getNextNodeId() == null ? null
                         : ivrMenuService.getNode(node.getNextNodeId()).orElse(null);
-                if (next != null) appendNode(b, next, corr, instituteId, record, token, depth + 1);
+                if (next != null) appendNode(b, next, corr, instituteId, record, token, depth + 1, dialHop);
                 else b.append("<Hangup/>");
             }
             case GATHER -> {
@@ -105,9 +115,17 @@ public class PlivoIvrRenderer {
                         ? " record=\"true\" recordCallbackUrl=\"" + esc(statusBase + "&plivoEvent=record")
                           + "\" recordCallbackMethod=\"POST\""
                         : "";
-                b.append("<Dial action=\"").append(esc(statusBase + "&plivoEvent=dial_action"))
+                // Ring the number(s), then hand control to /plivo/dial-next: if nobody
+                // answered it follows this node's fallback (next_node_id → another DIAL or a
+                // Voicemail), else it ends the call. callbackUrl keeps live status events.
+                // Ring time = the node's timeout, floored to 20s so a person can actually pick
+                // up (timeout_seconds is NOT NULL DEFAULT 6, so legacy DIAL nodes ring 20s).
+                int ring = node.getTimeoutSeconds() != null && node.getTimeoutSeconds() > 0
+                        ? Math.max(20, node.getTimeoutSeconds()) : 30;
+                b.append("<Dial action=\"").append(esc(dialNextUrl(node.getId(), corr, token, dialHop)))
                         .append("\" method=\"POST\" callbackUrl=\"").append(esc(statusBase + "&plivoEvent=dial_callback"))
-                        .append("\" callbackMethod=\"POST\" timeout=\"30\"").append(recordAttrs).append(">");
+                        .append("\" callbackMethod=\"POST\" timeout=\"").append(ring).append("\"")
+                        .append(recordAttrs).append(">");
                 for (String t : targets) {
                     // Plivo/carrier rejects '+'-prefixed numbers.
                     b.append("<Number>").append(esc(stripPlus(t))).append("</Number>");
@@ -188,6 +206,18 @@ public class PlivoIvrRenderer {
                 .append("/admin-core-service/v1/telephony/plivo/dtmf?menuId=").append(menuId)
                 .append("&nodeId=").append(nodeId)
                 .append("&corr=").append(corr);
+        if (token != null && !token.isBlank()) url.append("&token=").append(token);
+        return url.toString();
+    }
+
+    /** Post-dial continuation: {@code /plivo/dial-next} decides answered (hang up) vs
+     *  not-answered (render this DIAL node's fallback next_node_id). {@code hop} bounds
+     *  the fallback chain against a mis-configured cycle. */
+    private String dialNextUrl(String nodeId, String corr, String token, int hop) {
+        StringBuilder url = new StringBuilder(base())
+                .append("/admin-core-service/v1/telephony/plivo/dial-next?nodeId=").append(nodeId)
+                .append("&corr=").append(corr)
+                .append("&hop=").append(hop);
         if (token != null && !token.isBlank()) url.append("&token=").append(token);
         return url.toString();
     }

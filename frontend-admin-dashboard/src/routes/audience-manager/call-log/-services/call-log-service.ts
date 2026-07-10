@@ -99,6 +99,8 @@ export interface CallRow {
     response_id: string | null;
     user_id: string | null;
     lead_name: string | null;
+    /** IVR option the inbound caller chose, e.g. "1 · Shivir Info". */
+    ivr_selection: string | null;
     disposition_key: string | null;
     disposition_notes: string | null;
     dispositioned_at: number | string | null;

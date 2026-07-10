@@ -100,7 +100,13 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     }, [code]);
 
     if (hasError) {
-        return null;
+        // Never delete content: if the code isn't valid Mermaid (e.g. a code
+        // block misclassified as a diagram), show it as plain code instead.
+        return (
+            <pre className="overflow-x-auto whitespace-pre rounded-md bg-neutral-100 p-3 text-sm">
+                <code>{code}</code>
+            </pre>
+        );
     }
 
     if (!svgHtml) {

@@ -5,6 +5,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSidebar } from '@/components/ui/sidebar';
 import { MyButton } from '@/components/design-system/button';
 import { BASE_URL, AI_SERVICE_BASE_URL } from '@/constants/urls';
+import {
+    useToolPricingQuery,
+    useAiCreditsQuery,
+    computeToolCredits,
+} from '@/services/ai-credits/get-ai-credits';
 import DOMPurify from 'dompurify';
 import { toast } from 'sonner';
 
@@ -291,6 +296,45 @@ export function RouteComponent() {
     }));
     const currentQuizQuestion = quizQuestions[currentQuizQuestionIndex];
     const [outlineTodos, setOutlineTodos] = useState<any[]>([]); // Store todos from outline generation
+    // Parametric cost preview for content generation (rates are DB-tunable via
+    // ai_tool_pricing). AI_VIDEO-family slides are billed by actual usage.
+    const { data: toolPricing, isLoading: toolPricingLoading } = useToolPricingQuery(
+        generateCourseAssetsDialogOpen
+    );
+    const { data: aiCredits } = useAiCreditsQuery(generateCourseAssetsDialogOpen);
+    const contentCostPreview = useMemo(() => {
+        // Count from the LIVE slides (the user may have deleted some since the
+        // outline arrived) — this is the population the generation request
+        // converges to, unlike the immutable outlineTodos snapshot.
+        const counts = { document: 0, assessment: 0, video: 0, usageBilled: 0 };
+        slides.forEach((slide) => {
+            const type = slide?.slideType;
+            if (type === 'doc') counts.document += 1;
+            else if (type === 'quiz' || type === 'assessment') counts.assessment += 1;
+            else if (type === 'video' || type === 'video-code') counts.video += 1;
+            else if (['ai-video', 'ai-video-code', 'ai-slides', 'ai-storybook'].includes(type))
+                counts.usageBilled += 1;
+        });
+        const perSlide = (key: string) =>
+            computeToolCredits(
+                toolPricing?.tools.find((t) => t.tool_key === key),
+                {}
+            );
+        const doc = perSlide('course_slide_document');
+        const assessment = perSlide('course_slide_assessment');
+        const video = perSlide('course_slide_video');
+        const credits =
+            doc !== null && assessment !== null && video !== null
+                ? counts.document * doc + counts.assessment * assessment + counts.video * video
+                : null;
+        const balance = aiCredits ? parseFloat(aiCredits.current_balance || '0') : null;
+        return {
+            credits,
+            usageBilledSlides: counts.usageBilled,
+            sufficient: credits !== null && balance !== null ? balance >= credits : null,
+            loading: toolPricingLoading,
+        };
+    }, [slides, toolPricing, aiCredits, toolPricingLoading]);
     const [isGeneratingContent, setIsGeneratingContent] = useState(false);
     const [isContentGenerated, setIsContentGenerated] = useState(false);
     const [contentGenerationProgress, setContentGenerationProgress] = useState<string>('');
@@ -554,6 +598,10 @@ export function RouteComponent() {
                 const resumeDraft = sessionStorage.getItem('resumeAiCourseDraft');
                 if (resumeDraft) {
                     sessionStorage.removeItem('resumeAiCourseDraft');
+                    // A previous course's AI-video settings / reference docs must
+                    // not silently apply to a resumed draft (drafts don't carry them).
+                    sessionStorage.removeItem('courseVideoSettings');
+                    sessionStorage.removeItem('courseReferenceDocIds');
                     try {
                         const draft = JSON.parse(resumeDraft);
                         if (draft.slides?.length > 0) {
@@ -710,6 +758,35 @@ export function RouteComponent() {
                 // Store language for content generation step
                 sessionStorage.setItem('courseLanguage', courseLanguage);
 
+                // Store AI-video settings for the content generation step —
+                // courseConfig itself is removed from sessionStorage once the
+                // outline succeeds, so these must survive separately (same
+                // pattern as courseLanguage above). ALWAYS write-or-remove so a
+                // previous course's settings can never leak into this run.
+                if (courseConfig.aiVideoSettings) {
+                    sessionStorage.setItem(
+                        'courseVideoSettings',
+                        JSON.stringify(courseConfig.aiVideoSettings)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseVideoSettings');
+                }
+
+                // Reference-PDF fileIds must survive to the content step too
+                // (figure embedding). Same write-or-remove discipline.
+                if (
+                    Array.isArray(courseConfig.referenceDocumentFileIds) &&
+                    courseConfig.referenceDocumentFileIds.length > 0
+                ) {
+                    payload.reference_document_file_ids = courseConfig.referenceDocumentFileIds;
+                    sessionStorage.setItem(
+                        'courseReferenceDocIds',
+                        JSON.stringify(courseConfig.referenceDocumentFileIds)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseReferenceDocIds');
+                }
+
                 if (numChapters) {
                     payload.generation_options.num_chapters = parseInt(numChapters);
                 }
@@ -754,6 +831,20 @@ export function RouteComponent() {
                     console.error('Status:', response.status);
                     console.error('Status Text:', response.statusText);
                     console.error('Error Body:', errorText);
+                    // 402 = institute AI credits insufficient — surface the
+                    // backend detail as a clean message, not a raw HTTP dump
+                    if (response.status === 402) {
+                        let detail = '';
+                        try {
+                            detail = JSON.parse(errorText)?.detail || '';
+                        } catch {
+                            /* non-JSON body */
+                        }
+                        throw new Error(
+                            detail ||
+                                "Your institute's AI credits are insufficient to generate a course outline. Please top up credits to continue."
+                        );
+                    }
                     throw new Error(
                         `HTTP ${response.status}: ${response.statusText}. ${errorText}`
                     );
@@ -1650,6 +1741,7 @@ export function RouteComponent() {
                             ? () => handleCreateCourse('ACTIVE')
                             : handleConfirmGenerateCourseAssets
                     }
+                    costPreview={isContentGenerated ? undefined : contentCostPreview}
                 />
                 <BackToLibraryDialog
                     open={backToLibraryDialogOpen}
@@ -3358,7 +3450,9 @@ export function RouteComponent() {
                                 ? () => handleCreateCourse('ACTIVE')
                                 : handleConfirmGenerateCourseAssets
                         }
+                        costPreview={isContentGenerated ? undefined : contentCostPreview}
                     />
+
 
                     <BackToLibraryDialog
                         open={backToLibraryDialogOpen}

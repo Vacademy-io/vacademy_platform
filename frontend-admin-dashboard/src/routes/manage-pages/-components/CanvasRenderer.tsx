@@ -15,6 +15,7 @@ import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
 import { buildComponentStyle, hasSectionShell, buildSectionShellStyles } from '../-utils/style-utils';
 import { ensureFontsLoaded, collectConfigFontFamilies } from '../-utils/catalogue-fonts';
+import { SectionDecorations, hasDecorations } from '../-utils/catalogue-decorations';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchBothInstituteAPIs } from '@/services/student-list-section/getInstituteDetails';
 
@@ -96,12 +97,17 @@ const ColumnLayoutCanvas = ({
     onSelectComponent: (id: string) => void;
 }) => {
     const isSelected = component.id === selectedComponentId;
-    const { slots = [], columnWidths = [], gap = 'md' } = component.props;
-    const gapPx: Record<string, number> = { none: 0, sm: 8, md: 16, lg: 32 };
+    const { slots = [], columnWidths = [], columnFr = undefined, gap = 'md' } = component.props;
+    const gapPx: Record<string, number> = { none: 0, sm: 8, md: 16, lg: 32, xl: 48, '2xl': 64 };
     const widthToFr = (w?: string): string => {
         const map: Record<string, string> = { '1/2': '1fr', '1/3': '1fr', '2/3': '2fr', '1/4': '1fr', '3/4': '3fr' };
         return map[w ?? ''] || '1fr';
     };
+    // columnFr (true track sizes) beats the legacy lossy fractions — mirrors the learner renderer
+    const gridCols =
+        Array.isArray(columnFr) && columnFr.length === slots.length && columnFr.every(Boolean)
+            ? columnFr.join(' ')
+            : slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
     const layoutStyle = buildComponentStyle(component.style);
     return (
         <div
@@ -119,7 +125,7 @@ const ColumnLayoutCanvas = ({
             <div
                 style={{
                     display: 'grid',
-                    gridTemplateColumns: slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' '),
+                    gridTemplateColumns: gridCols,
                     gap: gapPx[gap] ?? 16,
                     marginTop: 16,
                 }}
@@ -336,6 +342,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                 ? shellStyles.canvasStyle
                                 : buildComponentStyle(component.style);
                             const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
+                            const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
                             return (
                                 <div
                                     key={component.id}
@@ -350,7 +357,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                             ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
                                             : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
                                     }`}
-                                    style={componentStyle}
+                                    style={{ ...componentStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
                                     title={isDisabled ? `${component.type} (hidden)` : component.type}
                                 >
                                     {/* Background overlay */}
@@ -363,6 +370,13 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                                 zIndex: 0,
                                                 borderRadius: componentStyle.borderRadius,
                                             }}
+                                        />
+                                    )}
+                                    {/* Ornaments + edge dividers (canvas parity with the live wrappers) */}
+                                    {decor && (
+                                        <SectionDecorations
+                                            ornaments={component.style?.ornaments}
+                                            dividers={component.style?.dividers}
                                         />
                                     )}
                                     {/* Selection label */}
@@ -383,7 +397,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                         style={
                                             shellStyles
                                                 ? { ...shellStyles.contentStyle, pointerEvents: 'none', position: 'relative', zIndex: 1 }
-                                                : { pointerEvents: 'none', position: hasOverlay ? 'relative' : undefined, zIndex: hasOverlay ? 1 : undefined }
+                                                : { pointerEvents: 'none', position: hasOverlay || decor ? 'relative' : undefined, zIndex: hasOverlay || decor ? 1 : undefined }
                                         }
                                     >
                                         {renderComponentPreview(component)}

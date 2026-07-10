@@ -542,16 +542,25 @@ export function AddSessionDialog({
     );
 }
 
+export interface CourseContentCostPreview {
+    credits: number | null;
+    usageBilledSlides: number;
+    sufficient: boolean | null;
+    loading?: boolean;
+}
+
 interface GenerateCourseAssetsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onConfirm: () => void;
+    costPreview?: CourseContentCostPreview;
 }
 
 export function GenerateCourseAssetsDialog({
     open,
     onOpenChange,
     onConfirm,
+    costPreview,
 }: GenerateCourseAssetsDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -573,6 +582,28 @@ export function GenerateCourseAssetsDialog({
                                 Once you proceed, AI will start creating the actual course content
                                 and there is no coming back.
                             </p>
+                            {costPreview &&
+                                costPreview.credits !== null &&
+                                (costPreview.credits > 0 || costPreview.usageBilledSlides > 0) && (
+                                <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                                    <p className="text-sm font-medium text-neutral-900">
+                                        Estimated cost: ≈ {costPreview.credits} credits
+                                    </p>
+                                    {costPreview.usageBilledSlides > 0 && (
+                                        <p className="mt-1 text-xs text-neutral-600">
+                                            + {costPreview.usageBilledSlides} AI video/slides/storybook{' '}
+                                            {costPreview.usageBilledSlides === 1 ? 'slide' : 'slides'}{' '}
+                                            billed by actual usage
+                                        </p>
+                                    )}
+                                    {costPreview.sufficient === false && (
+                                        <p className="mt-1 text-xs font-medium text-amber-700">
+                                            Your institute&apos;s credit balance may be insufficient —
+                                            please top up before proceeding.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </DialogDescription>
                 </DialogHeader>

@@ -25,6 +25,7 @@ import vacademy.io.admin_core_service.features.institute_learner.dto.*;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionTypeEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
@@ -539,7 +540,11 @@ public class StudentRegistrationManager {
                                 LearnerSessionStatusEnum.INVITED.name(),
                                 LearnerSessionStatusEnum.TERMINATED.name(),
                                 LearnerSessionStatusEnum.INACTIVE.name(),
-                                LearnerSessionStatusEnum.EXPIRED.name() // <-- ADDED
+                                LearnerSessionStatusEnum.EXPIRED.name(), // <-- ADDED
+                                // Paid flows park mappings here pre-webhook; a re-enrollment
+                                // must reuse the row or the insert dies on
+                                // uq_dest_pkg_inst_user_status (seen via sub-org re-registration).
+                                LearnerStatusEnum.PENDING_FOR_APPROVAL.name()
                         ))
                 .filter(mapping -> !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(mapping.getType()))
                 .filter(mapping -> !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(mapping.getType()));

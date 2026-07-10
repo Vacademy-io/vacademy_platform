@@ -95,9 +95,9 @@ class CourseOutlinePromptBuilder:
                 - Content complexity and learning objectives
                 - Slide types and their typical duration:
                   * DOCUMENT slides: 3-5 minutes each
-                  * VIDEO/AI_VIDEO slides: 5-8 minutes each
+                  * VIDEO/AI_VIDEO slides: 2-3 minutes each (AI videos are generated at 2-3 minutes)
                   * ASSESSMENT slides: 10-15 minutes each
-                  * VIDEO_CODE/AI_VIDEO_CODE slides: 8-12 minutes each
+                  * VIDEO_CODE/AI_VIDEO_CODE slides: 4-6 minutes each
                 - Institute AI settings context for preferred teaching methodology
               * If no specific counts mentioned AND no timing specified, use reasonable defaults for depth {courseDepth}
             - TIMING-BASED SLIDE COUNT: When timing is provided, institute AI settings should guide your decision on slide distribution
@@ -177,7 +177,7 @@ class CourseOutlinePromptBuilder:
             - If user specifies exact count, create EXACTLY that many slides, no more, no less
             - If course timing is specified ({courseTiming} minutes), calculate optimal slide count based on:
               * DOCUMENT slides: ~4 minutes each
-              * VIDEO/AI_VIDEO slides: ~6 minutes each
+              * VIDEO/AI_VIDEO slides: ~2.5 minutes each (AI videos are generated at 2-3 minutes)
               * ASSESSMENT slides: ~12 minutes each
               * Mix of slide types based on institute AI settings preferences
             - If no count specified AND no timing specified, use reasonable default (typically 8-12 slides for comprehensive coverage)

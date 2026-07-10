@@ -45,7 +45,7 @@ public class WorkflowAiDraftService {
     /** Generate + validate attempts total (1 initial + N repairs). */
     private static final int MAX_ATTEMPTS = 3;
 
-    public WorkflowAiDraftResponse draft(WorkflowAiDraftRequest request) {
+    public WorkflowAiDraftResponse draft(WorkflowAiDraftRequest request, String userId) {
         if (request == null || request.getGoal() == null || request.getGoal().isBlank()) {
             return WorkflowAiDraftResponse.builder().error("A non-empty 'goal' is required.").build();
         }
@@ -71,14 +71,17 @@ public class WorkflowAiDraftService {
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             String raw;
+            String finishReason = null;
             try {
                 ConversationSession session = ConversationSession.builder()
+                        .userId(userId)
                         .instituteId(request.getInstituteId())
                         .model(draftModel)
                         .history(new ArrayList<>(history))
                         .build();
                 LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
                 raw = resp != null ? resp.getContent() : null;
+                finishReason = resp != null ? resp.getFinishReason() : null;
             } catch (Exception e) {
                 log.error("[WorkflowAiDraft] LLM call failed on attempt {}", attempt, e);
                 return WorkflowAiDraftResponse.builder()
@@ -86,6 +89,18 @@ public class WorkflowAiDraftService {
             }
             if (raw == null || raw.isBlank()) {
                 return WorkflowAiDraftResponse.builder().error("AI returned an empty response.").build();
+            }
+            // Truncated by the model's max_tokens — the JSON is almost certainly incomplete, so
+            // don't try to parse it; ask for a more compact draft and retry.
+            if ("length".equalsIgnoreCase(finishReason)) {
+                if (attempt == MAX_ATTEMPTS) {
+                    return WorkflowAiDraftResponse.builder()
+                            .error("The workflow was too large to generate in one response. Try a simpler goal.").build();
+                }
+                history.add(ConversationSession.ChatMessage.assistant(raw));
+                history.add(ConversationSession.ChatMessage.user(
+                        "Your reply was cut off by the token limit. Produce a more COMPACT workflow: only essential nodes, short node names, no comments — and re-emit the full JSON contract."));
+                continue;
             }
 
             String json = extractJson(raw);
@@ -129,6 +144,7 @@ public class WorkflowAiDraftService {
             }
 
             // Force safe defaults regardless of what the model emitted.
+            workflow.setId(null); // never trust a model-invented workflow id — create flow assigns it
             workflow.setInstituteId(request.getInstituteId());
             workflow.setStatus("DRAFT");
 
@@ -223,8 +239,10 @@ public class WorkflowAiDraftService {
             List<WorkflowValidationService.ValidationError> e = validationService.validate(dto);
             return e != null ? e : List.of();
         } catch (Exception ex) {
+            // Fail closed: a validator that throws must NOT make a broken draft look clean.
             log.warn("[WorkflowAiDraft] Validation threw: {}", ex.getMessage());
-            return List.of();
+            return List.of(new WorkflowValidationService.ValidationError(
+                    null, "workflow", "Draft could not be validated: " + safe(ex.getMessage()), "ERROR"));
         }
     }
 

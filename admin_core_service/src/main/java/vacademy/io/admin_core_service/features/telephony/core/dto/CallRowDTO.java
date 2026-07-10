@@ -47,6 +47,9 @@ public class CallRowDTO {
     private String userId;
     private String leadName;
 
+    /** IVR option the inbound caller chose, e.g. "1 · Shivir Info" (inbound IVR only). */
+    private String ivrSelection;
+
     // Manual (human-set) disposition.
     private String dispositionKey;
     private String dispositionNotes;

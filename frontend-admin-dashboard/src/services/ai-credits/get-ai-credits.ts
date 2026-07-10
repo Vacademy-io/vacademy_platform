@@ -86,7 +86,16 @@ export interface CreditEstimate {
 
 // ---- Parametric tool cost preview ("≈ N credits") ----
 
-export type ToolKey = 'assessment' | 'transcription' | 'notes' | 'lecture' | 'coding_question';
+export type ToolKey =
+    | 'assessment'
+    | 'transcription'
+    | 'notes'
+    | 'lecture'
+    | 'coding_question'
+    | 'course_outline'
+    | 'course_slide_document'
+    | 'course_slide_assessment'
+    | 'course_slide_video';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

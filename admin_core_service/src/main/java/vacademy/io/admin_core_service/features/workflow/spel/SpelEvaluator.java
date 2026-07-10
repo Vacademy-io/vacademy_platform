@@ -106,13 +106,24 @@ public class SpelEvaluator {
                 "javax.script", "java.net.URL", "java.net.URI"
         );
 
+        // Safe JDK utility types that the prefix-based block list would otherwise
+        // catch by accident. e.g. the "java.net.URL" entry (meant to block the
+        // network URL class) also prefix-matches java.net.URLEncoder /
+        // java.net.URLDecoder, which are pure string codecs with no I/O. These are
+        // allow-listed so expressions can URL-encode text (e.g. certificate URLs).
+        private static final Set<String> ALLOWED_TYPES = Set.of(
+                "java.net.URLEncoder", "java.net.URLDecoder"
+        );
+
         private final StandardTypeLocator delegate = new StandardTypeLocator();
 
         @Override
         public Class<?> findType(String typeName) {
-            for (String blocked : BLOCKED_PACKAGES) {
-                if (typeName.startsWith(blocked)) {
-                    throw new IllegalStateException("Type access denied for security: " + typeName);
+            if (!ALLOWED_TYPES.contains(typeName)) {
+                for (String blocked : BLOCKED_PACKAGES) {
+                    if (typeName.startsWith(blocked)) {
+                        throw new IllegalStateException("Type access denied for security: " + typeName);
+                    }
                 }
             }
             return delegate.findType(typeName);

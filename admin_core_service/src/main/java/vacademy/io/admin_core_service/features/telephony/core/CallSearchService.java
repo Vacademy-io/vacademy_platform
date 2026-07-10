@@ -237,6 +237,7 @@ public class CallSearchService {
                    tcl.start_time, tcl.answer_time, tcl.end_time, tcl.duration_seconds,
                    tcl.recording_storage_key, tcl.counsellor_user_id, tcl.response_id, tcl.user_id,
                    tcl.disposition_key, tcl.disposition_notes, tcl.dispositioned_at, tcl.created_at,
+                   tcl.ivr_selection,
                    ar.parent_name AS lead_name,
                    acr.ai_disposition AS ai_disposition,
                    CASE WHEN (acr.acr_id IS NOT NULL OR tcl.provider_type = 'AAVTAAR') THEN 'AI' ELSE 'HUMAN' END AS call_type,
@@ -265,6 +266,7 @@ public class CallSearchService {
                 .responseId(rs.getString("response_id"))
                 .userId(rs.getString("user_id"))
                 .leadName(rs.getString("lead_name"))
+                .ivrSelection(rs.getString("ivr_selection"))
                 .dispositionKey(rs.getString("disposition_key"))
                 .dispositionNotes(rs.getString("disposition_notes"))
                 .dispositionedAt(rs.getTimestamp("dispositioned_at"))

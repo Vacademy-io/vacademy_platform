@@ -3813,7 +3813,21 @@ export const SlideMaterial = ({
                               // overflow-hidden clips the lower tabs' content with
                               // no scrollbar. Let the outer page-scroll reveal it.
                               activeItem?.document_slide?.type === 'CODE' ||
-                              activeItem?.source_type === 'ASSIGNMENT'
+                              activeItem?.source_type === 'ASSIGNMENT' ||
+                              // VIDEO / HTML_VIDEO stack the player on top of a
+                              // timeline, add-question form and questions list
+                              // that together run taller than the viewport;
+                              // pinning to h-full + overflow-hidden clips that
+                              // lower content with no scrollbar. Let the outer
+                              // page-scroll reveal it.
+                              activeItem?.source_type === 'VIDEO' ||
+                              activeItem?.source_type === 'HTML_VIDEO' ||
+                              // ASSESSMENT stacks instructions HTML on top of a
+                              // per-student submissions list into an unbounded
+                              // column with no internal scroll of its own;
+                              // pinning to h-full + overflow-hidden clips the
+                              // lower rows. Let the outer page-scroll reveal it.
+                              activeItem?.source_type?.toUpperCase() === 'ASSESSMENT'
                                   ? 'overflow-visible'
                                   : 'overflow-hidden'
                           }`

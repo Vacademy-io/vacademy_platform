@@ -731,6 +731,37 @@ export const renderComponentPreview = (
             return <DataPlaceholder label="Book Details" description="Renders the current book's detail data" />;
         case 'policyRenderer':
             return <DataPlaceholder label="Policy Page" description="Renders policy / terms content" />;
+        case 'sectionHeading': {
+            const shSize = props.size === 'xl' ? 'catalogue-display' : props.size === 'md' ? 'catalogue-h3' : 'catalogue-h2';
+            const shTitle: string = props.title || '';
+            const hl = props.highlight;
+            let shTitleNode: React.ReactNode = shTitle;
+            if (hl?.text && shTitle.includes(hl.text)) {
+                const idx = shTitle.indexOf(hl.text);
+                const hlClass =
+                    hl.style === 'underline'
+                        ? 'underline decoration-primary-400 decoration-4 underline-offset-8'
+                        : hl.style === 'mark'
+                          ? 'rounded-md bg-primary-100 px-2 text-gray-900'
+                          : 'catalogue-text-gradient';
+                shTitleNode = (
+                    <>
+                        {shTitle.slice(0, idx)}
+                        <span className={hlClass}>{hl.text}</span>
+                        {shTitle.slice(idx + hl.text.length)}
+                    </>
+                );
+            }
+            return (
+                <section className="px-4 pt-12 pb-4" style={{ backgroundColor: props.backgroundColor || undefined }}>
+                    <div className={`mx-auto max-w-3xl ${props.align === 'left' ? 'text-left' : 'text-center'}`}>
+                        {props.eyebrow && <span className="catalogue-eyebrow">{props.eyebrow}</span>}
+                        <h2 className={`${props.eyebrow ? 'mt-3' : ''} font-bold text-gray-900 ${shSize}`}>{shTitleNode}</h2>
+                        {props.lead && <p className="mt-4 catalogue-lead text-gray-500">{props.lead}</p>}
+                    </div>
+                </section>
+            );
+        }
         case 'trustChip': {
             const trustAvatars: string[] = (props.avatars || []).filter(Boolean);
             const trustAlign = props.alignment === 'left' ? 'justify-start' : props.alignment === 'right' ? 'justify-end' : 'justify-center';
@@ -1012,7 +1043,10 @@ export const renderComponentPreview = (
                     <div
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: slots.map((_: any, i: number) => widthToFr(colWidths[i])).join(' '),
+                            gridTemplateColumns:
+                                Array.isArray(props.columnFr) && props.columnFr.length === cols && props.columnFr.every(Boolean)
+                                    ? props.columnFr.join(' ')
+                                    : slots.map((_: any, i: number) => widthToFr(colWidths[i])).join(' '),
                             gap: 8,
                         }}
                     >

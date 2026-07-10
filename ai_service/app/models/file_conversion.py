@@ -72,6 +72,32 @@ class FileConversionRepository:
             .first()
         )
 
+    def find_success_by_source_file_id(self, file_id: str) -> Optional[FileConversion]:
+        """Most recent already-converted row for a source media fileId. Lets a
+        re-ingest of the same upload reuse the cached HTML instead of paying for
+        another MathPix conversion."""
+        return (
+            self.db.query(FileConversion)
+            .filter(
+                FileConversion.file_id == file_id,
+                FileConversion.status == "SUCCESS",
+                FileConversion.html_text.isnot(None),
+            )
+            .order_by(FileConversion.created_at.desc())
+            .first()
+        )
+
+    def find_latest_by_source_file_id(self, file_id: str) -> Optional[FileConversion]:
+        """Most recent row (any status) for a source fileId. Lets a re-ingest
+        reuse an in-flight conversion's vendor pdfId (re-poll) instead of
+        submitting a second MathPix job."""
+        return (
+            self.db.query(FileConversion)
+            .filter(FileConversion.file_id == file_id)
+            .order_by(FileConversion.created_at.desc())
+            .first()
+        )
+
     def start(self, vendor_file_id: str, vendor: str, file_id: Optional[str]) -> FileConversion:
         row = FileConversion(
             id=str(uuid4()), vendor_file_id=vendor_file_id, vendor=vendor,

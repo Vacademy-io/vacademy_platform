@@ -371,7 +371,9 @@ public class EmailConfigurationService {
 
             String currentSettings = institute.getSetting();
             if (currentSettings == null || currentSettings.trim().isEmpty()) {
-                return null;
+                // No settings yet — treat the update as an upsert so a not-yet-persisted
+                // sender can be saved for the first time from the edit form.
+                currentSettings = "{}";
             }
 
             JsonNode settingsNode = objectMapper.readTree(currentSettings);
@@ -379,15 +381,29 @@ public class EmailConfigurationService {
                 return null;
             }
 
-            JsonNode emailDataNode = rootNode
+            // Upsert semantics: ensure the EMAIL_SETTING.data container exists and create the
+            // type node if it isn't stored yet. This is what lets an admin override the virtual
+            // "support@vacademy.io" default (which has no DB row) straight from the edit form —
+            // previously this returned null → 404 and the default could never be changed.
+            ensureEmailSettingsDataStructure(rootNode);
+            ObjectNode emailData = (ObjectNode) rootNode
                     .path(NotificationConstants.SETTING)
                     .path(NotificationConstants.EMAIL_SETTING)
                     .path(NotificationConstants.DATA);
-            if (!(emailDataNode instanceof ObjectNode emailData) || !emailData.has(emailType)) {
-                return null;
-            }
 
-            ObjectNode existingConfigNode = (ObjectNode) emailData.get(emailType);
+            boolean isNewConfig = !emailData.has(emailType);
+            ObjectNode existingConfigNode = isNewConfig
+                    ? objectMapper.createObjectNode()
+                    : (ObjectNode) emailData.get(emailType);
+            if (isNewConfig) {
+                // Seed placeholder SMTP so a freshly-created sender routes through the shared
+                // SES SMTP account (same convention as addEmailConfiguration).
+                existingConfigNode.put(NotificationConstants.HOST, "smtp.gmail.com");
+                existingConfigNode.put(NotificationConstants.PORT, 587);
+                existingConfigNode.put(NotificationConstants.USERNAME, "SMTP_USERNAME");
+                existingConfigNode.put(NotificationConstants.PASSWORD, "SMTP_PASSWORD");
+                emailData.set(emailType, existingConfigNode);
+            }
 
             // Read the previous from-address (raw) so we can detect an email change
             // and keep the email_address_mapping table in sync.

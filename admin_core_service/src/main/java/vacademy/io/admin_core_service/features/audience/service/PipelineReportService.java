@@ -258,6 +258,11 @@ public class PipelineReportService {
             WHERE ulp.institute_id = :instituteId
               AND ulp.assigned_counselor_id IS NOT NULL
               AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+              AND (:audienceId IS NULL OR EXISTS (
+                  SELECT 1 FROM audience_response ar2
+                  WHERE (ar2.user_id = ulp.user_id OR ar2.student_user_id = ulp.user_id)
+                    AND ar2.audience_id = :audienceId
+              ))
               AND NOT EXISTS (
                   SELECT 1
                   FROM audience_response ar

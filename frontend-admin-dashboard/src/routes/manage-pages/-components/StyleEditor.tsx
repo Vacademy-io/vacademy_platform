@@ -18,7 +18,11 @@ import type {
     BorderGradientConfig,
     BackgroundLayer,
     OverlayPreset,
+    DividerConfig,
+    SectionDividers,
 } from '../-types/editor-types';
+import { ORNAMENT_PRESETS } from '../-utils/catalogue-decorations';
+import type { OrnamentConfig } from '../-utils/catalogue-decorations';
 
 interface StyleEditorProps {
     style: ComponentStyle;
@@ -204,6 +208,14 @@ const activeMeshId = (layers?: BackgroundLayer[]): string => {
     return match?.id ?? 'custom';
 };
 
+const activeOrnamentId = (ornaments?: OrnamentConfig[]): string => {
+    if (!ornaments?.length) return '';
+    const match = ORNAMENT_PRESETS.find(
+        (p) => JSON.stringify(p.ornaments) === JSON.stringify(ornaments),
+    );
+    return match?.id ?? 'custom';
+};
+
 /* ─── Main StyleEditor ────────────────────────────────────────────────── */
 
 export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
@@ -336,6 +348,46 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                             Overlaps flatten automatically on mobile.
                         </p>
                     </>
+                )}
+                <PresetRow
+                    label="Min Height"
+                    options={[
+                        { label: 'Off', value: '' },
+                        { label: '60vh', value: '60vh' },
+                        { label: '80vh', value: '80vh' },
+                        { label: 'Full screen', value: '100svh' },
+                    ]}
+                    value={style.minHeight ?? ''}
+                    onChange={(v) => update({ minHeight: v || undefined, ...(v ? {} : { contentAlign: undefined }) })}
+                />
+                {style.minHeight && (
+                    <PresetRow
+                        label="Vertical Align (within min height)"
+                        options={[
+                            { label: 'Top', value: 'start' },
+                            { label: 'Center', value: 'center' },
+                            { label: 'Bottom', value: 'end' },
+                        ]}
+                        value={style.contentAlign ?? 'start'}
+                        onChange={(v) => update({ contentAlign: v === 'start' ? undefined : (v as ComponentStyle['contentAlign']) })}
+                    />
+                )}
+                <PresetRow
+                    label="Pin While Scrolling (sticky)"
+                    options={[
+                        { label: 'Off', value: '' },
+                        { label: 'Top 80', value: '80' },
+                        { label: 'Top 96', value: '96' },
+                        { label: 'Top 120', value: '120' },
+                    ]}
+                    value={style.sticky?.enabled ? String(style.sticky.top ?? 88) : ''}
+                    onChange={(v) => update({ sticky: v ? { enabled: true, top: Number(v) } : undefined })}
+                />
+                {style.sticky?.enabled && (
+                    <p className="text-caption text-gray-400">
+                        Pins this block inside a column layout — set the layout&apos;s
+                        Vertical Align to Stretch so it has room to travel.
+                    </p>
                 )}
             </Section>
 
@@ -620,6 +672,70 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                 )}
             </Section>
 
+            {/* ─── Decorations (ornaments + section-edge dividers) ─── */}
+            <Section title="Decorations">
+                <PresetRow
+                    label="Ornaments"
+                    options={[
+                        { label: 'Off', value: '' },
+                        ...ORNAMENT_PRESETS.map((p) => ({ label: p.label, value: p.id })),
+                    ]}
+                    value={activeOrnamentId(style.ornaments)}
+                    onChange={(v) => {
+                        const preset = ORNAMENT_PRESETS.find((p) => p.id === v);
+                        update({ ornaments: preset ? preset.ornaments : undefined });
+                    }}
+                />
+                <p className="text-caption text-gray-500">
+                    Ambient shapes painted behind the content, colored by the active
+                    theme. Subtle by design.
+                </p>
+                {(['top', 'bottom'] as const).map((edge) => (
+                    <PresetRow
+                        key={edge}
+                        label={`Divider · ${edge === 'top' ? 'Top' : 'Bottom'} edge`}
+                        options={[
+                            { label: 'Off', value: '' },
+                            { label: 'Wave', value: 'wave' },
+                            { label: 'Angle', value: 'angle' },
+                            { label: 'Curve', value: 'curve' },
+                        ]}
+                        value={style.dividers?.[edge]?.shape ?? ''}
+                        onChange={(v) => {
+                            const next: SectionDividers = { ...style.dividers };
+                            if (v) next[edge] = { ...next[edge], shape: v as DividerConfig['shape'] };
+                            else delete next[edge];
+                            update({ dividers: next.top || next.bottom ? next : undefined });
+                        }}
+                    />
+                ))}
+                {(style.dividers?.top || style.dividers?.bottom) && (
+                    <>
+                        <PresetRow
+                            label="Divider Height"
+                            options={[
+                                { label: 'S', value: '48' },
+                                { label: 'M', value: '72' },
+                                { label: 'L', value: '96' },
+                            ]}
+                            value={String(style.dividers?.bottom?.height ?? style.dividers?.top?.height ?? 72)}
+                            onChange={(v) => {
+                                const h = Number(v);
+                                const next: SectionDividers = { ...style.dividers };
+                                if (next.top) next.top = { ...next.top, height: h };
+                                if (next.bottom) next.bottom = { ...next.bottom, height: h };
+                                update({ dividers: next });
+                            }}
+                        />
+                        <p className="text-caption text-gray-500">
+                            The divider is cut in the page background color, blending this
+                            section into its neighbours. Give the section its own
+                            background so the shape reads.
+                        </p>
+                    </>
+                )}
+            </Section>
+
             <Section title="Effects">
                 <div>
                     <Label className="mb-1 text-xs">Opacity ({Math.round((style.opacity ?? 1) * 100)}%)</Label>
@@ -665,7 +781,7 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                     )}
                 </div>
                 <div>
-                    <Label className="mb-1 text-xs">Min Height</Label>
+                    <Label className="mb-1 text-xs">Min Height (custom — presets in Layout &amp; Width)</Label>
                     <Input
                         value={style.minHeight || ''}
                         onChange={(e) => update({ minHeight: e.target.value || undefined })}

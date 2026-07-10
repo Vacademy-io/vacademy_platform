@@ -16,6 +16,8 @@
  * canvas, so what admins see is what learners get.
  */
 
+import type { OrnamentConfig, SectionDividers } from './catalogue-decorations';
+
 export interface GradientStop {
     color: string;
     position: number;
@@ -155,6 +157,14 @@ export interface ComponentStyle {
     borderGradient?: BorderGradientConfig;
     backgroundLayers?: BackgroundLayer[];
     overlayPreset?: OverlayPreset;
+    // Decorations — ambient shapes + shaped section edges, rendered by the
+    // wrappers via catalogue-decorations (never compiled into CSS here)
+    ornaments?: OrnamentConfig[];
+    dividers?: SectionDividers;
+    // Position — sticky rails (enroll cards in column slots) and vertical
+    // content alignment inside an authored minHeight
+    sticky?: { enabled: boolean; top?: number };
+    contentAlign?: 'start' | 'center' | 'end';
     // Section shell (see SectionLayoutStyle)
     layout?: SectionLayoutStyle;
     // Typography
@@ -341,6 +351,22 @@ export function buildComponentStyle(style?: ComponentStyle): React.CSSProperties
     if (style.maxWidth) css.maxWidth = style.maxWidth;
     if (style.minHeight) css.minHeight = style.minHeight;
 
+    // Sticky rail — alignSelf keeps it from stretching (and thus never
+    // moving) when the component sits in a grid/flex column slot.
+    if (style.sticky?.enabled) {
+        css.position = 'sticky';
+        css.top = `${style.sticky.top ?? 88}px`;
+        css.alignSelf = 'start';
+    }
+
+    // Vertical alignment of content inside an authored min-height.
+    if (style.minHeight && style.contentAlign) {
+        css.display = 'flex';
+        css.flexDirection = 'column';
+        css.justifyContent =
+            style.contentAlign === 'center' ? 'center' : style.contentAlign === 'end' ? 'flex-end' : 'flex-start';
+    }
+
     // Typography
     if (style.typography) {
         const t = style.typography;
@@ -387,7 +413,15 @@ export function buildSectionShellStyles(style: ComponentStyle): SectionShellStyl
     const compiled = buildComponentStyle(style);
 
     const canvasStyle: React.CSSProperties = {
-        position: 'relative',
+        // sticky is also a positioned context, so absolute children (overlay,
+        // decorations) keep resolving against the canvas
+        position: (compiled.position as 'sticky' | undefined) ?? 'relative',
+        top: compiled.top,
+        alignSelf: compiled.alignSelf,
+        // contentAlign flex centering (only emitted when minHeight is set)
+        display: compiled.display,
+        flexDirection: compiled.flexDirection,
+        justifyContent: compiled.justifyContent,
         width: '100%',
         backgroundColor: compiled.backgroundColor,
         backgroundImage: compiled.backgroundImage,

@@ -33,6 +33,7 @@ import {
 } from "../-services/build-payment-initiation-request";
 import {
   completeSubOrgRegistration,
+  retrySubOrgPayment,
   getSubOrgApiErrorMessage,
   type CompleteRegistrationResponse,
   type CustomFieldValuePayload,
@@ -42,6 +43,7 @@ import {
 
 type PaymentPhase =
   | "SELECT_PLAN"
+  | "RETRY_CONFIRM"
   | "GATEWAY"
   | "PENDING"
   | "ALREADY_IN_PROGRESS";
@@ -88,6 +90,12 @@ interface PaymentStepProps {
   adminName: string;
   adminEmail: string;
   adminPhone: string;
+  /**
+   * Resumed PENDING_PAYMENT registration — plan selection is skipped (the
+   * plan is locked server-side) and the order is re-initiated via
+   * POST /retry-payment instead of the one-shot /complete.
+   */
+  retryMode?: boolean;
   /** Payment confirmed (or immediately PAID) → wizard shows the success step. */
   onRegistered: (email: string | null) => void;
   /** Registration session lost → wizard restarts at DETAILS. */
@@ -103,6 +111,12 @@ interface PaymentStepProps {
  * comes back synchronously; RAZORPAY opens its modal and then polls (the
  * webhook is authoritative); CASHFREE/PHONEPE redirect to hosted pages and the
  * /payment-result page takes over. Credentials always arrive by email.
+ *
+ * Retry path (resumed PENDING_PAYMENT registrations, or "Complete payment"
+ * out of ALREADY_IN_PROGRESS): plan selection is skipped — the plan is locked
+ * server-side — and orders are re-initiated via POST /retry-payment, feeding
+ * the same gateway machinery. A COMPLETED retry response (webhook landed
+ * while the user was away) goes straight to the completion panel.
  */
 const PaymentStep = ({
   payment,
@@ -115,13 +129,19 @@ const PaymentStep = ({
   adminName,
   adminEmail,
   adminPhone,
+  retryMode = false,
   onRegistered,
   onSessionMissing,
   onBack,
 }: PaymentStepProps) => {
   const vendor = (payment.vendor || "").toUpperCase() as PaymentVendor;
 
-  const [phase, setPhase] = useState<PaymentPhase>("SELECT_PLAN");
+  const [phase, setPhase] = useState<PaymentPhase>(
+    retryMode ? "RETRY_CONFIRM" : "SELECT_PLAN"
+  );
+  // Orders go through /retry-payment instead of /complete. Starts true in
+  // retryMode; also flips on when the user retries out of ALREADY_IN_PROGRESS.
+  const [retryActive, setRetryActive] = useState(retryMode);
   const [selectedPayment, setSelectedPayment] =
     useState<SelectedPayment | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -146,8 +166,19 @@ const PaymentStep = ({
   const completeResponseRef = useRef<CompleteRegistrationResponse | null>(null);
   const cashfreeInitAttemptedRef = useRef(false);
 
-  const currency = selectedPayment?.currency || payment.currency;
-  const amount = getSelectedPaymentPrice(selectedPayment);
+  // Retry re-initiations are server-priced (the locked plan is unknown client-
+  // side) — with a single template plan we can still display its amount;
+  // otherwise the gateway is the source of truth and the UI omits the figure.
+  const retryDisplayPlan =
+    retryActive && !selectedPayment && payment.payment_plans?.length === 1
+      ? (payment.payment_plans?.[0] ?? null)
+      : null;
+
+  const currency =
+    selectedPayment?.currency || retryDisplayPlan?.currency || payment.currency;
+  const amount = selectedPayment
+    ? getSelectedPaymentPrice(selectedPayment)
+    : (retryDisplayPlan?.actual_price ?? 0);
 
   // Hosted-page vendors (Cashfree/PhonePe) return to the sub-org result page,
   // which polls the registration status and renders the completion panel.
@@ -232,6 +263,49 @@ const PaymentStep = ({
     [registrationId, tncAccepted, customFieldValues, onSessionMissing]
   );
 
+  /**
+   * PENDING_PAYMENT re-initiation via POST /retry-payment. Amount/currency/
+   * vendor/plan are server-stamped from the locked registration — the request
+   * only matters for the vendor sub-request (e.g. cashfree_request.return_url).
+   * A COMPLETED response means the webhook confirmed while the user was away:
+   * jump straight to the completion panel (callers bail out on null).
+   */
+  const runRetry = useCallback(
+    async (
+      paymentInitiationRequest: PaymentInitiationRequest
+    ): Promise<CompleteRegistrationResponse | null> => {
+      if (!registrationId) {
+        toast.error("Registration session missing. Please start again");
+        onSessionMissing();
+        return null;
+      }
+      const response = await retrySubOrgPayment({
+        registration_id: registrationId,
+        payment_initiation_request: paymentInitiationRequest,
+      });
+      if ((response.status || "").toUpperCase() === "COMPLETED") {
+        onRegistered(response.admin_email ?? null);
+        return null;
+      }
+      completeResponseRef.current = response;
+      setCompleteResponse(response);
+      return response;
+    },
+    [registrationId, onSessionMissing, onRegistered]
+  );
+
+  /** Routes order creation: /retry-payment when retrying, else the one-shot /complete. */
+  const createPaymentOrder = useCallback(
+    async (
+      paymentInitiationRequest: PaymentInitiationRequest
+    ): Promise<CompleteRegistrationResponse | null> => {
+      if (retryActive) return runRetry(paymentInitiationRequest);
+      if (!selectedPayment) return null;
+      return runComplete(paymentInitiationRequest, selectedPayment.id);
+    },
+    [retryActive, runRetry, runComplete, selectedPayment]
+  );
+
   const handlePaymentFailure = useCallback(
     (err: unknown, fallback: string) => {
       const fallbackMessage =
@@ -280,23 +354,22 @@ const PaymentStep = ({
   // ─── Cashfree: create the order + hosted session on entering the gateway ───
 
   const initCashfreeSession = useCallback(async () => {
-    if (!selectedPayment) return;
+    if (!retryActive && !selectedPayment) return;
     setCashfreeInitLoading(true);
     setError(null);
     try {
       const response =
         completeResponseRef.current ??
-        (await runComplete(
+        (await createPaymentOrder(
           buildPaymentInitiationRequest({
             vendor: "CASHFREE",
-            amount: getSelectedPaymentPrice(selectedPayment),
-            currency: selectedPayment.currency || payment.currency,
+            amount,
+            currency,
             instituteId,
             email: adminEmail,
             contact: adminPhone,
             returnUrl,
-          }),
-          selectedPayment.id
+          })
         ));
       if (!response) return;
 
@@ -326,8 +399,8 @@ const PaymentStep = ({
           instituteId,
           userPlanId,
           {
-            amount: getSelectedPaymentPrice(selectedPayment),
-            currency: selectedPayment.currency || payment.currency,
+            amount,
+            currency,
             email: adminEmail,
             returnUrl,
             token,
@@ -367,14 +440,16 @@ const PaymentStep = ({
       setCashfreeInitLoading(false);
     }
   }, [
+    retryActive,
     selectedPayment,
-    payment.currency,
+    amount,
+    currency,
     instituteId,
     adminEmail,
     adminPhone,
     returnUrl,
     stashReturnContext,
-    runComplete,
+    createPaymentOrder,
     handlePaymentFailure,
   ]);
 
@@ -389,7 +464,8 @@ const PaymentStep = ({
   // ─── Confirm & Pay (STRIPE / EWAY / RAZORPAY / PHONEPE) ────────────────────
 
   const handleConfirmAndPay = async () => {
-    if (isProcessing || !selectedPayment) return;
+    // Retry re-initiations have no client-side plan selection (locked server-side).
+    if (isProcessing || (!retryActive && !selectedPayment)) return;
     setError(null);
     setIsProcessing(true);
     let redirecting = false;
@@ -409,7 +485,7 @@ const PaymentStep = ({
           );
           return;
         }
-        const response = await runComplete(
+        const response = await createPaymentOrder(
           buildPaymentInitiationRequest({
             vendor,
             amount,
@@ -418,8 +494,7 @@ const PaymentStep = ({
             email: adminEmail,
             contact: adminPhone,
             paymentMethodId: result.paymentMethodId,
-          }),
-          selectedPayment.id
+          })
         );
         if (response) finishAfterComplete(response);
         return;
@@ -430,7 +505,7 @@ const PaymentStep = ({
           setError("Please complete the card details first");
           return;
         }
-        const response = await runComplete(
+        const response = await createPaymentOrder(
           buildPaymentInitiationRequest({
             vendor,
             amount,
@@ -439,8 +514,7 @@ const PaymentStep = ({
             email: adminEmail,
             contact: adminPhone,
             ewayPaymentData: ewayData,
-          }),
-          selectedPayment.id
+          })
         );
         if (response) finishAfterComplete(response);
         return;
@@ -451,7 +525,7 @@ const PaymentStep = ({
         // /complete rejects re-entry while a payment is in progress.
         const response =
           completeResponseRef.current ??
-          (await runComplete(
+          (await createPaymentOrder(
             buildPaymentInitiationRequest({
               vendor,
               amount,
@@ -459,8 +533,7 @@ const PaymentStep = ({
               instituteId,
               email: adminEmail,
               contact: adminPhone,
-            }),
-            selectedPayment.id
+            })
           ));
         if (!response) return;
         const responseData = response.payment_response?.response_data;
@@ -507,7 +580,7 @@ const PaymentStep = ({
       if (vendor === "PHONEPE") {
         const response =
           completeResponseRef.current ??
-          (await runComplete(
+          (await createPaymentOrder(
             buildPaymentInitiationRequest({
               vendor,
               amount,
@@ -516,8 +589,7 @@ const PaymentStep = ({
               email: adminEmail,
               contact: adminPhone,
               returnUrl,
-            }),
-            selectedPayment.id
+            })
           ));
         if (!response) return;
         const responseData = response.payment_response?.response_data;
@@ -578,13 +650,32 @@ const PaymentStep = ({
     [completeResponse]
   );
 
-  // Plan can only change before the one-shot /complete call locks it in.
+  /**
+   * ALREADY_IN_PROGRESS → "Complete payment": /retry-payment supersedes the
+   * stuck order server-side, so drop the cached /complete response and
+   * re-enter the gateway on the retry path.
+   */
+  const handleRetryFromInProgress = useCallback(() => {
+    completeResponseRef.current = null;
+    setCompleteResponse(null);
+    setCashfreeSession(null);
+    cashfreeInitAttemptedRef.current = false;
+    setOrderId("");
+    setError(null);
+    setRetryActive(true);
+    setPhase("GATEWAY");
+  }, []);
+
+  // Plan can only change before the one-shot /complete call locks it in —
+  // and never on the retry path, where the plan is fixed server-side.
   const canChangePlan =
-    (payment.payment_plans?.length ?? 0) > 1 && !completeResponse;
+    !retryActive &&
+    (payment.payment_plans?.length ?? 0) > 1 &&
+    !completeResponse;
 
   const confirmDisabled =
     isProcessing ||
-    !selectedPayment ||
+    (!retryActive && !selectedPayment) ||
     (vendor === "STRIPE" && !stripeProcessor) ||
     (vendor === "EWAY" && !ewayData);
 
@@ -612,9 +703,72 @@ const PaymentStep = ({
             shortly.
           </p>
           <p className="text-caption text-neutral-400">
-            If the payment didn&apos;t go through, please reopen this
-            registration link after a few minutes to try again.
+            If the payment didn&apos;t go through, you can retry it below.
           </p>
+          <div className="flex justify-center pt-1">
+            <MyButton
+              type="button"
+              buttonType="primary"
+              scale="large"
+              layoutVariant="default"
+              onClick={handleRetryFromInProgress}
+              className="w-full sm:w-auto"
+            >
+              <CreditCard className="mr-2 size-4" />
+              Complete payment
+            </MyButton>
+          </div>
+        </div>
+      </ModernCard>
+    );
+  }
+
+  if (phase === "RETRY_CONFIRM") {
+    return (
+      <ModernCard
+        variant="glass"
+        padding="lg"
+        rounded="lg"
+        className="border border-white/40 bg-white/90 shadow-lg backdrop-blur-md"
+      >
+        <div className="space-y-4 py-6 text-center">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary-50">
+            <CreditCard className="size-8 text-primary-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-neutral-700">
+            Complete your payment
+          </h2>
+          <p className="mx-auto max-w-md text-sm text-neutral-500">
+            Your registration for{" "}
+            <span className="font-semibold text-neutral-700">
+              {templateName}
+            </span>{" "}
+            is saved — only the payment is pending. Your plan is already locked
+            in
+            {retryDisplayPlan ? (
+              <>
+                {" "}
+                at{" "}
+                <span className="font-semibold text-neutral-700">
+                  {getCurrencySymbol(currency)}
+                  {retryDisplayPlan.actual_price}
+                </span>
+              </>
+            ) : null}
+            .
+          </p>
+          <div className="flex justify-center pt-1">
+            <MyButton
+              type="button"
+              buttonType="primary"
+              scale="large"
+              layoutVariant="default"
+              onClick={() => setPhase("GATEWAY")}
+              className="w-full min-w-40 sm:w-auto"
+            >
+              Proceed to Payment
+            </MyButton>
+          </div>
         </div>
       </ModernCard>
     );
@@ -692,17 +846,23 @@ const PaymentStep = ({
               <CreditCard className="size-5 text-primary-500 sm:size-6" />
             </div>
             <div>
-              <p className="text-caption text-neutral-500">Selected plan</p>
+              <p className="text-caption text-neutral-500">
+                {selectedPayment ? "Selected plan" : "Payment"}
+              </p>
               <p className="text-sm font-semibold text-neutral-700">
-                {selectedPayment?.name}
+                {selectedPayment?.name ?? retryDisplayPlan?.name ?? templateName}
               </p>
             </div>
           </div>
           <div className="flex items-center justify-between gap-3 sm:justify-end">
-            <span className="text-lg font-bold text-neutral-700">
-              {getCurrencySymbol(currency)}
-              {amount}
-            </span>
+            {/* Retry with multiple plans: the locked plan (and price) is only
+                known server-side — the gateway shows the amount instead. */}
+            {(selectedPayment || retryDisplayPlan) && (
+              <span className="text-lg font-bold text-neutral-700">
+                {getCurrencySymbol(currency)}
+                {amount}
+              </span>
+            )}
             {canChangePlan && (
               <MyButton
                 type="button"

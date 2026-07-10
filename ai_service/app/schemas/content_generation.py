@@ -33,6 +33,24 @@ class ContentGenerationRequest(BaseModel):
         default="English",
         description="Language for content generation (e.g. 'English', 'Hindi', 'Spanish', 'French', 'Arabic')"
     )
+    generation_run_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Client-minted id, stable across transport retries of the same run. "
+            "Keys idempotent per-slide credit charges so a retried request never "
+            "double-bills already-generated slides."
+        ),
+    )
+    video_settings: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Course-level AI-video settings applied to AI_VIDEO / AI_VIDEO_CODE / "
+            "AI_SLIDES / AI_STORYBOOK todos (per-todo metadata wins). Recognized "
+            "keys: model, voice_gender, voice_id, tts_provider, quality_tier, "
+            "target_duration."
+        ),
+    )
 
 
 __all__ = ["ContentGenerationRequest"]

@@ -93,6 +93,7 @@ export type {
     BackgroundLayer,
     OverlayPreset,
 } from '../-utils/style-engine';
+export type { OrnamentConfig, DividerConfig, SectionDividers } from '../-utils/catalogue-decorations';
 import type { ComponentStyle } from '../-utils/style-engine';
 
 export interface Component {

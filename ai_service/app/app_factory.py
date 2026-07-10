@@ -81,6 +81,15 @@ async def _lifespan(app: FastAPI):
         sweep_stale_tasks()
     except Exception as exc:  # noqa: BLE001
         _logger.warning("ai_task startup init skipped: %s", exc)
+    # Orphaned AI-video runs (deploy/crash killed the in-process pipeline
+    # task): refund + mark FAILED so slides stop spinning forever. Sweeps at
+    # startup and every 30 min (a crash's own orphans are younger than the TTL
+    # at boot). Lazy import so a module issue can't block app boot.
+    try:
+        from .services.ai_video_sweeper import start_ai_video_sweeper
+        start_ai_video_sweeper()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("ai_gen_video sweeper skipped: %s", exc)
     # Reels stuck-render reaper: sweeps PENDING/IN_PROGRESS rows orphaned by
     # a deploy/crash (in-process asyncio renders die with the process) every
     # 5 min. Lazy import so a reels-module issue can't block app boot.

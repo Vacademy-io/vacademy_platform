@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 from typing import Optional, AsyncGenerator
+from uuid import uuid4
 
 from ..domain.course_metadata import CourseMetadata
 from ..ports.course_metadata_port import CourseMetadataPort
@@ -123,23 +124,24 @@ class CourseOutlineGenerationService:
                 model=model,
                 api_key=openai_key,
             )
-            
-            # Record token usage
-            if self._db_session and usage_info:
-                try:
-                    token_service = TokenUsageService(self._db_session)
-                    token_service.record_usage_and_deduct_credits(
-                        api_provider=ApiProvider.OPENAI,
-                        prompt_tokens=usage_info.get("prompt_tokens", 0),
-                        completion_tokens=usage_info.get("completion_tokens", 0),
-                        total_tokens=usage_info.get("total_tokens", 0),
-                        request_type=RequestType.OUTLINE,
-                        institute_id=request.institute_id,
-                        user_id=request.user_id,
-                        model=model,
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to record token usage: {str(e)}")
+
+            # Parametric course_outline charge: max(flat DB rate, actual tokens).
+            # Best-effort on a fresh session; idempotent per request.
+            if usage_info:
+                from .ai_billing import record_tool_billing
+                request_id = str(uuid4())
+                record_tool_billing(
+                    tool_key="course_outline",
+                    tool_params={},
+                    request_type=RequestType.OUTLINE,
+                    model=model,
+                    prompt_tokens=usage_info.get("prompt_tokens", 0),
+                    completion_tokens=usage_info.get("completion_tokens", 0),
+                    institute_id=request.institute_id,
+                    user_id=request.user_id,
+                    request_id=request_id,
+                    idempotency_key=f"course_outline:{request_id}",
+                )
         else:
             # Fallback for clients that don't support usage tracking
             raw_output = await self._llm_client.generate_outline(
@@ -271,24 +273,23 @@ class CourseOutlineGenerationService:
                     model=model,
                     api_key=openai_key,
                 )
-                
-                # Record token usage
-                if self._db_session and usage_info:
-                    try:
-                        token_service = TokenUsageService(self._db_session)
-                        token_service.record_usage_and_deduct_credits(
-                            api_provider=ApiProvider.OPENAI,
-                            prompt_tokens=usage_info.get("prompt_tokens", 0),
-                            completion_tokens=usage_info.get("completion_tokens", 0),
-                            total_tokens=usage_info.get("total_tokens", 0),
-                            request_type=RequestType.OUTLINE,
-                            institute_id=request.institute_id,
-                            user_id=request.user_id,
-                            model=model,
-                            request_id=request_id,
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to record token usage: {str(e)}")
+
+                # Parametric course_outline charge: max(flat DB rate, actual
+                # tokens). Best-effort on a fresh session; idempotent per request.
+                if usage_info:
+                    from .ai_billing import record_tool_billing
+                    record_tool_billing(
+                        tool_key="course_outline",
+                        tool_params={},
+                        request_type=RequestType.OUTLINE,
+                        model=model,
+                        prompt_tokens=usage_info.get("prompt_tokens", 0),
+                        completion_tokens=usage_info.get("completion_tokens", 0),
+                        institute_id=request.institute_id,
+                        user_id=request.user_id,
+                        request_id=request_id,
+                        idempotency_key=f"course_outline:{request_id}",
+                    )
             else:
                 # Fallback for clients that don't support usage tracking
                 full_content = await self._llm_client.generate_outline(
@@ -406,7 +407,13 @@ class CourseOutlineGenerationService:
             yield f"[Error] Failed to generate outline: {str(e)}"
 
     async def generate_content_from_coursetree(
-        self, course_tree: dict, request_id: str, institute_id: Optional[str] = None, user_id: Optional[str] = None, language: Optional[str] = "English"
+        self,
+        course_tree: dict,
+        request_id: str,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        language: Optional[str] = "English",
+        video_settings: Optional[dict] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -502,6 +509,8 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._institute_id = extracted_institute_id or self._content_generation_service._institute_id
                 self._content_generation_service._user_id = extracted_user_id or self._content_generation_service._user_id
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
+            # Keys idempotent per-slide charges for this generation run
+            self._content_generation_service._request_id = request_id
             
             # Inject request-level language into todo metadata if not already set
             effective_language = language or "English"
@@ -510,6 +519,23 @@ class CourseOutlineGenerationService:
                     todo.metadata = {}
                 if not todo.metadata.get("language"):
                     todo.metadata["language"] = effective_language
+
+            # Inject course-level AI-video settings (from the wizard) into the
+            # video-pipeline todos' metadata. Per-todo metadata wins; only the
+            # whitelisted keys are copied.
+            if video_settings:
+                _video_types = {"AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"}
+                _video_setting_keys = (
+                    "model", "voice_gender", "voice_id",
+                    "tts_provider", "quality_tier", "target_duration",
+                )
+                for todo in content_todos:
+                    if todo.type not in _video_types:
+                        continue
+                    for key in _video_setting_keys:
+                        value = video_settings.get(key)
+                        if value and not todo.metadata.get(key):
+                            todo.metadata[key] = value
 
             # ── Parallel content generation with dependency awareness ──
             # Separate independent todos from dependent homework→solution pairs.
@@ -555,10 +581,14 @@ class CourseOutlineGenerationService:
                 logger.info(f"Phase 1: Processing {len(independent_todos)} independent todos in parallel...")
                 event_queue: asyncio.Queue = asyncio.Queue()
                 _SENTINEL = object()  # Signals all tasks are done
+                # Paths whose worker actually started generating (left the
+                # semaphore queue) — see the disconnect handling below.
+                started_paths: set = set()
 
                 async def _process_todo_to_queue(todo: Todo):
                     """Generate content for one todo and push events to the queue."""
                     async with semaphore:
+                        started_paths.add(todo.path)
                         try:
                             logger.info(f"Starting content generation for todo: {todo.path} (Type: {todo.type})")
                             async for content_update in self._content_generation_service.generate_content_for_todo(
@@ -580,10 +610,11 @@ class CourseOutlineGenerationService:
                             await event_queue.put(error_response)
 
                 # Start all tasks
-                tasks = [
-                    asyncio.create_task(_process_todo_to_queue(todo))
+                task_todo_pairs = [
+                    (asyncio.create_task(_process_todo_to_queue(todo)), todo)
                     for todo in independent_todos
                 ]
+                tasks = [task for task, _ in task_todo_pairs]
 
                 # Watchdog: wait for all tasks, then push sentinel
                 async def _signal_done():
@@ -592,23 +623,46 @@ class CourseOutlineGenerationService:
 
                 asyncio.create_task(_signal_done())
 
-                # Yield events in real-time as they arrive from any task
-                while True:
-                    event = await event_queue.get()
-                    if event is _SENTINEL:
-                        break
-                    yield event
-                    # Accumulate generated content for potential downstream use
-                    try:
-                        data = json.loads(event)
+                # Yield events in real-time as they arrive from any task.
+                # If the client disconnects, the generator is closed here —
+                # cancel the pure-LLM workers so orphaned generations (and
+                # their credit charges) don't keep running for a stream nobody
+                # receives. Video-pipeline workers must NOT be hard-cancelled:
+                # a CancelledError inside generate_till_stage bypasses its
+                # `except Exception` cleanup (row stuck IN_PROGRESS, no refund)
+                # and unwinds a `with ThreadPoolExecutor()` whose shutdown
+                # blocks the whole event loop until the stage thread finishes.
+                # Those runs complete in the background instead (their DB rows
+                # and S3 artifacts stay usable, billed as actual usage).
+                _video_pipeline_types = {"AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"}
+                try:
+                    while True:
+                        event = await event_queue.get()
+                        if event is _SENTINEL:
+                            break
+                        yield event
+                        # Accumulate generated content for potential downstream use
+                        try:
+                            data = json.loads(event)
+                            if (
+                                data.get("type") == "SLIDE_CONTENT_UPDATE"
+                                and data.get("status")
+                                and "contentData" in data
+                            ):
+                                generated_content_by_path[data["path"]] = data["contentData"]
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                finally:
+                    for task, todo in task_todo_pairs:
+                        # Video-family workers that already entered the pipeline
+                        # must finish (see comment above); ones still queued on
+                        # the semaphore have no DB row/charges yet and are safe
+                        # (and cheap) to cancel.
                         if (
-                            data.get("type") == "SLIDE_CONTENT_UPDATE"
-                            and data.get("status")
-                            and "contentData" in data
+                            todo.type not in _video_pipeline_types
+                            or todo.path not in started_paths
                         ):
-                            generated_content_by_path[data["path"]] = data["contentData"]
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                            task.cancel()
 
             # ── Phase 2: Process dependent homework→solution pairs sequentially ──
             if dependent_pairs:
@@ -842,15 +896,16 @@ class CourseOutlineGenerationService:
                 type="DOCUMENT",
                 path=homework_path,
                 action_type="ADD",
-                prompt=f"""Create homework tasks based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
+                model=chapter_document_slides[0].model,
+                prompt=f"""Create the homework assignment based ONLY on the course content covered in {chapter_name} from the following slides in this chapter: {slide_references}.
 
-IMPORTANT: These homework tasks should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
+IMPORTANT: The assignment should ONLY reference content from {chapter_name}. Do not include tasks from other chapters.
 
-The homework must be CODING- and TASK-oriented, NOT simple question-answer type. Include exactly ONE task per chapter, such as:
-- One mini project (e.g. build a small app, implement a feature, create a script), or
-- One setup/configuration task (e.g. set up environment, configure a tool), or
-- One implementation task (e.g. implement a function, write code that does X)
-The single task must have: clear title, brief context, concrete instructions, and expected outcome. Include code snippets or starter code where relevant. Base it on THIS chapter only: {slide_references}. Format as HTML with headings, paragraphs, and code blocks.""",
+The homework must be hands-on and applied — something the student actively DOES, not recall-style question-answer. Choose the task type from the chapter's subject matter:
+- ONLY if the chapter teaches programming or another code-based technical skill: one coding task (mini project, implementation, setup, or debugging task)
+- For any other subject: one practical non-coding task (e.g. analyze a provided case or examples, create a deliverable like a properly formatted document or plan, correct provided flawed examples, or solve realistic scenario problems)
+Never force a coding task onto a non-technical chapter.
+Include exactly ONE task, with: clear title, brief context, concrete instructions, the materials to work on embedded in the assignment, and the expected outcome. Base it on THIS chapter only: {slide_references}.""",
                 order=last_order + 1,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,
@@ -864,16 +919,15 @@ The single task must have: clear title, brief context, concrete instructions, an
                 type="DOCUMENT",
                 path=solutions_path,
                 action_type="ADD",
-                prompt=f"""Create solutions for the homework tasks from the previous slide in {chapter_name}. For EACH task you MUST give: (1) HINT first, (2) then the EXACT solution.
+                model=chapter_document_slides[0].model,
+                prompt=f"""Create solutions for the homework task from the previous slide in {chapter_name}. You MUST give: (1) HINT first, (2) then the full solution.
 
-IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework tasks are based on these slides: {slide_references}.
+IMPORTANT: Solutions should ONLY reference content from {chapter_name}. The homework task is based on these slides: {slide_references}.
 
-For every homework item:
+For the homework task:
 - First provide one or more HINTs (short, actionable, without giving the full answer).
-- Then provide the full EXACT solution: complete code (if coding), step-by-step commands (if setup), or full implementation with explanation.
-- Code must be complete and runnable; for setup tasks include commands and how to verify. Reference concepts only from: {slide_references}.
-
-Format as HTML: for each task use a heading, then a "Hint" subsection, then a "Solution" subsection with code in <pre><code> and steps in lists/paragraphs.""",
+- Then provide the full solution matching the task type: complete runnable code ONLY if the homework was a coding task; otherwise the complete worked deliverable or step-by-step working (e.g. the corrected examples, the finished document, the full analysis).
+- Reference concepts only from: {slide_references}.""",
                 order=last_order + 2,
                 chapter_name=chapter_document_slides[0].chapter_name,
                 module_name=chapter_document_slides[0].module_name,

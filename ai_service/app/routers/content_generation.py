@@ -45,20 +45,59 @@ async def generate_content_from_coursetree(
     Args:
         payload: Request containing course_tree (from outline API) and optional institute_id.
     """
-    # Pre-flight credit check
-    if payload.institute_id:
-        from ..services.credit_service import CreditService
-        from ..schemas.credits import CreditCheckRequest
-        credit_svc = CreditService(db)
-        check = credit_svc.check_credits(CreditCheckRequest(
-            institute_id=payload.institute_id,
-            request_type="content",
-            estimated_tokens=1000,
-        ))
-        if not check.has_sufficient_credits:
-            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=check.message)
+    # Resolve the billing institute the same way the generation service does —
+    # the top-level field, else courseMetadata (a supported payload shape).
+    # Otherwise the pre-flight could be bypassed while charges still land.
+    course_metadata = (payload.course_tree or {}).get("courseMetadata") or {}
+    billing_institute_id = (
+        payload.institute_id
+        or course_metadata.get("instituteId")
+        or course_metadata.get("institute_id")
+    )
 
-    request_id = str(uuid.uuid4())
+    # Pre-flight credit check: sum the parametric per-slide prices for the
+    # requested todos (DB-tunable in ai_tool_pricing). AI_VIDEO-family slides
+    # are excluded — the video pipeline meters their actual usage separately.
+    if billing_institute_id:
+        from decimal import Decimal
+        from ..services.credit_service import CreditService
+        from ..services.tool_cost_estimator import ToolCostEstimator
+
+        estimated_total = Decimal("0")
+        try:
+            todos = (payload.course_tree or {}).get("todos") or []
+            counts = {"course_slide_document": 0, "course_slide_assessment": 0, "course_slide_video": 0}
+            for todo in todos:
+                todo_type = (todo or {}).get("type") if isinstance(todo, dict) else None
+                if todo_type == "DOCUMENT":
+                    counts["course_slide_document"] += 1
+                elif todo_type == "ASSESSMENT":
+                    counts["course_slide_assessment"] += 1
+                elif todo_type in ("VIDEO", "VIDEO_CODE"):
+                    counts["course_slide_video"] += 1
+            estimator = ToolCostEstimator(db)
+            for tool_key, count in counts.items():
+                if count:
+                    per_slide = Decimal(str(estimator.estimate(tool_key, {})["estimated_credits"]))
+                    estimated_total += per_slide * count
+        except Exception as exc:  # estimation must never block generation
+            import logging
+            logging.getLogger(__name__).warning(f"Content credit pre-flight estimation failed: {exc}")
+
+        if estimated_total > 0:
+            balance = CreditService(db).get_balance(billing_institute_id)
+            if balance and balance.current_balance < estimated_total:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail=(
+                        f"Insufficient credits: generating this content needs ≈{estimated_total} "
+                        f"credits, balance is {balance.current_balance}. Please top up."
+                    ),
+                )
+
+    # Client-minted run id (stable across transport retries) keys idempotent
+    # per-slide charges; fall back to a per-request UUID for older clients.
+    request_id = payload.generation_run_id or str(uuid.uuid4())
 
     async def event_generator():
         try:
@@ -69,6 +108,7 @@ async def generate_content_from_coursetree(
                 institute_id=payload.institute_id,
                 user_id=payload.user_id,
                 language=payload.language,
+                video_settings=payload.video_settings,
             ):
                 yield f"data: {event}\n\n"
                 last_event_time = time.monotonic()

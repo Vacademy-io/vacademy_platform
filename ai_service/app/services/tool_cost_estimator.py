@@ -84,6 +84,41 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {"questions_add": "2", "homework_add": "2"},
     },
+    # ---- AI course creation (copilot) ------------------------------------
+    # One outline generation = one large LLM call authoring the whole course
+    # tree. Charged as max(flat, actual token cost).
+    "course_outline": {
+        "request_type": "outline",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Per-slide content generation charges. AI_VIDEO / AI_SLIDES /
+    # AI_STORYBOOK slides are NOT covered by these — the video pipeline
+    # already meters their actual usage (video/tts/image/stock).
+    "course_slide_document": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "course_slide_assessment": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # YouTube search (VIDEO) or search + code example (VIDEO_CODE).
+    "course_slide_video": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

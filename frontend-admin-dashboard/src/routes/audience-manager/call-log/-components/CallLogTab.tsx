@@ -329,6 +329,14 @@ export default function CallLogTab({
                                                     <span className="text-xs text-neutral-500">
                                                         {r.lead_number || '—'}
                                                     </span>
+                                                    {r.ivr_selection && (
+                                                        <span
+                                                            className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700"
+                                                            title="IVR option chosen"
+                                                        >
+                                                            {r.ivr_selection}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="py-2.5 pr-3">

@@ -136,6 +136,11 @@ public class TelephonyCallLog implements Persistable<String> {
 
     // ── Manual disposition (V346): the human-set outcome for this call. The AI
     // (Aavtaar) disposition stays in ai_call_result; the dashboard surfaces both.
+    /** The IVR menu option the inbound caller chose, e.g. "1 · Shivir Info" — set by
+     *  the /plivo/dtmf handler so the team sees the category on the Call Log. */
+    @Column(name = "ivr_selection", length = 160)
+    private String ivrSelection;
+
     @Column(name = "disposition_key", length = 64)
     private String dispositionKey;
 

@@ -3,9 +3,11 @@ package vacademy.io.admin_core_service.features.telephony.persistence.repository
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 
 import java.util.List;
@@ -16,6 +18,13 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
 
     Optional<TelephonyCallLog> findByProviderTypeAndProviderCallId(
             String providerType, String providerCallId);
+
+    /** Targeted single-column write for the IVR selection during a live call — avoids a
+     *  full-entity merge that could clobber a concurrent status webhook on the same row. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE TelephonyCallLog t SET t.ivrSelection = :selection WHERE t.id = :id")
+    void updateIvrSelection(@Param("id") String id, @Param("selection") String selection);
 
     /**
      * Dispositioned calls for a batch of lead users — the CSV export's lead

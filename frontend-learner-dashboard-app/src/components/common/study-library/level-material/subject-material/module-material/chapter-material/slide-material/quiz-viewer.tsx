@@ -19,6 +19,7 @@ import "katex/dist/katex.css";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Slide } from "@/hooks/study-library/use-slides";
 import { useSelectedSessionStore } from "@/stores/study-library/selected-session-store";
+import { useQuizActiveStore } from "@/stores/study-library/quiz-active-store";
 import { refreshProgressAfterSubmit as invalidateProgressCaches } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 
 interface Option {
@@ -202,6 +203,15 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   useEffect(() => {
     getUserId().then((id) => setCurrentUserId(id || undefined));
   }, []);
+
+  // Flag the quiz as active while this viewer is mounted so the floating
+  // chatbot button hides itself and never covers the Next/Finish controls
+  // (bottom-right) on mobile/desktop. Cleared on unmount (slide navigation).
+  const setQuizActive = useQuizActiveStore((state) => state.setActive);
+  useEffect(() => {
+    setQuizActive(true);
+    return () => setQuizActive(false);
+  }, [setQuizActive]);
   const currentSlideIdForAttempts = useMemo(() => {
     return new URLSearchParams(window.location.search).get("slideId") || undefined;
   // Re-compute when questions change (indicates slide navigation)

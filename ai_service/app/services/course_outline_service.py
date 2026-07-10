@@ -59,9 +59,58 @@ class CourseOutlineGenerationService:
         self._llm_client = llm_client  # Store for content generation service
         # Note: content_generation_service will be initialized later in generate_content_from_coursetree if needed
 
+    async def _apply_reference_grounding(self, request: CourseOutlineRequest) -> None:
+        """If reference PDFs were uploaded, ingest them and append their extracted
+        text/tables to the user prompt so the outline is built from the actual
+        document. Best-effort — a failure leaves the prompt unchanged."""
+        file_ids = getattr(request, "reference_document_file_ids", None)
+        if not file_ids:
+            return
+        try:
+            from .course_document_ingest import ingest_documents, MAX_GROUNDING_CHARS_OUTLINE
+            # Bound the wait: MathPix polling can take minutes on a slow/large
+            # PDF, and grounding must not block the outline stream indefinitely.
+            # On timeout we proceed ungrounded — the conversion keeps caching, so
+            # the content step still gets the figures (cache hit).
+            # Outline only needs the text — skip figure re-hosting (the content
+            # pass re-hosts them when it actually embeds them).
+            ingest = await asyncio.wait_for(
+                ingest_documents(file_ids, rehost_figures=False), timeout=150
+            )
+            if not ingest.grounding_text:
+                return
+            source = ingest.grounding_text[:MAX_GROUNDING_CHARS_OUTLINE]
+            truncated = " (truncated)" if len(ingest.grounding_text) > len(source) else ""
+            figure_note = (
+                f"\n\nThe document also contains {len(ingest.figures)} figures/diagrams that will be "
+                "embedded into the generated slides — structure the course so its slides follow the "
+                "document's sections, so those figures land in the right context."
+                if ingest.figures else ""
+            )
+            request.user_prompt = (
+                f"{request.user_prompt}\n\n"
+                f"===== SOURCE DOCUMENT{truncated} — build the ENTIRE course strictly from this uploaded "
+                "material: use its real structure, section order, facts, terminology, definitions, tables, "
+                "and examples. Do NOT pad with generic outside content. =====\n"
+                f"{source}\n"
+                "===== END SOURCE DOCUMENT ====="
+                f"{figure_note}"
+            )
+            logger.info(
+                f"Grounded outline in {len(file_ids)} reference document(s): "
+                f"{len(source)} chars, {len(ingest.figures)} figures"
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Reference grounding failed (continuing without it): {str(e)}")
+
     async def generate_outline(
         self, request: CourseOutlineRequest
     ) -> CourseOutlineResponse:
+        # Homework-slide injection keys off the user's OWN words — capture them
+        # before grounding appends the document text (which almost always
+        # contains "exercise"/"assignment" and would spuriously trigger it).
+        original_user_prompt = request.user_prompt
+        await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
         if request.course_id:
@@ -153,7 +202,7 @@ class CourseOutlineGenerationService:
         outline_response = self._parser.parse(raw_output)
 
         # Check if practice problems/solutions are requested and add homework slides
-        outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
+        outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
 
         # Generate images if requested AND parsing was successful
         # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -205,6 +254,14 @@ class CourseOutlineGenerationService:
         self, request: CourseOutlineRequest, request_id: str
     ) -> AsyncGenerator[str, None]:
         """Generate outline using streaming and return SSE events (matches media-service pattern)."""
+        # Emit the requestId first so the client gets a first byte before the
+        # (possibly slow) document grounding — otherwise a proxy/EventSource
+        # first-byte timeout could drop the connection during MathPix ingestion.
+        yield f"```json {{\"requestId\": \"{request_id}\"}}```"
+        # Capture the user's own words before grounding appends document text
+        # (which would spuriously trigger homework-slide injection).
+        original_user_prompt = request.user_prompt
+        await self._apply_reference_grounding(request)
         metadata: Optional[CourseMetadata] = None
 
         if request.course_id:
@@ -260,8 +317,7 @@ class CourseOutlineGenerationService:
             gemini_key = settings.gemini_api_key
             model = request.model or settings.llm_default_model
 
-        # Send initial metadata event (matches media-service)
-        yield f"```json {{\"requestId\": \"{request_id}\"}}```"
+        # (requestId already emitted at the top, before grounding)
 
         # For now, get the complete response and yield it as a single event
         # This simulates streaming but uses non-streaming API call
@@ -307,7 +363,7 @@ class CourseOutlineGenerationService:
             outline_response = self._parser.parse(full_content)
 
             # Check if practice problems/solutions are requested and add homework slides
-            outline_response = self._add_homework_slides_if_needed(outline_response, request.user_prompt)
+            outline_response = self._add_homework_slides_if_needed(outline_response, original_user_prompt)
 
             # Generate images if requested AND parsing was successful
             # Skip image generation if course_name is "Error" (indicates parsing failure)
@@ -414,6 +470,7 @@ class CourseOutlineGenerationService:
         user_id: Optional[str] = None,
         language: Optional[str] = "English",
         video_settings: Optional[dict] = None,
+        reference_document_file_ids: Optional[list] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Generate content for todos in an existing coursetree.
@@ -511,6 +568,24 @@ class CourseOutlineGenerationService:
                 self._content_generation_service._db_session = self._db_session or self._content_generation_service._db_session
             # Keys idempotent per-slide charges for this generation run
             self._content_generation_service._request_id = request_id
+
+            # Ingest reference PDFs once (cache hit from the outline pass) so
+            # DOCUMENT slides can embed the document's real figures. Best-effort.
+            self._content_generation_service._document_figures = []
+            if reference_document_file_ids:
+                try:
+                    from .course_document_ingest import ingest_documents
+                    # Bounded like the outline pass: a slow/dead MathPix job must
+                    # not stall content generation (no slides would stream).
+                    ingest = await asyncio.wait_for(
+                        ingest_documents(reference_document_file_ids), timeout=150
+                    )
+                    self._content_generation_service._document_figures = ingest.figures
+                    logger.info(
+                        f"Content generation has {len(ingest.figures)} reference figure(s) available"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Reference figure ingest failed (continuing): {str(e)}")
             
             # Inject request-level language into todo metadata if not already set
             effective_language = language or "English"
@@ -521,20 +596,23 @@ class CourseOutlineGenerationService:
                     todo.metadata["language"] = effective_language
 
             # Inject course-level AI-video settings (from the wizard) into the
-            # video-pipeline todos' metadata. Per-todo metadata wins; only the
-            # whitelisted keys are copied.
+            # video-pipeline todos' metadata. These are the user's EXPLICIT
+            # per-course choices for video pages, so they override the auto-
+            # injected defaults (e.g. the "language" above) for video todos.
+            # "language" here is the video-narration language (may differ from
+            # the document language) and drives the TTS voice.
             if video_settings:
                 _video_types = {"AI_VIDEO", "AI_VIDEO_CODE", "AI_SLIDES", "AI_STORYBOOK"}
                 _video_setting_keys = (
                     "model", "voice_gender", "voice_id",
-                    "tts_provider", "quality_tier", "target_duration",
+                    "tts_provider", "quality_tier", "target_duration", "language",
                 )
                 for todo in content_todos:
                     if todo.type not in _video_types:
                         continue
                     for key in _video_setting_keys:
                         value = video_settings.get(key)
-                        if value and not todo.metadata.get(key):
+                        if value:
                             todo.metadata[key] = value
 
             # ── Parallel content generation with dependency awareness ──

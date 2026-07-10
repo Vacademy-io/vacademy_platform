@@ -111,7 +111,8 @@ async def stream_course_outline(
         model=final_model,
         course_depth=payload.course_depth,
         generation_options=payload.generation_options,
-        user_id=user_id  # Extracted from query parameter for waterfall key resolution
+        user_id=user_id,  # Extracted from query parameter for waterfall key resolution
+        reference_document_file_ids=payload.reference_document_file_ids,
         # NOTE: Keys are NOT accepted from frontend - resolved automatically from DB (user → institute) or env
     )
 

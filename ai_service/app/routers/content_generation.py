@@ -109,6 +109,7 @@ async def generate_content_from_coursetree(
                 user_id=payload.user_id,
                 language=payload.language,
                 video_settings=payload.video_settings,
+                reference_document_file_ids=payload.reference_document_file_ids,
             ):
                 yield f"data: {event}\n\n"
                 last_event_time = time.monotonic()

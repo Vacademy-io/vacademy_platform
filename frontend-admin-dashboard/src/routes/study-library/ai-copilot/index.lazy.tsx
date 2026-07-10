@@ -43,6 +43,7 @@ import {
     DEFAULT_AI_VIDEO_SETTINGS,
     type AiVideoSettings,
 } from './shared/components/AiVideoSettingsCard';
+import { useFileUpload } from '@/hooks/use-file-upload';
 import {
     X,
     FileText,
@@ -219,6 +220,8 @@ function RouteComponent() {
     const [aiVideoSettings, setAiVideoSettings] = useState<AiVideoSettings>(
         DEFAULT_AI_VIDEO_SETTINGS
     );
+    const { uploadFile } = useFileUpload();
+    const [isUploadingReferences, setIsUploadingReferences] = useState(false);
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -637,10 +640,53 @@ function RouteComponent() {
         setShowConfirmDialog(true);
     };
 
-    const handleConfirmGenerate = () => {
+    const handleConfirmGenerate = async () => {
         const finalCourseLength = chapterLength === 'custom' ? customChapterLength : chapterLength;
         const finalChapterCount = numberOfChapters === 'custom' ? customChapterCount : numberOfChapters;
         const finalSlidesPerChapter = slidesPerChapter === 'custom' ? customSlidesPerChapter : slidesPerChapter;
+
+        // Upload reference PDFs to media_service → fileIds, so the backend can
+        // extract their text (to ground the course) and figures (to embed real
+        // diagrams). Best-effort: a failed upload just drops that document.
+        let referenceDocumentFileIds: string[] = [];
+        const pdfReferenceFiles = referenceFiles.filter(
+            (rf) => rf.file.type === 'application/pdf'
+        );
+        // Only PDFs are content-ingested (MathPix is PDF-only); tell the user
+        // their other reference files won't shape the course.
+        if (referenceFiles.length > pdfReferenceFiles.length) {
+            toast('Only PDF references are used to build the course; other files were ignored.');
+        }
+        if (pdfReferenceFiles.length > 0 && userId) {
+            setIsUploadingReferences(true);
+            try {
+                const uploaded = await Promise.all(
+                    pdfReferenceFiles.map((rf) =>
+                        uploadFile({
+                            // Batch-level gating is handled by the outer
+                            // setIsUploadingReferences; a per-file setter would
+                            // flip the button back on the FIRST file to finish.
+                            file: rf.file,
+                            setIsUploading: () => {},
+                            userId,
+                            source: instituteId || 'STUDENTS',
+                            sourceId: 'STUDENTS',
+                        }).catch((e) => {
+                            console.error('Reference PDF upload failed:', rf.file.name, e);
+                            return undefined;
+                        })
+                    )
+                );
+                referenceDocumentFileIds = uploaded.filter((id): id is string => !!id);
+                if (referenceDocumentFileIds.length < pdfReferenceFiles.length) {
+                    toast.error('Some reference PDFs could not be uploaded and were skipped.');
+                }
+            } finally {
+                setIsUploadingReferences(false);
+            }
+        } else if (pdfReferenceFiles.length > 0) {
+            toast.error('Could not upload reference PDFs (missing user id); continuing without them.');
+        }
 
         // Prepare context from references
         let contextData = '';
@@ -691,6 +737,7 @@ function RouteComponent() {
             language: language || 'English',
             model: selectedModel,
             aiVideoSettings: aiVideoSettings,
+            referenceDocumentFileIds,
             userId: userId,
             instituteId: instituteId,
             references: {
@@ -1074,7 +1121,6 @@ function RouteComponent() {
                             <AiVideoSettingsCard
                                 value={aiVideoSettings}
                                 onChange={setAiVideoSettings}
-                                language={language || 'English'}
                             />
                         </div>
 
@@ -1796,8 +1842,12 @@ function RouteComponent() {
                         >
                             Go back and Edit
                         </MyButton>
-                        <MyButton buttonType="primary" onClick={handleConfirmGenerate}>
-                            Continue
+                        <MyButton
+                            buttonType="primary"
+                            onClick={handleConfirmGenerate}
+                            disabled={isUploadingReferences}
+                        >
+                            {isUploadingReferences ? 'Uploading references…' : 'Continue'}
                         </MyButton>
                     </DialogFooter>
                 </DialogContent>

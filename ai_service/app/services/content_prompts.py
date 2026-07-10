@@ -8,11 +8,22 @@ class ContentGenerationPrompts:
     """
 
     @staticmethod
-    def build_document_prompt(text_prompt: str, title: str, include_diagrams: bool = False, language: str = "English") -> str:
+    def build_document_prompt(
+        text_prompt: str,
+        title: str,
+        include_diagrams: bool = False,
+        language: str = "English",
+        reference_figures: "list | None" = None,
+    ) -> str:
         """
         Build document generation prompt. Always produces HTML (the only format
         the slide editor round-trips losslessly); Mermaid diagrams are emitted
         as <div class="mermaid"> blocks inside the HTML.
+
+        reference_figures: real figures extracted from an uploaded source PDF
+        (objects with .fig_id, .url, .caption). When present, the model is told
+        to embed the ones relevant to this slide verbatim using their exact URL,
+        instead of an AI-generated illustration.
         """
         # Diagram-related keywords strengthen the diagram instruction from
         # "only where genuinely useful" to "include at least one".
@@ -26,6 +37,25 @@ class ContentGenerationPrompts:
             if should_include_diagrams
             else "Include a Mermaid diagram ONLY where it genuinely aids understanding; skip it otherwise."
         )
+
+        figures_block = ""
+        if reference_figures:
+            manifest = "\n".join(
+                f"  - url={getattr(f, 'url', '')}"
+                + (f" — {getattr(f, 'caption', '')}" if getattr(f, "caption", "") else "")
+                for f in reference_figures
+                if getattr(f, "url", "")
+            )
+            if manifest:
+                figures_block = f"""**Source figures (from the uploaded document — PREFER these over generated images)**:
+The uploaded source document provides these REAL figures/diagrams/tables. When this slide's topic matches one, embed it VERBATIM:
+{manifest}
+- Embed as: `<img src="EXACT_URL_FROM_THE_LIST_ABOVE" alt="short caption" style="max-width:100%;border-radius:8px;margin:12px 0;">`
+- Use ONLY a url copied EXACTLY from the list above — never invent, guess, or alter a url.
+- Embed ONLY the figures RELEVANT to THIS slide's topic (match by the caption text); skip the rest.
+- Prefer a real source figure over a generated illustration whenever one fits the content.
+
+"""
 
         return f"""You are an expert educator and instructional designer writing premium study notes for students. The notes must be complete enough to learn from without any other material — clear, accurate, engaging, and visually well-organized.
 
@@ -69,7 +99,7 @@ class ContentGenerationPrompts:
   - Flowcharts: `graph TD` or `graph LR`; other types: sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, pie
   - Avoid `<`, `>`, parentheses and special characters inside labels; keep the diagram simple and valid.
 
-**Illustrations** — up to 2 images, ONLY where a visual example truly helps (real-world scenes, objects, or settings a diagram cannot show):
+{figures_block}**Illustrations (generated)** — up to 2 images, ONLY where a visual example truly helps AND no source figure above already covers it (real-world scenes, objects, or settings a diagram cannot show):
 - Emit EXACTLY: `<img data-img-prompt="vivid, specific English description of an educational illustration" src="placeholder.png" alt="short description" style="max-width:100%;border-radius:8px;">`
 - The pipeline generates the real image from data-img-prompt; NEVER use external URLs.
 - The data-img-prompt must ALWAYS be written in English (even when the content language is different) and describe subject, setting, and style.

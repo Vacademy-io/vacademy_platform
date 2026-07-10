@@ -52,11 +52,27 @@ export const useContentGeneration = (
                     quality_tier: parsed.qualityTier || 'ultra',
                     target_duration: parsed.targetDuration || '2-3 minutes',
                 };
+                if (parsed.language) videoSettings.language = parsed.language;
                 if (parsed.model && parsed.model !== 'auto') videoSettings.model = parsed.model;
                 if (parsed.voiceId) videoSettings.voice_id = parsed.voiceId;
             }
         } catch (e) {
             console.warn('Failed to parse courseVideoSettings, using defaults:', e);
+        }
+
+        // Reference-PDF fileIds (for figure embedding in DOCUMENT slides),
+        // persisted during outline generation.
+        let referenceDocumentFileIds: string[] | undefined;
+        try {
+            const stored = sessionStorage.getItem('courseReferenceDocIds');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    referenceDocumentFileIds = parsed;
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to parse courseReferenceDocIds:', e);
         }
 
         setIsGeneratingContent(true);
@@ -1028,7 +1044,8 @@ export const useContentGeneration = (
                 0, // retryCount
                 language,
                 undefined, // generationRunId — minted inside generateContent
-                videoSettings
+                videoSettings,
+                referenceDocumentFileIds
             );
 
             // Mark content generation as complete (fallback)

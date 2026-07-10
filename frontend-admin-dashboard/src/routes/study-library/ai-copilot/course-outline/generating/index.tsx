@@ -598,9 +598,10 @@ export function RouteComponent() {
                 const resumeDraft = sessionStorage.getItem('resumeAiCourseDraft');
                 if (resumeDraft) {
                     sessionStorage.removeItem('resumeAiCourseDraft');
-                    // A previous course's AI-video settings must not silently
-                    // apply to a resumed draft (drafts don't carry them).
+                    // A previous course's AI-video settings / reference docs must
+                    // not silently apply to a resumed draft (drafts don't carry them).
                     sessionStorage.removeItem('courseVideoSettings');
+                    sessionStorage.removeItem('courseReferenceDocIds');
                     try {
                         const draft = JSON.parse(resumeDraft);
                         if (draft.slides?.length > 0) {
@@ -769,6 +770,21 @@ export function RouteComponent() {
                     );
                 } else {
                     sessionStorage.removeItem('courseVideoSettings');
+                }
+
+                // Reference-PDF fileIds must survive to the content step too
+                // (figure embedding). Same write-or-remove discipline.
+                if (
+                    Array.isArray(courseConfig.referenceDocumentFileIds) &&
+                    courseConfig.referenceDocumentFileIds.length > 0
+                ) {
+                    payload.reference_document_file_ids = courseConfig.referenceDocumentFileIds;
+                    sessionStorage.setItem(
+                        'courseReferenceDocIds',
+                        JSON.stringify(courseConfig.referenceDocumentFileIds)
+                    );
+                } else {
+                    sessionStorage.removeItem('courseReferenceDocIds');
                 }
 
                 if (numChapters) {

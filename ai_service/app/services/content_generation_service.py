@@ -51,6 +51,9 @@ class ContentGenerationService:
         self._user_id = user_id
         # Set per generation run by the orchestrator; keys idempotent slide charges.
         self._request_id: Optional[str] = None
+        # Real figures extracted from uploaded reference PDFs, available for
+        # DOCUMENT slides to embed verbatim (set by the orchestrator per run).
+        self._document_figures: list = []
         
         logger.info("[ContentGenService] Creating VideoGenerationService...")
         try:
@@ -193,12 +196,15 @@ class ContentGenerationService:
                 if include_diagrams:
                     logger.info(f"Detected diagram request in prompt for slide: {todo.path}, requiring Mermaid diagrams in HTML output")
 
-                # Build document prompt (always HTML; Mermaid emitted as div.mermaid blocks)
+                # Build document prompt (always HTML; Mermaid emitted as div.mermaid blocks).
+                # Pass any real figures from uploaded reference PDFs so the model can
+                # embed the ones relevant to THIS slide's topic verbatim.
                 document_prompt = ContentGenerationPrompts.build_document_prompt(
                     text_prompt=prompt,
                     title=title,
                     include_diagrams=include_diagrams,
                     language=language,
+                    reference_figures=self._document_figures,
                 )
             
             # Generate content using the enhanced prompt and capture token usage

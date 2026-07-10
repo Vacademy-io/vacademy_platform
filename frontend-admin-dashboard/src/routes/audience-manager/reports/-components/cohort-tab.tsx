@@ -9,10 +9,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ChartLineUp, Stack } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fetchCohortAnalysis, cohortQueryKey } from '../-services/get-revenue-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -56,36 +55,38 @@ export function CohortTab({
     const cohorts = query.data?.cohorts ?? [];
     const peakRevenue = Math.max(1, ...cohorts.map((c) => c.revenue));
 
-    const exportRows = () =>
-        exportCsv(
-            `cohort-analysis_${fromDate}_${toDate}.csv`,
-            [
-                'Cohort',
-                'Leads',
-                'Converted',
-                'Conv %',
-                'Revenue',
-                'Avg deal value',
-                'Revenue / lead',
-                'Median days to convert',
-            ],
-            cohorts.map((c) => [
-                c.cohort,
-                c.leads,
-                c.converted,
-                c.conversion_rate,
-                c.revenue,
-                c.avg_deal_value,
-                c.revenue_per_lead,
-                c.median_days_to_convert,
-            ])
-        );
-
     return (
         <ReportSection
             title="Cohort analysis"
             icon={<Stack size={18} />}
-            actions={<ExportCsvButton onClick={exportRows} disabled={cohorts.length === 0} />}
+            actions={
+                <ExportWithColumnPickerButton
+                    filename={`cohort-analysis_${fromDate}_${toDate}.csv`}
+                    disabled={cohorts.length === 0}
+                    getHeadersAndRows={() => ({
+                        headers: [
+                            'Cohort',
+                            'Leads',
+                            'Converted',
+                            'Conv %',
+                            'Revenue',
+                            'Avg deal value',
+                            'Revenue / lead',
+                            'Median days to convert',
+                        ],
+                        rows: cohorts.map((c) => [
+                            c.cohort,
+                            c.leads,
+                            c.converted,
+                            c.conversion_rate,
+                            c.revenue,
+                            c.avg_deal_value,
+                            c.revenue_per_lead,
+                            c.median_days_to_convert,
+                        ]),
+                    })}
+                />
+            }
         >
             {cohorts.length === 0 ? (
                 <EmptyHint message="No acquisition cohorts in this range. Try a wider date range." />

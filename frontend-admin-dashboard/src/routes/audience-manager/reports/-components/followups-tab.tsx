@@ -27,11 +27,10 @@ import {
     followupAgingQueryKey,
     type FollowupAgingBucketKey,
 } from '../-services/get-crm-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     BreakdownBar,
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     KpiCard,
     ReportErrorState,
     ReportSection,
@@ -136,28 +135,6 @@ export function FollowupsTab({
     const drill = (userId: string) =>
         navigate({ to: FOLLOW_UPS_ROUTE, search: { counsellor: userId } });
 
-    const exportRows = () =>
-        exportCsv(
-            `followup-aging_${new Date().toISOString().slice(0, 10)}.csv`,
-            [
-                'Counsellor',
-                'Due today',
-                'Overdue 1-3d',
-                'Overdue 3-7d',
-                'Overdue 7d+',
-                'Upcoming',
-                'Oldest overdue (days)',
-            ],
-            rows.map((r) => [
-                r.name ?? r.user_id,
-                r.due_today,
-                r.overdue_1_3,
-                r.overdue_3_7,
-                r.overdue_7_plus,
-                r.upcoming,
-                r.oldest_overdue_days,
-            ])
-        );
 
     return (
         <div className="flex flex-col gap-6">
@@ -186,7 +163,32 @@ export function FollowupsTab({
             <ReportSection
                 title="Aging by counsellor"
                 icon={<Users size={18} />}
-                actions={<ExportCsvButton onClick={exportRows} disabled={rows.length === 0} />}
+                actions={
+                    <ExportWithColumnPickerButton
+                        filename={`followup-aging_${new Date().toISOString().slice(0, 10)}.csv`}
+                        disabled={rows.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: [
+                                'Counsellor',
+                                'Due today',
+                                'Overdue 1-3d',
+                                'Overdue 3-7d',
+                                'Overdue 7d+',
+                                'Upcoming',
+                                'Oldest overdue (days)',
+                            ],
+                            rows: rows.map((r) => [
+                                r.name ?? r.user_id,
+                                r.due_today,
+                                r.overdue_1_3,
+                                r.overdue_3_7,
+                                r.overdue_7_plus,
+                                r.upcoming,
+                                r.oldest_overdue_days,
+                            ]),
+                        })}
+                    />
+                }
             >
                 {rows.length === 0 ? (
                     <EmptyHint message="No open follow-ups right now." />

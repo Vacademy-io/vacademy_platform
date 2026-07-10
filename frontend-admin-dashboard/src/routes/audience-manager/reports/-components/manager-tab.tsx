@@ -23,12 +23,11 @@ import {
     type ManagerReportParams,
     type TeamRollupRow,
 } from './manager-reports-service';
-import { buildCsv, downloadCsv } from './manager-csv';
 import {
     BreakdownCard,
     BreakdownBar,
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     ReportErrorState,
     ReportSection,
     ReportTabSkeleton,
@@ -135,40 +134,6 @@ export function ManagerTab({
     // Conversion-rate comparison uses the team with the most leads as the bar baseline.
     const maxLeads = Math.max(1, ...teams.map((t) => t.leads));
 
-    const exportRows = () => {
-        const csv = buildCsv(
-            [
-                'Team',
-                'Head',
-                'Counsellors',
-                'Leads',
-                'Responded',
-                'Conversions',
-                'Conversion rate (%)',
-                'Open',
-                'Overdue',
-                'Avg response (minutes)',
-                'Target',
-                'Attainment (%)',
-            ],
-            // Pin the totals row at the bottom of the export, matching the table.
-            [...sortedTeams, ...(totals ? [totals] : [])].map((t) => [
-                t === totals ? teamLabel(t) || 'Total' : teamLabel(t),
-                t.head_name ?? '',
-                t.counsellors,
-                t.leads,
-                t.responded,
-                t.conversions,
-                t.conversion_rate != null ? t.conversion_rate.toFixed(1) : '',
-                t.open,
-                t.overdue,
-                t.avg_response_minutes != null ? Math.round(t.avg_response_minutes) : '',
-                t.target ?? '',
-                t.attainment_pct != null ? t.attainment_pct.toFixed(1) : '',
-            ])
-        );
-        downloadCsv(`team-rollup_${fromDate}_${toDate}.csv`, csv);
-    };
 
     return (
         <div className="flex flex-col gap-6">
@@ -182,7 +147,42 @@ export function ManagerTab({
                                 {teams.length} team{teams.length === 1 ? '' : 's'}
                             </span>
                         )}
-                        <ExportCsvButton onClick={exportRows} disabled={teams.length === 0} />
+                        <ExportWithColumnPickerButton
+                            filename={`team-rollup_${fromDate}_${toDate}.csv`}
+                            disabled={teams.length === 0}
+                            getHeadersAndRows={() => ({
+                                headers: [
+                                    'Team',
+                                    'Head',
+                                    'Counsellors',
+                                    'Leads',
+                                    'Responded',
+                                    'Conversions',
+                                    'Conversion rate (%)',
+                                    'Open',
+                                    'Overdue',
+                                    'Avg response (minutes)',
+                                    'Target',
+                                    'Attainment (%)',
+                                ],
+                                rows: [...sortedTeams, ...(totals ? [totals] : [])].map((t) => [
+                                    t === totals ? teamLabel(t) || 'Total' : teamLabel(t),
+                                    t.head_name ?? '',
+                                    t.counsellors,
+                                    t.leads,
+                                    t.responded,
+                                    t.conversions,
+                                    t.conversion_rate != null ? t.conversion_rate.toFixed(1) : '',
+                                    t.open,
+                                    t.overdue,
+                                    t.avg_response_minutes != null
+                                        ? Math.round(t.avg_response_minutes)
+                                        : '',
+                                    t.target ?? '',
+                                    t.attainment_pct != null ? t.attainment_pct.toFixed(1) : '',
+                                ]),
+                            })}
+                        />
                     </div>
                 }
             >

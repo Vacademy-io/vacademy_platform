@@ -18,10 +18,9 @@ import {
     funnelVelocityQueryKey,
     type FunnelStage,
 } from '../-services/get-crm-reports';
-import { exportCsv } from '../-utils/export-csv';
 import {
     EmptyHint,
-    ExportCsvButton,
+    ExportWithColumnPickerButton,
     KpiCard,
     ReportErrorState,
     ReportSection,
@@ -70,28 +69,6 @@ export function FunnelTab({
     const drill = (statusKey: string) =>
         navigate({ to: RECENT_LEADS_ROUTE, search: { status: statusKey } });
 
-    const exportRows = () =>
-        exportCsv(
-            `funnel-velocity_${fromDate}_${toDate}.csv`,
-            [
-                'Stage',
-                'Entered',
-                'In stage now',
-                'Median days in stage',
-                'Advanced',
-                'Advanced %',
-                'Regressed',
-            ],
-            stages.map((s) => [
-                s.label || s.status_key,
-                s.entered,
-                s.current_stock,
-                s.median_days_in_stage,
-                s.advanced,
-                s.advanced_rate,
-                s.regressed,
-            ])
-        );
 
     return (
         <div className="flex flex-col gap-6">
@@ -116,7 +93,32 @@ export function FunnelTab({
             <ReportSection
                 title="Stage funnel"
                 icon={<Funnel size={18} />}
-                actions={<ExportCsvButton onClick={exportRows} disabled={stages.length === 0} />}
+                actions={
+                    <ExportWithColumnPickerButton
+                        filename={`funnel-velocity_${fromDate}_${toDate}.csv`}
+                        disabled={stages.length === 0}
+                        getHeadersAndRows={() => ({
+                            headers: [
+                                'Stage',
+                                'Entered',
+                                'In stage now',
+                                'Median days in stage',
+                                'Advanced',
+                                'Advanced %',
+                                'Regressed',
+                            ],
+                            rows: stages.map((s) => [
+                                s.label || s.status_key,
+                                s.entered,
+                                s.current_stock,
+                                s.median_days_in_stage,
+                                s.advanced,
+                                s.advanced_rate,
+                                s.regressed,
+                            ]),
+                        })}
+                    />
+                }
             >
                 {stages.length === 0 ? (
                     <EmptyHint message="No stage activity in this range." />

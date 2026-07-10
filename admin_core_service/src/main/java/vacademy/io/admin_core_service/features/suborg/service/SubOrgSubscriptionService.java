@@ -16,6 +16,10 @@ import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteT
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.faculty.dto.AddUserAccessDTO;
+import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
@@ -58,6 +62,8 @@ public class SubOrgSubscriptionService {
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final PaymentOptionService paymentOptionService;
     private final InstituteCustomFiledService instituteCustomFiledService;
+    private final FacultyService facultyService;
+    private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
     /**
      * Creates a sub-org with an org-level EnrollInvite that the sub-org admin
@@ -803,6 +809,13 @@ public class SubOrgSubscriptionService {
             // 2. SUBORG_LEARNER mirrors for the new PS.
             mirrorSuborgLearnerInvitesForPs(subOrgId, parentInstituteId, ps, adminOption, null);
 
+            // 3. Grant the sub-org's existing team members (admins/teachers) FSPSSM access to
+            //    the new PS. Without this the course is linked to the invite (parent-side
+            //    management sees it) but stays invisible on the sub-org end, whose course
+            //    visibility is driven by SUB_ORG-linked FSPSSM rows. Create-time and
+            //    add-team-member already write these; add-course must backfill them too.
+            grantExistingTeamMembersAccessToPs(subOrgId, psId);
+
             // org invite's is_bundled flag flips on when it owns more than one PS.
             if (!Boolean.TRUE.equals(orgInvite.getIsBundled())) {
                 orgInvite.setIsBundled(true);
@@ -812,6 +825,79 @@ public class SubOrgSubscriptionService {
             log.info("Linked PS {} to sub-org {} via org invite {}", psId, subOrgId, orgInvite.getId());
         }
         return added;
+    }
+
+    /**
+     * Grant every existing team member of {@code subOrgId} SUB_ORG-linked FSPSSM access to a
+     * newly-added package session, mirroring what create-time / add-team-member write:
+     * one PACKAGE_SESSION row plus one ENROLL_INVITE row per active invite (org-level +
+     * SUBORG_LEARNER mirrors) linked to the (sub-org, PS) pair. The sub-org end resolves
+     * course visibility from these rows, so skipping this is exactly why an added course
+     * shows up parent-side but not on the sub-org end. Idempotent: a (access_type, access_id)
+     * the member already holds for this PS is not re-created. Must run AFTER the mirror
+     * invites exist so {@code findInviteIdsForSubOrgAndPackageSession} can see them.
+     */
+    private void grantExistingTeamMembersAccessToPs(String subOrgId, String psId) {
+        List<String> userIds = facultyMappingRepository
+                .findDistinctUserIdsBySubOrgIdAndLinkage(subOrgId, List.of(StatusEnum.ACTIVE.name()));
+        if (CollectionUtils.isEmpty(userIds)) return;
+
+        List<String> inviteIds = enrollInviteRepository
+                .findInviteIdsForSubOrgAndPackageSession(subOrgId, psId);
+
+        int grantedMembers = 0;
+        for (String userId : userIds) {
+            List<FacultySubjectPackageSessionMapping> existing =
+                    facultyMappingRepository.findByUserIdAndSubOrgIdAndLinkage(userId, subOrgId);
+
+            // Reuse the member's own identity + permission from any live existing row.
+            FacultySubjectPackageSessionMapping ref = existing.stream()
+                    .filter(f -> !StatusEnum.DELETED.name().equalsIgnoreCase(f.getStatus()))
+                    .findFirst().orElse(null);
+            if (ref == null) continue;
+            String name = ref.getName();
+            String userType = ref.getUserType();
+            String perm = StringUtils.hasText(ref.getAccessPermission()) ? ref.getAccessPermission() : "FULL";
+
+            // Idempotency: what this member already holds for THIS package session.
+            Set<String> have = new HashSet<>();
+            for (FacultySubjectPackageSessionMapping f : existing) {
+                if (!StatusEnum.DELETED.name().equalsIgnoreCase(f.getStatus())
+                        && psId.equals(f.getPackageSessionId())) {
+                    have.add(f.getAccessType() + "::" + f.getAccessId());
+                }
+            }
+
+            if (!have.contains("PACKAGE_SESSION::" + psId)) {
+                facultyService.grantUserAccess(buildSubOrgAccess(
+                        userId, name, userType, perm, subOrgId, psId, "PACKAGE_SESSION", psId));
+            }
+            for (String inviteId : inviteIds) {
+                if (have.contains("ENROLL_INVITE::" + inviteId)) continue;
+                facultyService.grantUserAccess(buildSubOrgAccess(
+                        userId, name, userType, perm, subOrgId, psId, "ENROLL_INVITE", inviteId));
+            }
+            grantedMembers++;
+        }
+        log.info("Backfilled sub-org FSPSSM access for {} team member(s) on PS {} of sub-org {}",
+                grantedMembers, psId, subOrgId);
+    }
+
+    private AddUserAccessDTO buildSubOrgAccess(String userId, String name, String userType,
+                                               String accessPermission, String subOrgId, String psId,
+                                               String accessType, String accessId) {
+        return AddUserAccessDTO.builder()
+                .userId(userId)
+                .packageSessionId(psId)
+                .name(name)
+                .status("ACTIVE")
+                .userType(userType)
+                .accessType(accessType)
+                .accessId(accessId)
+                .accessPermission(accessPermission)
+                .linkageType("SUB_ORG")
+                .suborgId(subOrgId)
+                .build();
     }
 
     /**

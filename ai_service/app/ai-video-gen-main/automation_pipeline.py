@@ -2218,11 +2218,51 @@ class VideoGenerationPipeline:
             except ImportError:
                 print("⚠️ serper_service.py not found — Serper disabled")
 
-        # Cooperative-cancel flag. run() overwrites this with the caller's
-        # threading.Event; it must also exist on instances whose methods are
-        # called without run() (e.g. single_shot_generator's insert-shot path
-        # drives _generate_html_per_shot directly, which reads it).
-        self._stop_event = None
+        # ── Per-run state safe defaults ────────────────────────────────
+        # run() re-initializes all of these from its parameters; they must
+        # ALSO exist right after construction because some callers drive a
+        # single method on a fresh instance without ever calling run() —
+        # e.g. single_shot_generator's insert-shot path calls
+        # _generate_html_per_shot directly, whose call closure reads every
+        # attribute below (audited via AST 2026-07-10). Values mirror the
+        # inert defaults run() starts from.
+        self._stop_event = None  # cooperative-cancel Event (None = no cancel)
+        # Vision-review / bbox-lint per-run state.
+        self._vision_review_banner_shown = False
+        self._vision_review_run_cost_usd = 0.0
+        self._vision_review_passed_first = 0
+        self._vision_review_regen_passed = 0
+        self._vision_review_ship_original = 0
+        self._vision_review_issue_codes: Dict[str, int] = {}
+        self._vision_review_skipped_count = 0
+        self._review_thumbnails: Dict[int, bytes] = {}
+        self._screenshot_client = None
+        # Input asset contexts (source clips / images).
+        self._input_video_contexts = None
+        self._input_video_context = None
+        self._input_image_contexts = None
+        self._routing_config: Dict[str, Any] = {}
+        # Progress + thread-safe token accounting.
+        self._progress_callback = None
+        self._token_lock = threading.Lock()
+        self._cumulative_tokens: dict = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        # AI-video / dialogue-scene clients — built lazily when those
+        # features are enabled; None/inert means "feature off".
+        self._fal_veo_client = None
+        self._ai_video_cost_tracker = None
+        self._fal_seedance_client = None
+        self._dialogue_cost_tracker = None
+        self._dialogue_ledger: Any = None
+        self._dialogue_institute_id = None
+        self._dialogue_mode: str = "storybook"
+        self._dialogue_characters: List[Dict[str, Any]] = []
+        self._dialogue_init_lock = threading.Lock()
+        self._dialogue_cast_sheet_url: Optional[str] = None
+        self._character_sheet_urls: Optional[Dict[str, str]] = None
 
     # Keywords that hint the asset is illustration-y / educational — route
     # Pixabay first when no explicit provider hint is given.

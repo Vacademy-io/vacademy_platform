@@ -137,6 +137,8 @@ export const AssignCounselorToLeadDialog = ({
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Type to search by name..."
                                 className="mt-1"
+                                autoComplete="off"
+                                name="counselor-search-nofill"
                                 autoFocus
                             />
                             {isLoading && (

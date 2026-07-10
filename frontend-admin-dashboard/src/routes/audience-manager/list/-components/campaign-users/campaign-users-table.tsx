@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
@@ -145,17 +146,19 @@ const CampaignUsersContent = ({
     const [page, setPage] = useState(0);
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
-    const [tierFilter, setTierFilter] = useState<string>(ALL_VALUE);
-    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_VALUE);
-    // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
-    // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
-    const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
-    // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
+    // Multi-select arrays: empty = no filter (show all). Tier values: HOT/WARM/COLD.
+    const [tierFilters, setTierFilters] = useState<string[]>([]);
+    // Lead status multi-select. Empty = all leads. Special sentinels handled by
+    // handleLeadStatusChange to stay mutually exclusive with custom statuses.
+    const [leadStatusFilters, setLeadStatusFilters] = useState<string[]>([]);
+    // SLA-state multi-select — matches `audience_response.tat_reminder_stage`.
+    const [slaFilters, setSlaFilters] = useState<string[]>([]);
+    // Counsellor filter — userIds of assigned counsellors. Empty = all counsellors.
     const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
     // Sentinel for the "Unassigned" dropdown entry → leads no counsellor owns
     // (sent to the backend as is_unassigned: true, assigned_counselor_id omitted).
     const UNASSIGNED_COUNSELLOR_VALUE = '__UNASSIGNED__';
-    const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
+    const [counsellorFilters, setCounsellorFilters] = useState<string[]>([]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
     // counsellor reports; pure admins get the institute-wide roster.
     const { options: counsellorOptions, isLoading: counsellorOptionsLoading } =
@@ -225,8 +228,10 @@ const CampaignUsersContent = ({
         setPage(0);
         setSearchInput('');
         setAppliedSearch('');
-        setTierFilter(ALL_VALUE);
-        setLeadStatusFilter(ALL_VALUE);
+        setTierFilters([]);
+        setLeadStatusFilters([]);
+        setSlaFilters([]);
+        setCounsellorFilters([]);
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
@@ -299,6 +304,14 @@ const CampaignUsersContent = ({
             const d = new Date(`${date}T23:59:59.999`);
             return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
         };
+        const specialStatuses = new Set([ALL_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
+        const customStatusKeys = leadStatusFilters.filter((v) => !specialStatuses.has(v));
+        const nonUnassignedCounsellorIds = counsellorFilters.filter(
+            (v) => v !== UNASSIGNED_COUNSELLOR_VALUE
+        );
+        const onlyUnassigned =
+            counsellorFilters.includes(UNASSIGNED_COUNSELLOR_VALUE) &&
+            nonUnassignedCounsellorIds.length === 0;
         return {
             audience_id: campaignId,
             page,
@@ -308,25 +321,20 @@ const CampaignUsersContent = ({
             submitted_from_local: startOfDayIso(appliedRange.from),
             submitted_to_local: endOfDayIso(appliedRange.to),
             search_query: appliedSearch || undefined,
-            lead_tier: tierFilter === ALL_VALUE ? undefined : tierFilter,
-            lead_status_id:
-                leadStatusFilter === ALL_ACTIVE_VALUE ||
-                leadStatusFilter === ALL_VALUE ||
-                leadStatusFilter === ALL_CONVERTED_VALUE
-                    ? undefined
-                    : leadStatusFilter,
-            conversion_status_filter: (leadStatusFilter === ALL_ACTIVE_VALUE
+            lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+            lead_status_id: customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined,
+            conversion_status_filter: (leadStatusFilters.includes(ALL_ACTIVE_VALUE)
                 ? 'EXCLUDE_CONVERTED'
-                : leadStatusFilter === ALL_CONVERTED_VALUE
+                : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
                   ? 'ONLY_CONVERTED'
                   : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED',
-            sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+            sla_filter:
+                slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
             assigned_counselor_id:
-                counsellorFilter === ALL_COUNSELLORS_VALUE ||
-                counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
-                    ? undefined
-                    : counsellorFilter,
-            is_unassigned: counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                nonUnassignedCounsellorIds.length > 0
+                    ? nonUnassignedCounsellorIds.join(',')
+                    : undefined,
+            is_unassigned: onlyUnassigned ? true : undefined,
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
@@ -336,11 +344,15 @@ const CampaignUsersContent = ({
         page,
         appliedRange,
         appliedSearch,
-        tierFilter,
-        leadStatusFilter,
-        slaFilter,
-        counsellorFilter,
+        tierFilters,
+        leadStatusFilters,
+        slaFilters,
+        counsellorFilters,
         customFieldFiltersPayload,
+        ALL_VALUE,
+        ALL_ACTIVE_VALUE,
+        ALL_CONVERTED_VALUE,
+        UNASSIGNED_COUNSELLOR_VALUE,
     ]);
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
@@ -469,7 +481,7 @@ const CampaignUsersContent = ({
     // can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
-    }, [counsellorFilter]);
+    }, [counsellorFilters]);
 
     const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
@@ -521,21 +533,35 @@ const CampaignUsersContent = ({
     const hiddenColumns = useMemo(() => new Set(['source']), []);
 
     // ── Filter handlers ──────────────────────────────────────
-    const handleTierChange = (value: string) => {
+    const handleTierChange = (values: string[]) => {
         setPage(0);
-        setTierFilter(value);
+        setTierFilters(values);
     };
-    const handleLeadStatusChange = (value: string) => {
+    const handleLeadStatusChange = (newValues: string[]) => {
         setPage(0);
-        setLeadStatusFilter(value);
+        // ALL_ACTIVE / ALL_CONVERTED are exclusive — selecting one clears all others.
+        const justAddedActive =
+            newValues.includes(ALL_ACTIVE_VALUE) && !leadStatusFilters.includes(ALL_ACTIVE_VALUE);
+        const justAddedConverted =
+            newValues.includes(ALL_CONVERTED_VALUE) &&
+            !leadStatusFilters.includes(ALL_CONVERTED_VALUE);
+        if (justAddedActive) {
+            setLeadStatusFilters([ALL_ACTIVE_VALUE]);
+        } else if (justAddedConverted) {
+            setLeadStatusFilters([ALL_CONVERTED_VALUE]);
+        } else {
+            setLeadStatusFilters(
+                newValues.filter((v) => v !== ALL_ACTIVE_VALUE && v !== ALL_CONVERTED_VALUE)
+            );
+        }
     };
-    const setCounsellor = (value: string) => {
+    const setCounsellor = (values: string[]) => {
         setPage(0);
-        setCounsellorFilter(value);
+        setCounsellorFilters(values);
     };
-    const setSla = (value: string) => {
+    const setSla = (values: string[]) => {
         setPage(0);
-        setSlaFilter(value);
+        setSlaFilters(values);
     };
     const handleApplyDate = () => {
         setPage(0);
@@ -545,10 +571,10 @@ const CampaignUsersContent = ({
         setPage(0);
         setSearchInput('');
         setAppliedSearch('');
-        setTierFilter(ALL_VALUE);
-        setLeadStatusFilter(ALL_VALUE);
-        setSlaFilter(ALL_SLA_VALUE);
-        setCounsellorFilter(ALL_COUNSELLORS_VALUE);
+        setTierFilters([]);
+        setLeadStatusFilters([]);
+        setSlaFilters([]);
+        setCounsellorFilters([]);
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
@@ -559,10 +585,10 @@ const CampaignUsersContent = ({
     const isAnyFilterActive =
         isDateFilterActive ||
         !!appliedSearch ||
-        tierFilter !== ALL_VALUE ||
-        leadStatusFilter !== ALL_VALUE ||
-        slaFilter !== ALL_SLA_VALUE ||
-        counsellorFilter !== ALL_COUNSELLORS_VALUE ||
+        tierFilters.length > 0 ||
+        leadStatusFilters.length > 0 ||
+        slaFilters.length > 0 ||
+        counsellorFilters.length > 0 ||
         customFieldFiltersPayload.length > 0;
 
     // Active filter chips
@@ -584,19 +610,36 @@ const CampaignUsersContent = ({
                 setAppliedRange({ from: '', to: '' });
             },
         });
-    if (slaFilter !== ALL_SLA_VALUE)
+    if (tierFilters.length > 0)
         chips.push({
-            label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
-            onRemove: () => setSla(ALL_SLA_VALUE),
+            label: `Tier: ${tierFilters.join(', ')}`,
+            onRemove: () => setTierFilters([]),
         });
-    if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
-        const cName =
-            counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
-                ? 'Unassigned'
-                : (counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected');
+    if (leadStatusFilters.length > 0) {
+        const statusLabels = leadStatusFilters.map((v) => {
+            if (v === ALL_ACTIVE_VALUE) return 'Active';
+            if (v === ALL_CONVERTED_VALUE) return 'Converted';
+            return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
+        });
         chips.push({
-            label: `Counsellor: ${cName}`,
-            onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
+            label: `Status: ${statusLabels.join(', ')}`,
+            onRemove: () => setLeadStatusFilters([]),
+        });
+    }
+    if (slaFilters.length > 0)
+        chips.push({
+            label: `SLA: ${slaFilters.map((v) => SLA_OPTIONS.find((o) => o.value === v)?.label ?? v).join(', ')}`,
+            onRemove: () => setSlaFilters([]),
+        });
+    if (counsellorFilters.length > 0) {
+        const cLabels = counsellorFilters.map((id) =>
+            id === UNASSIGNED_COUNSELLOR_VALUE
+                ? 'Unassigned'
+                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? 'Selected')
+        );
+        chips.push({
+            label: `Counsellor: ${cLabels.join(', ')}`,
+            onRemove: () => setCounsellorFilters([]),
         });
     }
     customFieldFiltersPayload.forEach((f) => {
@@ -812,54 +855,49 @@ const CampaignUsersContent = ({
             {/* Toolbar — left filters, right actions */}
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Select value={tierFilter} onValueChange={handleTierChange}>
-                        <SelectTrigger className="h-10 w-36">
-                            <Flame className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="All tiers" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={ALL_VALUE}>All tiers</SelectItem>
-                            <SelectItem value="HOT">Hot</SelectItem>
-                            <SelectItem value="WARM">Warm</SelectItem>
-                            <SelectItem value="COLD">Cold</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Select value={leadStatusFilter} onValueChange={handleLeadStatusChange}>
-                        <SelectTrigger className="h-10 w-44">
-                            <CheckCircle className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="All leads" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={ALL_VALUE}>All leads</SelectItem>
-                            <SelectItem value={ALL_ACTIVE_VALUE}>Active (not enrolled)</SelectItem>
-                            <SelectItem value={ALL_CONVERTED_VALUE}>Enrolled / Converted</SelectItem>
-                            {leadStatusCatalog.map((s) => (
-                                <SelectItem key={s.id} value={s.status_key}>
-                                    {s.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <MultiSelectFilter
+                        label="All tiers"
+                        icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                        options={[
+                            { value: 'HOT', label: 'Hot' },
+                            { value: 'WARM', label: 'Warm' },
+                            { value: 'COLD', label: 'Cold' },
+                        ]}
+                        selected={tierFilters}
+                        onChange={handleTierChange}
+                        widthClass="w-36"
+                    />
+                    <MultiSelectFilter
+                        label="All leads"
+                        icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
+                        options={[
+                            { value: ALL_ACTIVE_VALUE, label: 'Active (not enrolled)' },
+                            { value: ALL_CONVERTED_VALUE, label: 'Enrolled / Converted' },
+                            ...leadStatusCatalog.map((s) => ({
+                                value: s.status_key,
+                                label: s.label,
+                            })),
+                        ]}
+                        selected={leadStatusFilters}
+                        onChange={handleLeadStatusChange}
+                        widthClass="w-44"
+                    />
                     {showOps && (
-                        <Select value={slaFilter} onValueChange={setSla}>
-                            <SelectTrigger className="h-10 w-44">
-                                <Clock className="mr-1.5 size-4 text-neutral-400" />
-                                <SelectValue placeholder="All SLA states" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {SLA_OPTIONS.map((o) => (
-                                    <SelectItem key={o.value} value={o.value}>
-                                        {o.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <MultiSelectFilter
+                            label="All SLA states"
+                            icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
+                            options={SLA_OPTIONS.filter((o) => o.value !== ALL_SLA_VALUE).map(
+                                (o) => ({ value: o.value, label: o.label })
+                            )}
+                            selected={slaFilters}
+                            onChange={setSla}
+                            widthClass="w-44"
+                        />
                     )}
                     {showOps && (
                         <CounsellorFilter
-                            value={counsellorFilter}
+                            values={counsellorFilters}
                             onChange={setCounsellor}
-                            allValue={ALL_COUNSELLORS_VALUE}
                             unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
                             options={counsellorOptions}
                             isLoading={counsellorOptionsLoading}

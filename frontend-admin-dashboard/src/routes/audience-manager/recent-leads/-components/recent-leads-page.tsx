@@ -47,6 +47,7 @@ import {
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
@@ -212,8 +213,13 @@ const RecentLeadsContent = () => {
                 : rangeForPreset(rangeDays),
         [rangeDays, customFrom, customTo]
     );
-    const [audienceId, setAudienceId] = useState<string>(
-        urlSearch.audience ?? ALL_AUDIENCES_VALUE
+    // Audience multi-select — campaign ids. Empty = all campaigns.
+    const [audienceFilters, setAudienceFilters] = useState<string[]>(() =>
+        urlSearch.audience
+            ? urlSearch.audience
+                  .split(',')
+                  .filter((v) => v && v !== ALL_AUDIENCES_VALUE)
+            : []
     );
 
     const [searchInput, setSearchInput] = useState(urlSearch.search ?? '');
@@ -228,21 +234,22 @@ const RecentLeadsContent = () => {
         return () => window.clearTimeout(timer);
     }, [searchInput, appliedSearch]);
 
-    const [tierFilter, setTierFilter] = useState<string>(urlSearch.tier ?? ALL_TIERS_VALUE);
-    // Unified Lead Status filter — combines pipeline status + conversion state:
-    //   ALL_STATUSES_VALUE  → every lead regardless of status (default — enrolled leads stay visible)
-    //   ALL_ACTIVE_VALUE    → all leads except those enrolled/Converted
-    //   ALL_CONVERTED_VALUE → only leads enrolled into a course
-    //   <statusKey>         → only leads currently in that custom status
-    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(
-        urlSearch.status ?? ALL_STATUSES_VALUE
+    // Multi-select arrays seeded from URL (comma-separated strings). Empty = no filter.
+    const [tierFilters, setTierFilters] = useState<string[]>(() =>
+        urlSearch.tier ? urlSearch.tier.split(',') : []
     );
-    // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
-    // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
-    const [slaFilter, setSlaFilter] = useState<string>(urlSearch.sla ?? ALL_SLA_VALUE);
-    // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
-    const [counsellorFilter, setCounsellorFilter] = useState<string>(
-        urlSearch.counsellor ?? ALL_COUNSELLORS_VALUE
+    // Lead-status multi-select. Empty = all leads. ALL_ACTIVE / ALL_CONVERTED are
+    // exclusive: handleLeadStatusChange enforces mutual exclusion with custom statuses.
+    const [leadStatusFilters, setLeadStatusFilters] = useState<string[]>(() =>
+        urlSearch.status ? urlSearch.status.split(',') : []
+    );
+    // SLA-state multi-select.
+    const [slaFilters, setSlaFilters] = useState<string[]>(() =>
+        urlSearch.sla ? urlSearch.sla.split(',') : []
+    );
+    // Counsellor multi-select — userIds (may include UNASSIGNED_COUNSELLOR_VALUE).
+    const [counsellorFilters, setCounsellorFilters] = useState<string[]>(() =>
+        urlSearch.counsellor ? urlSearch.counsellor.split(',') : []
     );
     // Source-type filter — URL-only for now (no dropdown); drill-through links
     // from the Reports source breakdown set it. Empty string = all sources.
@@ -280,17 +287,17 @@ const RecentLeadsContent = () => {
     );
 
     // Write the applied filters back to the URL (replace, not push — filter
-    // tweaks shouldn't pollute browser history). Defaults are omitted so the
-    // bare /recent-leads URL stays clean.
+    // tweaks shouldn't pollute browser history). Arrays are serialised as
+    // comma-separated strings; empty arrays are omitted so the bare URL stays clean.
     useEffect(() => {
         void navigate({
             search: {
-                status: leadStatusFilter === ALL_STATUSES_VALUE ? undefined : leadStatusFilter,
-                tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
-                sla: slaFilter === ALL_SLA_VALUE ? undefined : slaFilter,
+                status: leadStatusFilters.length > 0 ? leadStatusFilters.join(',') : undefined,
+                tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
+                sla: slaFilters.length > 0 ? slaFilters.join(',') : undefined,
                 counsellor:
-                    counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
-                audience: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                    counsellorFilters.length > 0 ? counsellorFilters.join(',') : undefined,
+                audience: audienceFilters.length > 0 ? audienceFilters.join(',') : undefined,
                 search: appliedSearch || undefined,
                 range: rangeDays === DEFAULT_RANGE_DAYS ? undefined : rangeDays,
                 from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
@@ -301,11 +308,11 @@ const RecentLeadsContent = () => {
         });
     }, [
         navigate,
-        leadStatusFilter,
-        tierFilter,
-        slaFilter,
-        counsellorFilter,
-        audienceId,
+        leadStatusFilters,
+        tierFilters,
+        slaFilters,
+        counsellorFilters,
+        audienceFilters,
         appliedSearch,
         rangeDays,
         customFrom,
@@ -381,19 +388,22 @@ const RecentLeadsContent = () => {
         [audiencesQuery.data]
     );
 
-    // Translate the unified status filter into the two backend params.
-    const leadStatusId =
-        leadStatusFilter === ALL_ACTIVE_VALUE ||
-        leadStatusFilter === ALL_STATUSES_VALUE ||
-        leadStatusFilter === ALL_CONVERTED_VALUE
-            ? undefined
-            : leadStatusFilter;
+    // Translate the multi-select status filter into the two backend params.
+    const specialStatuses = new Set([ALL_STATUSES_VALUE, ALL_ACTIVE_VALUE, ALL_CONVERTED_VALUE]);
+    const customStatusKeys = leadStatusFilters.filter((v) => !specialStatuses.has(v));
+    const leadStatusId = customStatusKeys.length > 0 ? customStatusKeys.join(',') : undefined;
     const conversionFilter: 'EXCLUDE_CONVERTED' | 'ALL' | 'ONLY_CONVERTED' =
-        leadStatusFilter === ALL_ACTIVE_VALUE
+        leadStatusFilters.includes(ALL_ACTIVE_VALUE)
             ? 'EXCLUDE_CONVERTED'
-            : leadStatusFilter === ALL_CONVERTED_VALUE
+            : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
               ? 'ONLY_CONVERTED'
               : 'ALL';
+    const nonUnassignedCounsellorIds = counsellorFilters.filter(
+        (v) => v !== UNASSIGNED_COUNSELLOR_VALUE
+    );
+    const onlyUnassigned =
+        counsellorFilters.includes(UNASSIGNED_COUNSELLOR_VALUE) &&
+        nonUnassignedCounsellorIds.length === 0;
 
     const { data, isLoading, error } = useQuery({
         queryKey: [
@@ -401,15 +411,14 @@ const RecentLeadsContent = () => {
             instituteId,
             appliedRange.from,
             appliedRange.to,
-            audienceId,
+            audienceFilters.join(','),
             appliedSearch,
-            tierFilter,
-            leadStatusFilter,
+            tierFilters.join(','),
+            leadStatusFilters.join(','),
             leadStatusId,
             conversionFilter,
-            slaFilter,
-            counsellorFilter,
-            ALL_COUNSELLORS_VALUE,
+            slaFilters.join(','),
+            counsellorFilters.join(','),
             sourceFilter,
             customFieldFiltersKey,
             page,
@@ -418,21 +427,21 @@ const RecentLeadsContent = () => {
         queryFn: () =>
             fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                audience_id:
+                    audienceFilters.length === 1 ? audienceFilters[0] : undefined,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
-                lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
-                sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                sla_filter:
+                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
-                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
-                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
-                        ? undefined
-                        : counsellorFilter,
-                is_unassigned:
-                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                    nonUnassignedCounsellorIds.length > 0
+                        ? nonUnassignedCounsellorIds.join(',')
+                        : undefined,
+                is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
@@ -531,7 +540,7 @@ const RecentLeadsContent = () => {
     // changes so stale ids can't leak into an assign.
     useEffect(() => {
         setSelectedLeads(new Map());
-    }, [counsellorFilter]);
+    }, [counsellorFilters]);
 
     const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
@@ -566,20 +575,21 @@ const RecentLeadsContent = () => {
             setSelectAllLoading(true);
             const res = await fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                audience_id:
+                    audienceFilters.length === 1 ? audienceFilters[0] : undefined,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
-                lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
-                sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                sla_filter:
+                    slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
-                    counsellorFilter === ALL_COUNSELLORS_VALUE ||
-                    counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
-                        ? undefined
-                        : counsellorFilter,
-                is_unassigned: counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                    nonUnassignedCounsellorIds.length > 0
+                        ? nonUnassignedCounsellorIds.join(',')
+                        : undefined,
+                is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
@@ -614,13 +624,13 @@ const RecentLeadsContent = () => {
 
     // Filters
     const handleClearFilter = () => {
-        setAudienceId(ALL_AUDIENCES_VALUE);
+        setAudienceFilters([]);
         setSearchInput('');
         setAppliedSearch('');
-        setTierFilter(ALL_TIERS_VALUE);
-        setLeadStatusFilter(ALL_STATUSES_VALUE);
-        setSlaFilter(ALL_SLA_VALUE);
-        setCounsellorFilter(ALL_COUNSELLORS_VALUE);
+        setTierFilters([]);
+        setLeadStatusFilters([]);
+        setSlaFilters([]);
+        setCounsellorFilters([]);
         setSourceFilter('');
         setCustomFieldFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
@@ -642,35 +652,48 @@ const RecentLeadsContent = () => {
             setCustomOpen(true);
         }
     };
-    const setCounsellor = (value: string) => {
+    const setCounsellor = (values: string[]) => {
         setPage(0);
-        setCounsellorFilter(value);
+        setCounsellorFilters(values);
     };
-    const setTier = (value: string) => {
+    const setTier = (values: string[]) => {
         setPage(0);
-        setTierFilter(value);
+        setTierFilters(values);
     };
-    const setLeadStatus = (value: string) => {
+    const handleLeadStatusChange = (newValues: string[]) => {
         setPage(0);
-        setLeadStatusFilter(value);
+        const justAddedActive =
+            newValues.includes(ALL_ACTIVE_VALUE) && !leadStatusFilters.includes(ALL_ACTIVE_VALUE);
+        const justAddedConverted =
+            newValues.includes(ALL_CONVERTED_VALUE) &&
+            !leadStatusFilters.includes(ALL_CONVERTED_VALUE);
+        if (justAddedActive) {
+            setLeadStatusFilters([ALL_ACTIVE_VALUE]);
+        } else if (justAddedConverted) {
+            setLeadStatusFilters([ALL_CONVERTED_VALUE]);
+        } else {
+            setLeadStatusFilters(
+                newValues.filter((v) => v !== ALL_ACTIVE_VALUE && v !== ALL_CONVERTED_VALUE)
+            );
+        }
     };
-    const setSla = (value: string) => {
+    const setSla = (values: string[]) => {
         setPage(0);
-        setSlaFilter(value);
+        setSlaFilters(values);
     };
-    const handleAudienceChange = (value: string) => {
+    const handleAudienceChange = (values: string[]) => {
         setPage(0);
-        setAudienceId(value);
+        setAudienceFilters(values);
     };
 
     const isFilterActive =
         rangeDays !== DEFAULT_RANGE_DAYS ||
-        audienceId !== ALL_AUDIENCES_VALUE ||
+        audienceFilters.length > 0 ||
         !!appliedSearch ||
-        tierFilter !== ALL_TIERS_VALUE ||
-        leadStatusFilter !== ALL_STATUSES_VALUE ||
-        slaFilter !== ALL_SLA_VALUE ||
-        counsellorFilter !== ALL_COUNSELLORS_VALUE ||
+        tierFilters.length > 0 ||
+        leadStatusFilters.length > 0 ||
+        slaFilters.length > 0 ||
+        counsellorFilters.length > 0 ||
         !!sourceFilter ||
         customFieldFiltersPayload.length > 0;
 
@@ -786,21 +809,21 @@ const RecentLeadsContent = () => {
             while (!last) {
                 const resp = await fetchRecentLeads({
                     institute_id: instituteId,
-                    audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                    audience_id:
+                        audienceFilters.length === 1 ? audienceFilters[0] : undefined,
                     submitted_from_local: startOfDayIso(appliedRange.from),
                     submitted_to_local: endOfDayIso(appliedRange.to),
                     search_query: appliedSearch || undefined,
-                    lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                    lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                     lead_status_id: leadStatusId,
                     conversion_status_filter: conversionFilter,
-                    sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                    sla_filter:
+                        slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                     assigned_counselor_id:
-                        counsellorFilter === ALL_COUNSELLORS_VALUE ||
-                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
-                            ? undefined
-                            : counsellorFilter,
-                    is_unassigned:
-                        counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE ? true : undefined,
+                        nonUnassignedCounsellorIds.length > 0
+                            ? nonUnassignedCounsellorIds.join(',')
+                            : undefined,
+                    is_unassigned: onlyUnassigned ? true : undefined,
                     source_type: sourceFilter || undefined,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
@@ -831,24 +854,45 @@ const RecentLeadsContent = () => {
                 setAppliedSearch('');
             },
         });
-    if (audienceId !== ALL_AUDIENCES_VALUE)
+    if (audienceFilters.length > 0) {
+        const names = audienceFilters.map(
+            (id) => audienceOptions.find((o) => o.id === id)?.name ?? 'Selected'
+        );
         chips.push({
-            label: `Audience: ${audienceOptions.find((o) => o.id === audienceId)?.name ?? 'Selected'}`,
-            onRemove: () => handleAudienceChange(ALL_AUDIENCES_VALUE),
+            label: `Audience: ${names.join(', ')}`,
+            onRemove: () => handleAudienceChange([]),
         });
-    if (slaFilter !== ALL_SLA_VALUE)
+    }
+    if (tierFilters.length > 0)
         chips.push({
-            label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
-            onRemove: () => setSla(ALL_SLA_VALUE),
+            label: `Tier: ${tierFilters.join(', ')}`,
+            onRemove: () => setTierFilters([]),
         });
-    if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
-        const cName =
-            counsellorFilter === UNASSIGNED_COUNSELLOR_VALUE
+    if (leadStatusFilters.length > 0) {
+        const statusLabels = leadStatusFilters.map((v) => {
+            if (v === ALL_ACTIVE_VALUE) return 'Active';
+            if (v === ALL_CONVERTED_VALUE) return 'Converted';
+            return leadStatusCatalog.find((s) => s.status_key === v)?.label ?? v;
+        });
+        chips.push({
+            label: `Status: ${statusLabels.join(', ')}`,
+            onRemove: () => setLeadStatusFilters([]),
+        });
+    }
+    if (slaFilters.length > 0)
+        chips.push({
+            label: `SLA: ${slaFilters.map((v) => SLA_OPTIONS.find((o) => o.value === v)?.label ?? v).join(', ')}`,
+            onRemove: () => setSlaFilters([]),
+        });
+    if (counsellorFilters.length > 0) {
+        const cLabels = counsellorFilters.map((id) =>
+            id === UNASSIGNED_COUNSELLOR_VALUE
                 ? 'Unassigned'
-                : (counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected');
+                : (counsellorOptions.find((c) => c.id === id)?.full_name ?? 'Selected')
+        );
         chips.push({
-            label: `Counsellor: ${cName}`,
-            onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
+            label: `Counsellor: ${cLabels.join(', ')}`,
+            onRemove: () => setCounsellorFilters([]),
         });
     }
     if (sourceFilter)
@@ -896,74 +940,66 @@ const RecentLeadsContent = () => {
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
-                        <Select value={tierFilter} onValueChange={setTier}>
-                            <SelectTrigger className="h-10 w-36">
-                                <Flame className="mr-1.5 size-4 text-neutral-400" />
-                                <SelectValue placeholder="All tiers" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
-                                <SelectItem value="HOT">Hot</SelectItem>
-                                <SelectItem value="WARM">Warm</SelectItem>
-                                <SelectItem value="COLD">Cold</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <MultiSelectFilter
+                            label="All tiers"
+                            icon={<Flame className="size-4 shrink-0 text-neutral-400" />}
+                            options={[
+                                { value: 'HOT', label: 'Hot' },
+                                { value: 'WARM', label: 'Warm' },
+                                { value: 'COLD', label: 'Cold' },
+                            ]}
+                            selected={tierFilters}
+                            onChange={setTier}
+                            widthClass="w-36"
+                        />
                     )}
-                    <Select value={leadStatusFilter} onValueChange={setLeadStatus}>
-                        <SelectTrigger className="h-10 w-44">
-                            <CheckCircle className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="All leads" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={ALL_STATUSES_VALUE}>All leads</SelectItem>
-                            <SelectItem value={ALL_ACTIVE_VALUE}>Active (not enrolled)</SelectItem>
-                            <SelectItem value={ALL_CONVERTED_VALUE}>Enrolled / Converted</SelectItem>
-                            {leadStatusCatalog.map((s) => (
-                                <SelectItem key={s.id} value={s.status_key}>
-                                    {s.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <MultiSelectFilter
+                        label="All leads"
+                        icon={<CheckCircle className="size-4 shrink-0 text-neutral-400" />}
+                        options={[
+                            { value: ALL_ACTIVE_VALUE, label: 'Active (not enrolled)' },
+                            { value: ALL_CONVERTED_VALUE, label: 'Enrolled / Converted' },
+                            ...leadStatusCatalog.map((s) => ({
+                                value: s.status_key,
+                                label: s.label,
+                            })),
+                        ]}
+                        selected={leadStatusFilters}
+                        onChange={handleLeadStatusChange}
+                        widthClass="w-44"
+                    />
                     {showOps && (
-                        <Select value={slaFilter} onValueChange={setSla}>
-                            <SelectTrigger className="h-10 w-44">
-                                <Clock className="mr-1.5 size-4 text-neutral-400" />
-                                <SelectValue placeholder="Action status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {SLA_OPTIONS.map((o) => (
-                                    <SelectItem key={o.value} value={o.value}>
-                                        <SlaOptionLabel label={o.label} helper={o.helper} />
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <MultiSelectFilter
+                            label="All SLA states"
+                            icon={<Clock className="size-4 shrink-0 text-neutral-400" />}
+                            options={SLA_OPTIONS.filter((o) => o.value !== ALL_SLA_VALUE).map(
+                                (o) => ({ value: o.value, label: o.label })
+                            )}
+                            selected={slaFilters}
+                            onChange={setSla}
+                            widthClass="w-44"
+                        />
                     )}
                     {showOps && (
                         <CounsellorFilter
-                            value={counsellorFilter}
+                            values={counsellorFilters}
                             onChange={setCounsellor}
-                            allValue={ALL_COUNSELLORS_VALUE}
                             unassignedValue={UNASSIGNED_COUNSELLOR_VALUE}
                             options={counsellorOptions}
                             isLoading={counsellorOptionsLoading}
                         />
                     )}
-                    <Select value={audienceId} onValueChange={handleAudienceChange}>
-                        <SelectTrigger className="h-10 w-44">
-                            <Megaphone className="mr-1.5 size-4 text-neutral-400" />
-                            <SelectValue placeholder="All audiences" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value={ALL_AUDIENCES_VALUE}>All audiences</SelectItem>
-                            {audienceOptions.map((opt) => (
-                                <SelectItem key={opt.id} value={opt.id}>
-                                    {opt.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <MultiSelectFilter
+                        label="All audiences"
+                        icon={<Megaphone className="size-4 shrink-0 text-neutral-400" />}
+                        options={audienceOptions.map((opt) => ({
+                            value: opt.id,
+                            label: opt.name,
+                        }))}
+                        selected={audienceFilters}
+                        onChange={handleAudienceChange}
+                        widthClass="w-44"
+                    />
                     {filterCustomFields.map((f) => (
                         <CustomFieldMultiSelectFilter
                             key={f.customFieldId}

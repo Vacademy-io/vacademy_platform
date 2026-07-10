@@ -38,8 +38,8 @@ MAX_DOC_IMAGES = 2
 # Bound concurrent image calls across parallel document todos.
 _IMAGE_SEMAPHORE = asyncio.Semaphore(4)
 _IMAGE_TIMEOUT_SECONDS = 90.0
-# Image model via OpenRouter (same provider the video pipeline uses in prod).
-DOC_IMAGE_MODEL = "recraft/recraft-v4.1"
+# Image model via OpenRouter (Google's image model through the billed account).
+DOC_IMAGE_MODEL = "google/gemini-3.1-flash-image"
 _OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Same tag contract as automation_pipeline._process_generated_images.

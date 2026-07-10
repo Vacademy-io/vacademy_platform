@@ -232,7 +232,7 @@ class CourseOutlineGenerationService:
                             request_type=RequestType.IMAGE,
                             institute_id=request.institute_id,
                             user_id=request.user_id,
-                            model="gemini-2.5-flash-image",
+                            model="google/gemini-3.1-flash-image",
                         )
                     except Exception as e:
                         logger.warning(f"Failed to record image token usage: {str(e)}")
@@ -396,7 +396,7 @@ class CourseOutlineGenerationService:
                                 request_type=RequestType.IMAGE,
                                 institute_id=request.institute_id,
                                 user_id=request.user_id,
-                                model="gemini-2.5-flash-image",
+                                model="google/gemini-3.1-flash-image",
                                 request_id=request_id,
                             )
                         except Exception as e:

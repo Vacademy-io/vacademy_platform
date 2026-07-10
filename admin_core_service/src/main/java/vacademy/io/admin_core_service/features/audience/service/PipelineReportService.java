@@ -317,8 +317,9 @@ public class PipelineReportService {
 
         // counsellor → pending count (assigned leads with no history at all)
         Map<String, Long> pendingByActor = new LinkedHashMap<>();
-        jdbc.query(PENDING_LEADS_SQL, p,
-                rs -> pendingByActor.put(rs.getString("actor_id"), rs.getLong("pending_count")));
+        RowCallbackHandler pendingCollector = rs ->
+                pendingByActor.put(rs.getString("actor_id"), rs.getLong("pending_count"));
+        jdbc.query(PENDING_LEADS_SQL, p, pendingCollector);
 
         // counsellor → (CALL_STATUS → count)
         Map<String, Map<String, Long>> outcomesByActor = new LinkedHashMap<>();

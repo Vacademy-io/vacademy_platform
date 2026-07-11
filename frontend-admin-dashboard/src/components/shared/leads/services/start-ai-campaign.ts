@@ -7,6 +7,10 @@ export interface StartAiCampaignRequest {
     instituteId: string;
     /** true = just count eligible leads, don't place any calls (for the confirm dialog). */
     dryRun?: boolean;
+    /** Optional chosen AI agent id; blank ⇒ institute's default. */
+    campaignId?: string;
+    /** Optional chosen caller-ID number id; blank ⇒ provider default. */
+    preferredNumberId?: string;
 }
 
 export interface StartAiCampaignResult {
@@ -31,7 +35,14 @@ export const startAiCallCampaign = async (
     const { data } = await authenticatedAxiosInstance.post<StartAiCampaignResult>(
         TELEPHONY_AI_CALL_CAMPAIGN(req.audienceId),
         null,
-        { params: { instituteId: req.instituteId, dryRun: req.dryRun ?? false } }
+        {
+            params: {
+                instituteId: req.instituteId,
+                dryRun: req.dryRun ?? false,
+                campaignId: req.campaignId || undefined,
+                preferredNumberId: req.preferredNumberId || undefined,
+            },
+        }
     );
     return data;
 };

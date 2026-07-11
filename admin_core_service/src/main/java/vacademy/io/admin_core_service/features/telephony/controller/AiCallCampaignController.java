@@ -30,8 +30,11 @@ public class AiCallCampaignController {
             @PathVariable String audienceId,
             @RequestParam String instituteId,
             @RequestParam(value = "dryRun", defaultValue = "false") boolean dryRun,
+            @RequestParam(value = "campaignId", required = false) String campaignId,
+            @RequestParam(value = "preferredNumberId", required = false) String preferredNumberId,
             @RequestAttribute("user") CustomUserDetails user) {
         instituteAccessValidator.validateUserAccess(user, instituteId);
-        return ResponseEntity.ok(campaignService.startForAudience(instituteId, audienceId, dryRun));
+        return ResponseEntity.ok(campaignService.startForAudience(
+                instituteId, audienceId, dryRun, campaignId, preferredNumberId));
     }
 }

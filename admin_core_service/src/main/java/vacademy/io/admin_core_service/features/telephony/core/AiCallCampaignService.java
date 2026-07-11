@@ -64,14 +64,16 @@ public class AiCallCampaignService {
 
     public record StartResult(int total, int eligible, boolean dispatched, String message) {}
 
-    public StartResult startForAudience(String instituteId, String audienceId, boolean dryRun) {
+    public StartResult startForAudience(String instituteId, String audienceId, boolean dryRun,
+                                        String campaignIdOverride, String preferredNumberId) {
         AiCallingSettingsPojo settings = settingsService.get(instituteId);
         if (!settings.isEnabled()) {
             throw new VacademyException("AI calling is disabled for this institute.");
         }
-        // Resolve through the settings resolver (not getDefaultCampaignId directly) so a
-        // defaultCampaignId holding an agent NAME (e.g. "Jin AI") maps to the real agent id.
-        String campaignId = settings.resolveCampaignId(settings.getProvider(), null);
+        // Agent: an explicit chooser pick wins; else the institute default (resolved through the
+        // settings resolver so a defaultCampaignId holding an agent NAME maps to the real id).
+        String campaignId = !isBlank(campaignIdOverride) ? campaignIdOverride
+                : settings.resolveCampaignId(settings.getProvider(), null);
         if (isBlank(campaignId)) {
             throw new VacademyException("No default Campaign ID set in AI Calling settings.");
         }
@@ -107,7 +109,7 @@ public class AiCallCampaignService {
         try {
             // The refs are plain records (snapshot) — safe to hand to another thread;
             // no managed JPA entities cross the boundary.
-            dispatchExecutor.execute(() -> dispatch(instituteId, audienceId, campaignId, refs));
+            dispatchExecutor.execute(() -> dispatch(instituteId, audienceId, campaignId, preferredNumberId, refs));
         } catch (RejectedExecutionException rej) {
             throw new VacademyException("Too many AI bulk campaigns are running right now — try again shortly.");
         }
@@ -119,7 +121,8 @@ public class AiCallCampaignService {
     }
 
     /** Background worker: places one paced AI call per eligible lead. */
-    private void dispatch(String instituteId, String audienceId, String campaignId, List<LeadRef> refs) {
+    private void dispatch(String instituteId, String audienceId, String campaignId,
+                          String preferredNumberId, List<LeadRef> refs) {
         int placed = 0, failed = 0;
         for (LeadRef ref : refs) {
             AiCallRequestDTO req = new AiCallRequestDTO();
@@ -128,6 +131,7 @@ public class AiCallCampaignService {
             req.setPhoneNumber(ref.phone());   // may be blank → placeCall resolves from profile
             req.setResponseId(ref.responseId());
             req.setCampaignId(campaignId);
+            req.setPreferredNumberId(preferredNumberId);
             try {
                 aiCallService.placeCall(req, null);
                 placed++;

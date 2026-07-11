@@ -19,8 +19,20 @@ export function usePlaceAiCall({ invalidateKeys = [] }: UsePlaceAiCallOptions = 
     const instituteId = getCurrentInstituteId() ?? '';
 
     return useMutation({
-        mutationFn: (vars: { responseId: string; userId?: string; leadName?: string }) =>
-            placeAiCall({ instituteId, responseId: vars.responseId, userId: vars.userId }),
+        mutationFn: (vars: {
+            responseId: string;
+            userId?: string;
+            leadName?: string;
+            campaignId?: string;
+            preferredNumberId?: string;
+        }) =>
+            placeAiCall({
+                instituteId,
+                responseId: vars.responseId,
+                userId: vars.userId,
+                campaignId: vars.campaignId,
+                preferredNumberId: vars.preferredNumberId,
+            }),
         onSuccess: (_resp, vars) => {
             toast.success(`AI call queued${vars.leadName ? ` for ${vars.leadName}` : ''}`);
             queryClient.invalidateQueries({ queryKey: ['recent-leads'] });

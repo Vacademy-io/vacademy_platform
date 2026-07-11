@@ -18,6 +18,9 @@ public class AiCallSpec {
     String responseId;
     String phoneNumber;
     String campaignId;
+    /** Chosen caller-ID number id (telephony_provider_number.id) — the provider resolves it
+     *  to that number's phone if enabled for the institute, else falls back to its default. */
+    String preferredNumberId;
     String customerName;
     String customerEmail;
     /** Our correlation id (= telephony_call_log.id) — must be echoed back on the report. */

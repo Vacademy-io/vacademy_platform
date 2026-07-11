@@ -14,6 +14,10 @@ export interface RazorpayCheckoutFormRef {
     currency: string;
     contact: string;
     email: string;
+    // Autopay/mandate: when the backend registered a recurring mandate, these
+    // make Razorpay Checkout open in mandate mode (UPI Autopay / card e-mandate).
+    recurring?: number;
+    customerId?: string;
   }) => void;
 }
 
@@ -104,6 +108,8 @@ export const RazorpayCheckoutForm = forwardRef<
         currency: string;
         contact: string;
         email: string;
+        recurring?: number;
+        customerId?: string;
       }) => {
         if (!isScriptLoaded) {
           console.error("Razorpay script not loaded");
@@ -126,6 +132,15 @@ export const RazorpayCheckoutForm = forwardRef<
           amount: orderDetails.amount,
           currency: orderDetails.currency,
           order_id: orderDetails.razorpayOrderId,
+          // Autopay: run Checkout in recurring/mandate mode so the learner
+          // authorizes UPI Autopay / a card e-mandate (needs a customer_id + an
+          // order created with a token block, both from the backend).
+          ...(orderDetails.recurring
+            ? {
+                recurring: orderDetails.recurring,
+                customer_id: orderDetails.customerId,
+              }
+            : {}),
           name: courseName,
           description: courseDescription,
           handler: function (response: {

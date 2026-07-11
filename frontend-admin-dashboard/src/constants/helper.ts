@@ -54,3 +54,19 @@ export function extractTextFromHTML(htmlString: string) {
     if (!htmlString) return '';
     return htmlString.replace(/<[^>]*>/g, '');
 }
+
+/**
+ * Returns true when the HTML string has something worth rendering — either
+ * non-whitespace text OR an embedded media element (image, svg, iframe,
+ * video, audio, embed, source).
+ *
+ * `extractTextFromHTML` alone strips every tag and returns only text, so
+ * image-only content (e.g. an "About the course" body that is just an
+ * uploaded diagram/SVG) evaluates to empty and gets hidden. Use this for
+ * visibility gates on rich-text fields so media-only content still shows.
+ */
+export function htmlHasRenderableContent(htmlString: string | null | undefined): boolean {
+    if (!htmlString) return false;
+    if (extractTextFromHTML(htmlString).trim().length > 0) return true;
+    return /<(img|svg|iframe|video|audio|embed|source|picture)\b/i.test(htmlString);
+}

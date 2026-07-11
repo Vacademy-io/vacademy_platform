@@ -111,8 +111,12 @@ _SYSTEM_DIRECTIVE = (
     "2. Everything is inline/self-contained: inline `<style>`, and any JS in an "
     "inline `<script>` at the end of `<body>`. No build step, no imports of local files.\n"
     "3. You MAY use tasteful motion — CSS `@keyframes`/transitions and small vanilla "
-    "JS (scroll reveals, counters, interactive diagrams, canvas/SVG). Keep it smooth, "
-    "purposeful and not seizure-inducing; honor `prefers-reduced-motion`.\n"
+    "JS (counters, interactive diagrams, canvas/SVG). CRITICAL: the page is shown at its "
+    "FULL height with NO internal scrolling (the parent app scrolls), so NEVER hide content "
+    "behind scroll-triggered reveals — an IntersectionObserver or scroll listener that starts "
+    "sections at opacity:0 and reveals them on scroll will leave them INVISIBLE here. All "
+    "content must be visible on load; entrance animations must play automatically on load, not "
+    "on scroll. Keep motion smooth and honor `prefers-reduced-motion`.\n"
     "4. Responsive (mobile → desktop), accessible (semantic tags, alt text, adequate "
     "contrast — dark text on light surfaces by default), and readable.\n"
     "5. Real, substantive content about the TOPIC — no lorem ipsum, no placeholder text. "
@@ -324,11 +328,15 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
             detail="Provide a prompt, select content sections, add key points, or attach a PDF.",
         )
 
+    # Create vs edit are priced differently (a full create costs more than a
+    # conversational edit that reuses the existing page).
+    tool_key = "html_document_edit" if body.current_html else "html_document"
+
     # Pre-flight credit gate (academy-credits) — flat per generation. Only gates
     # when an institute is resolved; the charge is recorded after success.
     if institute_id:
         estimate = preflight_tool_credits(
-            db, tool_key="html_document", tool_params={}, institute_id=institute_id
+            db, tool_key=tool_key, tool_params={}, institute_id=institute_id
         )
         if estimate.get("sufficient") is False:
             raise HTTPException(
@@ -363,6 +371,7 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
         "institute_id": institute_id,
         "actor_user_id": actor_user_id,
         "actor_role": actor_role,
+        "tool_key": tool_key,
     }
 
 
@@ -371,7 +380,7 @@ def _bill(ctx: dict, body: GenerateHtmlRequest) -> None:
     hiccup must never fail the request. Idempotency key dedups retries."""
     try:
         record_tool_billing(
-            tool_key="html_document",
+            tool_key=ctx["tool_key"],
             tool_params={"is_edit": bool(body.current_html)},
             request_type=RequestType.CONTENT,
             model=ctx["model"],

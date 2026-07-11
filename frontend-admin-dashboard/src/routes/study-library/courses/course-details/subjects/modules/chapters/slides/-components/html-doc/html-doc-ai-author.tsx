@@ -92,8 +92,12 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const html = (versionIndex >= 0 ? versions[versionIndex] : '') ?? '';
     const hasContent = !!html.trim();
 
-    // Flat per-generation credit cost (read from the cached tool-pricing rates).
-    const { credits: costCredits } = useToolCostPreview('html_document', {});
+    // Per-generation credit cost (read live from cached tool-pricing rates).
+    // Create and edit are priced differently.
+    const { credits: costCredits } = useToolCostPreview(
+        hasContent ? 'html_document_edit' : 'html_document',
+        {}
+    );
 
     const commit = (next: string) => onHtmlChange(slideIdRef.current, next);
 

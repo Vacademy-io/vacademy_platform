@@ -280,6 +280,9 @@ public class WhiteLabelService {
                         .role(r.getRole())
                         .domain(r.getDomain())
                         .subdomain(r.getSubdomain())
+                        // Live Cloudflare Pages custom-domain status (active/pending/…)
+                        .pagesStatus(pagesStatusFor(r))
+                        .pagesCnameTarget(pagesCnameTargetFor(r))
                         // Branding
                         .tabText(r.getTabText())
                         .tabIconFileId(r.getTabIconFileId())
@@ -393,6 +396,35 @@ public class WhiteLabelService {
         if (tokens.contains(ROLE_LEARNER))
             return trimToNull(learnerPagesProject);
         return trimToNull(adminPagesProject);
+    }
+
+    /**
+     * Looks up the live Cloudflare Pages custom-domain status for a routing row
+     * (active/pending/…), or null when Pages isn't configured or the host isn't
+     * attached. Failure-safe — used only for display.
+     */
+    private String pagesStatusFor(InstituteDomainRouting r) {
+        if (!cloudflareService.isPagesEnabled()) {
+            return null;
+        }
+        String project = pagesProjectForRole(r.getRole());
+        if (!StringUtils.hasText(project)) {
+            return null;
+        }
+        String host = (StringUtils.hasText(r.getSubdomain()) && !"*".equals(r.getSubdomain()))
+                ? r.getSubdomain() + "." + r.getDomain()
+                : r.getDomain();
+        return cloudflareService.getPagesCustomDomainStatus(project, host);
+    }
+
+    /**
+     * The {@code <project>.pages.dev} CNAME target for a routing row, so the UI
+     * can show an external domain the exact record to add. Null when Pages isn't
+     * configured for the role.
+     */
+    private String pagesCnameTargetFor(InstituteDomainRouting r) {
+        String project = pagesProjectForRole(r.getRole());
+        return StringUtils.hasText(project) ? project + ".pages.dev" : null;
     }
 
     /** True when {@code host} is the base vacademy domain or a subdomain of it. */

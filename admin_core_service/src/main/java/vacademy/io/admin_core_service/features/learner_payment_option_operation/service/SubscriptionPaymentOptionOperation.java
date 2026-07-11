@@ -225,6 +225,19 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                         enrollInvite,
                         userPlan,
                         extraData);
+            } else if (Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled())) {
+                // Autopay subscription: register a recurring mandate so the learner
+                // authorizes future auto-charges. Routes to initiateMandatePayment,
+                // whose response carries recurring:1 + customerId for the frontend to
+                // open Razorpay Checkout in mandate mode (UPI Autopay / card e-mandate).
+                var mandateRequest = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest();
+                applyMandateMaxAmount(mandateRequest, enrollInvite, paymentPlan);
+                paymentResponseDTO = paymentService.handleMandatePayment(
+                        user,
+                        instituteId,
+                        enrollInvite,
+                        userPlan,
+                        mandateRequest);
             } else {
                 paymentResponseDTO = paymentService.handlePayment(
                         user,
@@ -294,6 +307,37 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             detailsList.add(detail);
         }
         return detailsList;
+    }
+
+    /**
+     * Sets the Razorpay mandate max_amount (per-charge cap) from the invite's
+     * AUTOPAY_SETTING.MAX_AMOUNT (admin-configured), falling back to the plan
+     * price. No-op for non-Razorpay requests (eWay tokenizes on the first card
+     * payment and has no native cap).
+     */
+    private void applyMandateMaxAmount(PaymentInitiationRequestDTO request,
+                                       EnrollInvite enrollInvite, PaymentPlan paymentPlan) {
+        if (request == null || request.getRazorpayRequest() == null) {
+            return;
+        }
+        Double maxAmount = null;
+        try {
+            if (enrollInvite != null && enrollInvite.getSettingJson() != null
+                    && !enrollInvite.getSettingJson().isBlank()) {
+                com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(enrollInvite.getSettingJson()).path("setting").path("AUTOPAY_SETTING");
+                if (ap.has("MAX_AMOUNT") && !ap.get("MAX_AMOUNT").isNull()) {
+                    maxAmount = ap.get("MAX_AMOUNT").asDouble();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read AUTOPAY_SETTING.MAX_AMOUNT for invite {}: {}",
+                    enrollInvite != null ? enrollInvite.getId() : null, e.getMessage());
+        }
+        if (maxAmount == null && paymentPlan != null) {
+            maxAmount = paymentPlan.getActualPrice();
+        }
+        request.getRazorpayRequest().setMandateMaxAmount(maxAmount);
     }
 
 }

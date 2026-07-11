@@ -441,6 +441,18 @@ public class EmailConfigurationService {
             String newFrom = treatAsNoName ? newEmail : (newName + " <" + newEmail + ">");
             existingConfigNode.put(NotificationConstants.FROM, newFrom);
 
+            // If the from-address actually changed, any prior SES verification was for the OLD
+            // address and no longer applies. Reset the verification state so the from-address and
+            // the verified identity can't drift apart — otherwise the UI would show a stale
+            // verified/pending badge for a different address and sending would silently fall back
+            // to the platform default. A fresh "Verify sender" re-establishes it for the new address.
+            if (!previousEmail.isBlank() && !previousEmail.equalsIgnoreCase(newEmail)) {
+                existingConfigNode.remove(NotificationConstants.VERIFICATION_STATUS);
+                existingConfigNode.remove(NotificationConstants.VERIFIED);
+                existingConfigNode.remove(NotificationConstants.VERIFICATION_IDENTITY);
+                existingConfigNode.remove(NotificationConstants.VERIFIED_AT);
+            }
+
             String updatedSettings = objectMapper.writeValueAsString(rootNode);
             boolean persisted = instituteInternalService.updateInstituteSettings(
                     instituteId, updatedSettings, authToken);

@@ -36,7 +36,16 @@ class Settings:
 
     # Sarvam (STT + LLM + TTS) — see providers.py
     sarvam_api_key: str = field(default_factory=lambda: _env("SARVAM_API_KEY"))
-    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saaras:v3"))
+    # saarika:v2.5 TRANSCRIBES speech in the language actually spoken (Devanagari for
+    # Hindi), so the LLM gets the caller's real words. saaras:v3 is a speech-TRANSLATION
+    # model (Indian speech → English) — on code-switched Hinglish it garbles into
+    # gibberish ("Myapolicil tme we face"), which the LLM then can't understand, so it
+    # deflects/loops. Transcription, not translation, is what a native-language voice bot
+    # needs. Overridable via SARVAM_STT_MODEL to roll back or try another model.
+    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saarika:v2.5"))
+    # Optional: pin STT to one language (e.g. "hi-IN") instead of auto-detect. Blank =
+    # auto (best for mixed Hindi+English). Consumed in providers.build_stt.
+    sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", ""))
     sarvam_llm_model: str = field(default_factory=lambda: _env("SARVAM_LLM_MODEL", "sarvam-105b"))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")

@@ -310,8 +310,35 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "warm, positive, forward-moving tone that gives them a reason to engage right now."
         )
 
+    # Placed near the TOP (primacy matters under live-call latency) and applied to every
+    # agent — the failure modes seen on real calls (verbatim loops, deflecting instead of
+    # answering, ignoring rising frustration, ploughing on through mis-hears, switching
+    # language unprompted) are conversation-level and no per-agent prompt reliably prevents
+    # them. These are hard rules, phrased as mechanisms not vibes.
+    non_negotiable = (
+        "NON-NEGOTIABLE RULES — these override everything else:\n"
+        "1) NEVER repeat a sentence you have already said. If the caller asks the same thing "
+        "again, your previous answer FAILED — do NOT say it again. Acknowledge briefly ('Sorry, "
+        "main clearly bata deti hoon —') and answer the LITERAL question they asked, even if it is "
+        "outside your script. You may steer toward your goal (demo/next step) at most ONCE per "
+        "topic; if they push again, ANSWER the question instead of steering.\n"
+        "2) ANSWER direct questions directly FIRST, then invite the next step. Never stonewall or "
+        "dodge (never say things like 'their strategy is different' to avoid answering). If you "
+        "genuinely don't have a specific fact, say so honestly and offer to share it another way — "
+        "do not invent, do not evade.\n"
+        "3) FRUSTRATION = STOP. If the caller repeats a question, says 'main ye nahi pooch raha', or "
+        "sounds annoyed: drop the script immediately, apologise briefly, and answer their exact "
+        "question. If you cannot resolve it in one turn, offer a human callback rather than continuing.\n"
+        "4) If the conversation stops making sense, or they seem to answer a different question than "
+        "you asked, assume you MIS-HEARD: say 'Sorry, aapki awaaz thodi clear nahi aayi, ek baar phir "
+        "boliye?' — do NOT plough ahead with your script.\n"
+        "5) Speak the caller's language and STAY in it for the whole call. A single English word from "
+        "them is NOT a reason to switch languages; never switch language in the middle of an answer."
+    )
+
     lines = [
         agent.get("systemPrompt") or "You are a friendly, concise phone assistant.",
+        non_negotiable,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,
@@ -397,6 +424,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             audio_in_sample_rate=settings.sample_rate,
             audio_out_sample_rate=settings.sample_rate,
             enable_metrics=True,
+            # Barge-in: when the caller starts speaking, cancel the bot's TTS and let their
+            # turn be heard — a real conversation, not the bot talking over an interrupting
+            # caller. Was unset (no interruption), which caused the overlaps on live calls.
+            allow_interruptions=True,
         ),
     )
     sentinel.set_task(task)

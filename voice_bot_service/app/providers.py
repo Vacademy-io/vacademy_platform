@@ -16,10 +16,21 @@ from .config import get_settings
 
 def build_stt(sample_rate: int):
     s = get_settings()
+    # Optional language pin (SARVAM_STT_LANGUAGE, e.g. "hi-IN"); blank ⇒ auto-detect,
+    # which handles code-switched Hindi+English best. Guarded so a bad value can't crash
+    # startup — it just falls back to auto.
+    params = None
+    if s.sarvam_stt_language:
+        try:
+            from pipecat.transcriptions.language import Language
+            params = SarvamSTTService.InputParams(language=Language(s.sarvam_stt_language))
+        except Exception:
+            params = None
     return SarvamSTTService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_stt_model,
         sample_rate=sample_rate,
+        params=params,
     )
 
 

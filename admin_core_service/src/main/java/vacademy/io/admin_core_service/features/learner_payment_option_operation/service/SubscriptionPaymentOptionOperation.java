@@ -231,6 +231,17 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 // whose response carries recurring:1 + customerId for the frontend to
                 // open Razorpay Checkout in mandate mode (UPI Autopay / card e-mandate).
                 var mandateRequest = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest();
+                // Free trial: take only a Rs.1 authorization at signup to register the
+                // mandate (cards require >= Rs.1; UPI accepts it too). The first REAL
+                // plan charge happens at trial-end via RenewalChargeService, since
+                // applyAutopaySetup set next_charge_at = now + trialDays. The mandate
+                // cap (max_amount) still comes from AUTOPAY_SETTING below, so future
+                // renewals of the full plan price are authorized.
+                if (Boolean.TRUE.equals(userPlan.getIsTrial())) {
+                    mandateRequest.setAmount(1.0);
+                    log.info("Trial enrollment: taking Rs.1 mandate authorization for user {} plan {} (first real charge at trial end)",
+                            user.getId(), userPlan.getId());
+                }
                 applyMandateMaxAmount(mandateRequest, enrollInvite, paymentPlan);
                 paymentResponseDTO = paymentService.handleMandatePayment(
                         user,

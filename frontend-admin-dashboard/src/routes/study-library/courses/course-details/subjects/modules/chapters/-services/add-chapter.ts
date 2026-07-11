@@ -24,7 +24,12 @@ export const useAddChapter = () => {
                 status: chapter.status,
                 file_id: chapter.file_id,
                 description: chapter.description,
-                chapter_order: chapter.chapter_order,
+                // Backend uses 1-based ordering and, when chapter_order is null,
+                // appends the new chapter to the end (maxOrder + 1). Callers pass
+                // 0 as an "unset" sentinel; sending that literal 0 pins every new
+                // chapter to order 0, so they tie at the top and shuffle. Convert
+                // 0/falsy to null so the backend appends; keep any explicit order.
+                chapter_order: chapter.chapter_order ? chapter.chapter_order : null,
             };
 
             try {

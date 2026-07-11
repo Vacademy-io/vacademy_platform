@@ -101,12 +101,19 @@ export async function generateHtmlDocumentStream(
     params: GenerateHtmlParams,
     { onDelta, signal }: StreamHandlers = {}
 ): Promise<string> {
+    // NOTE: this uses raw fetch (SSE), so it must replicate what
+    // authenticatedAxiosInstance injects — crucially the `clientId` header:
+    // ai-service verifies the user against the Auth Service using
+    // `${clientId}@${username}`, so without it auth fails ("Could not validate
+    // credentials"). Bearer + clientId together mirror the axios interceptor.
     const token = getTokenFromCookie(TokenKey.accessToken);
+    const instituteId = getInstituteId();
     const res = await fetch(`${GENERATE_HTML_DOCUMENT_URL}/stream`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(instituteId ? { clientId: instituteId } : {}),
         },
         body: JSON.stringify(requestBody(params)),
         signal,

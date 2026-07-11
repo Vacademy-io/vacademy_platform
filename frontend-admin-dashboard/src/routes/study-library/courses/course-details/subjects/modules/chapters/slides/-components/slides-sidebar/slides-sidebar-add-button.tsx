@@ -204,9 +204,9 @@ export const ChapterSidebarAddButton = () => {
                         description: 'Start with blank document',
                     },
                     {
-                        label: 'Create HTML document',
+                        label: 'AI document',
                         value: 'create-html-doc',
-                        description: 'Blank document in the new editor',
+                        description: 'Rich interactive page authored by AI',
                     },
                 ],
             },

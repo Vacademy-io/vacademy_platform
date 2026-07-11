@@ -205,6 +205,7 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
           );
         case "DOC":
         case "DOCX":
+        case "HTML":
           return (
             <FileDoc
               className={`${iconClass} text-blue-600`}
@@ -288,6 +289,7 @@ export const getSlideTypeDisplay = (slide: Slide): string => {
             break;
           case "DOC":
           case "DOCX":
+          case "HTML":
             baseType = "Reading Note";
             break;
           case "PPT":

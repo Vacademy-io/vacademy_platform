@@ -14,7 +14,8 @@ import {
     ChevronRight,
 } from 'lucide-react';
 import { SlideGeneration, SlideType, QuizQuestion } from '../../../shared/types';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
+import { HtmlDocField } from '@/components/html-slide/html-doc-field';
+import { HtmlSlidePreview } from '@/components/html-slide/html-slide-preview';
 import Editor from '@monaco-editor/react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -377,22 +378,15 @@ export const ContentEditorPanel: React.FC<ContentEditorPanelProps> = ({
                 {(slide.slideType === 'doc' ||
                     slide.slideType === 'objectives' ||
                     slide.slideType === 'topic') && (
-                        <div className="h-full overflow-y-auto">
+                        <div className="h-full overflow-y-auto p-4 sm:p-6">
                             {isEditing ? (
-                                <div className="h-full px-6 py-4 sm:px-8 sm:py-6">
-                                    <YooptaEditorWrapper
-                                        value={documentContent}
-                                        onChange={(content) => setDocumentContent(content)}
-                                        className="h-full"
-                                    />
-                                </div>
-                            ) : (
-                                <div
-                                    className="prose prose-base max-w-none px-6 py-4 sm:px-8 sm:py-6 prose-headings:text-neutral-900 prose-h1:text-2xl prose-h1:font-bold prose-h2:text-xl prose-h2:font-semibold prose-h3:text-lg prose-h3:font-semibold prose-p:text-neutral-700 prose-p:leading-relaxed"
-                                    dangerouslySetInnerHTML={{
-                                        __html: documentContent || '<p>No content available</p>',
-                                    }}
+                                <HtmlDocField
+                                    value={documentContent}
+                                    onChange={(content) => setDocumentContent(content)}
+                                    minHeight={520}
                                 />
+                            ) : (
+                                <HtmlSlidePreview html={documentContent} />
                             )}
                         </div>
                     )}

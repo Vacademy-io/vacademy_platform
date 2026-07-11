@@ -253,6 +253,7 @@ public class AiCallService {
                 .responseId(req.getResponseId())
                 .phoneNumber(phone)
                 .campaignId(campaignId)
+                .preferredNumberId(req.getPreferredNumberId())
                 .customerName(req.getCustomerName())
                 .customerEmail(req.getCustomerEmail())
                 .correlationId(callLogId)

@@ -12,11 +12,15 @@
  * cleanly instead of as raw JSON.
  */
 
+import { useState } from 'react';
 import { ListChecks, FileText, ExternalLink } from 'lucide-react';
 import { Phone, Robot } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { MyButton } from '@/components/design-system/button';
+import { AiCallChooserFields, useAiCallChooser } from '@/components/shared/leads/ai-call-chooser';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import {
     formatCustomFieldValue,
@@ -100,38 +104,98 @@ const CallButton = ({ call }: { call: CallAction }) => {
 };
 
 interface AiCallAction {
-    /** Fire the AI voice-agent call to this lead (backend resolves phone from the response id). */
-    onCall: () => void;
+    /** Fire the AI call. Optional chosen agent + caller-number ids (blank ⇒ defaults). */
+    onCall: (campaignId?: string, preferredNumberId?: string) => void;
     disabled: boolean;
     reason?: string;
     isPending: boolean;
 }
 
+const AI_PILL =
+    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors';
+const AI_PILL_MUTED = 'cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400';
+const AI_PILL_ACTIVE = 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100';
+
 /**
- * AI-call CTA — mirrors {@link CallButton} but places a call with the AI voice
- * agent instead of a counsellor. Rendered only when AI calling's lead-list
- * surface is enabled for the institute (same gate as the per-row robot button).
- * Primary accent so it reads as distinct from the teal human "Call now".
+ * AI-call CTA — mirrors {@link CallButton} but places a call with the AI voice agent.
+ * When the institute has more than one AI agent or calling number, clicking opens a
+ * small chooser (agent + caller number) before placing; otherwise it fires straight
+ * away with the defaults. Rendered only when AI calling's lead-list surface is enabled.
  */
 const AiCallButton = ({ ai }: { ai: AiCallAction }) => {
     const muted = ai.disabled || ai.isPending;
-    return (
-        <button
-            type="button"
-            title={ai.reason ?? 'Place an AI voice-agent call to this lead'}
-            aria-label="AI call lead"
-            disabled={muted}
-            onClick={ai.onCall}
-            className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                muted
-                    ? 'cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400'
-                    : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
-            )}
-        >
+    const { needsChooser } = useAiCallChooser();
+    const [open, setOpen] = useState(false);
+    const [agentId, setAgentId] = useState('');
+    const [numberId, setNumberId] = useState('');
+
+    const label = (
+        <>
             <Robot weight="fill" className="size-3.5" />
             {ai.isPending ? 'Calling…' : 'AI call'}
-        </button>
+        </>
+    );
+
+    if (!needsChooser) {
+        return (
+            <button
+                type="button"
+                title={ai.reason ?? 'Place an AI voice-agent call to this lead'}
+                aria-label="AI call lead"
+                disabled={muted}
+                onClick={() => ai.onCall()}
+                className={cn(AI_PILL, muted ? AI_PILL_MUTED : AI_PILL_ACTIVE)}
+            >
+                {label}
+            </button>
+        );
+    }
+
+    return (
+        <Popover
+            open={open}
+            onOpenChange={(o) => {
+                setOpen(o);
+                if (!o) {
+                    setAgentId('');
+                    setNumberId('');
+                }
+            }}
+        >
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    title="Place an AI voice-agent call to this lead"
+                    aria-label="AI call lead"
+                    disabled={ai.disabled}
+                    className={cn(AI_PILL, ai.disabled ? AI_PILL_MUTED : AI_PILL_ACTIVE)}
+                >
+                    {label}
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72">
+                <div className="flex flex-col gap-3">
+                    <p className="text-caption font-medium text-neutral-700">AI call options</p>
+                    <AiCallChooserFields
+                        agentId={agentId}
+                        onAgentChange={setAgentId}
+                        numberId={numberId}
+                        onNumberChange={setNumberId}
+                    />
+                    <MyButton
+                        buttonType="primary"
+                        scale="small"
+                        disable={ai.disabled || ai.isPending}
+                        onClick={() => {
+                            ai.onCall(agentId || undefined, numberId || undefined);
+                            setOpen(false);
+                        }}
+                    >
+                        {ai.isPending ? 'Calling…' : 'Place AI call'}
+                    </MyButton>
+                </div>
+            </PopoverContent>
+        </Popover>
     );
 };
 
@@ -295,11 +359,13 @@ export const LeadFormResponseCard = () => {
                   ? 'No campaign response linked — cannot place an AI call from here.'
                   : undefined,
               isPending: placeAiCallMutation.isPending,
-              onCall: () => {
+              onCall: (campaignId, preferredNumberId) => {
                   if (!responseId) return;
                   placeAiCallMutation.mutate({
                       responseId,
                       userId: leadUserId ?? undefined,
+                      campaignId,
+                      preferredNumberId,
                   });
               },
           }

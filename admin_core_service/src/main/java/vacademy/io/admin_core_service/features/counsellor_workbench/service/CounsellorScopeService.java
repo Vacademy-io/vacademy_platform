@@ -114,11 +114,34 @@ public class CounsellorScopeService {
      * <p>The admin check reads the CURRENT request's JWT (most call sites
      * only have a user id in hand). Outside a request context it resolves to
      * "not admin", i.e. scoped — the safe direction.
+     *
+     * <p><b>Prefer {@link #isScopedCaller(String, CustomUserDetails)} whenever
+     * the caller's authenticated principal is available.</b> This overload's
+     * raw-JWT-only check has no fallback to the already-validated
+     * {@code CustomUserDetails} authorities, so it can miss ADMIN for a
+     * dual ADMIN+COUNSELLOR account and wrongly scope a real admin down to
+     * their counsellor hierarchy (e.g. hiding leads assigned to counsellors
+     * outside their reporting chain) — confirmed as the cause of leads being
+     * invisible to a dual-role admin while visible to the assigned counsellor.
      */
     public boolean isScopedCaller(String instituteId, String callerUserId) {
         if (callerUserId == null || callerUserId.isBlank()) return false;
         if (!allCounsellorUserIds(instituteId).contains(callerUserId)) return false;
         return !roleAccessService.currentRequestRoles(instituteId).contains("ADMIN");
+    }
+
+    /**
+     * Same as {@link #isScopedCaller(String, String)}, but resolves roles via
+     * {@link AudienceRoleAccessService#resolvedCallerRoles} — which checks the
+     * caller's already-authenticated {@code CustomUserDetails} authorities
+     * first and only falls back to decoding the JWT — instead of always
+     * decoding the JWT. Use this whenever the caller's {@code CustomUserDetails}
+     * is in hand (virtually every controller-driven call site).
+     */
+    public boolean isScopedCaller(String instituteId, CustomUserDetails caller) {
+        if (caller == null || caller.getUserId() == null) return false;
+        if (!allCounsellorUserIds(instituteId).contains(caller.getUserId())) return false;
+        return !roleAccessService.resolvedCallerRoles(caller, instituteId).contains("ADMIN");
     }
 
     /**

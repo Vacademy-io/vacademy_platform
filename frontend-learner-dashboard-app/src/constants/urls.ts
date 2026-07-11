@@ -87,6 +87,12 @@ export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/le
 export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;
 export const LEARNER_PAYMENT_METHOD_CONFIRM_CARD = `${BASE_URL}/admin-core-service/learner/payment-method/v1/confirm-card-update`;
 export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-service/learner/payment-method/v1/billing-details`;
+
+// Learner self-service subscriptions + autopay mandate (list + cancel)
+export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner/subscription/v1`;
+export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
+
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;

@@ -26,6 +26,7 @@ import { ReferralProgramDialog } from './ReferralProgramDialog';
 import InstituteBrandingCard from './-components/InstituteBrandingCard';
 import CoursePreviewCard from './-components/CoursePreviewCard';
 import PaymentPlanCard from './-components/PaymentPlanCard';
+import AutopaySettingsCard from './-components/AutopaySettingsCard';
 import { getInviteListCustomFields, getInviteListCustomFieldsAsync } from '../../-utils/getInviteListCustomFields';
 import PlanReferralMappingCard from './-components/PlanReferralMappingCard';
 import { PlanReferralConfigDialog } from './PlanReferralConfigDialog';
@@ -856,6 +857,15 @@ const GenerateInviteLinkDialog = ({
                         memberCount: subOrg?.MEMBER_COUNT ?? null,
                     };
                 })(),
+                autopaySettings: (() => {
+                    const autopay = safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
+                        ?.AUTOPAY_SETTING;
+                    return {
+                        enabled: !!autopay?.ENABLED,
+                        trialDays: autopay?.TRIAL_DAYS ?? 0,
+                        maxAmount: autopay?.MAX_AMOUNT ?? null,
+                    };
+                })(),
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -943,6 +953,9 @@ const GenerateInviteLinkDialog = ({
                                 totalBatches={selectedBatches.length}
                             />
                             <PaymentPlanCard form={form} />
+
+                            {/* Autopay + free-trial for paid subscription plans */}
+                            <AutopaySettingsCard form={form} />
 
                             {/* Referral Program Card */}
                             <PlanReferralMappingCard form={form} />

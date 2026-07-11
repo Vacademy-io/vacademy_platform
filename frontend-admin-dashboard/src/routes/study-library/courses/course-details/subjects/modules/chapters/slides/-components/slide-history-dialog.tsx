@@ -79,7 +79,9 @@ export const SlideHistoryDialog = ({
     const queryClient = useQueryClient();
 
     const slideId = activeItem.id;
-    const isDocEditor = activeItem.document_slide?.type === 'DOC';
+    // DOC (Yoopta) and HTML (Tiptap) both store HTML — preview in an iframe.
+    const isDocEditor =
+        activeItem.document_slide?.type === 'DOC' || activeItem.document_slide?.type === 'HTML';
 
     const historyQuery = useQuery({
         queryKey: ['slide-content-history', slideId],

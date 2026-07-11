@@ -54,6 +54,11 @@ export const SCRAPE_URL = `${AI_SERVICE_BASE_URL}/utils/scrape-url`;
 // Response: { markdown: string, model: string }.
 export const GENERATE_TRANSCRIPT_NOTES_URL = `${AI_SERVICE_BASE_URL}/transcript/generate-notes`;
 
+// HTML Document slide — AI generates/edits creative standalone HTML.
+// Body: { prompt, current_html?, institute_id?, idempotency_key? }.
+// Response: { html: string, model: string }.
+export const GENERATE_HTML_DOCUMENT_URL = `${AI_SERVICE_BASE_URL}/html-doc/v1/generate`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;

@@ -24,6 +24,14 @@ public interface SubOrgRegistrationRepository extends JpaRepository<SubOrgRegist
     /** Webhook lookup: flip PENDING_PAYMENT → COMPLETED once the spawned sub-org's plan activates. */
     Optional<SubOrgRegistration> findFirstBySpawnedSubOrgIdAndStatus(String spawnedSubOrgId, String status);
 
+    /** Newest resumable registration for (template, email) — resume entry point. */
+    Optional<SubOrgRegistration> findFirstByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusInOrderByCreatedAtDesc(
+            String templateInviteId, String adminEmail, List<String> statuses);
+
+    /** All rows that currently block a fresh /start for (template, email). */
+    List<SubOrgRegistration> findAllByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
+            String templateInviteId, String adminEmail, List<String> statuses);
+
     /** KYC webhook lookup by the verification id we sent to Cashfree SecureID. */
     Optional<SubOrgRegistration> findFirstByKycVerificationId(String kycVerificationId);
 

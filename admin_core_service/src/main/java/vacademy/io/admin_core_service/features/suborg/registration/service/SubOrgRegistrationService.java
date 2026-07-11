@@ -30,6 +30,16 @@ import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgReg
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicPaymentPlanDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.PublicTemplateDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationStatusResponseDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.ResumeDetailsDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.ResumeRegistrationRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.ResumeVerifyRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.ResumeVerifyResponseDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RetryPaymentRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.payments.service.PaymentService;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.StartRegistrationResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.UpdateDetailsRequestDTO;
@@ -76,6 +86,8 @@ public class SubOrgRegistrationService {
     private static final String DEFAULT_ADMIN_PORTAL_URL = "https://dash.vacademy.io";
 
     private final SubOrgRegistrationRepository registrationRepository;
+    private final UserPlanRepository userPlanRepository;
+    private final PaymentService paymentService;
     private final InstituteRepository instituteRepository;
     private final PaymentOptionRepository paymentOptionRepository;
     private final EnrollInviteRepository enrollInviteRepository;
@@ -278,14 +290,33 @@ public class SubOrgRegistrationService {
      * One live registration per (template, email): verified-but-unfinished or completed
      * attempts block re-registration; unverified DRAFTs don't (typos, abandoned forms).
      */
+    private static final long STALE_OTP_VERIFIED_MS = 7L * 24 * 60 * 60 * 1000;
+
     private void assertNoDuplicateRegistration(String templateInviteId, String email) {
-        boolean duplicate = registrationRepository
-                .existsByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
+        List<SubOrgRegistration> blockers = registrationRepository
+                .findAllByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusIn(
                         templateInviteId, email,
                         List.of(SubOrgRegistrationStatus.OTP_VERIFIED.name(),
                                 SubOrgRegistrationStatus.PENDING_PAYMENT.name(),
                                 SubOrgRegistrationStatus.COMPLETED.name()));
-        if (duplicate) {
+        Timestamp staleBefore = new Timestamp(System.currentTimeMillis() - STALE_OTP_VERIFIED_MS);
+        boolean blocked = false;
+        for (SubOrgRegistration blocker : blockers) {
+            // Week-old verified-but-unfinished attempts stop wedging the email —
+            // nothing was spawned for them. PENDING_PAYMENT/COMPLETED always block
+            // (a sub-org exists); those resolve via resume, never expiry.
+            boolean staleOtpVerified =
+                    SubOrgRegistrationStatus.OTP_VERIFIED.name().equals(blocker.getStatus())
+                            && blocker.getCreatedAt() != null
+                            && blocker.getCreatedAt().before(staleBefore);
+            if (staleOtpVerified) {
+                blocker.setStatus(SubOrgRegistrationStatus.FAILED.name());
+                registrationRepository.save(blocker);
+            } else {
+                blocked = true;
+            }
+        }
+        if (blocked) {
             throw new VacademyException(
                     "A registration with this email already exists for this link");
         }
@@ -330,8 +361,25 @@ public class SubOrgRegistrationService {
                     .build();
         }
 
+        verifyOtpWithNotificationService(registration.getAdminEmail(), otp);
+
+        // Only DRAFT moves forward — never regress a later status (a stale tab
+        // verifying against a PENDING_PAYMENT row must not rewind it).
+        if (SubOrgRegistrationStatus.DRAFT.name().equals(registration.getStatus())) {
+            registration.setStatus(SubOrgRegistrationStatus.OTP_VERIFIED.name());
+            registration.setOtpVerifiedAt(new Timestamp(System.currentTimeMillis()));
+            registrationRepository.save(registration);
+        }
+        return StartRegistrationResponseDTO.builder()
+                .registrationId(registration.getId())
+                .status(registration.getStatus())
+                .build();
+    }
+
+    /** Strict one-shot OTP check against the notification service; throws when invalid. */
+    private void verifyOtpWithNotificationService(String email, String otp) {
         EmailOTPRequest verifyRequest = EmailOTPRequest.builder()
-                .to(registration.getAdminEmail())
+                .to(email)
                 .otp(otp.trim())
                 .build();
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
@@ -341,13 +389,145 @@ public class SubOrgRegistrationService {
         if (!verified) {
             throw new VacademyException("Invalid or expired OTP");
         }
+    }
 
-        registration.setStatus(SubOrgRegistrationStatus.OTP_VERIFIED.name());
-        registration.setOtpVerifiedAt(new Timestamp(System.currentTimeMillis()));
-        registrationRepository.save(registration);
+    /**
+     * Resume an in-flight registration for an email that /start refuses as a
+     * duplicate. Same trust bar as registering: a fresh OTP goes to the stored
+     * email; only the id + status are revealed before it is verified.
+     */
+    @Transactional
+    public StartRegistrationResponseDTO resume(ResumeRegistrationRequestDTO request) {
+        EnrollInvite template = requireOpenTemplate(request.getInstituteId(), request.getCode());
+        if (!StringUtils.hasText(request.getAdminEmail())) {
+            throw new VacademyException("Admin email is required");
+        }
+        SubOrgRegistration registration = registrationRepository
+                .findFirstByTemplateInviteIdAndAdminEmailIgnoreCaseAndStatusInOrderByCreatedAtDesc(
+                        template.getId(), request.getAdminEmail().trim().toLowerCase(),
+                        List.of(SubOrgRegistrationStatus.OTP_VERIFIED.name(),
+                                SubOrgRegistrationStatus.PENDING_PAYMENT.name(),
+                                SubOrgRegistrationStatus.COMPLETED.name()))
+                .orElseThrow(() -> new VacademyException(
+                        "No registration found for this email on this link"));
+        sendOtp(registration);
         return StartRegistrationResponseDTO.builder()
                 .registrationId(registration.getId())
                 .status(registration.getStatus())
+                .build();
+    }
+
+    /**
+     * Strict OTP verification for resume — ALWAYS verifies the code (no idempotent
+     * short-circuit: the snapshot carries personal data) and never mutates a
+     * post-OTP status. The wizard uses the snapshot to prefill and jump to the
+     * right step (OTP_VERIFIED -> steps, PENDING_PAYMENT -> retry, COMPLETED -> done).
+     */
+    @Transactional
+    public ResumeVerifyResponseDTO resumeVerify(ResumeVerifyRequestDTO request) {
+        if (!StringUtils.hasText(request.getOtp())) {
+            throw new VacademyException("OTP is required");
+        }
+        SubOrgRegistration registration = requireRegistration(request.getRegistrationId());
+        verifyOtpWithNotificationService(registration.getAdminEmail(), request.getOtp());
+        if (SubOrgRegistrationStatus.DRAFT.name().equals(registration.getStatus())) {
+            registration.setStatus(SubOrgRegistrationStatus.OTP_VERIFIED.name());
+            registration.setOtpVerifiedAt(new Timestamp(System.currentTimeMillis()));
+            registrationRepository.save(registration);
+        }
+        return ResumeVerifyResponseDTO.builder()
+                .registrationId(registration.getId())
+                .status(registration.getStatus())
+                .kycStatus(registration.getKycStatus())
+                .details(ResumeDetailsDTO.builder()
+                        .orgName(registration.getOrgName())
+                        .orgLogoFileId(registration.getOrgLogoFileId())
+                        .adminName(registration.getAdminName())
+                        .adminEmail(registration.getAdminEmail())
+                        .adminPhone(registration.getAdminPhone())
+                        .addressLine1(registration.getAddressLine1())
+                        .addressLine2(registration.getAddressLine2())
+                        .city(registration.getCity())
+                        .state(registration.getState())
+                        .pincode(registration.getPincode())
+                        .build())
+                .build();
+    }
+
+    /**
+     * Fresh gateway session for a PENDING_PAYMENT registration. The sub-org and
+     * its PENDING_FOR_PAYMENT plan already exist (spawned at complete()); pricing,
+     * currency and vendor are stamped server-side from the stored plan + template
+     * settings — the client only contributes the vendor sub-request (e.g. the
+     * Cashfree return_url). Reuses PaymentService.handleUserPlanPayment's guest
+     * branch, so the webhook-driven activation path is identical to first payment.
+     */
+    @Transactional
+    public CompleteRegistrationResponseDTO retryPayment(RetryPaymentRequestDTO request) {
+        SubOrgRegistration registration = registrationRepository
+                .findWithLockById(request.getRegistrationId())
+                .orElseThrow(() -> new VacademyException("Registration not found"));
+        if (SubOrgRegistrationStatus.COMPLETED.name().equals(registration.getStatus())) {
+            // A webhook confirmed an earlier attempt while the user was away.
+            return CompleteRegistrationResponseDTO.builder()
+                    .registrationId(registration.getId())
+                    .status(registration.getStatus())
+                    .subOrgId(registration.getSpawnedSubOrgId())
+                    .adminEmail(registration.getAdminEmail())
+                    .build();
+        }
+        if (!SubOrgRegistrationStatus.PENDING_PAYMENT.name().equals(registration.getStatus())) {
+            throw new VacademyException("This registration has no pending payment");
+        }
+        if (request.getPaymentInitiationRequest() == null) {
+            throw new VacademyException("payment_initiation_request is required");
+        }
+        if (!StringUtils.hasText(registration.getSpawnedUserId())
+                || !StringUtils.hasText(registration.getSpawnedInviteId())) {
+            throw new VacademyException("Registration is missing its payment context");
+        }
+        UserPlan userPlan = userPlanRepository
+                .findFirstByUserIdAndEnrollInviteIdOrderByCreatedAtDesc(
+                        registration.getSpawnedUserId(), registration.getSpawnedInviteId())
+                .orElseThrow(() -> new VacademyException("No pending subscription found to pay for"));
+        PaymentPlan plan = userPlan.getPaymentPlan();
+        if (plan == null) {
+            throw new VacademyException("No payment plan on the pending subscription");
+        }
+
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting = enrollInviteRepository
+                .findById(registration.getTemplateInviteId())
+                .map(t -> SubOrgRegistrationSettings.parse(t.getSettingJson()))
+                .orElse(null);
+
+        // Server-authoritative fields — whatever the client sent is overridden.
+        PaymentInitiationRequestDTO init = request.getPaymentInitiationRequest();
+        init.setAmount(plan.getActualPrice());
+        init.setCurrency(StringUtils.hasText(plan.getCurrency())
+                ? plan.getCurrency()
+                : setting != null ? setting.getCurrency() : null);
+        if (setting != null) {
+            init.setVendor(setting.getVendor());
+            init.setVendorId(setting.getVendorId());
+        }
+        init.setInstituteId(registration.getInstituteId());
+        if (!StringUtils.hasText(init.getEmail())) {
+            init.setEmail(registration.getAdminEmail());
+        }
+        // handleUserPlanPayment mints a fresh payment log and uses it as the order id.
+        init.setOrderId(null);
+
+        PaymentResponseDTO paymentResponse = paymentService.handleUserPlanPayment(
+                init, registration.getInstituteId(), null, userPlan.getId());
+        log.info("Registration {} payment retry initiated on userPlan {}",
+                registration.getId(), userPlan.getId());
+        return CompleteRegistrationResponseDTO.builder()
+                .registrationId(registration.getId())
+                .status(registration.getStatus())
+                .subOrgId(registration.getSpawnedSubOrgId())
+                .adminEmail(registration.getAdminEmail())
+                .userPlanId(userPlan.getId())
+                .paymentResponse(paymentResponse)
                 .build();
     }
 

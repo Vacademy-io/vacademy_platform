@@ -720,6 +720,12 @@ public class RazorpayWebHookService {
             log.info("Successfully saved Razorpay payment method for user: {} " +
                     "with token: {}", userId, tokenId);
 
+            // Step 6: Record a per-plan recurring mandate so RenewalChargeService
+            // can charge this token off-session (keyed by userPlanId). Only the
+            // plan flagged auto_renewal_enabled is ever charged, so persisting the
+            // mandate here is safe for any token capture.
+            persistRazorpayMandate(orderId, userId, instituteId, tokenId, customerId);
+
         } catch (Exception e) {
             // Don't fail the webhook if token save fails
             // Payment is already successful, token storage is just for future use
@@ -742,6 +748,36 @@ public class RazorpayWebHookService {
      * @param orderId Payment log order ID
      * @return User ID or null if not found
      */
+    /**
+     * Persist a per-plan recurring mandate from a captured Razorpay token so the
+     * auto-charge scheduler can debit it off-session. Keyed by the plan behind
+     * this payment log. Best-effort — never fails the webhook.
+     */
+    private void persistRazorpayMandate(String orderId, String userId, String instituteId,
+            String tokenId, String customerId) {
+        try {
+            Optional<PaymentLog> plOpt = paymentLogRepository.findById(orderId);
+            if (plOpt.isEmpty() || plOpt.get().getUserPlan() == null) {
+                log.debug("No user plan for orderId {} — skipping mandate persist", orderId);
+                return;
+            }
+            String userPlanId = plOpt.get().getUserPlan().getId();
+            vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo mandate =
+                    vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.builder()
+                            .vendor(PaymentGateway.RAZORPAY.name())
+                            .customerId(customerId)
+                            .providerRef(tokenId)
+                            .frequency("as_presented")
+                            .status(vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.STATUS_ACTIVE)
+                            .build();
+            userInstitutePaymentGatewayMappingService.upsertMandate(
+                    userId, instituteId, PaymentGateway.RAZORPAY.name(), userPlanId, mandate);
+            log.info("Persisted Razorpay mandate for plan {} (token {})", userPlanId, tokenId);
+        } catch (Exception e) {
+            log.error("Failed to persist Razorpay mandate for orderId {}: {}", orderId, e.getMessage());
+        }
+    }
+
     private String getUserIdFromPaymentLog(String orderId) {
         try {
             Optional<PaymentLog> paymentLogOptional = paymentLogRepository.findById(orderId);

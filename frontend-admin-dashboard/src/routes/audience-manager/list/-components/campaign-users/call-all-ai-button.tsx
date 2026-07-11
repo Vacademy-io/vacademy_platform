@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { useAiCallButtonEnabled } from '@/components/shared/leads';
+import { AiCallChooserFields } from '@/components/shared/leads/ai-call-chooser';
 import { startAiCallCampaign } from '@/components/shared/leads/services/start-ai-campaign';
 
 interface CallAllWithAiButtonProps {
@@ -32,6 +33,9 @@ export function CallAllWithAiButton({
     const enabled = useAiCallButtonEnabled();
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
+    // Chooser: '' = default agent / auto number (only shown when >1 exists).
+    const [agentId, setAgentId] = useState('');
+    const [numberId, setNumberId] = useState('');
 
     // Dry run: count eligible leads for the confirm copy, WITHOUT placing any calls.
     const preview = useQuery({
@@ -45,7 +49,13 @@ export function CallAllWithAiButton({
 
     const start = useMutation({
         mutationFn: () =>
-            startAiCallCampaign({ audienceId, instituteId: instituteId!, dryRun: false }),
+            startAiCallCampaign({
+                audienceId,
+                instituteId: instituteId!,
+                dryRun: false,
+                campaignId: agentId || undefined,
+                preferredNumberId: numberId || undefined,
+            }),
         onSuccess: (res) => {
             toast.success(res.message || `Queued ${res.eligible} AI call(s)`);
             setOpen(false);
@@ -122,6 +132,14 @@ export function CallAllWithAiButton({
                                 <p className="text-warning-600">
                                     No leads in this list have a contact number to call.
                                 </p>
+                            )}
+                            {eligible > 0 && (
+                                <AiCallChooserFields
+                                    agentId={agentId}
+                                    onAgentChange={setAgentId}
+                                    numberId={numberId}
+                                    onNumberChange={setNumberId}
+                                />
                             )}
                         </>
                     )}

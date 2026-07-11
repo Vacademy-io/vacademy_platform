@@ -50,6 +50,22 @@ public class WhiteLabelStatusResponse {
         @JsonProperty("subdomain")
         private String subdomain;
 
+        /**
+         * Live Cloudflare Pages custom-domain status for this host, e.g.
+         * "active", "pending", "initializing". Null when Pages provisioning
+         * isn't configured or the host isn't attached to a Pages project yet.
+         */
+        @JsonProperty("pages_status")
+        private String pagesStatus;
+
+        /**
+         * CNAME target the customer must point this host at (i.e.
+         * "<project>.pages.dev") when it's an external domain awaiting DNS.
+         * Informational for in-zone hosts (Cloudflare creates their DNS itself).
+         */
+        @JsonProperty("pages_cname_target")
+        private String pagesCnameTarget;
+
         // ── Branding ──────────────────────────────────────────────────────
         @JsonProperty("tab_text")
         private String tabText;

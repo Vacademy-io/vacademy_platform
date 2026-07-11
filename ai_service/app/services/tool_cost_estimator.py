@@ -119,6 +119,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # One HTML Document slide generation OR conversational edit = one large
+    # creative-HTML LLM call (pro model, up to ~32k output tokens). Flat per
+    # call; charged as max(flat, actual token cost). Owner chose flat pricing.
+    "html_document": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

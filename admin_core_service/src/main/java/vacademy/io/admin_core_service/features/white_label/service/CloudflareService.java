@@ -45,6 +45,9 @@ public class CloudflareService {
     @Value("${cloudflare.zone.id}")
     private String zoneId;
 
+    @Value("${cloudflare.account.id:}")
+    private String accountId;
+
     private final RestTemplate restTemplate;
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -61,6 +64,58 @@ public class CloudflareService {
     }
 
     /**
+     * Returns true when Cloudflare Pages custom-domain provisioning is available,
+     * i.e. an API token (with Pages:Edit scope) and the account id are configured.
+     * When enabled, the white-label setup attaches each host to its SPA Pages
+     * project so the host is actually served — a DNS CNAME alone never is.
+     */
+    public boolean isPagesEnabled() {
+        return StringUtils.hasText(apiToken) && StringUtils.hasText(accountId);
+    }
+
+    /**
+     * Attaches {@code host} as a custom domain on the given Cloudflare Pages
+     * {@code projectName} (idempotent — a no-op if it's already attached).
+     *
+     * For a host inside a Cloudflare zone on our account (e.g. a *.vacademy.io
+     * subdomain) Cloudflare provisions the DNS record and certificate itself.
+     * For a fully external customer domain the returned status stays "pending"
+     * until the customer points a CNAME at {@code <project>.pages.dev} and
+     * Cloudflare validates it.
+     */
+    public WhiteLabelSetupResponse.PagesDomainResult upsertPagesCustomDomain(String projectName, String host) {
+        String pagesTarget = projectName + ".pages.dev";
+
+        // 1) Already attached? Then just report its current status.
+        CfPagesDomain existing = getPagesDomain(projectName, host);
+        if (existing != null) {
+            log.info("[CloudflareService] Pages custom domain already attached: {} on project {} (status={})",
+                    host, projectName, existing.getStatus());
+            return buildPagesResult("EXISTS", projectName, host, existing.getStatus(), pagesTarget);
+        }
+
+        // 2) Attach it.
+        String url = CF_API_BASE + "/accounts/" + accountId + "/pages/projects/" + projectName + "/domains";
+        Map<String, Object> body = Map.of("name", host);
+        try {
+            ResponseEntity<CfPagesDomainResponse> resp = restTemplate.exchange(
+                    url, HttpMethod.POST,
+                    new HttpEntity<>(body, authHeaders()),
+                    CfPagesDomainResponse.class);
+            CfPagesDomainResponse r = resp.getBody();
+            String status = (r != null && r.getResult() != null) ? r.getResult().getStatus() : null;
+            log.info("[CloudflareService] Attached Pages custom domain {} to project {} (status={})",
+                    host, projectName, status);
+            return buildPagesResult("CREATED", projectName, host, status, pagesTarget);
+        } catch (HttpClientErrorException e) {
+            log.error("[CloudflareService] Failed to attach Pages custom domain {} to project {}: {}",
+                    host, projectName, e.getResponseBodyAsString());
+            throw new RuntimeException(
+                    "Cloudflare Pages domain attach failed for " + host + ": " + e.getResponseBodyAsString());
+        }
+    }
+
+    /**
      * Creates or updates a proxied CNAME record in Cloudflare.
      *
      * @param name   DNS name e.g. "learn.myschool.com" or "myschool.vacademy.io"
@@ -74,6 +129,20 @@ public class CloudflareService {
         } else {
             return createCname(name, target);
         }
+    }
+
+    /**
+     * Returns the live Cloudflare Pages custom-domain status for {@code host} on
+     * {@code projectName} (e.g. "active", "pending", "initializing"), or null when
+     * Pages isn't configured, the args are blank, or the host isn't attached.
+     * Read-only and failure-safe — never throws.
+     */
+    public String getPagesCustomDomainStatus(String projectName, String host) {
+        if (!isPagesEnabled() || !StringUtils.hasText(projectName) || !StringUtils.hasText(host)) {
+            return null;
+        }
+        CfPagesDomain d = getPagesDomain(projectName, host);
+        return d != null ? d.getStatus() : null;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -163,6 +232,41 @@ public class CloudflareService {
                 .build();
     }
 
+    /**
+     * Returns the Pages custom-domain object if {@code host} is already attached
+     * to {@code projectName}, else null (including when it simply isn't attached,
+     * which Cloudflare reports as 404).
+     */
+    private CfPagesDomain getPagesDomain(String projectName, String host) {
+        try {
+            String url = CF_API_BASE + "/accounts/" + accountId + "/pages/projects/" + projectName
+                    + "/domains/" + host;
+            ResponseEntity<CfPagesDomainResponse> resp = restTemplate.exchange(
+                    url, HttpMethod.GET,
+                    new HttpEntity<>(authHeaders()),
+                    CfPagesDomainResponse.class);
+            CfPagesDomainResponse body = resp.getBody();
+            return body != null ? body.getResult() : null;
+        } catch (HttpClientErrorException.NotFound nf) {
+            return null;
+        } catch (Exception e) {
+            log.warn("[CloudflareService] Could not check existing Pages domain {} on {}: {}",
+                    host, projectName, e.getMessage());
+            return null;
+        }
+    }
+
+    private WhiteLabelSetupResponse.PagesDomainResult buildPagesResult(
+            String action, String project, String name, String status, String pagesTarget) {
+        return WhiteLabelSetupResponse.PagesDomainResult.builder()
+                .project(project)
+                .name(name)
+                .status(status)
+                .action(action)
+                .pagesCnameTarget(pagesTarget)
+                .build();
+    }
+
     // ── Inner types for Cloudflare API JSON ───────────────────────────────────
 
     @Data
@@ -186,5 +290,19 @@ public class CloudflareService {
 
         @JsonProperty("zone_id")
         private String zoneId;
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class CfPagesDomainResponse {
+        private CfPagesDomain result;
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class CfPagesDomain {
+        private String id;
+        private String name;
+        private String status;
     }
 }

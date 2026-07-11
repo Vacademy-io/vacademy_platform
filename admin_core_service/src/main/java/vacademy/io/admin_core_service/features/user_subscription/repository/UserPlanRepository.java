@@ -105,6 +105,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("instituteId") String instituteId,
                         @Param("statuses") List<String> statuses);
 
+        /** Newest plan a user holds on a given invite — sub-org registration payment retry. */
+        Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdOrderByCreatedAtDesc(
+                        String userId, String enrollInviteId);
+
         Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
                         String userId,
                         String enrollInviteId,
@@ -241,4 +245,43 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         String userId,
                         String paymentOptionId,
                         List<String> statuses);
+
+        /**
+         * Auto-charge scheduler due-query (V369 autopay). Returns ACTIVE plans
+         * that have opted into autopay and whose next_charge_at has arrived.
+         * Only plans with auto_renewal_enabled = true are ever selected, so
+         * pre-existing (non-migrated) plans are never auto-charged. EnrollInvite +
+         * PaymentPlan are fetched because the charge step needs the institute_id,
+         * vendor and amount off them.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                LEFT JOIN FETCH up.paymentPlan pp
+                WHERE up.status = 'ACTIVE'
+                  AND up.autoRenewalEnabled = true
+                  AND up.nextChargeAt IS NOT NULL
+                  AND up.nextChargeAt <= :now
+                """)
+        List<UserPlan> findDueForRenewal(@Param("now") java.util.Date now);
+
+        /**
+         * Atomically CLAIM a plan for a renewal charge (multi-replica safe). The
+         * daily scheduler fires on every replica, so before charging, each replica
+         * runs this — only the one whose UPDATE actually flips next_charge_at→null
+         * (rows-affected = 1) proceeds to charge; the rest see 0 and skip. Also
+         * bumps the attempt counter + timestamp in the same atomic write so the
+         * claim and dunning bookkeeping can't diverge.
+         */
+        @org.springframework.transaction.annotation.Transactional
+        @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+        @Query("""
+                UPDATE UserPlan up
+                   SET up.nextChargeAt = null,
+                       up.renewalAttemptCount = (CASE WHEN up.renewalAttemptCount IS NULL
+                                                      THEN 0 ELSE up.renewalAttemptCount END) + 1,
+                       up.lastRenewalAttemptAt = :now
+                 WHERE up.id = :id AND up.nextChargeAt IS NOT NULL
+                """)
+        int claimForRenewal(@Param("id") String id, @Param("now") java.util.Date now);
 }

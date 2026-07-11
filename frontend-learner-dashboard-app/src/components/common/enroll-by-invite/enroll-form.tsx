@@ -308,6 +308,26 @@ const EnrollByInvite = ({
       ?.collectBillingContactDetails
   );
 
+  // Autopay: read the invite's AUTOPAY_SETTING so we can require an explicit
+  // auto-renewal consent before payment for recurring subscriptions.
+  const autopayConfig = useMemo(() => {
+    try {
+      if (inviteData?.setting_json) {
+        const settings = JSON.parse(inviteData.setting_json);
+        return (settings?.setting?.AUTOPAY_SETTING ?? null) as {
+          ENABLED?: boolean;
+          TRIAL_DAYS?: number;
+          MAX_AMOUNT?: number;
+        } | null;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }, [inviteData?.setting_json]);
+  const isAutopay = Boolean(autopayConfig?.ENABLED);
+  const [autopayConsent, setAutopayConsent] = useState(false);
+
   // Per-field config for the billing-contact form. The admin writes this under
   // postformfillConfiguration.billingContactFields in the invite settingJson;
   // RegistrationStep falls back to the legacy hard-coded labels + required
@@ -1134,6 +1154,10 @@ const EnrollByInvite = ({
   };
 
   const handleSubmitEnrollment = async () => {
+    if (isAutopay && !autopayConsent) {
+      toast.error("Please agree to the auto-renewal terms to continue.");
+      return;
+    }
     // ─── CPO payment flow ─────────────────────────────────────────────────────
     // Two-phase: enroll without payment (creates UserPlan + SFP rows) → pay the
     // selected amount via payCpoInstallments which has its own customAmount path.
@@ -1892,6 +1916,10 @@ const EnrollByInvite = ({
             currency: orderDetails.currency || "INR",
             contact: orderDetails.contact || "",
             email: orderDetails.email || "",
+            // Autopay: present when the backend registered a recurring mandate;
+            // drives Checkout into UPI-Autopay / card-mandate mode.
+            recurring: orderDetails.recurring,
+            customerId: orderDetails.customerId,
           });
         } else {
           throw new Error("Razorpay component not ready");
@@ -2591,6 +2619,7 @@ const EnrollByInvite = ({
       }
       case 2:
         return (
+          <>
           <ReviewStep
             courseData={{
               course: courseData.course,
@@ -2616,6 +2645,26 @@ const EnrollByInvite = ({
             onCouponChange={handleCouponChange}
             initialCouponCode={appliedCouponCode}
           />
+          {isAutopay && (
+            <label className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="mt-1 size-4"
+                checked={autopayConsent}
+                onChange={(e) => setAutopayConsent(e.target.checked)}
+              />
+              <span>
+                I agree to auto-renewal:{" "}
+                <span className="font-semibold">
+                  {enrollmentData.selectedPayment?.currency || "INR"}{" "}
+                  {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
+                </span>{" "}
+                will be charged to my saved payment method each billing period. I
+                can cancel anytime from my profile.
+              </span>
+            </label>
+          )}
+          </>
         );
       case 3: {
         const vendor = propVendor || getPaymentVendor(inviteData);

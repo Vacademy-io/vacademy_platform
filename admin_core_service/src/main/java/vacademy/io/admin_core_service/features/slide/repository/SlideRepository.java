@@ -16,7 +16,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     COALESCE(SUM(CASE WHEN s.sourceType = 'HTML_VIDEO' THEN 1 ELSE 0 END), 0) AS htmlVideoCount,
                     COALESCE(SUM(CASE WHEN s.sourceType = 'SCORM' THEN 1 ELSE 0 END), 0) AS scormCount,
                     COALESCE(SUM(CASE WHEN s.sourceType = 'DOCUMENT' AND EXISTS (SELECT 1 FROM DocumentSlide d WHERE d.id = s.sourceId AND d.type = 'PDF') THEN 1 ELSE 0 END), 0) AS pdfCount,
-                    COALESCE(SUM(CASE WHEN s.sourceType = 'DOCUMENT' AND EXISTS (SELECT 1 FROM DocumentSlide d WHERE d.id = s.sourceId AND d.type = 'DOC') THEN 1 ELSE 0 END), 0) AS docCount,
+                    COALESCE(SUM(CASE WHEN s.sourceType = 'DOCUMENT' AND EXISTS (SELECT 1 FROM DocumentSlide d WHERE d.id = s.sourceId AND d.type IN ('DOC', 'HTML')) THEN 1 ELSE 0 END), 0) AS docCount,
                     COALESCE(SUM(CASE WHEN s.sourceType NOT IN ('VIDEO', 'HTML_VIDEO', 'SCORM', 'DOCUMENT') THEN 1 ELSE 0 END), 0) AS unknownCount
                 )
                 FROM ChapterToSlides cts

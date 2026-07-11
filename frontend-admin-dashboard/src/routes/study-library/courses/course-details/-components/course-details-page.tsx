@@ -82,7 +82,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { type DisplaySettingsData } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { extractTextFromHTML } from '@/constants/helper';
+import { htmlHasRenderableContent } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
 import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
@@ -1610,9 +1610,9 @@ export const CourseDetailsPage = () => {
                             selectedBatchId={effectiveSelectedBatchId}
                         />
 
-                        {(extractTextFromHTML(form.getValues('courseData').whatYoullLearn) ||
-                            extractTextFromHTML(form.getValues('courseData').aboutTheCourse) ||
-                            extractTextFromHTML(form.getValues('courseData').whoShouldLearn) ||
+                        {(htmlHasRenderableContent(form.getValues('courseData').whatYoullLearn) ||
+                            htmlHasRenderableContent(form.getValues('courseData').aboutTheCourse) ||
+                            htmlHasRenderableContent(form.getValues('courseData').whoShouldLearn) ||
                             (instructors && instructors.length > 0 && isAdminOrTeacher)) && (
                             <Accordion
                                 type="single"
@@ -1630,7 +1630,7 @@ export const CourseDetailsPage = () => {
                                     <AccordionContent className="px-3 pb-3 lg:px-4 lg:pb-4">
                                         <div className="space-y-3 lg:space-y-4">
                                             {/* What You'll Learn Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').whatYoullLearn
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm">
@@ -1651,7 +1651,7 @@ export const CourseDetailsPage = () => {
                                             )}
 
                                             {/* About Content Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').aboutTheCourse
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm">
@@ -1676,7 +1676,7 @@ export const CourseDetailsPage = () => {
                                             )}
 
                                             {/* Who Should Join Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').whoShouldLearn
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm">

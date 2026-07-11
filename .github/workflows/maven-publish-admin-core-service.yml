@@ -137,6 +137,9 @@ jobs:
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }} \
             CLOUDFLARE_ZONE_ID=${{ secrets.CLOUDFLARE_ZONE_ID }} \
+            CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }} \
+            CLOUDFLARE_ADMIN_PAGES_PROJECT=${{ secrets.CLOUDFLARE_ADMIN_PAGES_PROJECT }} \
+            CLOUDFLARE_LEARNER_PAGES_PROJECT=${{ secrets.CLOUDFLARE_LEARNER_PAGES_PROJECT }} \
             BBB_CALLBACK_BASE_URL=${{ secrets.BBB_CALLBACK_BASE_URL }} \
             META_APP_ID=${{ secrets.META_APP_ID }} \
             META_APP_SECRET=${{ secrets.META_APP_SECRET }} \

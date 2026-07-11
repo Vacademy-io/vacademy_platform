@@ -145,6 +145,10 @@ interface RoutingEntry extends RoutingConfig {
     role: string;
     domain: string;
     subdomain: string;
+    /** Live Cloudflare Pages custom-domain status: active / pending / initializing / … */
+    pages_status?: string | null;
+    /** CNAME target (<project>.pages.dev) the customer must point an external domain at. */
+    pages_cname_target?: string | null;
 }
 
 interface WhiteLabelStatusResponse {
@@ -1155,6 +1159,15 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     </a>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                    {entry.pages_status && (
+                        <Badge
+                            variant="outline"
+                            className={`text-xs capitalize ${pagesStatusClass(entry.pages_status)}`}
+                            title="Cloudflare custom-domain status"
+                        >
+                            {entry.pages_status}
+                        </Badge>
+                    )}
                     {entry.tab_text && (
                         <span className="text-xs text-slate-500 hidden sm:inline">
                             Tab: {entry.tab_text}
@@ -1174,6 +1187,36 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     )}
                 </div>
             </div>
+
+            {/* CNAME record to add — shown for a pending external (non-vacademy.io) domain */}
+            {entry.pages_status &&
+                entry.pages_status.toLowerCase() !== 'active' &&
+                entry.pages_cname_target &&
+                !full.toLowerCase().endsWith('.vacademy.io') && (
+                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-3">
+                        <p className="mb-2 text-xs font-medium text-amber-800">
+                            Add this DNS record at your provider for{' '}
+                            <span className="font-mono">{entry.domain}</span> to activate this domain:
+                        </p>
+                        <div className="space-y-1 text-xs font-mono">
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Type</span>
+                                <span className="text-slate-800">CNAME</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Name</span>
+                                <span className="text-slate-800">{entry.subdomain}</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Value</span>
+                                <span className="break-all text-slate-800">{entry.pages_cname_target}</span>
+                            </div>
+                        </div>
+                        <p className="mt-2 text-xs text-amber-700">
+                            SSL activates automatically once Cloudflare validates the record.
+                        </p>
+                    </div>
+                )}
 
             {/* Expanded details */}
             {expanded && (

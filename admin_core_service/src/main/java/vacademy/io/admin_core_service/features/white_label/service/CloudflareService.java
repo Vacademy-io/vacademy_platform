@@ -131,6 +131,20 @@ public class CloudflareService {
         }
     }
 
+    /**
+     * Returns the live Cloudflare Pages custom-domain status for {@code host} on
+     * {@code projectName} (e.g. "active", "pending", "initializing"), or null when
+     * Pages isn't configured, the args are blank, or the host isn't attached.
+     * Read-only and failure-safe — never throws.
+     */
+    public String getPagesCustomDomainStatus(String projectName, String host) {
+        if (!isPagesEnabled() || !StringUtils.hasText(projectName) || !StringUtils.hasText(host)) {
+            return null;
+        }
+        CfPagesDomain d = getPagesDomain(projectName, host);
+        return d != null ? d.getStatus() : null;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private HttpHeaders authHeaders() {

@@ -76,8 +76,17 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
         String hangupUrl = answerUrls.statusBase(resolved.getWebhookToken(), spec.getCorrelationId())
                 + "&plivoEvent=hangup";
 
+        // Plivo needs a full E.164 destination. A bare 10-digit lead number (many leads
+        // are stored without the country code) is parsed by Plivo as some other region's
+        // prefix → 403 "Calls to this destination region are barred". Normalise the same
+        // way the Airtel adapter does before dialing.
+        String dialTo = toE164(spec.getPhoneNumber());
+        if (dialTo == null) {
+            throw new VacademyException("Lead has no valid phone number to dial");
+        }
+
         Map<String, Object> resp = plivoHttpClient.createCall(
-                resolved.getCredentials(), callerId, spec.getPhoneNumber(),
+                resolved.getCredentials(), callerId, dialTo,
                 answerUrl, hangupUrl, null,
                 /* recording via the bot's answer XML, not the create API */ false,
                 "40");
@@ -119,5 +128,22 @@ public class VacademyAiOutboundCaller implements AiOutboundCaller {
 
     private static String asString(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    /**
+     * Normalise a lead number to E.164 with a leading +. Indian-aware (the only
+     * market today); other formats pass through with their digits + a leading +.
+     * PlivoHttpClient strips the '+' itself, but the country code must be present
+     * or Plivo bars the call as an unroutable destination region. Mirrors
+     * AirtelOutboundCallInitiator#toE164.
+     */
+    static String toE164(String raw) {
+        if (raw == null) return null;
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.isEmpty()) return null;
+        if (digits.length() == 10) return "+91" + digits;              // bare Indian mobile
+        if (digits.length() == 11 && digits.startsWith("0")) return "+91" + digits.substring(1);
+        if (digits.length() == 12 && digits.startsWith("91")) return "+" + digits;
+        return "+" + digits;                                            // already has a country code
     }
 }

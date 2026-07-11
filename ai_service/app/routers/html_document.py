@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Optional
 
@@ -31,9 +32,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/html-doc", tags=["html-document"])
 
-# A strong general model — creative HTML/CSS/JS benefits from the pro tier.
-# Falls back to the service-wide default so a single config change moves it.
-_DEFAULT_MODEL = "google/gemini-3.1-pro-preview"
+# Creative HTML/CSS/JS is best on a strong frontend-capable model. Dedicated to
+# this endpoint (NOT the shared llm_default_model); override via HTML_DOCUMENT_MODEL.
+_DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 # HTML documents can be long (inline CSS + markup + a little JS).
 _MAX_TOKENS = 32000
 
@@ -306,7 +307,7 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
     openrouter_url: str = getattr(
         settings, "llm_base_url", "https://openrouter.ai/api/v1/chat/completions"
     )
-    model = getattr(settings, "llm_default_model", None) or _DEFAULT_MODEL
+    model = os.getenv("HTML_DOCUMENT_MODEL") or _DEFAULT_MODEL
     if not openrouter_key:
         raise HTTPException(status_code=503, detail="No LLM provider configured. Set OPENROUTER_API_KEY.")
 

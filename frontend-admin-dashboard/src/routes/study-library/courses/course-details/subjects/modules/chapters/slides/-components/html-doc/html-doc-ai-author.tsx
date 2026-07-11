@@ -17,6 +17,7 @@ import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { Slide } from '../../-hooks/use-slides';
 import { getInitialHtmlDocContent } from './html-doc-utils';
 import { generateHtmlDocumentStream, HTML_CONTENT_TYPES } from './html-doc-ai-service';
@@ -90,6 +91,9 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
 
     const html = (versionIndex >= 0 ? versions[versionIndex] : '') ?? '';
     const hasContent = !!html.trim();
+
+    // Flat per-generation credit cost (read from the cached tool-pricing rates).
+    const { credits: costCredits } = useToolCostPreview('html_document', {});
 
     const commit = (next: string) => onHtmlChange(slideIdRef.current, next);
 
@@ -390,6 +394,11 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                         >
                             <MagicWand className="size-4" />
                             {hasContent ? 'Update' : 'Generate'}
+                            {costCredits != null && (
+                                <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-caption">
+                                    {costCredits} {costCredits === 1 ? 'credit' : 'credits'}
+                                </span>
+                            )}
                         </MyButton>
                     )}
                 </div>

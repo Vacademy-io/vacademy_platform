@@ -66,6 +66,27 @@ public class OpenSubOrgRegistrationController {
                 registrationService.verifyOtp(request.getRegistrationId(), request.getOtp()));
     }
 
+    /** Resume an in-flight registration by email — sends a fresh OTP to it. */
+    @PostMapping("/resume")
+    public ResponseEntity<StartRegistrationResponseDTO> resume(
+            @RequestBody SubOrgRegistrationFlowDTOs.ResumeRegistrationRequestDTO request) {
+        return ResponseEntity.ok(registrationService.resume(request));
+    }
+
+    /** Strict OTP check for resume; returns the prefill snapshot + current status. */
+    @PostMapping("/resume-verify")
+    public ResponseEntity<SubOrgRegistrationFlowDTOs.ResumeVerifyResponseDTO> resumeVerify(
+            @RequestBody SubOrgRegistrationFlowDTOs.ResumeVerifyRequestDTO request) {
+        return ResponseEntity.ok(registrationService.resumeVerify(request));
+    }
+
+    /** Fresh gateway session for a PENDING_PAYMENT registration. */
+    @PostMapping("/retry-payment")
+    public ResponseEntity<CompleteRegistrationResponseDTO> retryPayment(
+            @RequestBody SubOrgRegistrationFlowDTOs.RetryPaymentRequestDTO request) {
+        return ResponseEntity.ok(registrationService.retryPayment(request));
+    }
+
     @PostMapping("/resend-otp")
     public ResponseEntity<Map<String, String>> resendOtp(
             @RequestBody ResendOtpRequestDTO request) {

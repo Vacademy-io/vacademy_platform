@@ -105,6 +105,10 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         @Param("instituteId") String instituteId,
                         @Param("statuses") List<String> statuses);
 
+        /** Newest plan a user holds on a given invite — sub-org registration payment retry. */
+        Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdOrderByCreatedAtDesc(
+                        String userId, String enrollInviteId);
+
         Optional<UserPlan> findFirstByUserIdAndEnrollInviteIdAndCreatedAtAfterOrderByCreatedAtAsc(
                         String userId,
                         String enrollInviteId,

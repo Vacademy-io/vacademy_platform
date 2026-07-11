@@ -235,6 +235,74 @@ public final class SubOrgRegistrationFlowDTOs {
         private PaymentResponseDTO paymentResponse;
     }
 
+    /** Resume an in-flight registration by proving control of its email (sends OTP). */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeRegistrationRequestDTO {
+        private String instituteId;
+        private String code;
+        private String adminEmail;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeVerifyRequestDTO {
+        private String registrationId;
+        private String otp;
+    }
+
+    /**
+     * Returned only after resume-verify proves the OTP — powers wizard prefill.
+     * (Never returned from the idempotent verify-otp short-circuit: it carries
+     * personal data, so it demands a real verification.)
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeVerifyResponseDTO {
+        private String registrationId;
+        private String status;
+        private String kycStatus;
+        private ResumeDetailsDTO details;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeDetailsDTO {
+        private String orgName;
+        private String orgLogoFileId;
+        private String adminName;
+        private String adminEmail;
+        private String adminPhone;
+        private String addressLine1;
+        private String addressLine2;
+        private String city;
+        private String state;
+        private String pincode;
+    }
+
+    /** Fresh gateway session for a PENDING_PAYMENT registration (payment retry). */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RetryPaymentRequestDTO {
+        private String registrationId;
+        private PaymentInitiationRequestDTO paymentInitiationRequest;
+    }
+
     /** Admin list row for a template. */
     @Data
     @Builder

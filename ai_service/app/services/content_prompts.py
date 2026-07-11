@@ -238,10 +238,18 @@ Explanation of the code output or key concepts.
     @staticmethod
     def build_homework_prompt(text_prompt: str, title: str, language: str = "English") -> str:
         """
+<<<<<<< Updated upstream
         Build prompt for homework slides. Hands-on and applied — the task type
         adapts to the chapter's subject (coding ONLY for technical chapters).
         """
         return f"""**Task**: Generate the ASSIGNMENT (homework) for a chapter. It must be hands-on and applied — something the student actively DOES, not recall-style Q&A.
+=======
+        Build prompt for homework slides. Content should be hands-on and task-oriented,
+        adapting to the subject matter (coding tasks for programming topics, analytical/practical
+        tasks for other subjects).
+        """
+        return f"""**Task**: Generate HOMEWORK for a chapter. The homework must be hands-on and task-oriented, NOT simple Q&A.
+>>>>>>> Stashed changes
 
 **Language**: Generate ALL content in {language}. Do NOT use English if a different language is specified.
 
@@ -261,6 +269,7 @@ Explanation of the code output or key concepts.
 
 **Content requirements**:
 - Do NOT create simple "what is X?" or short-answer conceptual questions.
+<<<<<<< Updated upstream
 - Exactly ONE task, with: a clear title, brief context, concrete instructions, the materials to work on (embed them in the assignment — e.g. the sample text, data, or starter code), and the expected outcome or acceptance criteria.
 - The task must be doable using ONLY what this chapter covered.
 
@@ -274,6 +283,24 @@ Explanation of the code output or key concepts.
 - Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
 - Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
 - Include ALL necessary imports; starter code must be syntactically valid — mark student sections with a clear `# TODO: implement this` comment.
+=======
+- **Adaptive Assignment Type** (Select the appropriate type based on the topic/subject):
+  - **For Coding / Programming / IT topics**: Create a hands-on coding task (e.g., write a function/script to solve a problem, debug existing code, set up a development environment, or complete a mini-project).
+  - **For Non-Coding topics (e.g., Biology, Chemistry, Literature, History, Business)**: Create a hands-on practical or analytical task relevant to the subject (e.g., design an experiment, analyze a case study, interpret a data set, label/explain a biological diagram or process, or draft a field-specific report/proposal). Do NOT ask the student to write code or scripts.
+- Include exactly ONE task per chapter (one mini-project, experiment design, case study, or implementation task—not multiple).
+- The single task should have: clear title, brief context, concrete instructions, and expected outcome or acceptance criteria.
+- Use proper formatting: use code blocks for programming tasks, or structured lists/paragraphs for non-programming tasks.
+
+**Output format**:
+- HTML only.
+- **Heading Rule**: The content MUST start with the main heading `<h1>Assignment</h1>`.
+- Use <h2> for the single task title, <p> for instructions, <pre><code class="language-xxx"> for code snippets or starter code (if coding-related).
+- Structure: Main heading ("Assignment"), task title, short introduction paragraph, then one section for the single homework task.
+
+**Code/Data Formatting (CRITICAL)**:
+- If code or structured data is included inside <pre><code>, it MUST have correct indentation — use spaces (not tabs) exactly as it would appear in an IDE/editor.
+- Do NOT flatten or minify the content.
+>>>>>>> Stashed changes
 
 **Important**: Return ONLY the HTML content. Start with <h1>Assignment</h1>."""
 
@@ -306,14 +333,21 @@ Explanation of the code output or key concepts.
    - One or more hints that guide the student without giving the full answer (e.g. "Start by identifying the author and year.", "Check the order of arguments in the API.")
    - Keep hints short and actionable.
 2. **Solution** (after the hint):
+<<<<<<< Updated upstream
    - Full, correct solution matching the task type: complete code (ONLY if the homework was a coding task), a complete worked deliverable (for creation/analysis tasks), or full step-by-step working (for exercises and scenario problems).
    - For non-coding tasks show the finished result the student should have produced (e.g. the corrected examples, the completed reference list, the full analysis) — not just a description of it.
    - For coding or setup tasks, include any necessary files/commands and expected output or verification steps.
+=======
+   - Full, correct solution: complete code (if coding), step-by-step commands (if setup), or full explanation (if implementation/case study/experiment).
+   - Code must be complete, runnable, and formatted in code blocks (if coding-related).
+   - For mini projects or setup tasks, include any necessary files/commands and expected output or verification steps.
+>>>>>>> Stashed changes
 
 **Output format (STRICT — this HTML is parsed by a block editor)**:
 - HTML only. No markdown syntax anywhere, no commentary outside the HTML.
 - The content MUST start with the main heading `<h1>Assignment Solutions</h1>`.
 - Use exactly two subsection headings: "Hint" (first), then "Solution" (second). Do not use "Exact solution" or "Exact Solution"—use "Solution" only.
+<<<<<<< Updated upstream
 - Use `<ol>` or `<p>` for step-by-step working, `<blockquote>` for the worked deliverable where it reads better.
 
 **Code formatting (ONLY when the homework was a coding task)**:
@@ -321,9 +355,16 @@ Explanation of the code output or key concepts.
 - Inside code, escape `&` as `&amp;`, `<` as `&lt;`, `>` as `&gt;`.
 - Preserve correct indentation with spaces, exactly as in an IDE; never flatten or minify.
 - Solution code must be **complete and runnable** — all imports, a main entry point, and expected output as a comment; no `pass` or `...` placeholders.
+=======
+- Use <pre><code class="language-xxx"> for all code (if coding-related). Use <ol> or <p> for step-by-step instructions where appropriate.
+
+**Code/Text Formatting (CRITICAL)**:
+- If code is included inside <pre><code>, it MUST have correct indentation — use spaces (not tabs) exactly as the code would appear in an IDE.
+- Do NOT flatten or minify the code. Solution code must be complete and runnable.
+- Do NOT use placeholder code like `pass` or `...` in the solution.
+>>>>>>> Stashed changes
 
 **Important**: Return ONLY the HTML content. Always put the HINT before the Solution. Use the heading "Solution", not "Exact Solution". Start with <h1>Assignment Solutions</h1>."""
 
 
 __all__ = ["ContentGenerationPrompts"]
-

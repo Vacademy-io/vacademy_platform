@@ -5067,11 +5067,24 @@ class VideoGenerationPipeline:
                 # path (monolithic TTS + segment regen) at line ~3678 will
                 # rebuild segments from real words.
                 _phase_b_deferred = tts_outputs.get("deferred_to_html") is True
+                # A loaded v3 shot plan drives html generation directly (via
+                # _generate_html_per_shot) — the segment path is the legacy v2
+                # fallback and its `segments` output is NOT consumed for v3.
+                # On a RESUME leg `deferred_to_html` is never re-set (do_tts was
+                # skipped), so `_phase_b_deferred` is False even for a v3 run;
+                # detect the plan explicitly so empty segments (e.g. a video
+                # with no word timings → fixed-window yields 0) don't kill a run
+                # whose shots come from the plan, not from segments. Mirrors the
+                # fresh-path tolerance so resume behaves like the first leg.
+                _v3_plan_present = bool(
+                    getattr(self, "_v3_shot_plan", None) and content_type == "VIDEO"
+                )
                 if not segments:
-                    if _phase_b_deferred and self._tier_config.get("use_director"):
+                    if (_phase_b_deferred or _v3_plan_present) and self._tier_config.get("use_director"):
                         print(
-                            f"   ℹ️  Phase B path: skipping empty-segments check "
-                            f"(words deferred — Director will produce the shot plan)"
+                            f"   ℹ️  Skipping empty-segments check "
+                            f"({'v3 shot plan present' if _v3_plan_present else 'words deferred'} "
+                            f"— the plan/Director produces the shots)"
                         )
                     else:
                         raise RuntimeError("Failed to derive segments from narration.")

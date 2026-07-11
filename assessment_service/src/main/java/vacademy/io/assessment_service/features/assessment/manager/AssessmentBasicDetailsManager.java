@@ -74,10 +74,20 @@ public class AssessmentBasicDetailsManager {
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseReattemptRequest()).ifPresent(assessment::setCanRequestReattempt);
         Optional.ofNullable(basicAssessmentDetailsDTO.getRaiseTimeIncreaseRequest()).ifPresent(assessment::setCanRequestTimeIncrease);
         Optional.ofNullable(basicAssessmentDetailsDTO.getResultType()).ifPresent(assessment::setResultType);
-        addOrUpdateTestCreationData(assessment, null, basicAssessmentDetailsDTO.getTestCreation());
-        addOrUpdateBoundationData(assessment, null, basicAssessmentDetailsDTO.getTestBoundation());
+
+        // The subject lives on the institute mapping, not the assessment. Load it
+        // so subject changes are persisted on edit; without this the mapping is
+        // never saved and the subject silently stays as it was ("N/A").
+        AssessmentInstituteMapping assessmentInstituteMapping = assessmentInstituteMappingRepository
+                .findByAssessmentIdAndInstituteId(assessment.getId(), instituteId)
+                .orElse(null);
+        addOrUpdateTestCreationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestCreation());
+        addOrUpdateBoundationData(assessment, assessmentInstituteMapping, basicAssessmentDetailsDTO.getTestBoundation());
 
         assessment = assessmentRepository.save(assessment);
+        if (assessmentInstituteMapping != null) {
+            assessmentInstituteMappingRepository.save(assessmentInstituteMapping);
+        }
         return ResponseEntity.ok(new AssessmentSaveResponseDto(assessment.getId(), AssessmentStatus.DRAFT.name()));
     }
 

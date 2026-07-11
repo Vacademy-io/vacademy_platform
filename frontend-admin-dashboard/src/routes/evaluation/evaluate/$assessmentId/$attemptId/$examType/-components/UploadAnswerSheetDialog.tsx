@@ -21,7 +21,11 @@ interface UploadAnswerSheetDialogProps {
     // Called once the file is uploaded and attached to the attempt, with the new
     // file id so the caller can immediately load the answer sheet.
     onUploaded: (fileId: string) => void;
-    trigger: React.ReactNode;
+    trigger?: React.ReactNode;
+    // Controlled mode — for callers that open the dialog from a menu item
+    // instead of a trigger node (a trigger inside a dropdown unmounts with it).
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 interface UploadForm {
@@ -35,8 +39,16 @@ export const UploadAnswerSheetDialog = ({
     instituteId,
     onUploaded,
     trigger,
+    open: controlledOpen,
+    onOpenChange,
 }: UploadAnswerSheetDialogProps) => {
-    const [open, setOpen] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (next: boolean) => {
+        if (isControlled) onOpenChange?.(next);
+        else setInternalOpen(next);
+    };
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);

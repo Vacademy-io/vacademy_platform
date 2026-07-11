@@ -32,6 +32,7 @@ import vacademy.io.assessment_service.features.learner_assessment.enums.Assessme
 import vacademy.io.assessment_service.features.learner_assessment.service.QuestionWiseMarksService;
 import vacademy.io.assessment_service.features.notification.service.AssessmentNotificationService;
 import vacademy.io.assessment_service.features.question_core.entity.Question;
+import vacademy.io.assessment_service.features.question_core.enums.EvaluationTypes;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -108,16 +109,41 @@ public class StudentAttemptService {
 
         attempt.setTotalMarks(totalMarks);
         attempt.setTotalTimeInSeconds(timeElapsedInSeconds);
-        attempt.setResultMarks(totalMarks);
-        attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
+
+        // MANUAL-evaluation assessments are graded by an evaluator (tool or AI),
+        // which sets COMPLETED itself. Auto marks calculation (submit flow /
+        // attempt-expiry cron) must not flip such attempts to COMPLETED
+        // ("Evaluated") or release their results.
+        boolean isManualEvaluation = isManualEvaluationAssessment(attempt);
+        if (isManualEvaluation) {
+            if (!AssessmentAttemptResultEnum.COMPLETED.name().equals(attempt.getResultStatus())) {
+                attempt.setResultStatus(AssessmentAttemptResultEnum.PENDING.name());
+            }
+        } else {
+            attempt.setResultMarks(totalMarks);
+            attempt.setResultStatus(AssessmentAttemptResultEnum.COMPLETED.name());
+        }
         if(!attempt.getStatus().equals(AssessmentAttemptEnum.ENDED.name())){
             attempt.setStatus(AssessmentAttemptEnum.ENDED.name());
         }
 
         // Auto-release result based on assessment's result_type
-        autoReleaseResultIfApplicable(attempt);
+        if (!isManualEvaluation) {
+            autoReleaseResultIfApplicable(attempt);
+        }
 
         return studentAttemptRepository.save(attempt);
+    }
+
+    private boolean isManualEvaluationAssessment(StudentAttempt attempt) {
+        try {
+            Assessment assessment = attempt.getRegistration().getAssessment();
+            return assessment != null
+                    && EvaluationTypes.MANUAL.name().equals(assessment.getEvaluationType());
+        } catch (Exception e) {
+            log.error("Failed to resolve evaluation type for attempt {}: {}", attempt.getId(), e.getMessage());
+            return false;
+        }
     }
 
 

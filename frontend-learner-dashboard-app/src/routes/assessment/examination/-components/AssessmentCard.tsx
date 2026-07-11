@@ -293,6 +293,8 @@ export const AssessmentCard = ({
     usedAttempts > 0 &&
     assessmentInfo.result_type === "MANUAL" &&
     assessmentInfo.report_release_status !== "RELEASED";
+  const isManualEvaluation =
+    (assessmentInfo.evaluation_type || "").toUpperCase() === "MANUAL";
 
   return (
     <>
@@ -348,6 +350,7 @@ export const AssessmentCard = ({
                   >
                     Show Report
                   </MyButton>
+                  {!isManualEvaluation && (
                   <MyButton
                     buttonType="secondary"
                     scale="medium"
@@ -365,6 +368,7 @@ export const AssessmentCard = ({
                   >
                     Show AI Report
                   </MyButton>
+                  )}
                 </>
               )}
               {resultsPending && (

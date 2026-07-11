@@ -1,5 +1,6 @@
 import { forwardRef, memo, useImperativeHandle, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { renderAsync } from "docx-preview";
+import { HtmlSlideIframe } from "./html-slide-iframe";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
 import { DocumentWithMermaid } from "./DocumentWithMermaid";
@@ -43,14 +44,23 @@ type DocViewerComponentProps = {
   handlePageChange: (page: number) => void;
   initialPage?: number;
   isHtml?: boolean;
+  // Creative HTML document (type 'HTML'): render the raw HTML in a sandboxed
+  // iframe so its CSS/JS animations run and it stays isolated from the app.
+  creativeHtml?: boolean;
+  // Interactive-result reporting from a creative HTML slide (quiz/game).
+  onSlideProgress?: (percent: number) => void;
+  onSlideComplete?: (result: import("./html-slide-iframe").SlideResult) => void;
 };
 
-const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({ 
+const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({
   docUrl,
   handleDocumentLoad,
   handlePageChange,
   //initialPage = 0,
-  isHtml = false
+  isHtml = false,
+  creativeHtml = false,
+  onSlideProgress,
+  onSlideComplete
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const totalPagesRef = useRef<number>(0);
@@ -326,7 +336,14 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
 
   return (
     <div ref={containerRef} className="min-h-screen-40 sm:min-h-screen-50 lg:min-h-screen-60 max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300"> {/* design-lint-ignore: viewport math */}
-      {isHtml ? (
+      {creativeHtml ? (
+        <HtmlSlideIframe
+          html={stableDocUrl}
+          onLoad={() => handleDocumentLoadRef.current?.()}
+          onProgress={onSlideProgress}
+          onComplete={onSlideComplete}
+        />
+      ) : isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
           {/* Text documents read at a centered, generous measure (max-w-5xl,

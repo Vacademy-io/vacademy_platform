@@ -35,19 +35,19 @@ import {
     cleanQuizContent,
     parseVideoContent,
 } from '../utils/contentParsers';
-import { DocumentWithMermaidSimple } from '../../../../shared/components/DocumentWithMermaid';
 import { markdownToHtml } from '../../../../shared/utils/markdownToHtml';
 import type { SlideGeneration, SlideType, QuizQuestion } from '../../../../shared/types';
 import { AIVideoPlayer } from '@/components/ai-video-player';
 import { cn } from '@/lib/utils';
+import { HtmlSlidePreview } from '@/components/html-slide/html-slide-preview';
 
 
-// Read-only HTML viewer for AI-generated document content. The content is
-// plain HTML end-to-end, so render it directly (with mermaid support) instead
-// of round-tripping through Yoopta's lossy deserializer.
+// Read-only viewer for AI-generated document content. Content is now creative,
+// self-contained HTML, so render it in a sandboxed iframe (animations, custom
+// styling and scripts all run, isolated from the app).
 const HtmlContentViewer = ({ content, className }: { content: string; className?: string }) => (
     <div className={cn('w-full', className)}>
-        <DocumentWithMermaidSimple htmlContent={content} />
+        <HtmlSlidePreview html={content} />
     </div>
 );
 

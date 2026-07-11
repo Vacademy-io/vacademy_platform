@@ -49,7 +49,7 @@ import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
 import { flattenSemanticWrappers, detectDeserializeLoss } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
-import { HtmlDocEditor } from './html-doc/html-doc-editor';
+import { HtmlDocAiAuthor } from './html-doc/html-doc-ai-author';
 import { HTML_DOC_TYPE, isHtmlDocEmpty } from './html-doc/html-doc-utils';
 const SlideEditor = React.lazy(() =>
     import('./SlideEditor').then((module) => ({ default: module.default }))
@@ -2420,7 +2420,7 @@ export const SlideMaterial = ({
                 if (isSameSlideRerun) return;
                 htmlDocRef.current = { slideId: activeItem.id, html: null };
                 setContent(
-                    <HtmlDocEditor
+                    <HtmlDocAiAuthor
                         key={activeItem.id}
                         slide={activeItem}
                         isLearnerView={isLearnerView}
@@ -2626,7 +2626,7 @@ export const SlideMaterial = ({
         }
     };
 
-    // onChange from HtmlDocEditor: stash latest HTML + schedule the debounced
+    // onChange from HtmlDocAiAuthor: stash latest HTML + schedule the debounced
     // autosave. The slide object is captured at schedule time so a pending
     // save can never write into a different (newly-selected) slide.
     const handleHtmlDocChange = useCallback(
@@ -4034,6 +4034,10 @@ export const SlideMaterial = ({
                                   : 'h-full'
                           } ${
                               activeItem?.document_slide?.type === 'DOC' ||
+                              // HTML (Tiptap) docs grow with their content just
+                              // like DOC — overflow-hidden would clip them with
+                              // no scrollbar.
+                              activeItem?.document_slide?.type === HTML_DOC_TYPE ||
                               // CODE (esp. Question Mode) grows with its problem
                               // text / test cases / starter code; pinning it to
                               // overflow-hidden clips the lower tabs' content with

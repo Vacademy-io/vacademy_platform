@@ -106,7 +106,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
+import { HtmlDocField } from '@/components/html-slide/html-doc-field';
 import Editor from '@monaco-editor/react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
@@ -2903,7 +2903,7 @@ export function RouteComponent() {
                                         {(viewingSlide.slideType === 'objectives' ||
                                             viewingSlide.slideType === 'doc') && (
                                                 <div>
-                                                    <TipTapEditor
+                                                    <HtmlDocField
                                                         value={documentContent}
                                                         onChange={setDocumentContent}
                                                         placeholder="Enter document content..."
@@ -3239,11 +3239,11 @@ export function RouteComponent() {
                                                             </div>
                                                         </div>
                                                         {homeworkAnswerType === 'text' ? (
-                                                            <TipTapEditor
+                                                            <Textarea
                                                                 value={homeworkAnswer}
-                                                                onChange={setHomeworkAnswer}
-                                                                placeholder="Enter your answer..."
-                                                                minHeight={300}
+                                                                onChange={(e) => setHomeworkAnswer(e.target.value)}
+                                                                className="resize-y font-mono text-caption"
+                                                                style={{ minHeight: 300 }}
                                                             />
                                                         ) : (
                                                             <div className="overflow-hidden rounded-lg border">

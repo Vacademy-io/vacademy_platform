@@ -36,12 +36,15 @@ interface DocViewerProps {
     docUrl: string;
     documentId: string;
     isHtml?: boolean;
+    // Creative HTML (type 'HTML') → rendered in a sandboxed iframe.
+    creativeHtml?: boolean;
 }
 
 export const DocViewer: React.FC<DocViewerProps> = ({
     docUrl,
     documentId,
     isHtml = false,
+    creativeHtml = false,
 }) => {
     const { addActivity } = useTrackingStore();
     const { activeItem } = useContentStore();
@@ -454,6 +457,56 @@ export const DocViewer: React.FC<DocViewerProps> = ({
         }
     };
 
+    // Interactive creative-HTML slides (quiz/game) report their outcome via
+    // postMessage; fold it into the SAME document activity the wrapper already
+    // syncs — completion + quiz stats land in percentage_watched /
+    // concentration_score with no separate pipeline.
+    const interactionPctRef = useRef(0);
+
+    const handleSlideProgress = useCallback(
+        (percent: number) => {
+            interactionPctRef.current = Math.max(
+                interactionPctRef.current,
+                Math.min(100, Math.max(0, percent))
+            );
+            handleUserActivity();
+        },
+        [handleUserActivity]
+    );
+
+    const handleSlideComplete = useCallback(
+        (r: { score?: number; maxScore?: number; wrong?: number; timesSec?: number[] }) => {
+            const wrong =
+                typeof r.wrong === "number"
+                    ? r.wrong
+                    : typeof r.maxScore === "number" && typeof r.score === "number"
+                      ? Math.max(0, r.maxScore - r.score)
+                      : undefined;
+            if (typeof wrong === "number") setWrongAnswerCount((prev) => Math.max(prev, wrong));
+            if (Array.isArray(r.timesSec) && r.timesSec.length) {
+                const nums = r.timesSec.filter((n) => typeof n === "number" && isFinite(n));
+                if (nums.length) setAnsweredTimeArray((prev) => [...prev, ...nums]);
+            }
+            interactionPctRef.current = 100;
+            // Guarantee a page_view exists so the activity syncs even on a fast finish.
+            if (pageViews.current.length === 0) {
+                const now = getEpochTimeInMillis();
+                pageViews.current.push({
+                    id: uuidv4(),
+                    page: 0,
+                    duration: Math.max(1, Math.round((now - startTimeInMillis.current) / 1000)),
+                    start_time: new Date(startTimeInMillis.current).toISOString(),
+                    end_time: new Date(now).toISOString(),
+                    start_time_in_millis: startTimeInMillis.current,
+                    end_time_in_millis: now,
+                });
+            }
+            totalPagesReadRef.current = Math.max(totalPagesReadRef.current, 1);
+            setTimeout(() => syncPDFTrackingData(), 150);
+        },
+        [syncPDFTrackingData]
+    );
+
     // Handle page change
     const handlePageChange = useCallback(
         (page: number) => {
@@ -620,6 +673,9 @@ export const DocViewer: React.FC<DocViewerProps> = ({
                 handlePageChange={handlePageChange}
                 initialPage={currentPage}
                 isHtml={isHtml}
+                creativeHtml={creativeHtml}
+                onSlideProgress={handleSlideProgress}
+                onSlideComplete={handleSlideComplete}
             />
         </div>
     );

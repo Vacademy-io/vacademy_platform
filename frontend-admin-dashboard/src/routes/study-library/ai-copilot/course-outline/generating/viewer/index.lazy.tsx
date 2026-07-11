@@ -44,7 +44,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import Editor from '@monaco-editor/react';
-import { TipTapEditor } from '@/components/tiptap/TipTapEditor';
+import { HtmlDocField } from '@/components/html-slide/html-doc-field';
 import {
     DndContext,
     closestCenter,
@@ -1084,7 +1084,7 @@ const SortableSlideItem = React.memo(({ slide, onEdit, onDelete, getSlideIcon, o
                             )}
                         </div>
                     </div>
-                    <TipTapEditor
+                    <HtmlDocField
                         value={processedContent}
                         onChange={handleDocumentChange}
                         minHeight={400}

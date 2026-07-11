@@ -797,6 +797,8 @@ export const SlideMaterial = ({
                     .trim()
                     .startsWith("<")));
             if (isHtml) {
+              // 'HTML' = creative, self-contained HTML → sandboxed iframe.
+              const isCreativeHtml = activeItem.document_slide?.type === "HTML";
               setContent(
                 <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                   <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
@@ -804,6 +806,7 @@ export const SlideMaterial = ({
                       docUrl={activeItem.document_slide.published_data || ""}
                       documentId={activeItem.id}
                       isHtml={true}
+                      creativeHtml={isCreativeHtml}
                     />
                   </div>
                 </div>

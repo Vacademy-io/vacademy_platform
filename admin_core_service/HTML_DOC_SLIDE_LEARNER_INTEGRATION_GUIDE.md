@@ -34,22 +34,18 @@ An HTML document is a DOCUMENT slide with a new sub-type:
 
 ## 2. Rendering
 
-`slide-material.tsx` routes `type === "HTML"` through the **same pipeline as HTML-flavoured DOC slides**, with `isHtml` forced true:
+`type === "HTML"` is **creative, self-contained HTML**, so it renders in a **sandboxed iframe** (its CSS/JS animations must run, and it must be isolated from the learner app):
 
 ```
-DocViewer (tracking wrapper)
-  → DocViewerComponent (embed/iframe transforms)
-    → DocumentWithMermaid (the actual HTML renderer)
+slide-material.tsx  (type HTML → creativeHtml=true)
+  → DocViewer (tracking wrapper, unchanged)
+    → DocViewerComponent (creativeHtml branch)
+      → HtmlSlideIframe  (<iframe sandbox="allow-scripts" srcDoc={published_data}>)
 ```
 
-`DocumentWithMermaid` already handles everything the content can contain:
-
-- Plain HTML sections (`dangerouslySetInnerHTML`)
-- **Code blocks:** `<pre data-code="<base64>">` — decoded and rendered by `EnhancedCodeBlock`; `data-code` presence also means "never treat as mermaid"
-- **Mermaid** diagrams (`div.mermaid` or fenced first-line detection)
-- Math (KaTeX), embedded iframes/videos (YouTube/Google Slides transforms)
-
-No new renderer was written — one branch condition was extended.
+- `sandbox="allow-scripts allow-popups…"` **without** `allow-same-origin` → the document gets a unique opaque origin: scripts/animations run, but it cannot read the parent DOM, cookies, or storage.
+- The iframe auto-resizes to its content via a `postMessage` height beacon injected into the srcdoc, so the learner page scrolls naturally.
+- Legacy `DOC` slides are unchanged (still the inline `DocumentWithMermaid` path with code/mermaid processing). Only `HTML` uses the iframe.
 
 ## 3. Tracking Progress
 

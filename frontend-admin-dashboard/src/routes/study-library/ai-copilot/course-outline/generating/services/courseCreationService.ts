@@ -667,19 +667,21 @@ async function createDocumentSlide(params: CreateSlideParams): Promise<void> {
         contentPreview: slideContent?.substring(0, 100) || 'No content',
     });
 
-    // Convert markdown to HTML for proper rendering (supports mermaid diagrams, code blocks, etc.)
-    // The markdownToHtml utility handles:
-    // - Code blocks with syntax highlighting
-    // - Mermaid diagrams (```mermaid)
-    // - Tables, lists, headings
-    // - Math equations
-    // - HTML passthrough (if already HTML, it preserves it)
-    try {
-        slideContent = markdownToHtml(slideContent);
-        console.log(`[Course Creation] Converted to HTML, length: ${slideContent.length}`);
-    } catch (error) {
-        console.error('[Course Creation] Error converting markdown to HTML:', error);
-        // If conversion fails, use original content as fallback
+    // Document slides are now creative, self-contained HTML (type 'HTML',
+    // rendered in a sandboxed iframe). If the model already returned HTML,
+    // store it VERBATIM — running it through markdownToHtml would mangle the
+    // inline <style>/<script> and escape the markup. Only convert when the
+    // content still looks like markdown (defensive fallback).
+    const looksLikeHtml = /<!doctype html|<html|<style|<body|<section|<div|<h[1-6]|<p[ >]/i.test(
+        slideContent.trim()
+    );
+    if (!looksLikeHtml) {
+        try {
+            slideContent = markdownToHtml(slideContent);
+            console.log(`[Course Creation] Converted markdown to HTML, length: ${slideContent.length}`);
+        } catch (error) {
+            console.error('[Course Creation] Error converting markdown to HTML:', error);
+        }
     }
 
     // Determine slide status - use PUBLISHED for active slides so they're visible

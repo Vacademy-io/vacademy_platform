@@ -1892,6 +1892,10 @@ const EnrollByInvite = ({
             currency: orderDetails.currency || "INR",
             contact: orderDetails.contact || "",
             email: orderDetails.email || "",
+            // Autopay: present when the backend registered a recurring mandate;
+            // drives Checkout into UPI-Autopay / card-mandate mode.
+            recurring: orderDetails.recurring,
+            customerId: orderDetails.customerId,
           });
         } else {
           throw new Error("Razorpay component not ready");

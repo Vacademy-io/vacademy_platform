@@ -114,9 +114,13 @@ private String id;
     // user_institute_payment_gateway_mapping.payment_gateway_customer_data
     // JSON, keyed by this plan's id. These columns only drive the scheduler.
 
-    /** Only plans with this true are picked up by the auto-charge scheduler. */
+    /**
+     * Only plans with this true are picked up by the auto-charge scheduler.
+     * Initialised to false so the NOT NULL column is never sent an explicit NULL
+     * on insert (Hibernate includes mapped columns even when the DB has a default).
+     */
     @Column(name = "auto_renewal_enabled")
-    private Boolean autoRenewalEnabled;
+    private Boolean autoRenewalEnabled = false;
 
     /** Next date the scheduler should attempt a renewal charge (usually = endDate). */
     @Column(name = "next_charge_at")
@@ -124,11 +128,11 @@ private String id;
 
     /** True while in the free-trial window (access granted, no real charge yet). */
     @Column(name = "is_trial")
-    private Boolean isTrial;
+    private Boolean isTrial = false;
 
     /** Dunning: number of renewal charge attempts in the current cycle. */
     @Column(name = "renewal_attempt_count")
-    private Integer renewalAttemptCount;
+    private Integer renewalAttemptCount = 0;
 
     @Column(name = "last_renewal_attempt_at")
     private Date lastRenewalAttemptAt;

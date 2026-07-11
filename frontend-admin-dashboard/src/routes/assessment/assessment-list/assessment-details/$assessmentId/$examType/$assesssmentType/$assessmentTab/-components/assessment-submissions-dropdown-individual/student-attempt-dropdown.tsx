@@ -14,7 +14,7 @@ import { DotsThree, WarningCircle } from '@phosphor-icons/react';
 import { AssessmentRevaluateStudentInterface } from '@/types/assessments/assessment-overview';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { StudentRevaluateQuestionWiseComponent } from './student-revaluate-question-wise-component';
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { SelectedFilterRevaluateInterface } from '@/types/assessments/assessment-revaluate-question-wise';
 import {
     getAttemptData,
@@ -43,6 +43,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
+import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
 
 const ProvideReattemptComponent = ({
     student,
@@ -426,9 +427,12 @@ const StudentRevaluateForEntireAssessmentComponent = ({
 const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStudentInterface }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
     // Open the manual PDF evaluation tool for this attempt (same flow as the
     // assessment-slide "Evaluate" deep-link); return here after submitting.
@@ -543,9 +547,37 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     const evaluationStatus = student?.evaluation_status;
     const isEvaluationPending = evaluationStatus === 'PENDING';
 
+    // For manual assessments the menu depends on whether the attempt has a
+    // submitted answer sheet and an evaluated copy. Both live behind detail
+    // endpoints (not on the table row), so fetch them lazily on menu open.
+    const submissionFileQuery = useQuery({
+        queryKey: ['GET_ATTEMPT_SUBMISSION_FILE', student.attempt_id],
+        queryFn: async () => ((await getAttemptData(student.attempt_id)) as string | null) ?? null,
+        enabled: isManualEvaluation && menuOpen,
+        staleTime: 5 * 60 * 1000,
+    });
+    const reportDetailQuery = useQuery({
+        queryKey: ['GET_STUDENT_REPORT_DETAIL', assessmentId, student.attempt_id],
+        queryFn: () => viewStudentReport(assessmentId, student.attempt_id, instituteId),
+        enabled: isManualEvaluation && menuOpen && !isEvaluationPending,
+        staleTime: 5 * 60 * 1000,
+    });
+    const hasSubmissionFile = !!submissionFileQuery.data;
+    const hasEvaluatedCopy = !!(
+        reportDetailQuery.data as { evaluated_file_id?: string | null } | undefined
+    )?.evaluated_file_id;
+
+    // After an admin uploads the answer sheet on the student's behalf, flip the
+    // cached file id (so the menu now shows "View Submission") and open the file.
+    const handleAnswerSheetUploaded = async (fileId: string) => {
+        queryClient.setQueryData(['GET_ATTEMPT_SUBMISSION_FILE', student.attempt_id], fileId);
+        const url = await getPublicUrl(fileId);
+        if (url) window.open(url, '_blank');
+    };
+
     return (
         <>
-            <DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger>
                     <MyButton
                         type="button"
@@ -557,17 +589,44 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </MyButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onSelect={(e) => {
-                            e.preventDefault();
-                            handleViewSubmission();
-                        }}
-                    >
-                        {viewSubmissionMutation.isPending
-                            ? 'Loading Submission...'
-                            : 'View Submission'}
-                    </DropdownMenuItem>
+                    {/* Manual attempts may have no uploaded answer sheet — offer
+                        the admin an upload instead of a dead "View Submission". */}
+                    {isManualEvaluation ? (
+                        submissionFileQuery.isLoading ? (
+                            <DropdownMenuItem disabled>Checking Submission...</DropdownMenuItem>
+                        ) : hasSubmissionFile ? (
+                            <DropdownMenuItem
+                                className="cursor-pointer"
+                                onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleViewSubmission();
+                                }}
+                            >
+                                {viewSubmissionMutation.isPending
+                                    ? 'Loading Submission...'
+                                    : 'View Submission'}
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => setUploadDialogOpen(true)}
+                            >
+                                Upload Submission
+                            </DropdownMenuItem>
+                        )
+                    ) : (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                                e.preventDefault();
+                                handleViewSubmission();
+                            }}
+                        >
+                            {viewSubmissionMutation.isPending
+                                ? 'Loading Submission...'
+                                : 'View Submission'}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Provide Reattempt')}
@@ -622,19 +681,27 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                             )}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
-                    {isManualEvaluation && !isEvaluationPending && (
-                        <DropdownMenuItem
-                            className="cursor-pointer"
-                            onSelect={(e) => {
-                                e.preventDefault();
-                                handleViewEvaluated();
-                            }}
-                        >
-                            {viewEvaluatedMutation.isPending
-                                ? 'Loading Evaluated Copy...'
-                                : 'View Evaluated Copy'}
-                        </DropdownMenuItem>
-                    )}
+                    {isManualEvaluation &&
+                        !isEvaluationPending &&
+                        (reportDetailQuery.isLoading ? (
+                            <DropdownMenuItem disabled>
+                                Checking Evaluated Copy...
+                            </DropdownMenuItem>
+                        ) : (
+                            hasEvaluatedCopy && (
+                                <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onSelect={(e) => {
+                                        e.preventDefault();
+                                        handleViewEvaluated();
+                                    }}
+                                >
+                                    {viewEvaluatedMutation.isPending
+                                        ? 'Loading Evaluated Copy...'
+                                        : 'View Evaluated Copy'}
+                                </DropdownMenuItem>
+                            )
+                        ))}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}
@@ -643,6 +710,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Admin-side answer sheet upload for manual attempts that have no
+                submission file. Lives outside the dropdown so it survives the
+                menu closing. */}
+            <UploadAnswerSheetDialog
+                attemptId={student.attempt_id}
+                instituteId={instituteId}
+                open={uploadDialogOpen}
+                onOpenChange={setUploadDialogOpen}
+                onUploaded={handleAnswerSheetUploaded}
+            />
 
             {/* Dialog should be controlled by openDialog state */}
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>

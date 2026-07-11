@@ -80,7 +80,7 @@ public class LeadFollowupService {
                 .findByAudienceResponseIdOrderByScheduleTimeAsc(audienceResponseId);
         if (!rows.isEmpty() && user != null && user.getUserId() != null) {
             String instituteId = resolveInstituteId(audienceResponseId, rows.get(0).getInstituteId());
-            if (counsellorScopeService.isScopedCaller(instituteId, user.getUserId())) {
+            if (counsellorScopeService.isScopedCaller(instituteId, user)) {
                 String leadUserId = audienceResponseRepository.findById(audienceResponseId)
                         .map(AudienceResponse::getUserId)
                         .orElse(null);
@@ -125,7 +125,7 @@ public class LeadFollowupService {
                     .collect(Collectors.toList());
         }
 
-        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user.getUserId());
+        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user);
         List<LeadFollowup> rows;
         if (counsellorUserId != null && !counsellorUserId.isBlank()) {
             if (scoped && !user.getUserId().equals(counsellorUserId)

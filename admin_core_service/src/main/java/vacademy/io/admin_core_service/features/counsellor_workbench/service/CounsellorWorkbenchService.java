@@ -399,7 +399,7 @@ public class CounsellorWorkbenchService {
     private void assertCallerMayView(String instituteId, String targetUserId, CustomUserDetails caller) {
         if (caller == null || caller.getUserId() == null) return;
         if (caller.getUserId().equals(targetUserId)) return;
-        if (!scopeService.isScopedCaller(instituteId, caller.getUserId())) return;
+        if (!scopeService.isScopedCaller(instituteId, caller)) return;
         if (!scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()).contains(targetUserId)) {
             throw new VacademyException("You don't have access to this counsellor's data");
         }
@@ -426,7 +426,7 @@ public class CounsellorWorkbenchService {
             throw new VacademyException("Lead not found in this institute");
         }
         if (caller != null && caller.getUserId() != null
-                && scopeService.isScopedCaller(instituteId, caller.getUserId())) {
+                && scopeService.isScopedCaller(instituteId, caller)) {
             Set<String> allowed = new HashSet<>(
                     scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()));
             String assignee = currentAssignee.get();

@@ -2160,7 +2160,7 @@ public class AudienceService {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
-        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller.getUserId());
+        boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller);
         // assignable=true resolves ASSIGNMENT targets (bulk-assign dialog,
         // telephony/IVR routing config): ADMIN-role callers get the
         // institute-wide roster even when they also hold COUNSELLOR and are
@@ -2207,23 +2207,26 @@ public class AudienceService {
                 user, filterDTO.getInstituteId());
 
         // RBAC narrowing for the CRM Leads tab. When the caller holds the
-        // COUNSELLOR role (even alongside ADMIN — counsellor privilege wins),
-        // we restrict the visible leads to their hierarchy scope: themselves
-        // + every counsellor-role user reporting up to them through
-        // parent_user_id chains in any org team they belong to. A team head
-        // sees their whole downstream; a mid-level manager sees their
-        // reports; a leaf member sees only their own leads. Pure admins stay
-        // institute-wide. Computed as a CSV that the native query plugs
-        // into a `STRING_TO_ARRAY(...) = ANY` predicate alongside the
-        // single-id filter — so a manager can still drill into a specific
-        // report by sending assignedCounselorId.
+        // COUNSELLOR role and NOT the ADMIN role, we restrict the visible
+        // leads to their hierarchy scope: themselves + every counsellor-role
+        // user reporting up to them through parent_user_id chains in any org
+        // team they belong to. A team head sees their whole downstream; a
+        // mid-level manager sees their reports; a leaf member sees only their
+        // own leads. ADMIN outranks COUNSELLOR — a dual-role caller stays
+        // institute-wide (isScopedCaller(instituteId, user) below resolves
+        // this via the caller's authenticated authorities, not a raw JWT
+        // decode, so it can't miss ADMIN for a dual-role account). Computed
+        // as a CSV that the native query plugs into a
+        // `STRING_TO_ARRAY(...) = ANY` predicate alongside the single-id
+        // filter — so a manager can still drill into a specific report by
+        // sending assignedCounselorId.
         String assignedCounselorIdsCsv = null;
         boolean rbacApplied = false;
         if (user != null && user.getUserId() != null
                 && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
             String instituteId = filterDTO.getInstituteId();
-            if (counsellorScopeService.isScopedCaller(instituteId, user.getUserId())) {
+            if (counsellorScopeService.isScopedCaller(instituteId, user)) {
                 List<String> scope = counsellorScopeService
                         .scopedCounsellorUserIds(instituteId, user.getUserId());
                 if (!scope.isEmpty()) {

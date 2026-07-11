@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Bell-icon ("system alert") notifications for counsellor lead assignment.
+ * Bell-icon ("system alert") notifications for counsellor-facing lead events.
  *
  * Every path that writes user_lead_profile.assigned_counselor_id funnels
  * through here so the counsellor hears about new work the same way no matter
@@ -19,6 +19,11 @@ import java.util.Map;
  *   - CSV/bulk import lead owner  (AudienceService.assignManualCounsellor)
  *   - workbench bulk reassign     (CounsellorReassignService)
  *   - pool backup reassign        (CounselorPoolService.reassignOpenLeadsToBackup)
+ *
+ * Also used by {@code LeadAutomationScheduler} for follow-up due/overdue
+ * reminders — a guaranteed baseline bell alert, since the workflow-trigger
+ * path those events also emit has no bell/system-alert node type and depends
+ * on the institute having bound a custom workflow.
  *
  * Best-effort by design: every dispatch is wrapped so a notification-service
  * blip can never fail (or roll back) the assignment that triggered it.
@@ -80,6 +85,24 @@ public class LeadAssignmentNotifier {
                 .append(count).append(count == 1 ? " lead" : " leads").append(" reassigned to you");
         if (contextLabel != null && !contextLabel.isBlank()) {
             body.append(" (").append(contextLabel).append(")");
+        }
+        body.append(".");
+        dispatch(instituteId, counsellorUserId, title, body.toString());
+    }
+
+    /**
+     * A counsellor-scheduled follow-up has come due, or gone overdue, for one of
+     * their leads. {@code leadName} is optional and degrades gracefully same as
+     * {@link #notifyAssigned}.
+     */
+    public void notifyFollowUpDue(String instituteId, String counsellorUserId, String leadName, boolean overdue) {
+        if (counsellorUserId == null || counsellorUserId.isBlank()) {
+            return;
+        }
+        String title = overdue ? "Follow-up overdue" : "Follow-up due";
+        StringBuilder body = new StringBuilder(overdue ? "Your follow-up is overdue" : "You have a follow-up due now");
+        if (leadName != null && !leadName.isBlank()) {
+            body.append(" for \"").append(leadName).append("\"");
         }
         body.append(".");
         dispatch(instituteId, counsellorUserId, title, body.toString());

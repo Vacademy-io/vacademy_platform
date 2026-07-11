@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadAssignmentNotifier;
 import vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService;
 import vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
@@ -27,10 +28,15 @@ import java.util.Map;
  * counsellor-scheduled follow-ups. Previously {@code LeadSlaScheduler}; renamed because it
  * now covers more than just SLA breaches.
  *
- * <p>The backend never sends notifications. This scheduler only detects which leads have
- * crossed a configured boundary and emits the corresponding workflow trigger via
- * {@link WorkflowTriggerService#handleTriggerEvents}. Bound workflows own channels,
- * templates, recipients and escalation.</p>
+ * <p>This scheduler detects which leads have crossed a configured boundary and emits the
+ * corresponding workflow trigger via {@link WorkflowTriggerService#handleTriggerEvents}.
+ * Bound workflows own email/WhatsApp/HTTP channels, templates, recipients and escalation —
+ * but nothing in the workflow engine can raise a bell/system-alert, and most institutes
+ * never bind a workflow to FOLLOW_UP_DUE/OVERDUE at all. So the counsellor-scheduled
+ * follow-up scan additionally fires a guaranteed baseline bell notification directly via
+ * {@link LeadAssignmentNotifier#notifyFollowUpDue}, independent of workflow configuration.
+ * The SLA/TAT scan is unchanged — still emit-only, since it's institute-config-gated by
+ * design (tatOn / followUpOn) rather than "should always notify someone."</p>
  *
  * <p>It runs two scans on a 30-minute cadence:</p>
  * <ol>
@@ -63,6 +69,7 @@ public class LeadAutomationScheduler {
     private final LeadSlaConfigService leadSlaConfigService;
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder ctxBuilder;
+    private final LeadAssignmentNotifier leadAssignmentNotifier;
 
     /** 30-minute cadence (server timezone). "Before" reminder windows shorter than the scan
      *  interval may be skipped, so configure before-windows of 30 minutes or more. */
@@ -315,6 +322,15 @@ public class LeadAutomationScheduler {
                 long minutes = (due.getEpochSecond() - Instant.now().getEpochSecond()) / 60;
                 ctxBuilder.put(ctx, "minutesToBreach", Math.max(0, minutes));
             }
+
+            // Guaranteed baseline bell alert to the counsellor who scheduled this follow-up —
+            // fires regardless of whether the institute has a custom workflow bound to this
+            // event (most don't), and regardless of whether the trigger emission below
+            // succeeds. See class javadoc.
+            boolean overdue = WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name().equals(eventName);
+            leadAssignmentNotifier.notifyFollowUpDue(
+                    fu.getInstituteId(), counselorId, (String) ctx.get("leadName"), overdue);
+
             // eventId = followup id so EVENT_BASED idempotency dedups per follow-up row,
             // not per lead — a lead can have many follow-ups over time.
             workflowTriggerService.handleTriggerEvents(
